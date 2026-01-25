@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-01-25T09:27:43",
+  "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
+  "timestamp_policy": {
+    "timezone": "America/Denver",
+    "timestamp_source": "ninjatrader_local_pc_time",
+    "datetime_policy": "localized_on_ingest"
+  },
+  "parsed_files": [],
+  "unparsed_files": [],
+  "warnings_by_run_id": {},
+  "extra": {
+    "run_id_regex": null,
+    "report": {
+      "type": "html",
+      "self_contained": true,
+      "embedded_images": true,
+      "output_filename": "comparison_report.html",
+      "output_path": "outputs\\comparison_report.html",
+      "report_config_path": "report.yaml"
+    },
+    "report_config_resolved": {
+      "title": "Strategy Comparison Report",
+      "output_filename": "comparison_report.html",
+      "sections": [
+        {
+          "id": "comparison_overview",
+          "title": "Comparison Overview"
+        },
+        {
+          "id": "equity_curve_comparison",
+          "title": "Equity Curve Comparison"
+        },
+        {
+          "id": "run_metadata_cards",
+          "title": "Run Metadata Cards"
+        },
+        {
+          "id": "run_kpi_cards",
+          "title": "Run KPI Cards"
+        },
+        {
+          "id": "drawdown_curve",
+          "title": "Drawdown Curve + Recovery",
+          "options": {
+            "max_runs_plot": 4,
+            "show_recovery_lines": false
+          }
+        }
+      ]
+    }
+  }
+}
