@@ -1,14 +1,2366 @@
 {
-  "generated_at": "2026-01-25T09:27:43",
+  "generated_at": "2026-01-25T09:42:32",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
     "timestamp_source": "ninjatrader_local_pc_time",
     "datetime_policy": "localized_on_ingest"
   },
-  "parsed_files": [],
+  "parsed_files": [
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPA_Analysis.csv",
+      "sha256": "ceb938d0b9338d50a4f89bdb01386b3eabf6dabb3f82cd7815868cb84ee1f23b",
+      "size_bytes": 3226,
+      "run_id": "0--10-200-115am-315am-NQ-1MPA",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPA_Summery.csv",
+      "sha256": "4e919a80884b0dec4bc02e5ea55c81867ce5f388b22c3d87880c178ef72f1531",
+      "size_bytes": 1469,
+      "run_id": "0--10-200-115am-315am-NQ-1MPA",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPA_Trades.csv",
+      "sha256": "2511c0aa6c1709496ea25ae7e1173fc45c30e71a50d0764e59aa73d034fd912c",
+      "size_bytes": 4345,
+      "run_id": "0--10-200-115am-315am-NQ-1MPA",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPAV2_Analysis.csv",
+      "sha256": "81e2a57b669550612bc91dd9bef79a0398433862bf5cf3c7a5a99f6f54813d9a",
+      "size_bytes": 3150,
+      "run_id": "0--10-200-115am-315am-NQ-1MPAV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPAV2_Summery.csv",
+      "sha256": "9605e995d0a41e18a30d569fa470fd5d953f05ac69882d6454da194e6fa255f3",
+      "size_bytes": 1467,
+      "run_id": "0--10-200-115am-315am-NQ-1MPAV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-200-115am-315am-NQ-1MPAV2_Trades.csv",
+      "sha256": "ef1122385ed7422c62d722e8477660f1e495980f27e494251b77cd1437d3e497",
+      "size_bytes": 4330,
+      "run_id": "0--10-200-115am-315am-NQ-1MPAV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-3MNQ-1M-PA_Analysis.csv",
+      "sha256": "0f919db9babc192afb571f7d195baf6986cbed48dd00eb83d982bc36f4ab78b1",
+      "size_bytes": 2890,
+      "run_id": "0--10-225-1215am-115am-3MNQ-1M-PA",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-3MNQ-1M-PA_Summery.csv",
+      "sha256": "7f9eef2556fbbaefa8fa11ca336a2a711bc295bff6206d8fe7a5b43b6eae07b3",
+      "size_bytes": 1495,
+      "run_id": "0--10-225-1215am-115am-3MNQ-1M-PA",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-3MNQ-1M-PA_Trades.csv",
+      "sha256": "8ffe99079b4e2b2842a6d22f6f5c0f7d45b4b62d7cb198ea01cdf3f4cb926648",
+      "size_bytes": 3710,
+      "run_id": "0--10-225-1215am-115am-3MNQ-1M-PA",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1M_Analysis.csv",
+      "sha256": "76b578de85763bba1a865229215ee85b86150350a9d5862e4bde8ab20d57edd3",
+      "size_bytes": 2813,
+      "run_id": "0--10-225-1215am-115am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1M_Summery.csv",
+      "sha256": "eaefe5f2cc67e74162f1a20c992c8f91b0fbaa1d64c61b6eedd76ba478581546",
+      "size_bytes": 1479,
+      "run_id": "0--10-225-1215am-115am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1M_Trades.csv",
+      "sha256": "02be91fc2b15bb393bca3e3f7b817bd9f99d458f891124b41dd330ef3b11df6e",
+      "size_bytes": 3664,
+      "run_id": "0--10-225-1215am-115am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1MV2_Analysis.csv",
+      "sha256": "2b7139a015b7ffc40cb92bbfeb2b822c27e01e50552e9416609255a1ea1569e2",
+      "size_bytes": 2862,
+      "run_id": "0--10-225-1215am-115am-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1MV2_Summery.csv",
+      "sha256": "ec5767bcc88ea0212ad6c0e1812aff12ec8e4e593c5b6641e71152f198790123",
+      "size_bytes": 1479,
+      "run_id": "0--10-225-1215am-115am-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-225-1215am-115am-NQ-1MV2_Trades.csv",
+      "sha256": "a9f25000ce130ed1de86cc3edbe2ba35042116e7d90e16a162f6c4dfcb66c44c",
+      "size_bytes": 3902,
+      "run_id": "0--10-225-1215am-115am-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-Long_Analysis.csv",
+      "sha256": "ee4641bf7940f09f6e7b68329d4b0d5b84e228700971fb674c5871ccc8e32285",
+      "size_bytes": 5188,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-Long",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-Long_Summery.csv",
+      "sha256": "2e7996505a3edbef5f709a6ec852edb8f66cdee9bcb69a0b95a034b001c14a7a",
+      "size_bytes": 1487,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-Long",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-Long_Trades.csv",
+      "sha256": "3e69d80978cd4a72390ef2f8fabf91f6d1474d41de26a2db9eab542f7a603803",
+      "size_bytes": 6822,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-Long",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-LongV2_Analysis.csv",
+      "sha256": "11e893e8d25859330002cf98363b1ebdb0167eee36b19c1dd76ee8d8f1a90565",
+      "size_bytes": 5212,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-LongV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-LongV2_Summery.csv",
+      "sha256": "22fd00582d8a19edd4ed26325a4cbbdba61367f3bd8d0ecd078b3e9092fc52c8",
+      "size_bytes": 1497,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-LongV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-3MNQ-1M-LongV2_Trades.csv",
+      "sha256": "744e6ce5ca1333459866e12bb24e9ed3c820a4732e752f41ace03f35fb9f422e",
+      "size_bytes": 6861,
+      "run_id": "0--10-300-1am-5am-3MNQ-1M-LongV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-Long_Analysis.csv",
+      "sha256": "2d2f5de6379d1e540edd5a26a50ed0463d2442d512f9e3a0f9c1e94493360ba9",
+      "size_bytes": 5080,
+      "run_id": "0--10-300-1am-5am-NQ-1M-Long",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-Long_Summery.csv",
+      "sha256": "2e2586d0177468e67d0d8e5dcf5d56e1e286082d2582500f1aeddbff8fa56208",
+      "size_bytes": 1483,
+      "run_id": "0--10-300-1am-5am-NQ-1M-Long",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-Long_Trades.csv",
+      "sha256": "6515e3657bd018a8f0fdafc93327c1141719263db0978332b308fe264d3502d7",
+      "size_bytes": 6792,
+      "run_id": "0--10-300-1am-5am-NQ-1M-Long",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV2_Analysis.csv",
+      "sha256": "e5c929a9ef6eae2e1ae75e0e4470989cb07d882b52530758143920bf80479b71",
+      "size_bytes": 5085,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV2_Summery.csv",
+      "sha256": "42fc5361fdca48c408a48809ceed3c18b1455e7c8c6351234163b6252fbdafcf",
+      "size_bytes": 1481,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV2_Trades.csv",
+      "sha256": "0252774fc649d3d623da8e9aacdec797a32fd257771142ae46d5fdebd3e60dbe",
+      "size_bytes": 6808,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV3_Analysis.csv",
+      "sha256": "31df6232a60ef204e9f2df7b95b138aa5acf2e1205dbe7ff63f9cf6dc237d754",
+      "size_bytes": 5073,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV3",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV3_Summery.csv",
+      "sha256": "5204cc6f2946b8bd6d07789f670bcea003eb6e04991a76b2b5c971d52e385391",
+      "size_bytes": 1477,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV3",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--10-300-1am-5am-NQ-1M-LongV3_Trades.csv",
+      "sha256": "d8edd626be2799a0f8a52b184558aa2262ccfb5cdb6db2515424fd64ffdeeba3",
+      "size_bytes": 6758,
+      "run_id": "0--10-300-1am-5am-NQ-1M-LongV3",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1M_Analysis.csv",
+      "sha256": "c058eacdd823ebbfec943adcb5db50a6f9812af503e26a26c6eecc3fa1f89663",
+      "size_bytes": 4687,
+      "run_id": "0--125-2-115am-315am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1M_Summery.csv",
+      "sha256": "cd3c4c6c74454019020c3b9cbd3d403a2b2fd6d88208d9f411896fe52c1e0b94",
+      "size_bytes": 1463,
+      "run_id": "0--125-2-115am-315am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1M_Trades.csv",
+      "sha256": "f37da4445a4e98b692d10ddc3139520374b325c04fc7fb88d33c2db7ed420f2d",
+      "size_bytes": 6455,
+      "run_id": "0--125-2-115am-315am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1MV2_Analysis.csv",
+      "sha256": "bd68dffa1728dcd3f6eba0e503b212b859415a9751aba315050b21098dd9b134",
+      "size_bytes": 4766,
+      "run_id": "0--125-2-115am-315am-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1MV2_Summery.csv",
+      "sha256": "6e48a385f8fc7401a62e84d086293506955225b9699b96b9154a77aa490173e9",
+      "size_bytes": 1489,
+      "run_id": "0--125-2-115am-315am-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--125-2-115am-315am-NQ-1MV2_Trades.csv",
+      "sha256": "51de38ada2a403c566b1412c9741fe72e19fcba940dec20b15e9da2366ed3459",
+      "size_bytes": 6325,
+      "run_id": "0--125-2-115am-315am-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-100-1215am-315am-NQ-1M_Analysis.csv",
+      "sha256": "31442fcef2fb71b5ed7e5f42ccd185023fec1701eddbf7934a749bb3a18e0284",
+      "size_bytes": 6542,
+      "run_id": "0--2-100-1215am-315am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-100-1215am-315am-NQ-1M_Summery.csv",
+      "sha256": "3c3aead7a4a062910c668d3ee4a2efd39ab9bed5a21e5268b387ac953ddd0233",
+      "size_bytes": 1489,
+      "run_id": "0--2-100-1215am-315am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-100-1215am-315am-NQ-1M_Trades.csv",
+      "sha256": "7652402ae2825352dec3568d2beaf2f19377adbf2e044734082ea7fc94a55293",
+      "size_bytes": 9097,
+      "run_id": "0--2-100-1215am-315am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-150-4pm-5pm-NQ-1M_Analysis.csv",
+      "sha256": "c3901a0f85b860ea32a4803767e98ecc0971be17b9756dd96e3fef6bb38c5605",
+      "size_bytes": 3342,
+      "run_id": "0--2-150-4pm-5pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-150-4pm-5pm-NQ-1M_Summery.csv",
+      "sha256": "dfd341272114cdb1c07cef87ecc0a3a321f315a88bf0083a93fe5423a0c4be2d",
+      "size_bytes": 1471,
+      "run_id": "0--2-150-4pm-5pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-150-4pm-5pm-NQ-1M_Trades.csv",
+      "sha256": "96ad0e023d66404fd429c2ba2028483c39d9383bb823d64f328854018e342098",
+      "size_bytes": 4770,
+      "run_id": "0--2-150-4pm-5pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-3MNQ-1MPA_Analysis.csv",
+      "sha256": "704b962a03d9022afa2be117d7e640f17ec2eb0ee152bc4c1652667133f70e5e",
+      "size_bytes": 4509,
+      "run_id": "0--2-175-115am-315am-3MNQ-1MPA",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-3MNQ-1MPA_Summery.csv",
+      "sha256": "5c7513c7a9bac35cae002f2d12b19257a83db59eda6c8096952f9dfd8fff9a25",
+      "size_bytes": 1491,
+      "run_id": "0--2-175-115am-315am-3MNQ-1MPA",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-3MNQ-1MPA_Trades.csv",
+      "sha256": "91252ac9e36a6f03a53dc0fbc0cd1d44586a99f96c0c8fb508560a6140a04998",
+      "size_bytes": 5833,
+      "run_id": "0--2-175-115am-315am-3MNQ-1MPA",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-NQ-1M_Analysis.csv",
+      "sha256": "15e221592512a129d58191164efb7bae4b3274885161d72b0a87489e2f1c07c9",
+      "size_bytes": 4351,
+      "run_id": "0--2-175-115am-315am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-NQ-1M_Summery.csv",
+      "sha256": "1ee9671677593da09c2ab36baf84c72d0a920f799063a44b05a700bdf88e032f",
+      "size_bytes": 1477,
+      "run_id": "0--2-175-115am-315am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-175-115am-315am-NQ-1M_Trades.csv",
+      "sha256": "46760d1bcc8ae9f3cf51d260481be9f544c8f5a497017fb321cb1e8596344b3f",
+      "size_bytes": 5750,
+      "run_id": "0--2-175-115am-315am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-325-115am-415am-NQ-1M_Analysis.csv",
+      "sha256": "e6deed0c98f00ed65f46fa4f9ea4240e3bca5134027e6811c47fcdf79ddbc91a",
+      "size_bytes": 4008,
+      "run_id": "0--2-325-115am-415am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-325-115am-415am-NQ-1M_Summery.csv",
+      "sha256": "9e12a54d502c50a4c02ddff2843e562cd421490f442034da6296a71037c170ca",
+      "size_bytes": 1479,
+      "run_id": "0--2-325-115am-415am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-325-115am-415am-NQ-1M_Trades.csv",
+      "sha256": "854b7bdce50628dba23b986b2c0158b0f49fff9a0da9dfd55964ba8adf10e63d",
+      "size_bytes": 5347,
+      "run_id": "0--2-325-115am-415am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-3MNQ-1M_Analysis.csv",
+      "sha256": "811f3369a7e9f7a584d9fdb0eb4f2432da2f78f632beace67ce683e4cccc8f3e",
+      "size_bytes": 6915,
+      "run_id": "0--2-75-1215am-4am-3MNQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-3MNQ-1M_Summery.csv",
+      "sha256": "d6c5c3ae79911c7d0a9ef899fa016646e71d295a774beeb21027c8bd9bfbcdfe",
+      "size_bytes": 1501,
+      "run_id": "0--2-75-1215am-4am-3MNQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-3MNQ-1M_Trades.csv",
+      "sha256": "3ef5cd6b0afd4fabb5a3e4a78dc2d101e0cc2e1c89b79fac9488e6ef1b048619",
+      "size_bytes": 8980,
+      "run_id": "0--2-75-1215am-4am-3MNQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1M_Analysis.csv",
+      "sha256": "55ad5064e503c30df04f2cd88a4e955a65f93de49708dfed86bbdea220c1fbd0",
+      "size_bytes": 6796,
+      "run_id": "0--2-75-1215am-4am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1M_Summery.csv",
+      "sha256": "cb2df2047c2ff519bf3698a256d706481a5888d6321d29ed870bb04db027b616",
+      "size_bytes": 1485,
+      "run_id": "0--2-75-1215am-4am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1M_Trades.csv",
+      "sha256": "f7951bfb4c44da3a31e3445b6df705f70853a40e2c51a95a39baa87948f1c74c",
+      "size_bytes": 10146,
+      "run_id": "0--2-75-1215am-4am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1MV2_Analysis.csv",
+      "sha256": "d4b18b99dd0ec53fd610a323d656e5c6de6e95ffe7acdaed9c397d1c9dd7c83f",
+      "size_bytes": 6676,
+      "run_id": "0--2-75-1215am-4am-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1MV2_Summery.csv",
+      "sha256": "2afb832ea067ce0d2ba9d1a508240cf335e0712a812d001ce0e6485dc0fc094d",
+      "size_bytes": 1487,
+      "run_id": "0--2-75-1215am-4am-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--2-75-1215am-4am-NQ-1MV2_Trades.csv",
+      "sha256": "5e4e2afe1c356d8ce2695b918ffd489af798a7f9243b8e607c669afa9c4cd8bf",
+      "size_bytes": 8867,
+      "run_id": "0--2-75-1215am-4am-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--225-6-4pm-6pm-NQ-1M_Analysis.csv",
+      "sha256": "0eb734e7605b94173c64f95871fc689a0ad7e079f3212d38061b855809c17751",
+      "size_bytes": 3239,
+      "run_id": "0--225-6-4pm-6pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--225-6-4pm-6pm-NQ-1M_Summery.csv",
+      "sha256": "3ad9242d2912e7c51138ab35d8eac89c1832b8b61b0ac7cd85a71a1010f622a7",
+      "size_bytes": 1469,
+      "run_id": "0--225-6-4pm-6pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--225-6-4pm-6pm-NQ-1M_Trades.csv",
+      "sha256": "9a419392cbece953b5ba460af92d65ea30363574eb721fc99400546d5d0e4f2d",
+      "size_bytes": 4706,
+      "run_id": "0--225-6-4pm-6pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--3-400-8am-9am-NQ-1M_Analysis.csv",
+      "sha256": "e83c7ea0e0e8a48e11adbbdaf6c62c51df7f6c414cd3a8e5d4206ea8dca5e409",
+      "size_bytes": 2344,
+      "run_id": "0--3-400-8am-9am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--3-400-8am-9am-NQ-1M_Summery.csv",
+      "sha256": "998ad83f02927dfa7a24e86f59c977b1b4488865443dfc774e82aa71e8a6c9e1",
+      "size_bytes": 1475,
+      "run_id": "0--3-400-8am-9am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--3-400-8am-9am-NQ-1M_Trades.csv",
+      "sha256": "5149d250c6d754ba78497c13f824c3d8173c2536f6bbc7c9c594aff6d99f8bb1",
+      "size_bytes": 3246,
+      "run_id": "0--3-400-8am-9am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1M_Analysis.csv",
+      "sha256": "568e1a3400652f8769850f393e6dcd62c8de68dd9d56200c1a91ba79aab833eb",
+      "size_bytes": 4013,
+      "run_id": "0--375-2-8am-12pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1M_Summery.csv",
+      "sha256": "37ab87fcd4877f8d5aa57cfcce5020d6938f4e578d3dbc8119745a8fe9908fee",
+      "size_bytes": 1473,
+      "run_id": "0--375-2-8am-12pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1M_Trades.csv",
+      "sha256": "9cdd5b6944ece578149e363ef6aa654622a78debe3937797e51d6ffb269e19e3",
+      "size_bytes": 5852,
+      "run_id": "0--375-2-8am-12pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV2_Analysis.csv",
+      "sha256": "f6051e2d1e392e065e4d31ac5c930a52b7b7bdf4f2fe2dcf71ec427c98872f4f",
+      "size_bytes": 4046,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV2_Summery.csv",
+      "sha256": "96ceecee3468085ce9adddc68ab6359512fc5814541a8f0a5a624edb59ee7591",
+      "size_bytes": 1477,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV2_Trades.csv",
+      "sha256": "fed632818792a3905bb4c9f41d9c8a23b2bf4d029630b1aab5d146ebaed3106a",
+      "size_bytes": 5849,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV3_Analysis.csv",
+      "sha256": "c0822ab66935e896115f0ed85701f444e08cd7a82dc6d2014e3037ebb690b115",
+      "size_bytes": 4218,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV3",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV3_Summery.csv",
+      "sha256": "a6b6fa57ba7392bb62d582d384850e8befc64a486f776638d0b64e9f5ccc31a8",
+      "size_bytes": 1471,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV3",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV3_Trades.csv",
+      "sha256": "d8ea3a080541f01981497f138d18427508cb2b496a45ecb134aa152fea64cd49",
+      "size_bytes": 6238,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV3",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV4_Analysis.csv",
+      "sha256": "07badeab5288ab30d82a6185e82b336e7e5a348fa5c7fd6b8750a5ba20f666ca",
+      "size_bytes": 4929,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV4",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV4_Summery.csv",
+      "sha256": "09eece23667f0c2ece2d4130f29e5336462fc117a3ded18104a52a6a7586fd6c",
+      "size_bytes": 1475,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV4",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--375-2-8am-12pm-NQ-1MV4_Trades.csv",
+      "sha256": "fc744be7ea17fb6841e1a4fa2dfa27c8ccb5a6921d65248f849040a4943878dd",
+      "size_bytes": 7145,
+      "run_id": "0--375-2-8am-12pm-NQ-1MV4",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-150-4pm-6pm-NQ-1M_Analysis.csv",
+      "sha256": "7239cd430468c8ce2c5c80691dcaf943d6331eb50b638cdbe908dde82c44c762",
+      "size_bytes": 4357,
+      "run_id": "0--4-150-4pm-6pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-150-4pm-6pm-NQ-1M_Summery.csv",
+      "sha256": "7724dba7ea9d899597b88aec4a2011aaa36cd409aecd3d90b86f3c39899a5449",
+      "size_bytes": 1471,
+      "run_id": "0--4-150-4pm-6pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-150-4pm-6pm-NQ-1M_Trades.csv",
+      "sha256": "ecdb564bad8282af90909f431d10c317a51fd7db800a6bc7e2a3df5eb727c66f",
+      "size_bytes": 6063,
+      "run_id": "0--4-150-4pm-6pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-225-815am-1115pm-NQ-1M_Analysis.csv",
+      "sha256": "a63ce42e5ee451a6e1d8ffef7846f256b3771aa40b03b06fdd7e8c8e3f8aecc1",
+      "size_bytes": 4380,
+      "run_id": "0--4-225-815am-1115pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-225-815am-1115pm-NQ-1M_Summery.csv",
+      "sha256": "f9cb09b020e7612e1e81ee3cd081032699d28d11c05a7bc0a179774b9c3d8898",
+      "size_bytes": 1473,
+      "run_id": "0--4-225-815am-1115pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--4-225-815am-1115pm-NQ-1M_Trades.csv",
+      "sha256": "00726378e370506fc4d9ee640f100d38cb7a63a9da699784e615f8d9db9c4f5b",
+      "size_bytes": 8501,
+      "run_id": "0--4-225-815am-1115pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-4MNQ-1M_Analysis.csv",
+      "sha256": "64fdbb7a65a8b9be81b75b795037c8ff8fd51ce97f430a9eb46c6c1afa7b9e62",
+      "size_bytes": 6735,
+      "run_id": "0--50-10-1215am-315am-4MNQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-4MNQ-1M_Summery.csv",
+      "sha256": "7d22159cb9d4520b4c0b84832aa59e08e41c722dbb1cd6089bd974d17b402d26",
+      "size_bytes": 1497,
+      "run_id": "0--50-10-1215am-315am-4MNQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-4MNQ-1M_Trades.csv",
+      "sha256": "1a25f6ceeab35ae1bac7040e7bee33f1aa8e2dbe2c2bf9597c0beabb4f2a715d",
+      "size_bytes": 8892,
+      "run_id": "0--50-10-1215am-315am-4MNQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-NQ-1M-Long_Analysis.csv",
+      "sha256": "6899c63f5283cb385e87a56556570063ca5129fa0ab6ab7d204dffc381986a3c",
+      "size_bytes": 6559,
+      "run_id": "0--50-10-1215am-315am-NQ-1M-Long",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-NQ-1M-Long_Summery.csv",
+      "sha256": "9f673ce85288ff4c5d3fc065a536240291f42bcd648ea4b630ea000b6a0fd9db",
+      "size_bytes": 1479,
+      "run_id": "0--50-10-1215am-315am-NQ-1M-Long",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-10-1215am-315am-NQ-1M-Long_Trades.csv",
+      "sha256": "060e5f80c529a555e7583511d99f12c02cbfd79bc36858e07aad36ba05c0daa3",
+      "size_bytes": 9379,
+      "run_id": "0--50-10-1215am-315am-NQ-1M-Long",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-$_Analysis.csv",
+      "sha256": "f624c2a82d8f00350547c293ef52df4d6ec79f130568d49721feccf4cac83b1e",
+      "size_bytes": 5777,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-$",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-$_Summery.csv",
+      "sha256": "1a493b5277512ee1ee8057ba5cf354e02d931b18b35a2d2f19037b5ec3bb2462",
+      "size_bytes": 1479,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-$",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-$_Trades.csv",
+      "sha256": "b5dbaade525e2071cbba620aed257f0d1d1b797d6b81b3bb17376bae303736d4",
+      "size_bytes": 7919,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-$",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-LT_Analysis.csv",
+      "sha256": "24e967a58300623f056d79c248066077fb2d33e59ff03a44a8bab8d87e1db10f",
+      "size_bytes": 5728,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-LT",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-LT_Summery.csv",
+      "sha256": "2bec7450beb835d81e94e11be34f760f20498b17230f5fd0cc20aed575d0a5c5",
+      "size_bytes": 1473,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-LT",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-2am-NQ-1M-LT_Trades.csv",
+      "sha256": "49f56e2e9e5a12f9f4b5284be20bd4995a5b937ad420a977dddfb35416083cb3",
+      "size_bytes": 9770,
+      "run_id": "0--50-4-1215am-2am-NQ-1M-LT",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-1H_Analysis.csv",
+      "sha256": "053ae8063c9df27f6a5b616cb7c9c7f3f0f1560b52b164ba80cab7c7754b49b6",
+      "size_bytes": 4356,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-1H",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-1H_Summery.csv",
+      "sha256": "9efb4496cca420d221715def81f738449a48c567a22b7f0a868ca7502cbdca2b",
+      "size_bytes": 1475,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-1H",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-1H_Trades.csv",
+      "sha256": "a11420b1415c40441e7c799a16dd04a0b144345e5c6f12de88710d49b88493e4",
+      "size_bytes": 5876,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-1H",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long1T_Analysis.csv",
+      "sha256": "f83ac06383eadc12af76471298bd7796170e92fa15c80bb8843693e95cbe4284",
+      "size_bytes": 6221,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long1T",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long1T_Summery.csv",
+      "sha256": "248cbe34e8ad682a84b3d6c6e2a7fe331242c66161695a0f7d91afed5f3f4cd8",
+      "size_bytes": 1471,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long1T",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long1T_Trades.csv",
+      "sha256": "e54a39a71d8ac4e17ec870b117944373bdded97ec95110613321a82aebcbea6b",
+      "size_bytes": 8615,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long1T",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long_Analysis.csv",
+      "sha256": "d50f5f76ab35548822384f4f077df62c0af5bcc5215f861f02d8947413983b90",
+      "size_bytes": 6410,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long_Summery.csv",
+      "sha256": "ac2e1ba3297a02d464d2e600b6a9aa3cfc3fb66e577d7d304d1e6e14b0b29d9f",
+      "size_bytes": 1477,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-4-1215am-315am-NQ-1M-Long_Trades.csv",
+      "sha256": "531d19a2dbe6f3e9a7db33ade7681bbf1b1fa85230d2e47c8f4735919e1d0a21",
+      "size_bytes": 9734,
+      "run_id": "0--50-4-1215am-315am-NQ-1M-Long",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-6-1215am-315am-NQ-1M_Analysis.csv",
+      "sha256": "14424197df6f015122b695fb51268e31bb262c692000c9ebe6348a95bc9ef48d",
+      "size_bytes": 6297,
+      "run_id": "0--50-6-1215am-315am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-6-1215am-315am-NQ-1M_Summery.csv",
+      "sha256": "5f01b89354ce10029cc3c4260709c7d0bf9b8ac81d3f46d6e45a6b614f454c28",
+      "size_bytes": 1469,
+      "run_id": "0--50-6-1215am-315am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-6-1215am-315am-NQ-1M_Trades.csv",
+      "sha256": "af8af8d2f37997a398dcf46d2c35c0b691757285f8c64ddea9bb2dacc173d44a",
+      "size_bytes": 8632,
+      "run_id": "0--50-6-1215am-315am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-8-1215am-315am-NQ-1M_Analysis.csv",
+      "sha256": "7db7ecdde691aff579bf5ab4d82e8762dbc69ebac9e4d04efbe067febed2fd62",
+      "size_bytes": 6485,
+      "run_id": "0--50-8-1215am-315am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-8-1215am-315am-NQ-1M_Summery.csv",
+      "sha256": "d938021446eb5e158c5d40f07c4d5586ab619928adcd3519c688823fb0520744",
+      "size_bytes": 1481,
+      "run_id": "0--50-8-1215am-315am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--50-8-1215am-315am-NQ-1M_Trades.csv",
+      "sha256": "1d80e4e2dc3232617ea443b4034142588c53de8b72ecd509f0d997f8056e1110",
+      "size_bytes": 9970,
+      "run_id": "0--50-8-1215am-315am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--6-326-115am-415am-NQ-1M_Analysis.csv",
+      "sha256": "e1575a56e029f67de3e3159455b231813791ab090282ff56db40a70afe76c31a",
+      "size_bytes": 4178,
+      "run_id": "0--6-326-115am-415am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--6-326-115am-415am-NQ-1M_Summery.csv",
+      "sha256": "37ae8bd7b0d8929a405743efdeb56ae3d3f5ad4e554b6e121e9480e3efc898ac",
+      "size_bytes": 1481,
+      "run_id": "0--6-326-115am-415am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--6-326-115am-415am-NQ-1M_Trades.csv",
+      "sha256": "8722d2b8aba8c63a66c7799b1a215c1719ad07b590c0b995917d680bb9d5f8eb",
+      "size_bytes": 5566,
+      "run_id": "0--6-326-115am-415am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--8-400-8am-9am-NQ-1M_Analysis.csv",
+      "sha256": "99c5fdcfc01f20c824eeba376605a8aaca739b03ede017febbbcc72abbe5f541",
+      "size_bytes": 2196,
+      "run_id": "0--8-400-8am-9am-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--8-400-8am-9am-NQ-1M_Summery.csv",
+      "sha256": "3e8604448b55b7c4d89ab371153adad6773424c1d1cb04b3604fef1b5c940758",
+      "size_bytes": 1465,
+      "run_id": "0--8-400-8am-9am-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--8-400-8am-9am-NQ-1M_Trades.csv",
+      "sha256": "b1c48ec33b5968452f555ead81324e8a241bf76ae6ac8ab4e94005bd19e42e3c",
+      "size_bytes": 3200,
+      "run_id": "0--8-400-8am-9am-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--9-325-115am-415am-3MNQ-1M-PA_Analysis.csv",
+      "sha256": "d52b5864238c497a00a36ee6355ebb26dcdbef6b53af45c2b4ef2258cac249c0",
+      "size_bytes": 3996,
+      "run_id": "0--9-325-115am-415am-3MNQ-1M-PA",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--9-325-115am-415am-3MNQ-1M-PA_Summery.csv",
+      "sha256": "f6f7c37fbbfce1ba893f341b33a2ac255d22cede74a4b3e4e8011dca29fe8400",
+      "size_bytes": 1497,
+      "run_id": "0--9-325-115am-415am-3MNQ-1M-PA",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0--9-325-115am-415am-3MNQ-1M-PA_Trades.csv",
+      "sha256": "9d9f821c57f210f1ff4f20acb894632e943053f7b3e485c87f4ed25860e9520e",
+      "size_bytes": 5216,
+      "run_id": "0--9-325-115am-415am-3MNQ-1M-PA",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1M_Analysis.csv",
+      "sha256": "5eb99498936dcecf5fd445b4497cf93a0a2ab697e0a67e3f0288844732d493d1",
+      "size_bytes": 3062,
+      "run_id": "0-175-2-4pm-5pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1M_Summery.csv",
+      "sha256": "cfa7eb54c2ff418a0c5c5f84cb67d0463549def4383ec58b692387e43da3d7b6",
+      "size_bytes": 1469,
+      "run_id": "0-175-2-4pm-5pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1M_Trades.csv",
+      "sha256": "b80c474d46464eae8bbeaf250b56f1d713d5543e208fbe15fc7d415c7f2c0cbc",
+      "size_bytes": 6006,
+      "run_id": "0-175-2-4pm-5pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1MV2_Analysis.csv",
+      "sha256": "8d0c432998d280adb77d88526dd3bc40ad05232814ecaabc05f58cbd9a1c2d03",
+      "size_bytes": 3104,
+      "run_id": "0-175-2-4pm-5pm-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1MV2_Summery.csv",
+      "sha256": "647f4aa7fb1e547ebb68c242bda74d6329454623c371a7dad0a24b8be928b8bd",
+      "size_bytes": 1473,
+      "run_id": "0-175-2-4pm-5pm-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\0-175-2-4pm-5pm-NQ-1MV2_Trades.csv",
+      "sha256": "78b42807a258163111a8bab306de7493bdaba00d2f463534f2195d2e8113cacc",
+      "size_bytes": 4940,
+      "run_id": "0-175-2-4pm-5pm-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-300-115am-315am-GC-1M_Analysis.csv",
+      "sha256": "decb0b6a9ce05423190ba4a3a5f9ba2249cb3da4f1ef2fb33dae9af795d559ff",
+      "size_bytes": 4828,
+      "run_id": "00-10-300-115am-315am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-300-115am-315am-GC-1M_Summery.csv",
+      "sha256": "32018a40bd48987139cd0ae7c0eea54a8647a824abe87a544697979507906490",
+      "size_bytes": 1468,
+      "run_id": "00-10-300-115am-315am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-300-115am-315am-GC-1M_Trades.csv",
+      "sha256": "ba79250625005010f68549e71e3e4e34f9bfa0b842aaa6e94110cc21c9b83a3a",
+      "size_bytes": 6707,
+      "run_id": "00-10-300-115am-315am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-350-1am-215am-GC-1M_Analysis.csv",
+      "sha256": "a4fabbaefecf6cbd85a16db450cdbfa639eb25a340d85ed871bb6b8fab3ccba8",
+      "size_bytes": 4072,
+      "run_id": "00-10-350-1am-215am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-350-1am-215am-GC-1M_Summery.csv",
+      "sha256": "cefd28b00008b33b340da3278f5fdd02a115a078aafc45288b82776fe8a8c8d7",
+      "size_bytes": 1464,
+      "run_id": "00-10-350-1am-215am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-350-1am-215am-GC-1M_Trades.csv",
+      "sha256": "9da2a84a368de625a168bc45cb55aae72d5fdb8fd476e3e4e2afc8941cbeff53",
+      "size_bytes": 5702,
+      "run_id": "00-10-350-1am-215am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-400-7am-830am-RTY-1M_Analysis.csv",
+      "sha256": "42da33d5a9cd80e035b87e9bb9bcfa45497eb11b1d6e4e9400d8720c7235fd9a",
+      "size_bytes": 6819,
+      "run_id": "00-10-400-7am-830am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-400-7am-830am-RTY-1M_Summery.csv",
+      "sha256": "a59fa54e145ce9b0a55922cd36741d1468a3f793dfc7690b7ce7764ad18c308c",
+      "size_bytes": 1482,
+      "run_id": "00-10-400-7am-830am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-10-400-7am-830am-RTY-1M_Trades.csv",
+      "sha256": "f685615e5c15802b6735e02bb542022ac870f7c8c61f1d869b9d1523e3adf4c7",
+      "size_bytes": 9134,
+      "run_id": "00-10-400-7am-830am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1M_Analysis.csv",
+      "sha256": "3e434732ee94d08ec9793020446964ff3d05526084f2b49012b21d4b978a43fe",
+      "size_bytes": 11629,
+      "run_id": "00-150-20-130am-515am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1M_Summery.csv",
+      "sha256": "92bd559557059cc70873d684a098b5c02a724270b046f5e9dbc6c1fc2cb8d1ed",
+      "size_bytes": 1539,
+      "run_id": "00-150-20-130am-515am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1M_Trades.csv",
+      "sha256": "4295973d59ddb5d9c9c2722a97d4e5b25174a9ec5e804c0102af1998d653cd76",
+      "size_bytes": 28792,
+      "run_id": "00-150-20-130am-515am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2-$_Analysis.csv",
+      "sha256": "f7208c1c55ebc953f03be0de418733f464eab17e6dfefd3b978fc04ed58d8b7b",
+      "size_bytes": 11526,
+      "run_id": "00-150-20-130am-515am-GC-1MV2-$",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2-$_Summery.csv",
+      "sha256": "c3d229643e2f2dcea0701772faf6c1545c63d183b9c8cb925fc8e05d0b8b7bb2",
+      "size_bytes": 1541,
+      "run_id": "00-150-20-130am-515am-GC-1MV2-$",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2-$_Trades.csv",
+      "sha256": "746686448e2ca71a7e90bec12d1a24191771bfd57e5d7ca2ac3cf93f54f442e2",
+      "size_bytes": 40278,
+      "run_id": "00-150-20-130am-515am-GC-1MV2-$",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2_Analysis.csv",
+      "sha256": "f7208c1c55ebc953f03be0de418733f464eab17e6dfefd3b978fc04ed58d8b7b",
+      "size_bytes": 11526,
+      "run_id": "00-150-20-130am-515am-GC-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2_Summery.csv",
+      "sha256": "c3d229643e2f2dcea0701772faf6c1545c63d183b9c8cb925fc8e05d0b8b7bb2",
+      "size_bytes": 1541,
+      "run_id": "00-150-20-130am-515am-GC-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-150-20-130am-515am-GC-1MV2_Trades.csv",
+      "sha256": "746686448e2ca71a7e90bec12d1a24191771bfd57e5d7ca2ac3cf93f54f442e2",
+      "size_bytes": 40278,
+      "run_id": "00-150-20-130am-515am-GC-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-3-300-1am-3am-GC-1M_Analysis.csv",
+      "sha256": "f5341fd12cc01de66ccefb845cbe11d65dc9decaaa0a5e3c634a1118bc385a43",
+      "size_bytes": 5634,
+      "run_id": "00-3-300-1am-3am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-3-300-1am-3am-GC-1M_Summery.csv",
+      "sha256": "23e475dcc387b2925f2b1966f7e0124e02377e47872b78449ad8a38abe4f51de",
+      "size_bytes": 1474,
+      "run_id": "00-3-300-1am-3am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-3-300-1am-3am-GC-1M_Trades.csv",
+      "sha256": "5cf1e49c0195dcc62422360fedf5dae4008b6d5bcc546d971c6a6fc7e0123ec0",
+      "size_bytes": 9606,
+      "run_id": "00-3-300-1am-3am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-215am-345am-RTY-1M_Analysis.csv",
+      "sha256": "be7143ba252d19615e6012a82c1e8ea2f9ca614617a009716b58e6a775982cdc",
+      "size_bytes": 3278,
+      "run_id": "00-300-5-215am-345am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-215am-345am-RTY-1M_Summery.csv",
+      "sha256": "a6aa3f66ded179056d2d6b97965902709292e94e097dd20f0598ab2c533582e3",
+      "size_bytes": 1478,
+      "run_id": "00-300-5-215am-345am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-215am-345am-RTY-1M_Trades.csv",
+      "sha256": "5f783d0cb68b11e14aa00d9d0c6c9ad8fcb8f9470084a3dfb4d6b8e052f86118",
+      "size_bytes": 4417,
+      "run_id": "00-300-5-215am-345am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-2am-4am-GC-1M_Analysis.csv",
+      "sha256": "e59b6c7dd3ea3ab13b203d79e7206201d28fd29c1cc2ff28cb6befef99bad779",
+      "size_bytes": 5806,
+      "run_id": "00-300-5-2am-4am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-2am-4am-GC-1M_Summery.csv",
+      "sha256": "6c26cfe7aa1eb81387e3eb051f51a93f670db5a5ac4d66fd200e4276d6a8653b",
+      "size_bytes": 1478,
+      "run_id": "00-300-5-2am-4am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-5-2am-4am-GC-1M_Trades.csv",
+      "sha256": "187e478a5aa8fa7ca277e9b0b6cf5b9ffe734cb26b8983431ccfed10bbd3019a",
+      "size_bytes": 7845,
+      "run_id": "00-300-5-2am-4am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-8-215am-4am-RTY-1M_Analysis.csv",
+      "sha256": "732c3e0c7d9838758011a4fbdbe36e66d1302c809a968c4432807632bd775049",
+      "size_bytes": 5001,
+      "run_id": "00-300-8-215am-4am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-8-215am-4am-RTY-1M_Summery.csv",
+      "sha256": "d8a7ef8789d76d14eb6e0dfba79b434b69880d790161dea8ea0e3a68e2325ca6",
+      "size_bytes": 1482,
+      "run_id": "00-300-8-215am-4am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-300-8-215am-4am-RTY-1M_Trades.csv",
+      "sha256": "42a3861b4ba9ffa2704b7929397679a80fc51ecc6c4fb926479ec8c3e0fab90b",
+      "size_bytes": 6802,
+      "run_id": "00-300-8-215am-4am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-2am-6am-GC-1M_Analysis.csv",
+      "sha256": "f67576e7def3369ad4fb0185c8603cc041852ed040935084c4cc67b25ce5ac59",
+      "size_bytes": 9580,
+      "run_id": "00-4-300-2am-6am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-2am-6am-GC-1M_Summery.csv",
+      "sha256": "3ea800ffc464022ed222823586613ebf8967ef0777016b54d99289f0da3aa0db",
+      "size_bytes": 1488,
+      "run_id": "00-4-300-2am-6am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-2am-6am-GC-1M_Trades.csv",
+      "sha256": "17a6695aa63f85ac6b115e28a28fb1fac340d88f3e9f55877d6690ba82ad7837",
+      "size_bytes": 12622,
+      "run_id": "00-4-300-2am-6am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-8am-930am-RTY-1M_Analysis.csv",
+      "sha256": "730c99b20838c0902d09212edab1a76b4c0d7897d9c0451283b94b3b8e4a1e40",
+      "size_bytes": 4571,
+      "run_id": "00-4-300-8am-930am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-8am-930am-RTY-1M_Summery.csv",
+      "sha256": "42c568f61948e848d45b2e366f2a390069189aa7a3e814c395a88cb7aefcb03c",
+      "size_bytes": 1476,
+      "run_id": "00-4-300-8am-930am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-4-300-8am-930am-RTY-1M_Trades.csv",
+      "sha256": "7cd7fff6c9c64f2f100de5c5f04a5e5bd246928b588b3344d8e8aaa049f1edf7",
+      "size_bytes": 6132,
+      "run_id": "00-4-300-8am-930am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M-$_Analysis.csv",
+      "sha256": "4b194f2d9e7a7b9779359d87472257d3889212651724d6b05f1a3b3edb43455b",
+      "size_bytes": 5874,
+      "run_id": "00-5-150-1am-4am-GC-1M-$",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M-$_Summery.csv",
+      "sha256": "b6a701493def65fe05b3436760767bd4a3a62c006fb9791ee30d4442473834cc",
+      "size_bytes": 1528,
+      "run_id": "00-5-150-1am-4am-GC-1M-$",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M-$_Trades.csv",
+      "sha256": "68bd124ae023df0b5c4602dcc73d3524f2f3493159182443d8c17abb08a36b75",
+      "size_bytes": 21586,
+      "run_id": "00-5-150-1am-4am-GC-1M-$",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M_Analysis.csv",
+      "sha256": "4b194f2d9e7a7b9779359d87472257d3889212651724d6b05f1a3b3edb43455b",
+      "size_bytes": 5874,
+      "run_id": "00-5-150-1am-4am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M_Summery.csv",
+      "sha256": "b6a701493def65fe05b3436760767bd4a3a62c006fb9791ee30d4442473834cc",
+      "size_bytes": 1528,
+      "run_id": "00-5-150-1am-4am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-1am-4am-GC-1M_Trades.csv",
+      "sha256": "68bd124ae023df0b5c4602dcc73d3524f2f3493159182443d8c17abb08a36b75",
+      "size_bytes": 21586,
+      "run_id": "00-5-150-1am-4am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-10am-RTY-1M_Analysis.csv",
+      "sha256": "4cc8a3afc546e5fb6deb94bb0a0338ac869ccc5bba4fedd070ff5d3526a40330",
+      "size_bytes": 7004,
+      "run_id": "00-5-150-8am-10am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-10am-RTY-1M_Summery.csv",
+      "sha256": "cac3592ea5c0c00eb9551a6426f308ca3e7e64893173b9f207890a2e2dad38cb",
+      "size_bytes": 1466,
+      "run_id": "00-5-150-8am-10am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-10am-RTY-1M_Trades.csv",
+      "sha256": "0a0303f4c2c54a0abbfd42c8ad74cbe8eeac7cd343fd8fc30a85d457d83cbfc4",
+      "size_bytes": 9550,
+      "run_id": "00-5-150-8am-10am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-930am-RTY-1M-HWinRate_Analysis.csv",
+      "sha256": "a799d86cf022dc4e2a3489a637561fb6a4ac559e12da46032e0546fc76ee1783",
+      "size_bytes": 5708,
+      "run_id": "00-5-150-8am-930am-RTY-1M-HWinRate",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-930am-RTY-1M-HWinRate_Summery.csv",
+      "sha256": "3a1569501c6df6430442dc98fc37daa8e24d2db2cd66f12a40e0ef8871a03470",
+      "size_bytes": 1458,
+      "run_id": "00-5-150-8am-930am-RTY-1M-HWinRate",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-150-8am-930am-RTY-1M-HWinRate_Trades.csv",
+      "sha256": "5a35ee52f669e36660504b52b2541de9c2213ecf73d5773247e2913117307c24",
+      "size_bytes": 7944,
+      "run_id": "00-5-150-8am-930am-RTY-1M-HWinRate",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1M_Analysis.csv",
+      "sha256": "fef35cd90e752a6cd15c16c278453f1bcc4ac8dfb1272a4346ecf8808a11ed60",
+      "size_bytes": 3451,
+      "run_id": "00-5-300-1am-3am-GC-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1M_Summery.csv",
+      "sha256": "841b08999a1c3a32574afd941a151a9b5868e10b1d8ee58c05b59a5be4d48714",
+      "size_bytes": 1467,
+      "run_id": "00-5-300-1am-3am-GC-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1M_Trades.csv",
+      "sha256": "0101c9855c6abddb429b63eb79059b7f4229a44f2a232f0247ce2d9368cf1d33",
+      "size_bytes": 4897,
+      "run_id": "00-5-300-1am-3am-GC-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV2_Analysis.csv",
+      "sha256": "f5341fd12cc01de66ccefb845cbe11d65dc9decaaa0a5e3c634a1118bc385a43",
+      "size_bytes": 5634,
+      "run_id": "00-5-300-1am-3am-GC-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV2_Summery.csv",
+      "sha256": "23e475dcc387b2925f2b1966f7e0124e02377e47872b78449ad8a38abe4f51de",
+      "size_bytes": 1474,
+      "run_id": "00-5-300-1am-3am-GC-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV2_Trades.csv",
+      "sha256": "5cf1e49c0195dcc62422360fedf5dae4008b6d5bcc546d971c6a6fc7e0123ec0",
+      "size_bytes": 9606,
+      "run_id": "00-5-300-1am-3am-GC-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV3_Analysis.csv",
+      "sha256": "7390024777707271cc8476de2e3a307aed10f350129f5a075f8ae61fc6acbc21",
+      "size_bytes": 3530,
+      "run_id": "00-5-300-1am-3am-GC-1MV3",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV3_Summery.csv",
+      "sha256": "6f3aecc81c92d6c9e03453b7986577e4ad0b86e80bb04cf52382721b57ce64cb",
+      "size_bytes": 1463,
+      "run_id": "00-5-300-1am-3am-GC-1MV3",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-300-1am-3am-GC-1MV3_Trades.csv",
+      "sha256": "6285b0adb518b54604c06d690a8b7d8943beec6fd46ea7077b8102a9c57797d1",
+      "size_bytes": 4870,
+      "run_id": "00-5-300-1am-3am-GC-1MV3",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-2am-345am-RTY-1M_Analysis.csv",
+      "sha256": "494486318355f6fa018c2d128a3c166d2de428d6b02fd35e46b92deef60c0838",
+      "size_bytes": 1535,
+      "run_id": "00-5-350-2am-345am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-2am-345am-RTY-1M_Summery.csv",
+      "sha256": "c848f6c18d6102d81cdde9f562627fcd1ed3335eaacc929fe48ceffc71b3407d",
+      "size_bytes": 1463,
+      "run_id": "00-5-350-2am-345am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-2am-345am-RTY-1M_Trades.csv",
+      "sha256": "e00add3ce3eea13d2ad06e49acf799cc23de568df1cc1f458e625af41d331557",
+      "size_bytes": 1984,
+      "run_id": "00-5-350-2am-345am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-8am-930am-RTY-1MHWinRate_Analysis.csv",
+      "sha256": "56500ad5769023bee714e7a994fd68a9ed14c8d89b3b0db8ee2a841252ec7c43",
+      "size_bytes": 3726,
+      "run_id": "00-5-350-8am-930am-RTY-1MHWinRate",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-8am-930am-RTY-1MHWinRate_Summery.csv",
+      "sha256": "7d3ee162533cd24809d00a44f4b18b696cc7ef4cf60668d36bda19fd4daf012b",
+      "size_bytes": 1448,
+      "run_id": "00-5-350-8am-930am-RTY-1MHWinRate",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-350-8am-930am-RTY-1MHWinRate_Trades.csv",
+      "sha256": "06dd7537e1323edbb2dfbdbd372203c7864f12d2dcc9ca1639a2b8c9d94e0c31",
+      "size_bytes": 5690,
+      "run_id": "00-5-350-8am-930am-RTY-1MHWinRate",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-2am-3am-RTY-1M_Analysis.csv",
+      "sha256": "42a85fda17540825371d0d5ded524a5cd1f1a4ba9db5e82423504660991f43bc",
+      "size_bytes": 3418,
+      "run_id": "00-5-400-2am-3am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-2am-3am-RTY-1M_Summery.csv",
+      "sha256": "f0f6d06fc70c48d3ff28057ee0818c48d50d4221eac4b0080afff9627e4c4044",
+      "size_bytes": 1476,
+      "run_id": "00-5-400-2am-3am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-2am-3am-RTY-1M_Trades.csv",
+      "sha256": "31cd0604f7efcee3b3f460f6ef78822e3af614cddd31010c146d3444135a0b30",
+      "size_bytes": 4590,
+      "run_id": "00-5-400-2am-3am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1M_Analysis.csv",
+      "sha256": "ddb33edb2b81b85abc3aece4dfd3da394a966d0ab84f79505267f5023c859cdb",
+      "size_bytes": 2878,
+      "run_id": "00-5-400-6pm-10pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1M_Summery.csv",
+      "sha256": "76a67d76a67941ead2af02dca7e4faca7bd512f67d89563f98285360eb03e8fb",
+      "size_bytes": 1471,
+      "run_id": "00-5-400-6pm-10pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1M_Trades.csv",
+      "sha256": "ffd8b041384ff0301cd6cb16b0ebd3900e1ccaa21c41b856536701d916ce6d07",
+      "size_bytes": 4811,
+      "run_id": "00-5-400-6pm-10pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1MV2_Analysis.csv",
+      "sha256": "1b970f8bde50e7f7e369fe8a44bcb16a50ac838064daf500cc108bf09a9c713b",
+      "size_bytes": 2830,
+      "run_id": "00-5-400-6pm-10pm-NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1MV2_Summery.csv",
+      "sha256": "136209f108ece758e7ab180d97b95a658f8b4e99955b90b68cdc7a5ae990055d",
+      "size_bytes": 1467,
+      "run_id": "00-5-400-6pm-10pm-NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-6pm-10pm-NQ-1MV2_Trades.csv",
+      "sha256": "aac8581b678c886555248c1d525ce7e11a29e51d25888b3c802b773aa4901012",
+      "size_bytes": 5410,
+      "run_id": "00-5-400-6pm-10pm-NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-7pm-10pm-NQ-1M_Analysis.csv",
+      "sha256": "80d9565363f94ce9a110d02173c2672a88e78e2f405e22025229e17ba2b6b71e",
+      "size_bytes": 2548,
+      "run_id": "00-5-400-7pm-10pm-NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-7pm-10pm-NQ-1M_Summery.csv",
+      "sha256": "9436cca5526a0b13c4ee76d314cd350146a72bdc0075695f4952016301422c75",
+      "size_bytes": 1469,
+      "run_id": "00-5-400-7pm-10pm-NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-5-400-7pm-10pm-NQ-1M_Trades.csv",
+      "sha256": "ed4dac533f98b8705bba8487c1ddc18e5eba4c01b568579c355b5e99706ab6b3",
+      "size_bytes": 3938,
+      "run_id": "00-5-400-7pm-10pm-NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-9-350-2am-345am-RTY-1M_Analysis.csv",
+      "sha256": "e94e0b4d5129b843576d8cae2c2c7e2309db6941a6afcab24bf352407fb6e71e",
+      "size_bytes": 4430,
+      "run_id": "00-9-350-2am-345am-RTY-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-9-350-2am-345am-RTY-1M_Summery.csv",
+      "sha256": "9c99a9994dab6f5f409b60c412e323b8906ecc0f2cbedf3e39bd9c0e19b109e5",
+      "size_bytes": 1472,
+      "run_id": "00-9-350-2am-345am-RTY-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\00-9-350-2am-345am-RTY-1M_Trades.csv",
+      "sha256": "dae9be4acaa6cc5cbd80346a28e8e4a0fe9aeedec3dbe67fcf60aa2d548b3807",
+      "size_bytes": 6022,
+      "run_id": "00-9-350-2am-345am-RTY-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-250-5-12am-1am-1NQ-1M_Analysis.csv",
+      "sha256": "118cf4f3ad57cf3bd26f13f2f9ffc85db9b919b186247f83c7a180da0f7257d8",
+      "size_bytes": 5919,
+      "run_id": "000-250-5-12am-1am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-250-5-12am-1am-1NQ-1M_Summery.csv",
+      "sha256": "8e87ae1fb57a3dd4c76e97b2b1a05561da1dce178116f5f29fe4eaf624d1e65a",
+      "size_bytes": 1516,
+      "run_id": "000-250-5-12am-1am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-250-5-12am-1am-1NQ-1M_Trades.csv",
+      "sha256": "16603dd8f14405d6a22858c9906c1244d09e87d185efc6f488e233aefb3c9103",
+      "size_bytes": 8627,
+      "run_id": "000-250-5-12am-1am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-3-400-8am-9am-1NQ-1M_Analysis.csv",
+      "sha256": "e83c7ea0e0e8a48e11adbbdaf6c62c51df7f6c414cd3a8e5d4206ea8dca5e409",
+      "size_bytes": 2344,
+      "run_id": "000-3-400-8am-9am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-3-400-8am-9am-1NQ-1M_Summery.csv",
+      "sha256": "998ad83f02927dfa7a24e86f59c977b1b4488865443dfc774e82aa71e8a6c9e1",
+      "size_bytes": 1475,
+      "run_id": "000-3-400-8am-9am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-3-400-8am-9am-1NQ-1M_Trades.csv",
+      "sha256": "5149d250c6d754ba78497c13f824c3d8173c2536f6bbc7c9c594aff6d99f8bb1",
+      "size_bytes": 3246,
+      "run_id": "000-3-400-8am-9am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-350-5-12am-3am-1NQ-1M_Analysis.csv",
+      "sha256": "4f036119801dd32ae390ae1808afc1df428f0709ba57a7e93eccf1838cd18df4",
+      "size_bytes": 7182,
+      "run_id": "000-350-5-12am-3am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-350-5-12am-3am-1NQ-1M_Summery.csv",
+      "sha256": "eb3cfa8ef0c0910db180e16950fbb1f75dd2586812d66597fe8c2d0b041442e7",
+      "size_bytes": 1468,
+      "run_id": "000-350-5-12am-3am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-350-5-12am-3am-1NQ-1M_Trades.csv",
+      "sha256": "0b68da91b4f95b4292c6f48025bff46735bdd41cf23919157d70b3eaeed3bdef",
+      "size_bytes": 10108,
+      "run_id": "000-350-5-12am-3am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-400-5-7pm-10pm-1NQ-1M_Analysis.csv",
+      "sha256": "fda89e0d707c1f8ecf97556c75fd21fe15aa19d379c26fc6baafff1fc01d2c67",
+      "size_bytes": 2049,
+      "run_id": "000-400-5-7pm-10pm-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-400-5-7pm-10pm-1NQ-1M_Summery.csv",
+      "sha256": "bda4107d610471c9166f6bcf953c73dcd5e1512714009935dcb6f2a4187915db",
+      "size_bytes": 1441,
+      "run_id": "000-400-5-7pm-10pm-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-400-5-7pm-10pm-1NQ-1M_Trades.csv",
+      "sha256": "6b98cfb126a649f3b8e4bfa36e2c08cb80a022f5ffe159c096e7129930fff337",
+      "size_bytes": 3905,
+      "run_id": "000-400-5-7pm-10pm-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-250-2am-3am-1NQ-1M_Analysis.csv",
+      "sha256": "d4c1f81844c9434ab96cfc99fd665aa56f2ff77f3efa2f2130ccff90ca031a9e",
+      "size_bytes": 4330,
+      "run_id": "000-5-250-2am-3am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-250-2am-3am-1NQ-1M_Summery.csv",
+      "sha256": "aee46ea8542088327f4fbbf7ec529a28ec5acedd06b44edaf041573956fbc0b3",
+      "size_bytes": 1478,
+      "run_id": "000-5-250-2am-3am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-250-2am-3am-1NQ-1M_Trades.csv",
+      "sha256": "b5f1c7a37f7b68d9ee1a957e54af3fe3834dbaec79ed9280565e19ec6dd3bcdf",
+      "size_bytes": 6146,
+      "run_id": "000-5-250-2am-3am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-300-2am-6am-1NQ-1M_Analysis.csv",
+      "sha256": "d19ac8056b6817920444d3af6bb89f65f45e56e54f27c63c2003fdf2ce36f6f0",
+      "size_bytes": 8355,
+      "run_id": "000-5-300-2am-6am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-300-2am-6am-1NQ-1M_Summery.csv",
+      "sha256": "ea1d5ee44e1fef737df8cfa1d34a270b44124fdd4d4513ed075ae14ae580cd4f",
+      "size_bytes": 1480,
+      "run_id": "000-5-300-2am-6am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-300-2am-6am-1NQ-1M_Trades.csv",
+      "sha256": "51a15c9ffd343a8a3546fbeeeea3ac9e5578d1ccc1678b588ca445471309e153",
+      "size_bytes": 13654,
+      "run_id": "000-5-300-2am-6am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1M_Analysis.csv",
+      "sha256": "f4ca58d11d9e3b33513fb289d3a61fd47395f83f7b7a5d30d34544651f7377c1",
+      "size_bytes": 3526,
+      "run_id": "000-5-400-2am-3am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1M_Summery.csv",
+      "sha256": "a81414a1758f9b990fda091a68d8ec996bf6fc74a65215c2fbb2bb91289ec5ed",
+      "size_bytes": 1466,
+      "run_id": "000-5-400-2am-3am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1M_Trades.csv",
+      "sha256": "9a8bbdf11c48935eb91f1014b6f8237c78075310019115c0d934ff064b242a28",
+      "size_bytes": 5409,
+      "run_id": "000-5-400-2am-3am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1MV2_Analysis.csv",
+      "sha256": "f4ca58d11d9e3b33513fb289d3a61fd47395f83f7b7a5d30d34544651f7377c1",
+      "size_bytes": 3526,
+      "run_id": "000-5-400-2am-3am-1NQ-1MV2",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1MV2_Summery.csv",
+      "sha256": "a81414a1758f9b990fda091a68d8ec996bf6fc74a65215c2fbb2bb91289ec5ed",
+      "size_bytes": 1466,
+      "run_id": "000-5-400-2am-3am-1NQ-1MV2",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-5-400-2am-3am-1NQ-1MV2_Trades.csv",
+      "sha256": "9a8bbdf11c48935eb91f1014b6f8237c78075310019115c0d934ff064b242a28",
+      "size_bytes": 5409,
+      "run_id": "000-5-400-2am-3am-1NQ-1MV2",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-6-250-2am-5am-1NQ-1M_Analysis.csv",
+      "sha256": "47e31c3eb19cfe21c40aee70bd9148cbb0504e05040d4fd0a9bb5d6d58daa293",
+      "size_bytes": 7461,
+      "run_id": "000-6-250-2am-5am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-6-250-2am-5am-1NQ-1M_Summery.csv",
+      "sha256": "bb1b929685cb704f01b5838ffd83fa4c8dd1701c6ab58743c88f02b1b01449b6",
+      "size_bytes": 1480,
+      "run_id": "000-6-250-2am-5am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-6-250-2am-5am-1NQ-1M_Trades.csv",
+      "sha256": "2b8838fa1948770fe208bc41329c211005e84872c34358fee856b5a24da63f15",
+      "size_bytes": 11470,
+      "run_id": "000-6-250-2am-5am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-7-400-215am-330am-1NQ-1M_Analysis.csv",
+      "sha256": "d1ef86b59c0854a9795f87dd2bbee8a2b6c589120c8e6541f68bef26948c11de",
+      "size_bytes": 2912,
+      "run_id": "000-7-400-215am-330am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-7-400-215am-330am-1NQ-1M_Summery.csv",
+      "sha256": "a3f240656a28991831b63246266cc63b94a4d0ad58bff7edd32575ad2b29c83c",
+      "size_bytes": 1472,
+      "run_id": "000-7-400-215am-330am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-7-400-215am-330am-1NQ-1M_Trades.csv",
+      "sha256": "c6a6df6f9194dc1c2995c5931e31257aca1b1076dc646305350572c187e10fcb",
+      "size_bytes": 4374,
+      "run_id": "000-7-400-215am-330am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-8-400-245am-4am-1NQ-1M_Analysis.csv",
+      "sha256": "2c49ec4c3a9caec2d3710b39f0ba48499cd930740f2f22e7ba7e2aadd3a6c864",
+      "size_bytes": 2491,
+      "run_id": "000-8-400-245am-4am-1NQ-1M",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-8-400-245am-4am-1NQ-1M_Summery.csv",
+      "sha256": "bef7d3f6dc9f37db65c12f761842df0041130abd33ffd7716803b0bf0eedbc72",
+      "size_bytes": 1462,
+      "run_id": "000-8-400-245am-4am-1NQ-1M",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\000-8-400-245am-4am-1NQ-1M_Trades.csv",
+      "sha256": "28f5f769b37b7d32b9c774fdb6658962df53169451afcf13477113420b1bd85a",
+      "size_bytes": 3893,
+      "run_id": "000-8-400-245am-4am-1NQ-1M",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\5-350-Jesse_Analysis.csv",
+      "sha256": "d19ac8056b6817920444d3af6bb89f65f45e56e54f27c63c2003fdf2ce36f6f0",
+      "size_bytes": 8355,
+      "run_id": "5-350-Jesse",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\5-350-Jesse_Summery.csv",
+      "sha256": "ea1d5ee44e1fef737df8cfa1d34a270b44124fdd4d4513ed075ae14ae580cd4f",
+      "size_bytes": 1480,
+      "run_id": "5-350-Jesse",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\5-350-Jesse_Trades.csv",
+      "sha256": "51a15c9ffd343a8a3546fbeeeea3ac9e5578d1ccc1678b588ca445471309e153",
+      "size_bytes": 13654,
+      "run_id": "5-350-Jesse",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\AphroditeMist-3MNQ_Analysis.csv",
+      "sha256": "f77a3dbb747cac300269300d3594ca11f419368a6d60b75a8bcb0376d8de9ee5",
+      "size_bytes": 6086,
+      "run_id": "AphroditeMist-3MNQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\AphroditeMist-3MNQ_Summery.csv",
+      "sha256": "8ce8409a15e880074d0dafef03c6c08b303c5f38c0e9508f55815fe073d3bebf",
+      "size_bytes": 1493,
+      "run_id": "AphroditeMist-3MNQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\AphroditeMist-3MNQ_Trades.csv",
+      "sha256": "250cb0b45f52aed56d551e62f3ba4d868c217fced046318aabd86d34a257f5f0",
+      "size_bytes": 8323,
+      "run_id": "AphroditeMist-3MNQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BrassAthenaHunter-1NQ_Analysis.csv",
+      "sha256": "f4ca58d11d9e3b33513fb289d3a61fd47395f83f7b7a5d30d34544651f7377c1",
+      "size_bytes": 3526,
+      "run_id": "BrassAthenaHunter-1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BrassAthenaHunter-1NQ_Summery.csv",
+      "sha256": "a81414a1758f9b990fda091a68d8ec996bf6fc74a65215c2fbb2bb91289ec5ed",
+      "size_bytes": 1466,
+      "run_id": "BrassAthenaHunter-1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BrassAthenaHunter-1NQ_Trades.csv",
+      "sha256": "9a8bbdf11c48935eb91f1014b6f8237c78075310019115c0d934ff064b242a28",
+      "size_bytes": 5409,
+      "run_id": "BrassAthenaHunter-1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunter-1NQ_Analysis.csv",
+      "sha256": "ad7ed15083c5311f339ca0f234d1cc33a1fb975b1f51e63c736bcfac01695c9e",
+      "size_bytes": 4633,
+      "run_id": "BronzeAresHunter-1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunter-1NQ_Summery.csv",
+      "sha256": "f59bd85e602eff89eb3863b6840b645b444bc1fd78e682f20b6d5819a80d7465",
+      "size_bytes": 1479,
+      "run_id": "BronzeAresHunter-1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunter-1NQ_Trades.csv",
+      "sha256": "b948704b7067d20340f58896c533a75bb38ad2fa5092224bc16c96320c5d862f",
+      "size_bytes": 6147,
+      "run_id": "BronzeAresHunter-1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV2-1NQ_Analysis.csv",
+      "sha256": "e5c929a9ef6eae2e1ae75e0e4470989cb07d882b52530758143920bf80479b71",
+      "size_bytes": 5085,
+      "run_id": "BronzeAresHunterV2-1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV2-1NQ_Summery.csv",
+      "sha256": "42fc5361fdca48c408a48809ceed3c18b1455e7c8c6351234163b6252fbdafcf",
+      "size_bytes": 1481,
+      "run_id": "BronzeAresHunterV2-1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV2-1NQ_Trades.csv",
+      "sha256": "0252774fc649d3d623da8e9aacdec797a32fd257771142ae46d5fdebd3e60dbe",
+      "size_bytes": 6808,
+      "run_id": "BronzeAresHunterV2-1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV3-1NQ_Analysis.csv",
+      "sha256": "31df6232a60ef204e9f2df7b95b138aa5acf2e1205dbe7ff63f9cf6dc237d754",
+      "size_bytes": 5073,
+      "run_id": "BronzeAresHunterV3-1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV3-1NQ_Summery.csv",
+      "sha256": "5204cc6f2946b8bd6d07789f670bcea003eb6e04991a76b2b5c971d52e385391",
+      "size_bytes": 1477,
+      "run_id": "BronzeAresHunterV3-1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV3-1NQ_Trades.csv",
+      "sha256": "d8edd626be2799a0f8a52b184558aa2262ccfb5cdb6db2515424fd64ffdeeba3",
+      "size_bytes": 6758,
+      "run_id": "BronzeAresHunterV3-1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ-$_Analysis.csv",
+      "sha256": "ad7ed15083c5311f339ca0f234d1cc33a1fb975b1f51e63c736bcfac01695c9e",
+      "size_bytes": 4633,
+      "run_id": "BronzeAresHunterV4-1NQ-$",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ-$_Summery.csv",
+      "sha256": "f59bd85e602eff89eb3863b6840b645b444bc1fd78e682f20b6d5819a80d7465",
+      "size_bytes": 1479,
+      "run_id": "BronzeAresHunterV4-1NQ-$",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ-$_Trades.csv",
+      "sha256": "b948704b7067d20340f58896c533a75bb38ad2fa5092224bc16c96320c5d862f",
+      "size_bytes": 6147,
+      "run_id": "BronzeAresHunterV4-1NQ-$",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ_Analysis.csv",
+      "sha256": "2d2f5de6379d1e540edd5a26a50ed0463d2442d512f9e3a0f9c1e94493360ba9",
+      "size_bytes": 5080,
+      "run_id": "BronzeAresHunterV4-1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ_Summery.csv",
+      "sha256": "2e2586d0177468e67d0d8e5dcf5d56e1e286082d2582500f1aeddbff8fa56208",
+      "size_bytes": 1483,
+      "run_id": "BronzeAresHunterV4-1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeAresHunterV4-1NQ_Trades.csv",
+      "sha256": "6515e3657bd018a8f0fdafc93327c1141719263db0978332b308fe264d3502d7",
+      "size_bytes": 6792,
+      "run_id": "BronzeAresHunterV4-1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeHadesMist_1NQ_Analysis.csv",
+      "sha256": "f624c2a82d8f00350547c293ef52df4d6ec79f130568d49721feccf4cac83b1e",
+      "size_bytes": 5777,
+      "run_id": "BronzeHadesMist_1NQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeHadesMist_1NQ_Summery.csv",
+      "sha256": "1a493b5277512ee1ee8057ba5cf354e02d931b18b35a2d2f19037b5ec3bb2462",
+      "size_bytes": 1479,
+      "run_id": "BronzeHadesMist_1NQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeHadesMist_1NQ_Trades.csv",
+      "sha256": "b5dbaade525e2071cbba620aed257f0d1d1b797d6b81b3bb17376bae303736d4",
+      "size_bytes": 7919,
+      "run_id": "BronzeHadesMist_1NQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunter-1GC_Analysis.csv",
+      "sha256": "4b194f2d9e7a7b9779359d87472257d3889212651724d6b05f1a3b3edb43455b",
+      "size_bytes": 5874,
+      "run_id": "GoldPoseidonHunter-1GC",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunter-1GC_Summery.csv",
+      "sha256": "b6a701493def65fe05b3436760767bd4a3a62c006fb9791ee30d4442473834cc",
+      "size_bytes": 1528,
+      "run_id": "GoldPoseidonHunter-1GC",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunter-1GC_Trades.csv",
+      "sha256": "68bd124ae023df0b5c4602dcc73d3524f2f3493159182443d8c17abb08a36b75",
+      "size_bytes": 21586,
+      "run_id": "GoldPoseidonHunter-1GC",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunterV2-1GC_Analysis.csv",
+      "sha256": "252717d410de6cc5e72903bf5f2ad0f8e79d5d04fe8f31514bdb29e25fbdc7d4",
+      "size_bytes": 5861,
+      "run_id": "GoldPoseidonHunterV2-1GC",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunterV2-1GC_Summery.csv",
+      "sha256": "72b0398e43c68b1ea7d80466c0804564dc02824883904f3159f141d97ce368d7",
+      "size_bytes": 1527,
+      "run_id": "GoldPoseidonHunterV2-1GC",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonHunterV2-1GC_Trades.csv",
+      "sha256": "39d0cc3729de46bcad732d08a93360c32ec2b931ea80ce500d2dc9c260247f50",
+      "size_bytes": 21179,
+      "run_id": "GoldPoseidonHunterV2-1GC",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonInferno-1GC_Analysis.csv",
+      "sha256": "34e85f1a94e28bd259630696ca246eb72ae0d903fe0446b5b36185a49da58870",
+      "size_bytes": 6306,
+      "run_id": "GoldPoseidonInferno-1GC",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonInferno-1GC_Summery.csv",
+      "sha256": "45a8edb1d9149a6af94be45b5b02e73c4348fc798c0e8f3d0ec4b6d37b45c945",
+      "size_bytes": 1538,
+      "run_id": "GoldPoseidonInferno-1GC",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonInferno-1GC_Trades.csv",
+      "sha256": "e08f7bd65c34b9ffe5ea4af50f1dea7836a252cdd7454c8c21c8acfab0266c11",
+      "size_bytes": 23660,
+      "run_id": "GoldPoseidonInferno-1GC",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonSerenity-1GC_Analysis.csv",
+      "sha256": "0473a2a06976d6f1c0bd3e0f08322a99021e31a678578ff2ae396ec44b9e8611",
+      "size_bytes": 5798,
+      "run_id": "GoldPoseidonSerenity-1GC",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonSerenity-1GC_Summery.csv",
+      "sha256": "7e2f862e2e5ffb7aa010835f2da2ead9198dbdc14bdc96d4ae623e6f5f43dfaf",
+      "size_bytes": 1511,
+      "run_id": "GoldPoseidonSerenity-1GC",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\GoldPoseidonSerenity-1GC_Trades.csv",
+      "sha256": "eeff10c3e78decbfa412ffe122f9d55ff5ee2310db180a50208e17d26ff56782",
+      "size_bytes": 15157,
+      "run_id": "GoldPoseidonSerenity-1GC",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\Jade_AphroditeMist_3MNQ_Analysis.csv",
+      "sha256": "ade1349fbd18e00f483b34feac91e86bd7022b95924a5f1c1076de2fd1b53574",
+      "size_bytes": 6257,
+      "run_id": "Jade_AphroditeMist_3MNQ",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\Jade_AphroditeMist_3MNQ_Summery.csv",
+      "sha256": "293d5258fedf70b6b7b0997b56eb95b8a56af42c089eebd099278da5130e81a5",
+      "size_bytes": 1493,
+      "run_id": "Jade_AphroditeMist_3MNQ",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\Jade_AphroditeMist_3MNQ_Trades.csv",
+      "sha256": "4b0418db843a3ff13ac1855b87f9b5eac942f300fe60c99e2fcca41ea31fe656",
+      "size_bytes": 8063,
+      "run_id": "Jade_AphroditeMist_3MNQ",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\MoonstoneAresBolt-3MNQ-PA_Analysis.csv",
+      "sha256": "0f919db9babc192afb571f7d195baf6986cbed48dd00eb83d982bc36f4ab78b1",
+      "size_bytes": 2890,
+      "run_id": "MoonstoneAresBolt-3MNQ-PA",
+      "parser_kind": "daily",
+      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\MoonstoneAresBolt-3MNQ-PA_Summery.csv",
+      "sha256": "7f9eef2556fbbaefa8fa11ca336a2a711bc295bff6206d8fe7a5b43b6eae07b3",
+      "size_bytes": 1495,
+      "run_id": "MoonstoneAresBolt-3MNQ-PA",
+      "parser_kind": "summary",
+      "parser_name": "NinjaTraderSummaryCsvParser"
+    },
+    {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\MoonstoneAresBolt-3MNQ-PA_Trades.csv",
+      "sha256": "8ffe99079b4e2b2842a6d22f6f5c0f7d45b4b62d7cb198ea01cdf3f4cb926648",
+      "size_bytes": 3710,
+      "run_id": "MoonstoneAresBolt-3MNQ-PA",
+      "parser_kind": "trades",
+      "parser_name": "NinjaTraderTradesCsvParser"
+    }
+  ],
   "unparsed_files": [],
-  "warnings_by_run_id": {},
+  "warnings_by_run_id": {
+    "0--10-200-115am-315am-NQ-1MPA": [],
+    "0--10-200-115am-315am-NQ-1MPAV2": [],
+    "0--10-225-1215am-115am-3MNQ-1M-PA": [],
+    "0--10-225-1215am-115am-NQ-1M": [],
+    "0--10-225-1215am-115am-NQ-1MV2": [],
+    "0--10-300-1am-5am-3MNQ-1M-Long": [],
+    "0--10-300-1am-5am-3MNQ-1M-LongV2": [],
+    "0--10-300-1am-5am-NQ-1M-Long": [],
+    "0--10-300-1am-5am-NQ-1M-LongV2": [],
+    "0--10-300-1am-5am-NQ-1M-LongV3": [],
+    "0--125-2-115am-315am-NQ-1M": [],
+    "0--125-2-115am-315am-NQ-1MV2": [],
+    "0--2-100-1215am-315am-NQ-1M": [],
+    "0--2-150-4pm-5pm-NQ-1M": [],
+    "0--2-175-115am-315am-3MNQ-1MPA": [],
+    "0--2-175-115am-315am-NQ-1M": [],
+    "0--2-325-115am-415am-NQ-1M": [],
+    "0--2-75-1215am-4am-3MNQ-1M": [],
+    "0--2-75-1215am-4am-NQ-1M": [],
+    "0--2-75-1215am-4am-NQ-1MV2": [],
+    "0--225-6-4pm-6pm-NQ-1M": [],
+    "0--3-400-8am-9am-NQ-1M": [],
+    "0--375-2-8am-12pm-NQ-1M": [],
+    "0--375-2-8am-12pm-NQ-1MV2": [],
+    "0--375-2-8am-12pm-NQ-1MV3": [],
+    "0--375-2-8am-12pm-NQ-1MV4": [],
+    "0--4-150-4pm-6pm-NQ-1M": [],
+    "0--4-225-815am-1115pm-NQ-1M": [],
+    "0--50-10-1215am-315am-4MNQ-1M": [],
+    "0--50-10-1215am-315am-NQ-1M-Long": [],
+    "0--50-4-1215am-2am-NQ-1M-$": [],
+    "0--50-4-1215am-2am-NQ-1M-LT": [],
+    "0--50-4-1215am-315am-NQ-1M-1H": [],
+    "0--50-4-1215am-315am-NQ-1M-Long1T": [],
+    "0--50-4-1215am-315am-NQ-1M-Long": [],
+    "0--50-6-1215am-315am-NQ-1M": [],
+    "0--50-8-1215am-315am-NQ-1M": [],
+    "0--6-326-115am-415am-NQ-1M": [],
+    "0--8-400-8am-9am-NQ-1M": [],
+    "0--9-325-115am-415am-3MNQ-1M-PA": [],
+    "0-175-2-4pm-5pm-NQ-1M": [],
+    "0-175-2-4pm-5pm-NQ-1MV2": [],
+    "00-10-300-115am-315am-GC-1M": [],
+    "00-10-350-1am-215am-GC-1M": [],
+    "00-10-400-7am-830am-RTY-1M": [],
+    "00-150-20-130am-515am-GC-1M": [],
+    "00-150-20-130am-515am-GC-1MV2-$": [],
+    "00-150-20-130am-515am-GC-1MV2": [],
+    "00-3-300-1am-3am-GC-1M": [],
+    "00-300-5-215am-345am-RTY-1M": [],
+    "00-300-5-2am-4am-GC-1M": [],
+    "00-300-8-215am-4am-RTY-1M": [],
+    "00-4-300-2am-6am-GC-1M": [],
+    "00-4-300-8am-930am-RTY-1M": [],
+    "00-5-150-1am-4am-GC-1M-$": [],
+    "00-5-150-1am-4am-GC-1M": [],
+    "00-5-150-8am-10am-RTY-1M": [],
+    "00-5-150-8am-930am-RTY-1M-HWinRate": [],
+    "00-5-300-1am-3am-GC-1M": [],
+    "00-5-300-1am-3am-GC-1MV2": [],
+    "00-5-300-1am-3am-GC-1MV3": [],
+    "00-5-350-2am-345am-RTY-1M": [],
+    "00-5-350-8am-930am-RTY-1MHWinRate": [],
+    "00-5-400-2am-3am-RTY-1M": [],
+    "00-5-400-6pm-10pm-NQ-1M": [],
+    "00-5-400-6pm-10pm-NQ-1MV2": [],
+    "00-5-400-7pm-10pm-NQ-1M": [],
+    "00-9-350-2am-345am-RTY-1M": [],
+    "000-250-5-12am-1am-1NQ-1M": [],
+    "000-3-400-8am-9am-1NQ-1M": [],
+    "000-350-5-12am-3am-1NQ-1M": [],
+    "000-400-5-7pm-10pm-1NQ-1M": [],
+    "000-5-250-2am-3am-1NQ-1M": [],
+    "000-5-300-2am-6am-1NQ-1M": [],
+    "000-5-400-2am-3am-1NQ-1M": [],
+    "000-5-400-2am-3am-1NQ-1MV2": [],
+    "000-6-250-2am-5am-1NQ-1M": [],
+    "000-7-400-215am-330am-1NQ-1M": [],
+    "000-8-400-245am-4am-1NQ-1M": [],
+    "5-350-Jesse": [],
+    "AphroditeMist-3MNQ": [],
+    "BrassAthenaHunter-1NQ": [],
+    "BronzeAresHunter-1NQ": [],
+    "BronzeAresHunterV2-1NQ": [],
+    "BronzeAresHunterV3-1NQ": [],
+    "BronzeAresHunterV4-1NQ-$": [],
+    "BronzeAresHunterV4-1NQ": [],
+    "BronzeHadesMist_1NQ": [],
+    "GoldPoseidonHunter-1GC": [],
+    "GoldPoseidonHunterV2-1GC": [],
+    "GoldPoseidonInferno-1GC": [],
+    "GoldPoseidonSerenity-1GC": [],
+    "Jade_AphroditeMist_3MNQ": [],
+    "MoonstoneAresBolt-3MNQ-PA": []
+  },
   "extra": {
     "run_id_regex": null,
     "report": {
@@ -17,35 +2369,23 @@
       "embedded_images": true,
       "output_filename": "comparison_report.html",
       "output_path": "outputs\\comparison_report.html",
-      "report_config_path": "report.yaml"
+      "report_config_path": null
     },
     "report_config_resolved": {
       "title": "Strategy Comparison Report",
       "output_filename": "comparison_report.html",
       "sections": [
         {
-          "id": "comparison_overview",
-          "title": "Comparison Overview"
+          "id": "comparison_overview"
         },
         {
-          "id": "equity_curve_comparison",
-          "title": "Equity Curve Comparison"
+          "id": "equity_curve_comparison"
         },
         {
-          "id": "run_metadata_cards",
-          "title": "Run Metadata Cards"
+          "id": "run_metadata_cards"
         },
         {
-          "id": "run_kpi_cards",
-          "title": "Run KPI Cards"
-        },
-        {
-          "id": "drawdown_curve",
-          "title": "Drawdown Curve + Recovery",
-          "options": {
-            "max_runs_plot": 4,
-            "show_recovery_lines": false
-          }
+          "id": "run_kpi_cards"
         }
       ]
     }

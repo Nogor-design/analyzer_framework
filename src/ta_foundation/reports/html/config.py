@@ -29,7 +29,7 @@ DEFAULT_CONFIG = {
         {"id": "equity_curve_comparison"},
         {"id": "run_metadata_cards"},
         {"id": "run_kpi_cards"},
-        {"id": "drawdown_curve"},
+
     ],
 }
 

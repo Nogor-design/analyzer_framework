@@ -74,7 +74,7 @@ def main() -> int:
         )
 
     # Build manifest file list with hashes and parser attribution
-    pattern = "**/*{.csv,.xml}" if args.recursive else "*{.csv,.xml}"
+    pattern = "**/*.csv" if args.recursive else "*.csv"
     all_csvs = sorted(in_dir.glob(pattern))
 
     parsed_entries: list[ManifestFileEntry] = []

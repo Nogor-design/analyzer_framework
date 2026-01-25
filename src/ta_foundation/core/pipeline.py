@@ -11,13 +11,13 @@ from ta_foundation.core.model import AnalysisPackage, SummaryBlock
 from ta_foundation.parsers.base import ParsedArtifact
 
 
-KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Summary.csv")
+KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv")
 
 
 import re
 from typing import Optional
 
-KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Summary.csv")
+KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv")
 
 
 def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
@@ -65,7 +65,7 @@ def ingest_folder(
     if not folder.exists():
         raise FileNotFoundError(folder)
 
-    pattern = "**/*{.csv,.xml}" if recursive else "*{.csv,.xml}"
+    pattern = "**/*.csv" if recursive else "*csv"
     files = sorted(folder.glob(pattern))
 
     packages: dict[str, AnalysisPackage] = {}
@@ -103,9 +103,6 @@ def ingest_folder(
         elif art.kind == "summary":
             sb = SummaryBlock(**(art.summary or {}))
             pkg.summary = sb
-        elif art.kind == "strategy_xml":
-            # artifact.payload is dict from XML parser
-            pkg.metadata["strategy_config"] = art.df
         else:
             pkg.warnings.append({"code": "UNKNOWN_KIND", "message": f"Unknown kind: {art.kind}"})
 

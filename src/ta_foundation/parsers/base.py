@@ -25,7 +25,7 @@ class ParsedArtifact:
 
 @runtime_checkable
 class Parser(Protocol):
-    kind: str  # "trades" | "daily" | "summary" | "template"
+    kind: str  # "trades" | "daily" | "summary"
 
     def can_parse(self, path: Path, header: str) -> bool: ...
     def parse(self, path: Path, run_id: str) -> ParsedArtifact: ...
