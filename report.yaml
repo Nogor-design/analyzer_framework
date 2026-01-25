@@ -1,0 +1,24 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "comparison_report.html"
+  embedded_images: true   # enforced by builder; kept for clarity
+  timezone: "America/Denver"
+
+sections:
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  - id: run_metadata_cards
+    title: "Run Metadata Cards"
+
+  - id: run_kpi_cards
+    title: "Run KPI Cards"
+
+  - id: drawdown_curve
+    title: "Drawdown Curve + Recovery"
+    options:
+      max_runs_plot: 4
+      show_recovery_lines: False
