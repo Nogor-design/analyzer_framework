@@ -8,6 +8,7 @@ from ta_foundation.core.pipeline import ingest_folder
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
 from ta_foundation.parsers.ninjatrader.analysis_by_day_csv import NinjaTraderDailyAnalysisCsvParser
 from ta_foundation.parsers.ninjatrader.summary_csv import NinjaTraderSummaryCsvParser
+from ta_foundation.parsers.ninjatrader.settings_csv import NinjaTraderSettingsCsvParser
 
 from ta_foundation.reports.html.comparison_report import build_comparison_report
 from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_manifest
@@ -35,6 +36,13 @@ def main() -> int:
         help="Path to report YAML config (e.g., report.yaml). If omitted, defaults are used.",
     )
 
+    # wherever argparse is defined:
+    ap.add_argument(
+        "--include-run-images",
+        action="store_true",
+        help="If set, embed <run_id>.png/jpg/webp/gif images found in the input folder into HTML sections (as base64).",
+    )
+
 
     args = ap.parse_args()
 
@@ -46,6 +54,7 @@ def main() -> int:
         NinjaTraderTradesCsvParser(),
         NinjaTraderDailyAnalysisCsvParser(),
         NinjaTraderSummaryCsvParser(),
+        NinjaTraderSettingsCsvParser(),
     ])
 
     # Ingest (multi-run)
@@ -54,6 +63,7 @@ def main() -> int:
         registry=registry,
         recursive=args.recursive,
         run_id_regex=args.run_id_regex,
+        include_run_images=args.include_run_images,  # NEW
     )
 
 

@@ -21,5 +21,12 @@ class AnalysisPackage:
     trades: Optional[pd.DataFrame] = None
     daily: Optional[pd.DataFrame] = None
     summary: Optional[SummaryBlock] = None
+
+    # NEW: parsed Settings table (from *_Settings.csv)
+    settings: Optional[pd.DataFrame] = None
+
+    # NEW: run-scoped embedded assets (e.g., run image as data URI)
+    assets: dict[str, Any] = field(default_factory=dict)
+
     metadata: dict[str, Any] = field(default_factory=dict)
     warnings: list[dict[str, Any]] = field(default_factory=list)

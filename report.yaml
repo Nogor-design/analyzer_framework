@@ -54,3 +54,25 @@ sections:
       density: compact
       layout: grid
       columns: 3
+
+
+  - id: run_settings_table
+    title: "Run Settings"
+    options:
+      max_rows: 500
+
+
+  - id: run_settings_table
+    title: "Run Settings"
+    options:
+      max_rows: 500
+      show_run_image: true
+      run_image_max_width: 420
+
+#   Optional: also show in metadata cards
+  - id: run_metadata_cards
+    title: "Run Metadata Cards"
+    options:
+      show_run_image: true
+      run_image_max_width: 280
+

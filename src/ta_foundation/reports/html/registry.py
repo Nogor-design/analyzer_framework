@@ -7,6 +7,8 @@ from ta_foundation.reports.html.sections.comparison_overview import render_compa
 from ta_foundation.reports.html.sections.equity_curve import render_equity_curve_all_runs
 from ta_foundation.reports.html.sections.run_kpis import render_run_kpis
 from ta_foundation.reports.html.sections.run_snapshot_clipboard import render_run_snapshot_clipboard
+from ta_foundation.reports.html.sections.run_settings_table import render_run_settings_table
+from ta_foundation.reports.html.sections.run_metadata import render_run_metadata_cards
 
 
 SectionRenderer = Callable[[dict], str]
@@ -40,6 +42,18 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="snapshot",
         render_fn=render_run_snapshot_clipboard,
     ),
+    "run_settings_table": SectionDef(
+        id="run_settings_table",
+        default_title="Run Settings",
+        render_fn=render_run_settings_table,
+    ),
+
+    "run_metadata_cards": SectionDef(
+        id="run_metadata_cards",
+        default_title="Run Metadata Cards",
+        render_fn=render_run_metadata_cards,
+    ),
+
 }
 
 # from __future__ import annotations

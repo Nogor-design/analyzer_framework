@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-01-25T17:05:12",
+  "generated_at": "2026-01-25T19:12:26",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2104,6 +2104,14 @@
       "parser_name": "NinjaTraderDailyAnalysisCsvParser"
     },
     {
+      "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeHadesMist_1NQ_Settings.csv",
+      "sha256": "13b3804c12d0d000341471bdab1a9557911f2ad890ca3c38866c6aa69d2b9ef9",
+      "size_bytes": 1265,
+      "run_id": "BronzeHadesMist_1NQ",
+      "parser_kind": "settings",
+      "parser_name": "NinjaTraderSettingsCsvParser"
+    },
+    {
       "path": "C:\\Users\\Owner\\Downloads\\BT1\\BronzeHadesMist_1NQ_Summery.csv",
       "sha256": "1a493b5277512ee1ee8057ba5cf354e02d931b18b35a2d2f19037b5ec3bb2462",
       "size_bytes": 1479,
@@ -2395,6 +2403,30 @@
             "density": "compact",
             "layout": "grid",
             "columns": 3
+          }
+        },
+        {
+          "id": "run_settings_table",
+          "title": "Run Settings",
+          "options": {
+            "max_rows": 500
+          }
+        },
+        {
+          "id": "run_settings_table",
+          "title": "Run Settings",
+          "options": {
+            "max_rows": 500,
+            "show_run_image": true,
+            "run_image_max_width": 420
+          }
+        },
+        {
+          "id": "run_metadata_cards",
+          "title": "Run Metadata Cards",
+          "options": {
+            "show_run_image": true,
+            "run_image_max_width": 280
           }
         }
       ]

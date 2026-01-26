@@ -36,3 +36,24 @@ def file_to_data_uri(path: str | Path) -> Optional[str]:
     raw = p.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
     return f"data:{mime};base64,{b64}"
+
+def file_to_base64_data_uri(path: Path) -> str:
+    """
+    Convert an image file to a base64 data URI for embedding into HTML.
+    Supported: png, jpg/jpeg, webp, gif.
+    """
+    ext = path.suffix.lower().lstrip(".")
+    mime = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+        "gif": "image/gif",
+    }.get(ext)
+
+    if not mime:
+        raise ValueError(f"Unsupported image type: {path.name}")
+
+    data = path.read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"

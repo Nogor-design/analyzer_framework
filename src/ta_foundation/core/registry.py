@@ -8,6 +8,7 @@ from typing import Iterable
 from ta_foundation.parsers.base import Parser
 
 
+
 @dataclass
 class ParserRegistry:
     parsers: list[Parser]
