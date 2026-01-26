@@ -76,3 +76,11 @@ sections:
       show_run_image: true
       run_image_max_width: 280
 
+  - id: run_executive_profile_cards
+    title: "Executive Strategy Profiles"
+    options:
+      show_hint: true
+      show_run_image: true
+      card_width_px: 1280
+      card_padding_px: 24
+      image_width_px: 420

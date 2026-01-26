@@ -9,7 +9,9 @@ from ta_foundation.reports.html.sections.run_kpis import render_run_kpis
 from ta_foundation.reports.html.sections.run_snapshot_clipboard import render_run_snapshot_clipboard
 from ta_foundation.reports.html.sections.run_settings_table import render_run_settings_table
 from ta_foundation.reports.html.sections.run_metadata import render_run_metadata_cards
-
+from ta_foundation.reports.html.sections.run_executive_profile_cards import (
+    render_run_executive_profile_cards,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -52,6 +54,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="run_metadata_cards",
         default_title="Run Metadata Cards",
         render_fn=render_run_metadata_cards,
+    ),
+    "run_executive_profile_cards": SectionDef(
+        id="run_executive_profile_cards",
+        default_title="Executive Strategy Profiles",
+        render_fn=render_run_executive_profile_cards,
     ),
 
 }

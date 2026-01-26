@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-01-25T19:12:26",
+  "generated_at": "2026-01-25T22:12:01",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2427,6 +2427,17 @@
           "options": {
             "show_run_image": true,
             "run_image_max_width": 280
+          }
+        },
+        {
+          "id": "run_executive_profile_cards",
+          "title": "Executive Strategy Profiles",
+          "options": {
+            "show_hint": true,
+            "show_run_image": true,
+            "card_width_px": 1280,
+            "card_padding_px": 24,
+            "image_width_px": 420
           }
         }
       ]
