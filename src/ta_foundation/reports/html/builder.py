@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
 
 from ta_foundation.reports.html.theme import default_css
+
+RenderFn = Callable[[dict[str, Any]], str]
 
 
 @dataclass
@@ -14,8 +16,9 @@ class HtmlSection:
     """
     id: str
     title: str
-    render_fn: Callable[[dict], str]
-    options: Dict[str, Any] = field(default_factory=dict)
+    render_fn: RenderFn
+    options: dict[str, Any] = field(default_factory=dict)
+    # options: Dict[str, Any] = field(default_factory=dict)
 
 
 class HtmlReportBuilder:
@@ -38,6 +41,9 @@ class HtmlReportBuilder:
                 "title": s.title,
                 "options": s.options or {},
             }
+
+            # ✅ NEW: canonical options key used by many sections (including run_snapshot_clipboard)
+            section_ctx["options"] = s.options or {}
 
             body = s.render_fn(section_ctx)
 
@@ -84,8 +90,8 @@ def _esc(s: object) -> str:
     t = "" if s is None else str(s)
     return (
         t.replace("&", "&amp;")
-         .replace("<", "&lt;")
-         .replace(">", "&gt;")
-         .replace('"', "&quot;")
-         .replace("'", "&#39;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
     )

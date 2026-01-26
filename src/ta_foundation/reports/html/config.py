@@ -27,8 +27,8 @@ DEFAULT_CONFIG = {
     "sections": [
         {"id": "comparison_overview"},
         {"id": "equity_curve_comparison"},
-        {"id": "run_metadata_cards"},
         {"id": "run_kpi_cards"},
+        {"id": "run_snapshot_clipboard"},
 
     ],
 }
@@ -61,7 +61,40 @@ def build_report_from_config(packages: dict, cfg: ReportConfig) -> tuple[str, st
     """
     Returns: (html_string, output_filename)
     """
+    from ta_foundation.reports.html.registry import SECTION_REGISTRY
     sections: list[HtmlSection] = []
+
+    # base_ctx is whatever you already build (packages, manifest, artifacts, etc.)
+    base_ctx = {
+        "packages": packages,  # dict[str, AnalysisPackage]
+        # include any other common ctx keys your sections already expect
+    }
+
+    for section_cfg in cfg.sections:
+        sid = section_cfg["id"]
+        reg = SECTION_REGISTRY[sid]
+        render_fn = SECTION_REGISTRY.get(sid)
+        if render_fn is None:
+            raise KeyError(f"Unknown section id in report config: {sid!r}")
+
+        # NEW: pass through per-section options from YAML
+        section_options = section_cfg.get("options", {}) or {}
+
+        # NEW: build a per-section ctx (do not mutate base_ctx)
+        ctx = dict(base_ctx)
+        ctx["options"] = section_options
+
+        # Render the section with options
+        # section_html = render_fn(ctx)
+        print(f"Options: {section_cfg.get("options")}")
+        sections.append(
+            HtmlSection(
+                id=sid,
+                title=section_cfg.get("title") or reg.default_title,
+                render_fn=reg.render_fn,
+                options=section_cfg.get("options") or {},  # ✅ CRITICAL FIX
+            )
+        )
 
     for s in cfg.sections:
         sid = s.get("id")

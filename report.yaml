@@ -11,14 +11,46 @@ sections:
   - id: equity_curve_comparison
     title: "Equity Curve Comparison"
 
-  - id: run_metadata_cards
-    title: "Run Metadata Cards"
-
   - id: run_kpi_cards
     title: "Run KPI Cards"
 
-  - id: drawdown_curve
-    title: "Drawdown Curve + Recovery"
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Copy/Paste)"
+#    options:
+#      compact: false
+#      show_hint: true
+
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Slides)"
+#    options:
+#      style: slides
+#      density: comfortable
+#      layout: grid
+#      columns: 2
+#      show_hint: true
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Minimal)"
+#    options:
+#      style: minimal
+#      density: compact
+#      layout: stack
+#      columns: 1
+#      show_hint: false
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Dark)"
+#    options:
+#      style: contrast
+#      density: compact
+#      layout: grid
+#      columns: 2
+
+  - id: run_snapshot_clipboard
+    title: "Run Snapshot (Dark)"
     options:
-      max_runs_plot: 4
-      show_recovery_lines: False
+      style: contrast
+      density: compact
+      layout: grid
+      columns: 3

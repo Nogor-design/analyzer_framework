@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-01-25T09:42:32",
+  "generated_at": "2026-01-25T17:05:12",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2369,23 +2369,33 @@
       "embedded_images": true,
       "output_filename": "comparison_report.html",
       "output_path": "outputs\\comparison_report.html",
-      "report_config_path": null
+      "report_config_path": "report.yaml"
     },
     "report_config_resolved": {
       "title": "Strategy Comparison Report",
       "output_filename": "comparison_report.html",
       "sections": [
         {
-          "id": "comparison_overview"
+          "id": "comparison_overview",
+          "title": "Comparison Overview"
         },
         {
-          "id": "equity_curve_comparison"
+          "id": "equity_curve_comparison",
+          "title": "Equity Curve Comparison"
         },
         {
-          "id": "run_metadata_cards"
+          "id": "run_kpi_cards",
+          "title": "Run KPI Cards"
         },
         {
-          "id": "run_kpi_cards"
+          "id": "run_snapshot_clipboard",
+          "title": "Run Snapshot (Dark)",
+          "options": {
+            "style": "contrast",
+            "density": "compact",
+            "layout": "grid",
+            "columns": 3
+          }
         }
       ]
     }
