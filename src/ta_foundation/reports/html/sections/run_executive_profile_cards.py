@@ -344,8 +344,18 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         sm = _settings_map(pkg)
 
         # Image URI
-        assets = getattr(pkg, "assets", None) or {}
-        img_uri = assets.get("run_image_uri") if show_run_image else None
+        # assets = getattr(pkg, "assets", None) or {}
+        # img_uri = assets.get("run_image_uri") if show_run_image else None
+
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        img_uri = derived.get("run_image_uri")
+
+        # fallback for older versions
+        if not img_uri:
+            assets = getattr(pkg, "assets", None) or {}
+            img_uri = assets.get("run_image_uri")
+
+        bg_uri = derived.get("background_image_uri")
 
         # Mappings you specified
         fast_ma = sm.get("averagefast", "—")

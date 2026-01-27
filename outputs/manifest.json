@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-01-26T11:31:01",
+  "generated_at": "2026-01-27T10:14:55",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2397,36 +2397,10 @@
         },
         {
           "id": "run_snapshot_clipboard",
-          "title": "Run Snapshot (Dark)",
+          "title": "Run Snapshot (Copy/Paste)",
           "options": {
-            "style": "contrast",
-            "density": "compact",
-            "layout": "grid",
-            "columns": 3
-          }
-        },
-        {
-          "id": "run_settings_table",
-          "title": "Run Settings",
-          "options": {
-            "max_rows": 500
-          }
-        },
-        {
-          "id": "run_settings_table",
-          "title": "Run Settings",
-          "options": {
-            "max_rows": 500,
-            "show_run_image": true,
-            "run_image_max_width": 420
-          }
-        },
-        {
-          "id": "run_metadata_cards",
-          "title": "Run Metadata Cards",
-          "options": {
-            "show_run_image": true,
-            "run_image_max_width": 280
+            "compact": false,
+            "show_hint": true
           }
         },
         {

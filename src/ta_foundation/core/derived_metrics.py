@@ -36,6 +36,32 @@ TICK_VALUE_USD = {
     "YM": 5.0,  # not provided explicitly; add if you want it different
 }
 
+def load_default_images(folder: Path) -> dict[str, str]:
+    """
+    Load default.png and default_Background.png if present.
+    Returns a dict with optional keys:
+      - default_image_uri
+      - default_background_uri
+    """
+    out: dict[str, str] = {}
+
+    candidates = {
+        "default_image_uri": "default",
+        "default_background_uri": "default_Background",
+    }
+
+    for key, stem in candidates.items():
+        for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+            p = folder / f"{stem}{ext}"
+            if p.exists():
+                try:
+                    out[key] = file_to_base64_data_uri(p)
+                except Exception:
+                    pass
+                break
+
+    return out
+
 def attach_background_image(pkg: AnalysisPackage, folder: Path) -> None:
     """
     Optional background image:

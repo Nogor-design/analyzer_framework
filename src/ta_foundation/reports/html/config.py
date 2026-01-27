@@ -61,60 +61,49 @@ def build_report_from_config(packages: dict, cfg: ReportConfig) -> tuple[str, st
     """
     Returns: (html_string, output_filename)
     """
-    from ta_foundation.reports.html.registry import SECTION_REGISTRY
     sections: list[HtmlSection] = []
 
-    # base_ctx is whatever you already build (packages, manifest, artifacts, etc.)
-    base_ctx = {
-        "packages": packages,  # dict[str, AnalysisPackage]
-        # include any other common ctx keys your sections already expect
-    }
+    # base ctx is whatever your builder/sections expect
+    base_ctx = {"packages": packages}
 
-    for section_cfg in cfg.sections:
-        sid = section_cfg["id"]
-        reg = SECTION_REGISTRY[sid]
-        render_fn = SECTION_REGISTRY.get(sid)
-        if render_fn is None:
-            raise KeyError(f"Unknown section id in report config: {sid!r}")
-
-        # NEW: pass through per-section options from YAML
-        section_options = section_cfg.get("options", {}) or {}
-
-        # NEW: build a per-section ctx (do not mutate base_ctx)
-        ctx = dict(base_ctx)
-        ctx["options"] = section_options
-
-        # Render the section with options
-        # section_html = render_fn(ctx)
-        print(f"Options: {section_cfg.get("options")}")
-        sections.append(
-            HtmlSection(
-                id=sid,
-                title=section_cfg.get("title") or reg.default_title,
-                render_fn=reg.render_fn,
-                options=section_cfg.get("options") or {},  # ✅ CRITICAL FIX
-            )
-        )
+    # Deduplicate section ids while preserving order
+    seen: set[str] = set()
+    sections_cfg: list[dict[str, Any]] = []
+    duplicates: list[str] = []
 
     for s in cfg.sections:
-        sid = s.get("id")
+        if not isinstance(s, dict):
+            continue
+        sid = (s.get("id") or "").strip()
         if not sid:
             continue
+        if sid in seen:
+            duplicates.append(sid)
+            continue
+        seen.add(sid)
+        sections_cfg.append(s)
+
+    if duplicates:
+        print(f"[ta_foundation] WARNING: Duplicate section ids ignored: {duplicates}")
+
+    # Build HtmlSection list exactly once
+    for s in sections_cfg:
+        sid = s["id"]
         if sid not in SECTION_REGISTRY:
             raise KeyError(f"Unknown section id in report config: {sid!r}")
 
         reg = SECTION_REGISTRY[sid]
+        section_options = s.get("options", {}) or {}
 
         sections.append(
             HtmlSection(
                 id=sid,
                 title=s.get("title") or reg.default_title,
                 render_fn=reg.render_fn,
-                options=s.get("options") or {},   # ✅ CRITICAL FIX
+                options=section_options,  # ✅ pass through options
             )
         )
 
     builder = HtmlReportBuilder(report_title=cfg.title, sections=sections)
-    html = builder.build({"packages": packages})
+    html = builder.build(base_ctx)
     return html, cfg.output_filename
-
