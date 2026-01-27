@@ -76,11 +76,27 @@ sections:
       show_run_image: true
       run_image_max_width: 280
 
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      card_width_px: 1280
+#      card_padding_px: 24
+#      image_width_px: 420
+
   - id: run_executive_profile_cards
     title: "Executive Strategy Profiles"
     options:
-      show_hint: true
       show_run_image: true
+      background_style: image-dark-overlay   # options below
       card_width_px: 1280
       card_padding_px: 24
       image_width_px: 420
+
+#Supported background_style values
+#Style	Description
+#solid	Current black background
+#image-cover	Full image, no overlay
+#image-soft-overlay	Light dark overlay (best for light images)
+#image-dark-overlay	Strong overlay (best for busy images)

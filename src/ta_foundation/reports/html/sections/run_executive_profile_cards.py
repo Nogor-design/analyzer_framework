@@ -10,6 +10,39 @@ from ta_foundation.core.model import AnalysisPackage
 from ta_foundation.utils.kpi import normalize_kpi_key
 
 
+def _background_style(style: str, bg_uri: str | None) -> str:
+    """
+    Returns inline CSS for the card wrapper based on style.
+    """
+    if style == "solid" or not bg_uri:
+        return "background:#000000;"
+
+    if style == "image-cover":
+        return (
+            f"background-image:url('{bg_uri}');"
+            "background-size:cover;"
+            "background-position:center;"
+        )
+
+    if style == "image-soft-overlay":
+        return (
+            f"background-image:linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)),"
+            f"url('{bg_uri}');"
+            "background-size:cover;"
+            "background-position:center;"
+        )
+
+    if style == "image-dark-overlay":
+        return (
+            f"background-image:linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)),"
+            f"url('{bg_uri}');"
+            "background-size:cover;"
+            "background-position:center;"
+        )
+
+    return "background:#000000;"
+
+
 def _esc(x: Any) -> str:
     return html.escape("" if x is None else str(x))
 
@@ -284,8 +317,9 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
     show_hint = bool(options.get("show_hint", True))
     card_width = int(options.get("card_width_px", 1280))
     pad = int(options.get("card_padding_px", 24))
-    img_w = int(options.get("image_width_px", 420))
+    img_w = int(options.get("image_width_px", 520))
     show_run_image = bool(options.get("show_run_image", True))
+    background_style = options.get("background_style", "solid")
 
     base_font = "font-family: Arial, Helvetica, sans-serif;"
     muted = "color:#b9b9b9;"
@@ -330,7 +364,14 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         else:
             direction_bias = "—"
 
+        label = sm.get("label","-")
+        chart_values = f" {sm.get("value", "-")}  {sm.get("type","-")} "
+        chart_type = sm.get("type","-")
+        chart_value = sm.get("value", "-")
         max_trades = sm.get("maxtrades", "—")
+
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        bg_uri = derived.get("background_image_uri")
 
         # Max Stop Loss is MaxStop
         max_stop = sm.get("maxstop", None)
@@ -390,109 +431,255 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         daily_max_profit, daily_max_loss = _daily_max_profit_loss(pkg)
 
-        # Render card
-        parts.append(
-            f'<div style="{base_font}{bg}{white} padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
-            ' border-radius:14px; margin: 0 0 18px 0;">'
-        )
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        max_potential_profit = derived.get("max_potential_profit_usd")
+        max_potential_loss = derived.get("max_potential_loss_usd")
+        instrument = derived.get("instrument")
+        tick_value = derived.get("tick_value_usd")
 
-        parts.append('<table style="width:100%; border-collapse:collapse;">')
-        parts.append("<tr>")
+        # Render card
+        # parts.append(
+        #     f'<div style="{base_font}{bg}{white} padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
+        #     ' border-radius:14px; margin: 0 0 18px 0;">'
+        # )
+
+        # bg_css = _background_style(background_style, bg_uri)
+
+        # parts.append(
+        #     f'<div style="{base_font}{white}{bg_css} '
+        #     f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
+        #     'border-radius:14px; margin: 0 0 18px 0;">'
+        # )
+
+        # parts.append('<table style="width:100%; border-collapse:collapse;">')
+        # parts.append("<tr>")
 
         # Left image
-        parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
+        # parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
+        # if img_uri:
+        #     parts.append(
+        #         f'<img src="{img_uri}" style="width:{img_w}px; height:auto; border-radius:12px; display:block;" />'
+        #     )
+        # else:
+        #     parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
+        # parts.append("</td>")
+        #
+        # # Right side content
+        # parts.append('<td style="vertical-align:top;">')
+        # parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
+        #
+        # parts.append(f'<div style="{body}">')
+        # parts.append(f'<div><span style="font-weight:800;">Strat:</span> {_esc(label)}</div>')
+        # parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
+        # parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
+        # if instrument and tick_value:
+        #     parts.append(f'<div style="{body}"><span style="font-weight:800;">Instrument:</span> {_esc(instrument)} '
+        #                  f'(<span style="font-weight:800;">Tick:</span> ${_esc(tick_value)})</div>')
+        # parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(chart_values)}</div>')
+        #
+        # parts.append("</div>")
+        #
+        # parts.append('<table style="width:100%; border-collapse:collapse; margin-top:14px;">')
+        # parts.append("<tr>")
+        #
+        # # Left inner column
+        # parts.append('<td style="vertical-align:top; padding-right:26px; width:62%;">')
+        #
+        # parts.append(f'<div style="{h2}">Core Trading Logic</div>')
+        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>Fast MA:</b> {_esc(fast_ma)}</li>")
+        # parts.append(f"<li><b>Slow MA:</b> {_esc(slow_ma)}</li>")
+        # parts.append(f"<li><b>Trend MA:</b> {_esc(trend_ma)}</li>")
+        # parts.append(f"<li><b>Direction Bias:</b> {_esc(direction_bias)}</li>")
+        # parts.append("</ul></div>")
+        #
+        # parts.append(f'<div style="{h2}">Session Constraints</div>')
+        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>Active Window:</b> {_esc(active_window)}</li>")
+        # parts.append(f"<li><b>Max Trades per Session:</b> {_esc(max_trades)}</li>")
+        # parts.append("</ul></div>")
+        #
+        # parts.append(f'<div style="{h2}">Risk &amp; Trade Controls</div>')
+        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>Contracts:</b> {_esc(contracts)}</li>")
+        # parts.append(f"<li><b>Max Stop Loss:</b> {_esc(_fmt_number(max_stop, 0))} ticks</li>")
+        # parts.append(
+        #     f"<li><b>Max Take Profit:</b> "
+        #     f"{_esc('—' if max_take_profit is None else _fmt_number(max_take_profit, 0))} ticks</li>"
+        # )
+        # parts.append(
+        #     f"<li><b>P/L:</b> "
+        #     f"{_esc('—' if max_tp_ratio in (None, '') else f'{_fmt_number(max_tp_ratio, 2)}/1')} P/L</li>"
+        # )
+        # parts.append("</ul></div>")
+        #
+        # parts.append("</td>")
+        #
+        # # Right inner column
+        # parts.append('<td style="vertical-align:top; width:38%;">')
+        #
+        # parts.append(f'<div style="{h2}">Performance</div>')
+        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>Total Net Profit:</b> {_esc(_fmt_money(total_profit))}</li>")
+        # parts.append(f"<li><b>Profit Factor:</b> {_esc(_fmt_number(pf, 2))}</li>")
+        # parts.append(f"<li><b>Max Drawdown:</b> {_esc(_fmt_money(max_dd))}</li>")
+        # # parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_number(win_rate, 0))}%</li>")
+        # parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_percent_value(win_rate_pct, 0))}</li>")
+        #
+        # parts.append("</ul></div>")
+        #
+        # parts.append(f'<div style="{h2}">Averages</div>')
+        # parts.append(f'<div style="{body}">')
+        # parts.append(f'<div style="{muted} margin-bottom:6px;">MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}</div>')
+        # parts.append(f'<ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>MAE:</b> {_esc(_fmt_money(avg_mae))}</li>")
+        # parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
+        # parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
+        # parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")
+        # parts.append(f"<li><b>Avg loss:</b> {_esc(_fmt_money(avg_loss))}</li>")
+        # parts.append("</ul></div>")
+        #
+        # parts.append(f'<div style="{h2}">Daily Risk to Reward</div>')
+        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        # parts.append(f"<li><b>Daily Max Profit:</b> {_esc(_fmt_money(daily_max_profit))}</li>")
+        # parts.append(f"<li><b>Daily Max Loss:</b> {_esc(_fmt_money(daily_max_loss))}</li>")
+        # parts.append(f"<li><b>Max Potential Profit:</b> {_esc(_fmt_money(max_potential_profit))}</li>")
+        # parts.append(f"<li><b>Max Potential Loss:</b> {_esc(_fmt_money(max_potential_loss))}</li>")
+        #
+        # parts.append("</ul></div>")
+        #
+        # parts.append("</td>")
+        #
+        # parts.append("</tr>")
+        # parts.append("</table>")  # inner
+        #
+        # parts.append("</td>")  # right main
+        # parts.append("</tr>")
+        # parts.append("</table>")  # outer
+        #
+        # parts.append("</div>")  # card
+    ###############################################################################################
+        # --- inside: for run_id in sorted(packages.keys()): ---
+
+        card_parts: list[str] = []
+
+        # Card wrapper (OPEN)
+        bg_css = _background_style(background_style,
+                                   bg_uri) if "background_style" in locals() else "background:#000000;"
+        card_parts.append(
+            f'<div style="{base_font}{white}{bg_css} '
+            f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
+            'border-radius:14px; margin: 0 0 18px 0;">'
+        )
+
+        # Outer 3-column table (OPEN)
+        card_parts.append('<table style="width:100%; border-collapse:collapse;">')
+        card_parts.append("<tr>")
+
+        # Column 1: image (OPEN td)
+        card_parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
         if img_uri:
-            parts.append(
-                f'<img src="{img_uri}" style="width:{img_w}px; height:auto; border-radius:12px; display:block;" />'
+            card_parts.append(
+                # f'<img src="{img_uri}" style="width:{img_w}px; height:auto; border-radius:12px; display:block;" />'
+                f'<img src="{img_uri}" style="width:{img_w}px; max-height:auto; object-fit:cover; border-radius:12px; display:block;" />'
             )
         else:
-            parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
-        parts.append("</td>")
+            card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
+        card_parts.append("</td>")  # Column 1: image (CLOSE td)
 
-        # Right side content
-        parts.append('<td style="vertical-align:top;">')
-        parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
+        # Column 2: strategy + logic blocks (OPEN td)
+        # card_parts.append('<td style="vertical-align:top; padding-right:26px; width:52%;">')
+        card_parts.append('<td style="vertical-align:top; padding-right:26px; width:33%;">')
 
-        parts.append(f'<div style="{body}">')
-        parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
-        parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
-        parts.append("</div>")
+        # card_parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
+        card_parts.append(f'<div style="{h2}">Pantheon Bot Profile</div>')
 
-        parts.append('<table style="width:100%; border-collapse:collapse; margin-top:14px;">')
-        parts.append("<tr>")
+        # Strategy Profile block
+        card_parts.append(f'<div style="{body}">')
+        card_parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
+        card_parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
+        if instrument and tick_value:
+            card_parts.append(f'<div"><span style="font-weight:800;">Instrument:</span> {_esc(instrument)} 'f'(<span style="font-weight:800;">Tick:</span> ${_esc(tick_value)})</div>')
+        card_parts.append(f'<div><span style="font-weight:800;">Time:</span> {_esc(chart_values)}</div>')
+        card_parts.append("</div>")
 
-        # Left inner column
-        parts.append('<td style="vertical-align:top; padding-right:26px; width:62%;">')
+        # Core Trading Logic
+        card_parts.append(f'<div style="{h2}">Core Trading Logic</div>')
+        card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>Fast MA:</b> {_esc(fast_ma)}</li>")
+        card_parts.append(f"<li><b>Slow MA:</b> {_esc(slow_ma)}</li>")
+        card_parts.append(f"<li><b>Trend MA:</b> {_esc(trend_ma)}</li>")
+        card_parts.append(f"<li><b>Direction Bias:</b> {_esc(direction_bias)}</li>")
+        card_parts.append("</ul></div>")
 
-        parts.append(f'<div style="{h2}">Core Trading Logic</div>')
-        parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>Fast MA:</b> {_esc(fast_ma)}</li>")
-        parts.append(f"<li><b>Slow MA:</b> {_esc(slow_ma)}</li>")
-        parts.append(f"<li><b>Trend MA:</b> {_esc(trend_ma)}</li>")
-        parts.append(f"<li><b>Direction Bias:</b> {_esc(direction_bias)}</li>")
-        parts.append("</ul></div>")
+        # Session Constraints
+        card_parts.append(f'<div style="{h2}">Session Constraints</div>')
+        card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>Active Window:</b> {_esc(active_window)}</li>")
+        card_parts.append(f"<li><b>Max Trades per Session:</b> {_esc(max_trades)}</li>")
+        card_parts.append("</ul></div>")
 
-        parts.append(f'<div style="{h2}">Session Constraints</div>')
-        parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>Active Window:</b> {_esc(active_window)}</li>")
-        parts.append(f"<li><b>Max Trades per Session:</b> {_esc(max_trades)}</li>")
-        parts.append("</ul></div>")
-
-        parts.append(f'<div style="{h2}">Risk &amp; Trade Controls</div>')
-        parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>Contracts:</b> {_esc(contracts)}</li>")
-        parts.append(f"<li><b>Max Stop Loss:</b> {_esc(_fmt_number(max_stop, 0))} ticks</li>")
-        parts.append(
+        # Risk & Trade Controls
+        card_parts.append(f'<div style="{h2}">Risk &amp; Trade Controls</div>')
+        card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>Contracts:</b> {_esc(contracts)}</li>")
+        card_parts.append(f"<li><b>Max Stop Loss:</b> {_esc(_fmt_number(max_stop, 0))} ticks</li>")
+        card_parts.append(
             f"<li><b>Max Take Profit:</b> "
             f"{_esc('—' if max_take_profit is None else _fmt_number(max_take_profit, 0))} ticks</li>"
         )
-        parts.append(
+        card_parts.append(
             f"<li><b>P/L:</b> "
             f"{_esc('—' if max_tp_ratio in (None, '') else f'{_fmt_number(max_tp_ratio, 2)}/1')} P/L</li>"
         )
-        parts.append("</ul></div>")
+        card_parts.append("</ul></div>")
 
-        parts.append("</td>")
+        card_parts.append("</td>")  # Column 2 (CLOSE td)
 
-        # Right inner column
-        parts.append('<td style="vertical-align:top; width:38%;">')
+        # Column 3: performance blocks (OPEN td)
+        card_parts.append('<td style="vertical-align:top; width:30%;">')
 
-        parts.append(f'<div style="{h2}">Performance</div>')
-        parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>Total Net Profit:</b> {_esc(_fmt_money(total_profit))}</li>")
-        parts.append(f"<li><b>Profit Factor:</b> {_esc(_fmt_number(pf, 2))}</li>")
-        parts.append(f"<li><b>Max Drawdown:</b> {_esc(_fmt_money(max_dd))}</li>")
-        # parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_number(win_rate, 0))}%</li>")
-        parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_percent_value(win_rate_pct, 0))}</li>")
+        card_parts.append(f'<div style="{h2}">Performance</div>')
+        card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>Total Net Profit:</b> {_esc(_fmt_money(total_profit))}</li>")
+        card_parts.append(f"<li><b>Profit Factor:</b> {_esc(_fmt_number(pf, 2))}</li>")
+        card_parts.append(f"<li><b>Max Drawdown:</b> {_esc(_fmt_money(max_dd))}</li>")
+        card_parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_percent_value(win_rate_pct, 2))}</li>")
+        card_parts.append("</ul></div>")
 
-        parts.append("</ul></div>")
+        card_parts.append(f'<div style="{h2}">Averages</div>')
+        card_parts.append(f'<div style="{body}">')
+        card_parts.append(
+            f'<div style="{muted} margin-bottom:6px;">'
+            f"MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; "
+            f"MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}"
+            f"</div>"
+        )
+        card_parts.append(f'<ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>MAE:</b> {_esc(_fmt_money(avg_mae))}</li>")
+        card_parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
+        card_parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
+        card_parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")
+        card_parts.append(f"<li><b>Avg loss:</b> {_esc(_fmt_money(avg_loss))}</li>")
+        card_parts.append("</ul></div>")
 
-        parts.append(f'<div style="{h2}">Averages</div>')
-        parts.append(f'<div style="{body}">')
-        parts.append(f'<div style="{muted} margin-bottom:6px;">MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}</div>')
-        parts.append(f'<ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>MAE:</b> {_esc(_fmt_money(avg_mae))}</li>")
-        parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
-        parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
-        parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")
-        parts.append(f"<li><b>Avg loss:</b> {_esc(_fmt_money(avg_loss))}</li>")
-        parts.append("</ul></div>")
+        card_parts.append(f'<div style="{h2}">Daily Risk to Reward</div>')
+        card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
+        card_parts.append(f"<li><b>Daily Max Profit:</b> {_esc(_fmt_money(daily_max_profit))}</li>")
+        card_parts.append(f"<li><b>Daily Max Loss:</b> {_esc(_fmt_money(daily_max_loss))}</li>")
+        card_parts.append(f"<li><b>Max Potential Profit:</b> {_esc(_fmt_money(max_potential_profit))}</li>")
+        card_parts.append(f"<li><b>Max Potential Loss:</b> {_esc(_fmt_money(max_potential_loss))}</li>")
+        card_parts.append("</ul></div>")
 
-        parts.append(f'<div style="{h2}">Daily Risk to Reward</div>')
-        parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        parts.append(f"<li><b>Daily Max Profit:</b> {_esc(_fmt_money(daily_max_profit))}</li>")
-        parts.append(f"<li><b>Daily Max Loss:</b> {_esc(_fmt_money(daily_max_loss))}</li>")
-        parts.append("</ul></div>")
+        card_parts.append("</td>")  # Column 3 (CLOSE td)
 
-        parts.append("</td>")
+        card_parts.append("</tr>")
+        card_parts.append("</table>")  # Outer table (CLOSE)
 
-        parts.append("</tr>")
-        parts.append("</table>")  # inner
+        card_parts.append("</div>")  # Card wrapper (CLOSE)
 
-        parts.append("</td>")  # right main
-        parts.append("</tr>")
-        parts.append("</table>")  # outer
+        # Append one fully-closed card
+        parts.append("\n".join(card_parts))
 
-        parts.append("</div>")  # card
-
+    ###############################################################################################
     return "\n".join(parts)

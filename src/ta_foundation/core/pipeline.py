@@ -11,6 +11,9 @@ from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.model import AnalysisPackage, SummaryBlock
 from ta_foundation.parsers.base import ParsedArtifact
 from ta_foundation.reports.html.embed import file_to_base64_data_uri  # safe reusable helper
+from ta_foundation.core.derived_metrics import compute_and_attach_derived_metrics
+from ta_foundation.core.derived_metrics import attach_background_image
+
 
 
 KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
@@ -131,5 +134,11 @@ def ingest_folder(
         if include_run_images:
             for pkg in packages.values():
                 _attach_run_image_if_present(pkg, folder)
+
+        # NEW: compute reusable derived metrics for downstream report sections
+    compute_and_attach_derived_metrics(packages)
+    if include_run_images:
+        for pkg in packages.values():
+            attach_background_image(pkg, folder)
 
     return IngestResult(packages=packages, unparsed_files=unparsed)
