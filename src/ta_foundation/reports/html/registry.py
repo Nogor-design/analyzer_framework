@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from ta_foundation.reports.html.sections.daily_scoreboard import render_daily_scoreboard
 from ta_foundation.reports.html.sections.comparison_overview import render_comparison_overview
 from ta_foundation.reports.html.sections.equity_curve import render_equity_curve_all_runs
 from ta_foundation.reports.html.sections.run_kpis import render_run_kpis
@@ -12,6 +13,7 @@ from ta_foundation.reports.html.sections.run_metadata import render_run_metadata
 from ta_foundation.reports.html.sections.run_executive_profile_cards import (
     render_run_executive_profile_cards,
 )
+
 
 SectionRenderer = Callable[[dict], str]
 
@@ -59,6 +61,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="run_executive_profile_cards",
         default_title="Executive Strategy Profiles",
         render_fn=render_run_executive_profile_cards,
+    ),
+    "daily_scoreboard": SectionDef(
+        id="daily_scoreboard",
+        default_title="Daily Scoreboard",
+        render_fn=render_daily_scoreboard,
     ),
 
 }
