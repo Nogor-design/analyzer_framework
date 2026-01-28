@@ -82,6 +82,56 @@ def attach_background_image(pkg: AnalysisPackage, folder: Path) -> None:
             return
 
 
+def attach_detail_chart_images(pkg: AnalysisPackage, folder: Path) -> None:
+    """
+    Optional per-run chart images that can be shown under the executive profile card:
+      <run_id>_Analysis.(png|jpg|jpeg|webp|gif)
+      <run_id>_Summery.(png|...)
+      <run_id>_Summary.(png|...)   # fallback spelling
+
+    Stored in pkg.metadata["derived"] as:
+      - analysis_image_uri
+      - summery_image_uri
+    """
+    exts = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+    derived = pkg.metadata.setdefault("derived", {})
+
+    # Analysis image
+    if "analysis_image_uri" not in derived:
+        for ext in exts:
+            p = folder / f"{pkg.run_id}_Analysis{ext}"
+            if p.exists() and p.is_file():
+                try:
+                    derived["analysis_image_uri"] = file_to_base64_data_uri(p)
+                    derived["analysis_image_path"] = str(p)
+                    derived["analysis_image_source"] = "run"
+                except Exception as e:
+                    pkg.warnings.append({
+                        "code": "ANALYSIS_IMAGE_FAILED",
+                        "message": f"Failed to embed analysis image {p.name}: {e}",
+                    })
+                break
+
+    # Summery/Summary image (support both spellings)
+    if "summery_image_uri" not in derived:
+        candidates = [f"{pkg.run_id}_Summery", f"{pkg.run_id}_Summary"]
+        for base in candidates:
+            for ext in exts:
+                p = folder / f"{base}{ext}"
+                if p.exists() and p.is_file():
+                    try:
+                        derived["summery_image_uri"] = file_to_base64_data_uri(p)
+                        derived["summery_image_path"] = str(p)
+                        derived["summery_image_source"] = "run"
+                    except Exception as e:
+                        pkg.warnings.append({
+                            "code": "SUMMARY_IMAGE_FAILED",
+                            "message": f"Failed to embed summary image {p.name}: {e}",
+                        })
+                    break
+            if "summery_image_uri" in derived:
+                break
+
 def infer_instrument_from_run_id(run_id: str) -> Tuple[str, float, str]:
     """
     Infer futures symbol and tick value from run_id using your mapping rules.

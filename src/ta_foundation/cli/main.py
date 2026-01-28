@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
 from pathlib import Path
 
+
+from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.core.registry import ParserRegistry
 from ta_foundation.core.pipeline import ingest_folder
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
@@ -43,6 +46,17 @@ def main() -> int:
         help="If set, embed <run_id>.png/jpg/webp/gif images found in the input folder into HTML sections (as base64).",
     )
 
+    ap.add_argument(
+        "--export-exec-cards-png",
+        action="store_true",
+        help="Export each Executive Strategy Profile card as a PNG (requires Playwright).",
+    )
+    ap.add_argument(
+        "--exec-cards-dir",
+        type=str,
+        default=None,
+        help="Output directory for exported exec card PNGs. Default: <output>/cards",
+    )
 
     args = ap.parse_args()
 
@@ -75,6 +89,18 @@ def main() -> int:
     html, output_filename = build_report_from_config(result.packages, cfg)
     out_path = out_dir / output_filename
     out_path.write_text(html, encoding="utf-8")
+
+    if args.export_exec_cards_png:
+
+
+        cards_dir = Path(args.exec_cards_dir) if args.exec_cards_dir else (Path(args.output) / "cards")
+        res = export_exec_cards_to_png(Path(out_path), cards_dir)
+
+        print(f"[ta_foundation] Exported {len(res.exported)} exec cards to: {res.output_dir}")
+        if res.skipped:
+            print("[ta_foundation] Some cards failed to export:")
+            for s in res.skipped:
+                print("  -", s)
 
     # Write unparsed list (optional)
     if result.unparsed_files:

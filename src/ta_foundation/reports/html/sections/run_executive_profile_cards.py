@@ -321,6 +321,11 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
     show_run_image = bool(options.get("show_run_image", True))
     background_style = options.get("background_style", "solid")
 
+    show_detail_charts = bool(options.get("show_detail_charts", False))
+    detail_chart_width_px = int(options.get("detail_chart_width_px", 540))
+    detail_chart_gap_px = int(options.get("detail_chart_gap_px", 16))
+    detail_chart_layout = options.get("detail_chart_layout", "two-up")  # "two-up" or "stack"
+
     base_font = "font-family: Arial, Helvetica, sans-serif;"
     muted = "color:#b9b9b9;"
     white = "color:#ffffff;"
@@ -349,6 +354,10 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
         img_uri = derived.get("run_image_uri")
+
+        analysis_chart_uri = derived.get("analysis_image_uri")
+        summery_chart_uri = derived.get("summery_image_uri")
+
 
         # fallback for older versions
         if not img_uri:
@@ -576,8 +585,17 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         # Card wrapper (OPEN)
         bg_css = _background_style(background_style,
                                    bg_uri) if "background_style" in locals() else "background:#000000;"
+        # card_parts.append(
+        #     f'<div style="{base_font}{white}{bg_css} '
+        #     f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
+        #     'border-radius:14px; margin: 0 0 18px 0;">'
+        # )
+
+        safe_run_id = _esc(run_id)  # you already have _esc, just reuse it for attribute safety
+
         card_parts.append(
-            f'<div style="{base_font}{white}{bg_css} '
+            f'<div class="ta-exec-card" id="exec-card--{safe_run_id}" data-run-id="{safe_run_id}" '
+            f'style="{base_font}{white}{bg_css} '
             f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
             'border-radius:14px; margin: 0 0 18px 0;">'
         )
@@ -685,6 +703,56 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         card_parts.append("</tr>")
         card_parts.append("</table>")  # Outer table (CLOSE)
+
+        # --- optional detail charts (below the profile content) ---
+        if show_detail_charts and (analysis_chart_uri or summery_chart_uri):
+            card_parts.append(f'<div style="margin-top:16px;"></div>')
+
+            if detail_chart_layout == "stack":
+                # Stack vertically
+                if analysis_chart_uri:
+                    card_parts.append(
+                        f'<div style="margin-bottom:{detail_chart_gap_px}px;">'
+                        f'<img src="{analysis_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'border-radius:12px; display:block;" />'
+                        f"</div>"
+                    )
+                if summery_chart_uri:
+                    card_parts.append(
+                        f'<div>'
+                        f'<img src="{summery_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'border-radius:12px; display:block;" />'
+                        f"</div>"
+                    )
+            else:
+                # Default: two-up side-by-side
+                card_parts.append('<table style="width:100%; border-collapse:collapse;">')
+                card_parts.append("<tr>")
+
+                # Left chart
+                card_parts.append(f'<td style="vertical-align:top; padding-right:{detail_chart_gap_px}px;">')
+                if analysis_chart_uri:
+                    card_parts.append(
+                        f'<img src="{analysis_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'border-radius:12px; display:block;" />'
+                    )
+                else:
+                    card_parts.append(f'<div style="{muted} font-size:16px;">No _Analysis image</div>')
+                card_parts.append("</td>")
+
+                # Right chart
+                card_parts.append(f'<td style="vertical-align:top;">')
+                if summery_chart_uri:
+                    card_parts.append(
+                        f'<img src="{summery_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'border-radius:12px; display:block;" />'
+                    )
+                else:
+                    card_parts.append(f'<div style="{muted} font-size:16px;">No _Summery/_Summary image</div>')
+                card_parts.append("</td>")
+
+                card_parts.append("</tr>")
+                card_parts.append("</table>")
 
         card_parts.append("</div>")  # Card wrapper (CLOSE)
 

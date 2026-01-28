@@ -10,6 +10,7 @@ from typing import Dict, Optional
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.model import AnalysisPackage, SummaryBlock
 from ta_foundation.parsers.base import ParsedArtifact
+from ta_foundation.core.derived_metrics import attach_detail_chart_images
 from ta_foundation.reports.html.embed import file_to_base64_data_uri  # safe reusable helper
 from ta_foundation.core.derived_metrics import compute_and_attach_derived_metrics
 from ta_foundation.core.derived_metrics import attach_background_image
@@ -182,5 +183,14 @@ def ingest_folder(
         if hasattr(pkg, "assets"):
             pkg.assets.setdefault("run_image_uri", derived.get("run_image_uri"))
             pkg.assets.setdefault("background_image_uri", derived.get("background_image_uri"))
+
+    if include_run_images:
+        for pkg in packages.values():
+            # existing:
+            _attach_run_image_if_present(pkg, folder)
+            attach_background_image(pkg, folder)
+
+            # NEW:
+            attach_detail_chart_images(pkg, folder)
 
     return IngestResult(packages=packages, unparsed_files=unparsed)
