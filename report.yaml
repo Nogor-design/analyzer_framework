@@ -151,15 +151,15 @@ sections:
 #      card_width_px: 1280
 #      card_padding_px: 24
 #      image_width_px: 420
-  - id: run_executive_profile_cards
-    title: "Executive Strategy Profiles"
-    options:
-      show_run_image: true
-      background_style: image-dark-overlay
-      show_detail_charts: true
-      detail_chart_layout: stack     # two-up | stack
-      detail_chart_width_px: 1080  #540  | 1080
-      detail_chart_gap_px: 16
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_run_image: true
+#      background_style: image-dark-overlay
+#      show_detail_charts: true
+#      detail_chart_layout: stack     # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
+#      detail_chart_gap_px: 16
 
 #Supported background_style values
 #Style	Description
@@ -167,3 +167,26 @@ sections:
 #image-cover	Full image, no overlay
 #image-soft-overlay	Light dark overlay (best for light images)
 #image-dark-overlay	Strong overlay (best for busy images)
+
+#  - id: run_executive_profile_cards
+#    title: Executive Strategy Profiles
+#    options:
+#      wlr_days_back: 30         # <- configurable N
+#      wlr_box_px: 10
+#      wlr_gap_px: 2
+#      wlr_show_legend: false
+
+  - id: run_executive_profile_cards
+    options:
+      show_hint: true
+      show_run_image: true
+      background_style: image-dark-overlay   # options below
+      card_width_px: 1280
+      card_padding_px: 24
+      image_width_px: 420
+      wlr_days_back: 30
+      wlr_gap_px: 2
+      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+      timeline_cell_h_px: 10
+      timeline_show_hours: true
+      timeline_show_summary: true

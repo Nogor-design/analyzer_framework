@@ -20,7 +20,8 @@ from ta_foundation.core.derived_metrics import (
     load_default_images,
 )
 
-
+from ta_foundation.core.daily_outcomes import derive_daily_outcomes_for_package
+from ta_foundation.core.market_time_profile import derive_trade_time_profile_for_package
 
 KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
 
@@ -30,6 +31,21 @@ from typing import Optional
 
 KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
 RUN_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+def _ensure_derived_bucket(pkg) -> dict:
+    if pkg.metadata is None:
+        pkg.metadata = {}
+    if "derived" not in pkg.metadata or pkg.metadata["derived"] is None:
+        pkg.metadata["derived"] = {}
+    return pkg.metadata["derived"]
+
+def _apply_trade_time_profile(pkg, *, bin_minutes: int = 15) -> None:
+    derived = _ensure_derived_bucket(pkg)
+    derived["trade_time_profile"] = derive_trade_time_profile_for_package(pkg, bin_minutes=bin_minutes)
+
+def _apply_daily_outcomes(pkg) -> None:
+    derived = _ensure_derived_bucket(pkg)
+    derived["daily_outcomes"] = derive_daily_outcomes_for_package(pkg)
 
 def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
     """
@@ -192,5 +208,11 @@ def ingest_folder(
 
             # NEW:
             attach_detail_chart_images(pkg, folder)
+
+    for pkg in packages.values():
+        _apply_daily_outcomes(pkg)
+
+    for pkg in packages.values():
+        _apply_trade_time_profile(pkg, bin_minutes=15)
 
     return IngestResult(packages=packages, unparsed_files=unparsed)

@@ -8,7 +8,12 @@ import pandas as pd
 
 from ta_foundation.core.model import AnalysisPackage
 from ta_foundation.utils.kpi import normalize_kpi_key
+from ta_foundation.reports.html.sections._wlr_strip import (
+    compute_shared_trading_days,
+    render_wlr_strip,
+)
 
+from ta_foundation.reports.html.sections._session_timeline import render_session_timeline
 
 def _background_style(style: str, bg_uri: str | None) -> str:
     """
@@ -311,6 +316,17 @@ def _daily_max_profit_loss(pkg: AnalysisPackage) -> Tuple[Optional[float], Optio
 
 
 def render_run_executive_profile_cards(ctx: dict) -> str:
+    """
+       Renders the Executive Strategy Profile cards.
+
+       Expects ctx:
+         - packages: dict[str, AnalysisPackage]
+         - options (optional):
+             - wlr_days_back: int (default 20)
+             - wlr_box_px: int (default 10)
+             - wlr_gap_px: int (default 2)
+             - wlr_show_legend: bool (default False)
+       """
     packages: Dict[str, AnalysisPackage] = ctx.get("packages", {}) or {}
     options = ctx.get("options", {}) or {}
 
@@ -325,6 +341,19 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
     detail_chart_width_px = int(options.get("detail_chart_width_px", 540))
     detail_chart_gap_px = int(options.get("detail_chart_gap_px", 16))
     detail_chart_layout = options.get("detail_chart_layout", "two-up")  # "two-up" or "stack"
+
+    days_back = int(options.get("wlr_days_back", 20))
+    box_px = int(options.get("wlr_box_px", 10))
+    gap_px = int(options.get("wlr_gap_px", 2))
+    show_legend = bool(options.get("wlr_show_legend", False))
+
+    # Timeline options
+    tl_cell_px = int(options.get("timeline_cell_px", 8))
+    tl_gap_px = int(options.get("timeline_gap_px", 1))
+    tl_show_hours = bool(options.get("timeline_show_hours", True))
+    tl_show_summary = bool(options.get("timeline_show_summary", True))
+
+    shared_days = compute_shared_trading_days(packages, days_back)
 
     base_font = "font-family: Arial, Helvetica, sans-serif;"
     muted = "color:#b9b9b9;"
@@ -342,6 +371,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             "Tip: In the browser, select a full card, copy, then paste into Google Slides. "
             "If Slides strips layout, paste into a Google Doc first, then copy into Slides."
             "</div>"
+
         )
 
     for run_id in sorted(packages.keys()):
@@ -457,141 +487,14 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         tick_value = derived.get("tick_value_usd")
 
         # Render card
-        # parts.append(
-        #     f'<div style="{base_font}{bg}{white} padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
-        #     ' border-radius:14px; margin: 0 0 18px 0;">'
-        # )
 
-        # bg_css = _background_style(background_style, bg_uri)
-
-        # parts.append(
-        #     f'<div style="{base_font}{white}{bg_css} '
-        #     f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
-        #     'border-radius:14px; margin: 0 0 18px 0;">'
-        # )
-
-        # parts.append('<table style="width:100%; border-collapse:collapse;">')
-        # parts.append("<tr>")
-
-        # Left image
-        # parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
-        # if img_uri:
-        #     parts.append(
-        #         f'<img src="{img_uri}" style="width:{img_w}px; height:auto; border-radius:12px; display:block;" />'
-        #     )
-        # else:
-        #     parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
-        # parts.append("</td>")
-        #
-        # # Right side content
-        # parts.append('<td style="vertical-align:top;">')
-        # parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
-        #
-        # parts.append(f'<div style="{body}">')
-        # parts.append(f'<div><span style="font-weight:800;">Strat:</span> {_esc(label)}</div>')
-        # parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
-        # parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
-        # if instrument and tick_value:
-        #     parts.append(f'<div style="{body}"><span style="font-weight:800;">Instrument:</span> {_esc(instrument)} '
-        #                  f'(<span style="font-weight:800;">Tick:</span> ${_esc(tick_value)})</div>')
-        # parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(chart_values)}</div>')
-        #
-        # parts.append("</div>")
-        #
-        # parts.append('<table style="width:100%; border-collapse:collapse; margin-top:14px;">')
-        # parts.append("<tr>")
-        #
-        # # Left inner column
-        # parts.append('<td style="vertical-align:top; padding-right:26px; width:62%;">')
-        #
-        # parts.append(f'<div style="{h2}">Core Trading Logic</div>')
-        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>Fast MA:</b> {_esc(fast_ma)}</li>")
-        # parts.append(f"<li><b>Slow MA:</b> {_esc(slow_ma)}</li>")
-        # parts.append(f"<li><b>Trend MA:</b> {_esc(trend_ma)}</li>")
-        # parts.append(f"<li><b>Direction Bias:</b> {_esc(direction_bias)}</li>")
-        # parts.append("</ul></div>")
-        #
-        # parts.append(f'<div style="{h2}">Session Constraints</div>')
-        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>Active Window:</b> {_esc(active_window)}</li>")
-        # parts.append(f"<li><b>Max Trades per Session:</b> {_esc(max_trades)}</li>")
-        # parts.append("</ul></div>")
-        #
-        # parts.append(f'<div style="{h2}">Risk &amp; Trade Controls</div>')
-        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>Contracts:</b> {_esc(contracts)}</li>")
-        # parts.append(f"<li><b>Max Stop Loss:</b> {_esc(_fmt_number(max_stop, 0))} ticks</li>")
-        # parts.append(
-        #     f"<li><b>Max Take Profit:</b> "
-        #     f"{_esc('—' if max_take_profit is None else _fmt_number(max_take_profit, 0))} ticks</li>"
-        # )
-        # parts.append(
-        #     f"<li><b>P/L:</b> "
-        #     f"{_esc('—' if max_tp_ratio in (None, '') else f'{_fmt_number(max_tp_ratio, 2)}/1')} P/L</li>"
-        # )
-        # parts.append("</ul></div>")
-        #
-        # parts.append("</td>")
-        #
-        # # Right inner column
-        # parts.append('<td style="vertical-align:top; width:38%;">')
-        #
-        # parts.append(f'<div style="{h2}">Performance</div>')
-        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>Total Net Profit:</b> {_esc(_fmt_money(total_profit))}</li>")
-        # parts.append(f"<li><b>Profit Factor:</b> {_esc(_fmt_number(pf, 2))}</li>")
-        # parts.append(f"<li><b>Max Drawdown:</b> {_esc(_fmt_money(max_dd))}</li>")
-        # # parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_number(win_rate, 0))}%</li>")
-        # parts.append(f"<li><b>Win Rate:</b> {_esc(_fmt_percent_value(win_rate_pct, 0))}</li>")
-        #
-        # parts.append("</ul></div>")
-        #
-        # parts.append(f'<div style="{h2}">Averages</div>')
-        # parts.append(f'<div style="{body}">')
-        # parts.append(f'<div style="{muted} margin-bottom:6px;">MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}</div>')
-        # parts.append(f'<ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>MAE:</b> {_esc(_fmt_money(avg_mae))}</li>")
-        # parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
-        # parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
-        # parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")
-        # parts.append(f"<li><b>Avg loss:</b> {_esc(_fmt_money(avg_loss))}</li>")
-        # parts.append("</ul></div>")
-        #
-        # parts.append(f'<div style="{h2}">Daily Risk to Reward</div>')
-        # parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
-        # parts.append(f"<li><b>Daily Max Profit:</b> {_esc(_fmt_money(daily_max_profit))}</li>")
-        # parts.append(f"<li><b>Daily Max Loss:</b> {_esc(_fmt_money(daily_max_loss))}</li>")
-        # parts.append(f"<li><b>Max Potential Profit:</b> {_esc(_fmt_money(max_potential_profit))}</li>")
-        # parts.append(f"<li><b>Max Potential Loss:</b> {_esc(_fmt_money(max_potential_loss))}</li>")
-        #
-        # parts.append("</ul></div>")
-        #
-        # parts.append("</td>")
-        #
-        # parts.append("</tr>")
-        # parts.append("</table>")  # inner
-        #
-        # parts.append("</td>")  # right main
-        # parts.append("</tr>")
-        # parts.append("</table>")  # outer
-        #
-        # parts.append("</div>")  # card
-    ###############################################################################################
         # --- inside: for run_id in sorted(packages.keys()): ---
 
         card_parts: list[str] = []
 
-        # Card wrapper (OPEN)
         bg_css = _background_style(background_style,
                                    bg_uri) if "background_style" in locals() else "background:#000000;"
-        # card_parts.append(
-        #     f'<div style="{base_font}{white}{bg_css} '
-        #     f'padding:{pad}px; width:{card_width}px; box-sizing:border-box;'
-        #     'border-radius:14px; margin: 0 0 18px 0;">'
-        # )
-
-        safe_run_id = _esc(run_id)  # you already have _esc, just reuse it for attribute safety
+        safe_run_id = _esc(run_id)
 
         card_parts.append(
             f'<div class="ta-exec-card" id="exec-card--{safe_run_id}" data-run-id="{safe_run_id}" '
@@ -600,20 +503,74 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             'border-radius:14px; margin: 0 0 18px 0;">'
         )
 
+        # NOTE: Best practice is to put this once per section, not once per card,
+        # but it won't break rendering. Keeping it here since that matches your snippet.
+        card_parts.append(
+            """
+        <style>
+        .ta-wlr-strip-wrap { margin-top: 6px; margin-bottom: 8px; }
+        .ta-wlr-strip { border-collapse: collapse; }
+        .ta-wlr-box { border-radius: 0; }
+        .ta-session-timeline { }
+        </style>
+        """.strip()
+        )
+
         # Outer 3-column table (OPEN)
         card_parts.append('<table style="width:100%; border-collapse:collapse;">')
+
+        # ------------------------------------------------------------
+        # Row 1: Full-width W/L/NT strip + timeline
+        # ------------------------------------------------------------
+        wlr_html = render_wlr_strip(
+            safe_run_id,
+            pkg,
+            shared_days,
+            box_px=box_px,
+            gap_px=gap_px,
+            show_legend=show_legend,
+        )
+
+        timeline_html = render_session_timeline(
+            safe_run_id,
+            pkg,
+            render_bin_minutes=int(options.get("timeline_render_bin_minutes", 60)),
+            cell_h_px=int(options.get("timeline_cell_h_px", 10)),
+            show_hour_labels=bool(options.get("timeline_show_hours", True)),
+            show_summary=bool(options.get("timeline_show_summary", True)),
+        )
+
+        card_parts.append("<tr>")
+        card_parts.append(
+            '<td colspan="3" style="padding:0 0 8px 0; vertical-align:top; width:100%;">'
+            # Use an inner table to force full width in all renderers (browser + Playwright + Slides paste)
+            '<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; table-layout:fixed;">'
+            "<tr>"
+            '<td style="width:100%; padding:0; margin:0;">'
+            f"{wlr_html}"
+            f"{timeline_html}"
+            "</td>"
+            "</tr>"
+            "</table>"
+            "</td>"
+        )
+        card_parts.append("</tr>")
+
+        # ------------------------------------------------------------
+        # FIX: Row 2 must be opened before adding column <td> cells
+        # ------------------------------------------------------------
         card_parts.append("<tr>")
 
         # Column 1: image (OPEN td)
         card_parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
         if img_uri:
             card_parts.append(
-                # f'<img src="{img_uri}" style="width:{img_w}px; height:auto; border-radius:12px; display:block;" />'
-                f'<img src="{img_uri}" style="width:{img_w}px; max-height:auto; object-fit:cover; border-radius:12px; display:block;" />'
+                f'<img src="{img_uri}" style="width:{img_w}px; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
             )
         else:
             card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
-        card_parts.append("</td>")  # Column 1: image (CLOSE td)
+        card_parts.append("</td>")  # Column 1 (CLOSE td)
+
 
         # Column 2: strategy + logic blocks (OPEN td)
         # card_parts.append('<td style="vertical-align:top; padding-right:26px; width:52%;">')
