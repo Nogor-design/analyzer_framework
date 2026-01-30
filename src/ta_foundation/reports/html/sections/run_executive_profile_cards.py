@@ -14,6 +14,7 @@ from ta_foundation.reports.html.sections._wlr_strip import (
 )
 
 from ta_foundation.reports.html.sections._session_timeline import render_session_timeline
+from ta_foundation.core.exec_ratio_ratings import derive_exec_ratio_ratings
 
 def _background_style(style: str, bg_uri: str | None) -> str:
     """
@@ -175,6 +176,110 @@ def _fmt_percent_value(pct: Optional[float], decimals: int = 0) -> str:
         return f"{pct:.{decimals}f}%"
     except Exception:
         return "—"
+
+def _fmt_ratio(v: object, decimals: int = 2) -> str:
+    try:
+        fv = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if fv != fv:  # NaN
+        return "—"
+    return f"{fv:.{decimals}f}"
+
+
+def _get_avg_ratio_block(pkg) -> dict:
+    md = getattr(pkg, "metadata", None) or {}
+    if not isinstance(md, dict):
+        return {}
+    derived = md.get("derived", {})
+    if not isinstance(derived, dict):
+        return {}
+    avg = derived.get("avg_ratios", {})
+    return avg if isinstance(avg, dict) else {}
+
+def _render_avg_mfe_etd(pct: Optional[float], etd: Optional[float]) -> str:
+    """
+        MFE/ETD >5.0: Excellent
+        3.0-5.0: Good
+        1.5-3.0: Fair
+        <1.5: Poor
+        """
+    if etd == 0.0:
+        return "Excellent"
+    if pct is None:
+        return "Not Ranked"
+
+    rule = "MFE/ETD: >5.0 Excellent; 3.0–5.0 Good; 1.5–3.0 Fair; <1.5 Poor"
+    if pct > 3.0:
+        return "Excellent"
+    if pct >= 1.5:
+        return "Good"
+    if pct >= 1.0:
+        return "Fair"
+    return "Poor"
+
+
+def _render_avg_mae_mfe(pct: Optional[float]) -> str:
+    """
+       MAE/MFE <0.3: Excellent
+       0.3-.6: Good
+       0.6-.9: Fair
+       >1.0: Poor
+
+       Engineering assumption: 0.9–1.0 is treated as Fair to avoid an unclassified gap.
+       """
+    if pct is None:
+        return "Not Ranked"
+
+    if pct < 0.4:
+        return "Excellent"
+    if pct < 0.7:
+        return "Good"
+    if pct <= 1.2:
+        return "Fair"
+    if pct > 1.2:
+        return "Poor"
+    return "Not Ranked"
+
+def _render_avg_ratio_lines(pkg) -> str:
+    """
+    Dark-card-friendly stacked ratio table.
+    """
+    avg = _get_avg_ratio_block(pkg)
+
+    def _row(display_name: str, key: str) -> str:
+        data = avg.get(key) or {}
+        val = _fmt_number(data.get("value"), 2)
+        label = data.get("label") or "N/A"
+        css = data.get("css_class") or ""
+        rule = (data.get("rule") or "").replace('"', "&quot;")
+
+        if val in (None, "", "—"):
+            return (
+                "<tr>"
+                f"<td class='ta-avg-name'>{_esc(display_name)}</td>"
+                "<td class='ta-avg-value'>—</td>"
+                "<td class='ta-avg-meaning'><span class='ta-rating-badge'>N/A</span></td>"
+                "</tr>"
+            )
+
+        return (
+            "<tr>"
+            f"<td class='ta-avg-name'>{_esc(display_name)}</td>"
+            f"<td class='ta-avg-value'>{_esc(val)}</td>"
+            "<td class='ta-avg-meaning'>"
+            f"<span class='ta-rating-badge {css}' title=\"{rule}\">{_esc(label)}</span>"
+            "</td>"
+            "</tr>"
+        )
+
+    return (
+        "<table class='ta-avg-ratios'>"
+        + _row("MFE/ETD", "mfe_etd")
+        + _row("MAE/MFE", "mae_mfe")
+        + "</table>"
+    )
+
 
 def _fmt_date_range(pkg: AnalysisPackage) -> str:
     s = getattr(pkg, "summary", None)
@@ -478,6 +583,34 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         except Exception:
             mfe_etd = None
 
+        # ✅ Canonicalize these ratios into pkg.metadata["derived"] so both:
+        # - HTML renderers
+        # - Playwright card export
+        # - downstream analysis
+        # can reuse them consistently.
+        if not hasattr(pkg, "metadata") or not isinstance(getattr(pkg, "metadata", None), dict):
+            pkg.metadata = {}
+
+        derived = pkg.metadata.setdefault("derived", {})
+        if not isinstance(derived, dict):
+            derived = {}
+            pkg.metadata["derived"] = derived
+
+        # Store raw ratio values (even if None)
+        derived["mae_mfe_ratio"] = mae_mfe
+        derived["mfe_etd_ratio"] = mfe_etd
+
+        # Derive labels + css + rule text into derived["avg_ratios"]
+        derive_exec_ratio_ratings(pkg)
+
+        daily_max_profit, daily_max_loss = _daily_max_profit_loss(pkg)
+
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        max_potential_profit = derived.get("max_potential_profit_usd")
+        max_potential_loss = derived.get("max_potential_loss_usd")
+        instrument = derived.get("instrument")
+        tick_value = derived.get("tick_value_usd")
+
         daily_max_profit, daily_max_loss = _daily_max_profit_loss(pkg)
 
         derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
@@ -512,6 +645,155 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         .ta-wlr-strip { border-collapse: collapse; }
         .ta-wlr-box { border-radius: 0; }
         .ta-session-timeline { }
+        
+
+        .ta-rating-badge{
+          display:inline-block;
+          padding:1px 6px;
+          border-radius:10px;
+          font-size:11px;
+          line-height:16px;
+          vertical-align:middle;
+          border:1px solid rgba(0,0,0,0.12);
+          background:rgba(255,255,255,0.65);
+        }
+        
+        .ta-rating--excellent{ font-weight:700; }
+        .ta-rating--good{ font-weight:600; }
+        .ta-rating--fair{ font-weight:600; opacity:0.95; }
+        .ta-rating--poor{ font-weight:700; text-decoration:underline; }
+        
+        .ta-avg-ratios{
+          width:100%;
+          border-collapse:collapse;
+        }
+        .ta-avg-ratios td{
+          padding:2px 0;
+          vertical-align:top;
+          white-space:nowrap;
+        }
+        .ta-avg-ratios .ta-avg-name{
+          width:72px;
+          color:rgba(0,0,0,0.70);
+        }
+        .ta-avg-ratios .ta-avg-value{
+          width:70px;
+          text-align:right;
+          padding-right:8px;
+          font-variant-numeric: tabular-nums;
+        }
+        .ta-avg-ratios .ta-avg-meaning{
+          text-align:left;
+          white-space:normal;
+        }
+
+        /* ---------- Averages panel ---------- */
+        .ta-avg-panel{
+          width:100%;
+          border-collapse:collapse;
+          border-spacing:0;
+          background: rgba(0,0,0,0.18);
+          border: 1px solid rgba(255,255,255,0.10);
+          border-radius: 10px;
+        }
+        
+        .ta-avg-panel td{
+          padding:8px 10px;
+          vertical-align:top;
+        }
+        
+        .ta-avg-divider{
+          border-top: 1px solid rgba(255,255,255,0.10);
+          padding:0 !important;
+          height:0;
+          line-height:0;
+          font-size:0;
+        }
+        
+        /* ---------- Ratio lines (stacked) ---------- */
+        .ta-avg-ratios{
+          width:100%;
+          border-collapse:collapse;
+        }
+        
+        .ta-avg-ratios td{
+          padding:2px 0;
+          vertical-align:middle;
+        }
+        
+        .ta-avg-name{
+          width:74px;
+          color: rgba(255,255,255,0.70);
+        }
+        
+        .ta-avg-value{
+          width:68px;
+          text-align:right;
+          padding-right:8px;
+          font-variant-numeric: tabular-nums;
+        }
+        
+        .ta-avg-meaning{
+          text-align:left;
+          white-space:nowrap;
+        }
+        
+        /* ---------- KPI list below ratios ---------- */
+        .ta-avg-kpis{
+          width:100%;
+          border-collapse:collapse;
+        }
+        
+        .ta-avg-kpis td{
+          padding:2px 0;
+          vertical-align:middle;
+        }
+        
+        .ta-avg-kpi-name{
+          color: rgba(255,255,255,0.78);
+          padding-right:10px;
+        }
+        
+        .ta-avg-kpi-val{
+          text-align:right;
+          font-variant-numeric: tabular-nums;
+          white-space:nowrap;
+        }
+        
+        /* ---------- Rating badge (dark/gold theme) ---------- */
+        .ta-rating-badge{
+          display:inline-block;
+          padding:1px 7px;
+          border-radius:999px;
+          font-size:11px;
+          line-height:16px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(0,0,0,0.25);
+          color: rgba(255,255,255,0.90);
+        }
+        
+        .ta-rating--excellent{
+          border-color: rgba(255,215,128,0.40);
+          color: rgba(255,236,200,0.95);
+          font-weight:700;
+        }
+        .ta-rating--good{
+          border-color: rgba(255,215,128,0.28);
+          color: rgba(255,236,200,0.88);
+          font-weight:600;
+        }
+        .ta-rating--fair{
+          border-color: rgba(255,255,255,0.18);
+          color: rgba(255,255,255,0.85);
+          font-weight:600;
+        }
+        .ta-rating--poor{
+          border-color: rgba(255,120,120,0.35);
+          color: rgba(255,190,190,0.95);
+          font-weight:700;
+        }
+
+
         </style>
         """.strip()
         )
@@ -634,16 +916,20 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         card_parts.append(f'<div style="{h2}">Averages</div>')
         card_parts.append(f'<div style="{body}">')
-        card_parts.append(
-            f'<div style="{muted} margin-bottom:6px;">'
-            f"MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; "
-            f"MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}"
-            f"</div>"
-        )
+        # card_parts.append(
+        #     f'<div style="{muted} margin-bottom:6px;">'
+        #     f"MAE/MFE: {_esc(_fmt_number(mae_mfe, 2))} &nbsp;&nbsp; "
+        #     f"MFE/ETD: {_esc(_fmt_number(mfe_etd, 2))}"
+        #     f"</div>"
+        # )
         card_parts.append(f'<ul style="margin: 0 0 0 22px; padding:0;">')
         card_parts.append(f"<li><b>MAE:</b> {_esc(_fmt_money(avg_mae))}</li>")
         card_parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
         card_parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
+
+        card_parts.append(f"<li><b>MAE/MFE:</b> {_esc(_fmt_number(mae_mfe, 2))} : {_render_avg_mae_mfe(float(mae_mfe))}</li>")
+        card_parts.append(f"<li><b>MFE/ETD:</b> {_esc(_fmt_number(mfe_etd, 2))} : {_render_avg_mfe_etd(mfe_etd,avg_etd)}</li>")
+
         card_parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")
         card_parts.append(f"<li><b>Avg loss:</b> {_esc(_fmt_money(avg_loss))}</li>")
         card_parts.append("</ul></div>")

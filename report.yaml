@@ -41,20 +41,20 @@ sections:
 #            - bot_numbers: [ 1, 3 ]
 #            - bot_numbers: [ 1, 3, 4, 8 ]
 
-  #  - id: comparison_overview
-#    title: "Comparison Overview"
-#
-#  - id: equity_curve_comparison
-#    title: "Equity Curve Comparison"
-#
-#  - id: run_kpi_cards
-#    title: "Run KPI Cards"
-#
-#  - id: run_snapshot_clipboard
-#    title: "Run Snapshot (Copy/Paste)"
-#    options:
-#      compact: false
-#      show_hint: true
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  - id: run_kpi_cards
+    title: "Run KPI Cards"
+
+  - id: run_snapshot_clipboard
+    title: "Run Snapshot (Copy/Paste)"
+    options:
+      compact: false
+      show_hint: true
 
 
 #  - id: run_snapshot_clipboard
@@ -181,11 +181,14 @@ sections:
       show_hint: true
       show_run_image: true
       background_style: image-dark-overlay   # options below
-      card_width_px: 1280
+      card_width_px: 1180
       card_padding_px: 24
       image_width_px: 420
       wlr_days_back: 30
       wlr_gap_px: 2
+      show_detail_charts: false
+      detail_chart_layout: stack     # two-up | stack
+      detail_chart_width_px: 1080  #540  | 1080
       timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
       timeline_cell_h_px: 10
       timeline_show_hours: true
