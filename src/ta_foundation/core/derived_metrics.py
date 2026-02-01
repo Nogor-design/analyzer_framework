@@ -36,6 +36,18 @@ TICK_VALUE_USD = {
     "YM": 5.0,  # not provided explicitly; add if you want it different
 }
 
+def _to_bool(x: Any) -> Optional[bool]:
+    if x is None:
+        return None
+    if isinstance(x, bool):
+        return x
+    s = str(x).strip().lower()
+    if s in {"true", "t", "1", "yes", "y"}:
+        return True
+    if s in {"false", "f", "0", "no", "n"}:
+        return False
+    return None
+
 def load_default_images(folder: Path) -> dict[str, str]:
     """
     Load default.png and default_Background.png if present.
@@ -196,6 +208,14 @@ def compute_and_attach_derived_metrics(packages: Dict[str, AnalysisPackage]) -> 
         loss_stop = _to_float(sm.get("lossstop"))      # dollars
         max_stop_ticks = _to_float(sm.get("maxstop"))  # ticks
         max_tp_ratio = _to_float(sm.get("maxtpratio")) # ratio
+        max_trades = _to_float(sm.get("maxtrades"))
+        kill_flag = _to_bool(sm.get("use_kill"))
+        kill_profit = _to_float(sm.get("kill_profit_stop"))
+        kill_loss = _to_float(sm.get("kill_loss_stop"))
+        #
+        # Use_Kill, False,
+        # Kill_Profit_Stop, 800,
+        # Kill_Loss_Stop, 400,
 
         stop_loss_dollars = None
         max_tp_ticks = None
@@ -209,15 +229,27 @@ def compute_and_attach_derived_metrics(packages: Dict[str, AnalysisPackage]) -> 
         # Per your definition:
         # Max potential loss = LossStop - $1 + (MaxStop*TickValue)
         max_potential_loss = None
-        if loss_stop is not None and stop_loss_dollars is not None:
-            max_potential_loss = loss_stop - 1.0 + stop_loss_dollars
+        if kill_flag:
+            max_potential_loss = kill_loss
+
+        # if loss_stop is not None and stop_loss_dollars is not None:
+        #     max_potential_loss = loss_stop - 1.0 + stop_loss_dollars
 
         # "Similar calculation" for win. Implemented symmetrically:
         # Max potential profit = ProfitStop + $1 + (MaxStop*MaxTPRatio*TickValue)
         max_potential_profit = None
-        if profit_stop is not None and max_tp_dollars is not None:
-            max_potential_profit = profit_stop - 1.0 + max_tp_dollars
+        if kill_flag:
+            max_potential_profit = kill_profit
+        #
+        # kill_flag = _to_bool(sm.get("Use_Kill"))
+        # kill_profit = _to_float(sm.get("Kill_Profit_Stop"))
+        # kill_loss = _to_float(sm.get("Kill_Loss_Stop"))
 
+        # if profit_stop is not None and max_tp_dollars is not None:
+        #     max_potential_profit = profit_stop - 1.0 + max_tp_dollars
+
+        # print(f"usekill: {sm.get("usekill")}")
+        # print(f"use_kill: {sm.get("use_kill")}")
         derived = {
             "instrument": symbol,
             "tick_value_usd": tick_value,

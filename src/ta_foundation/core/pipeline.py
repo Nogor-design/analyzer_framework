@@ -12,8 +12,6 @@ from ta_foundation.core.model import AnalysisPackage, SummaryBlock
 from ta_foundation.parsers.base import ParsedArtifact
 from ta_foundation.core.derived_metrics import attach_detail_chart_images
 from ta_foundation.reports.html.embed import file_to_base64_data_uri  # safe reusable helper
-from ta_foundation.core.derived_metrics import compute_and_attach_derived_metrics
-from ta_foundation.core.derived_metrics import attach_background_image
 from ta_foundation.core.derived_metrics import (
     compute_and_attach_derived_metrics,
     attach_background_image,
