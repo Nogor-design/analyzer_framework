@@ -927,7 +927,11 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append(f"<li><b>MFE:</b> {_esc(_fmt_money(avg_mfe))}</li>")
         card_parts.append(f"<li><b>ETD:</b> {_esc(_fmt_money(avg_etd))}</li>")
 
-        card_parts.append(f"<li><b>MAE/MFE:</b> {_esc(_fmt_number(mae_mfe, 2))} : {_render_avg_mae_mfe(float(mae_mfe))}</li>")
+        if mae_mfe is not None:
+            card_parts.append(f"<li><b>MAE/MFE:</b> {_esc(_fmt_number(mae_mfe, 2))} : {_render_avg_mae_mfe(float(mae_mfe))}</li>")
+        else:
+            card_parts.append(
+                f"<li><b>MAE/MFE:</b> {_esc(_fmt_number(mae_mfe, 2))} : - </li>")
         card_parts.append(f"<li><b>MFE/ETD:</b> {_esc(_fmt_number(mfe_etd, 2))} : {_render_avg_mfe_etd(mfe_etd,avg_etd)}</li>")
 
         card_parts.append(f"<li><b>Avg win:</b> {_esc(_fmt_money(avg_win))}</li>")

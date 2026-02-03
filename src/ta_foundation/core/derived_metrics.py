@@ -74,6 +74,39 @@ def load_default_images(folder: Path) -> dict[str, str]:
 
     return out
 
+
+def attach_card_image(pkg, folder: Path) -> None:
+    """
+    If a file named <run_id>_Card.png exists in `folder`, embed it as a base64 data URI
+    and store it in pkg.metadata["derived"].
+
+    Stored keys:
+      derived["card_image_path"]
+      derived["card_image_uri"]
+      derived["card_image_source"] = "card"
+    """
+    try:
+        folder = Path(folder)
+        candidate = folder / f"{pkg.run_id}_Card.png"
+        if not candidate.exists() or not candidate.is_file():
+            return
+
+        derived = pkg.metadata.setdefault("derived", {})
+        derived["card_image_path"] = str(candidate)
+        derived["card_image_uri"] = file_to_base64_data_uri(candidate, mime="image/png")
+        derived["card_image_source"] = "card"
+
+        # Optional mirror into pkg.assets for older sections/code paths
+        if hasattr(pkg, "assets"):
+            pkg.assets.setdefault("card_image_path", derived.get("card_image_path"))
+            pkg.assets.setdefault("card_image_uri", derived.get("card_image_uri"))
+
+    except Exception as e:
+        pkg.warnings.append({
+            "code": "CARD_IMAGE_EMBED_FAILED",
+            "message": f"Failed to embed card image for {pkg.run_id}: {e}",
+        })
+
 def attach_background_image(pkg: AnalysisPackage, folder: Path) -> None:
     """
     Optional background image:

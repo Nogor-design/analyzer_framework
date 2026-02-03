@@ -16,12 +16,11 @@ from ta_foundation.core.derived_metrics import (
     compute_and_attach_derived_metrics,
     attach_background_image,
     load_default_images,
+    attach_card_image,  # ✅ NEW IMPORT
 )
 
 from ta_foundation.core.daily_outcomes import derive_daily_outcomes_for_package
 from ta_foundation.core.market_time_profile import derive_trade_time_profile_for_package
-
-KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
 
 
 import re
@@ -109,6 +108,7 @@ def ingest_folder(
 
     pattern = "**/*.csv" if recursive else "*.csv"
     files = sorted(folder.glob(pattern))
+    run_folder = folder
 
     packages: dict[str, AnalysisPackage] = {}
     unparsed: list[Path] = []
@@ -134,6 +134,8 @@ def ingest_folder(
                     "timezone": "America/Denver",
                     "timestamp_source": "ninjatrader_local_pc_time",
                     "datetime_policy": "localized_on_ingest",
+                    # ✅ NEW: remember where this run was found (critical for recursive ingest)
+                    "source_folder": str(path.parent),
                 },
             )
             packages[run_id] = pkg
@@ -165,6 +167,9 @@ def ingest_folder(
             # Ensure derived dict exists
             derived = pkg.metadata.setdefault("derived", {})
 
+            # Use per-run source folder when present (recursive-safe)
+            run_folder = Path(pkg.metadata.get("source_folder") or folder)
+
             # Run image: store in derived (canonical)
             # Your existing helper probably stores into pkg.assets; we normalize it below.
             _attach_run_image_if_present(pkg, folder)
@@ -178,6 +183,9 @@ def ingest_folder(
 
             # Background image: store in derived
             attach_background_image(pkg, folder)
+
+            # ✅ NEW: attach per-run card image (<run_id>_Card.png)
+            attach_card_image(pkg, run_folder)
 
     # Load default images once (if present) and apply only when missing
     default_images = load_default_images(folder)
@@ -197,6 +205,7 @@ def ingest_folder(
         if hasattr(pkg, "assets"):
             pkg.assets.setdefault("run_image_uri", derived.get("run_image_uri"))
             pkg.assets.setdefault("background_image_uri", derived.get("background_image_uri"))
+            pkg.assets.setdefault("card_image_uri", derived.get("card_image_uri"))  # ✅ NEW mirror
 
     if include_run_images:
         for pkg in packages.values():
@@ -206,6 +215,8 @@ def ingest_folder(
 
             # NEW:
             attach_detail_chart_images(pkg, folder)
+            # ✅ NEW: ensure card image is attached even if earlier block was skipped/reordered
+            attach_card_image(pkg, run_folder)
 
     for pkg in packages.values():
         _apply_daily_outcomes(pkg)

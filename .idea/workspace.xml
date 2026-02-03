@@ -4,16 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Updated cards">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/core/daily_outcomes.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/core/market_time_profile.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_session_timeline.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_wlr_strip.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Change maxprofit and stop to use kill profit and stop">
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/core/assets.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_card_catalog.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/derived_metrics.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/derived_metrics.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/embed.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/embed.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -148,7 +149,31 @@
       <option name="project" value="LOCAL" />
       <updated>1769621175029</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="Fixed timeline">
+      <option name="closed" value="true" />
+      <created>1769663408965</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1769663408965</updated>
+    </task>
+    <task id="LOCAL-00012" summary="I added in the MFE ranking">
+      <option name="closed" value="true" />
+      <created>1769744621345</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1769744621345</updated>
+    </task>
+    <task id="LOCAL-00013" summary="Change maxprofit and stop to use kill profit and stop">
+      <option name="closed" value="true" />
+      <created>1769958616592</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1769958616592</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -183,6 +208,9 @@
     <MESSAGE value="Fixed Duplicate charts in report." />
     <MESSAGE value="New daily scoreboard" />
     <MESSAGE value="Updated cards" />
-    <option name="LAST_COMMIT_MESSAGE" value="Updated cards" />
+    <MESSAGE value="Fixed timeline" />
+    <MESSAGE value="I added in the MFE ranking" />
+    <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
+    <option name="LAST_COMMIT_MESSAGE" value="Change maxprofit and stop to use kill profit and stop" />
   </component>
 </project>

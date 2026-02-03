@@ -13,6 +13,7 @@ from ta_foundation.reports.html.sections.run_metadata import render_run_metadata
 from ta_foundation.reports.html.sections.run_executive_profile_cards import (
     render_run_executive_profile_cards,
 )
+from ta_foundation.reports.html.sections.run_card_catalog import render_run_card_catalog
 
 
 SectionRenderer = Callable[[dict], str]
@@ -66,6 +67,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="daily_scoreboard",
         default_title="Daily Scoreboard",
         render_fn=render_daily_scoreboard,
+    ),
+    "run_card_catalog": SectionDef(
+        id="run_card_catalog",
+        default_title="Run Card Catalog",
+        render_fn=render_run_card_catalog,
     ),
 
 }

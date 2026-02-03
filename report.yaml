@@ -176,20 +176,36 @@ sections:
 #      wlr_gap_px: 2
 #      wlr_show_legend: false
 
-  - id: run_executive_profile_cards
+#  - id: run_executive_profile_cards
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      background_style: image-dark-overlay   # options below
+#      card_width_px: 1180
+#      card_padding_px: 24
+#      image_width_px: 420
+#      wlr_days_back: 30
+#      wlr_gap_px: 2
+#      show_detail_charts: true
+#      detail_chart_layout: two-up     # two-up | stack
+#      detail_chart_width_px: 540  #540  | 1080
+#      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+#      timeline_cell_h_px: 10
+#      timeline_show_hours: true
+#      timeline_show_summary: true
+
+#profit_factor
+  - id: run_card_catalog
+    title: "Cards by Session → Market"
     options:
-      show_hint: true
-      show_run_image: true
-      background_style: image-dark-overlay   # options below
-      card_width_px: 1180
-      card_padding_px: 24
-      image_width_px: 420
-      wlr_days_back: 30
-      wlr_gap_px: 2
-      show_detail_charts: true
-      detail_chart_layout: stack     # two-up | stack
-      detail_chart_width_px: 1080  #540  | 1080
-      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
-      timeline_cell_h_px: 10
-      timeline_show_hours: true
-      timeline_show_summary: true
+      metric: total_net_profit
+      sort_desc: true
+      max_per_group: 20
+      hide_missing_cards: true
+      fallback_session_label: "Unclassified"
+      fallback_market_label: "Unknown"
+      session_windows:
+        - { label: "London",        start: "00:00", end: "04:00" }
+        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+        - { label: "NY Late",       start: "10:30", end: "16:00" }
+        - { label: "Asia",          start: "16:00", end: "23:59" }
