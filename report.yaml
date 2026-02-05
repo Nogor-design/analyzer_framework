@@ -6,7 +6,7 @@ report:
 
 sections:
 
-#
+
 #  - id: daily_scoreboard
 #    title: "Daily Scoreboard + Combo Selection"
 #    options:
@@ -49,7 +49,7 @@ sections:
 #
 #  - id: run_kpi_cards
 #    title: "Run KPI Cards"
-#
+
 #  - id: run_snapshot_clipboard
 #    title: "Run Snapshot (Copy/Paste)"
 #    options:
@@ -65,7 +65,7 @@ sections:
 #      layout: grid
 #      columns: 2
 #      show_hint: true
-
+#
 #  - id: run_snapshot_clipboard
 #    title: "Run Snapshot (Minimal)"
 #    options:
@@ -82,7 +82,7 @@ sections:
 #      density: compact
 #      layout: grid
 #      columns: 2
-
+#
 #  - id: run_snapshot_clipboard
 #    title: "Run Snapshot (Dark)"
 #    options:
@@ -96,15 +96,15 @@ sections:
 #    title: "Run Settings"
 #    options:
 #      max_rows: 500
-#
-#
+
+
 #  - id: run_settings_table
 #    title: "Run Settings"
 #    options:
 #      max_rows: 500
 #      show_run_image: true
 #      run_image_max_width: 420
-
+#
 ##   Optional: also show in metadata cards
 #  - id: run_metadata_cards
 #    title: "Run Metadata Cards"
@@ -127,7 +127,7 @@ sections:
 #      max_runs: null
 #      show_individual_equity: true
 #      include_summary_table: true
-
+#
 #  - id: daily_scoreboard
 #    title: "Daily Scoreboard + Best Non-Co-Losing Combos"
 #    options:
@@ -187,25 +187,87 @@ sections:
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
 #      show_detail_charts: true
-#      detail_chart_layout: two-up     # two-up | stack
-#      detail_chart_width_px: 540  #540  | 1080
+#      detail_chart_layout: stack     # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
 #      timeline_cell_h_px: 10
 #      timeline_show_hours: true
 #      timeline_show_summary: true
 
+#
 #profit_factor
-  - id: run_card_catalog
-    title: "Cards by Session → Market"
+#total_net_profit
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 20
+#      hide_missing_cards: true
+#      fallback_session_label: "Unclassified"
+#      fallback_market_label: "Unknown"
+#      session_windows:
+#        - { label: "London",        start: "00:00", end: "04:00" }
+#        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+#        - { label: "NY Late",       start: "10:30", end: "16:00" }
+#        - { label: "Asia",          start: "16:00", end: "23:59" }
+#      overrides:
+#          "BrassAtlasFire":
+#            session: "NY Pre→Early"
+#            market: "NQ"
+#          "SomeOtherRun":
+#            session: "NY Pre→Early"
+
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 20
+#
+#      overrides:
+#        "BrassAtlasFire":
+#          session: "London"
+#          market: "NQ"
+#        "SomeOtherRun":
+#          session: "NY Late"
+#
+#      regex_overrides:
+#        - pattern: "^LDN_"
+#          session: "London"
+#        - pattern: ".*_GC_.*"
+#          market: "GC"
+
+
+
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"   # optional; omit to auto-pick most recent
+#      top_n: 8
+#      hide_missing_cards: true
+#
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Leaders"
+#    options:
+#      week_ending: "2026-02-03"   # optional; omit to auto-pick most recent
+#      top_n: 12
+#      hide_missing_cards: true
+
+  - id: daily_leaderboard_cards
+    title: "Daily Leaders"
     options:
-      metric: total_net_profit
-      sort_desc: true
-      max_per_group: 20
+      target_date: "2026-02-03"     # optional
+      top_n: 8
+      lookback_days: 10
+      heatmap_top_bots: 30
       hide_missing_cards: true
-      fallback_session_label: "Unclassified"
-      fallback_market_label: "Unknown"
-      session_windows:
-        - { label: "London",        start: "00:00", end: "04:00" }
-        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
-        - { label: "NY Late",       start: "10:30", end: "16:00" }
-        - { label: "Asia",          start: "16:00", end: "23:59" }
+
+#  - id: daily_leaderboard_cards
+#  title: "Daily Leaders"
+#  options:
+#    target_date: "2026-02-03"     # optional; omit to auto-pick most recent
+#    top_n: 8
+#    lookback_days: 10             # consistency window used for badge + heatmap
+#    heatmap_top_bots: 30          # number of bots shown in the heatmap
+#    hide_missing_cards: true

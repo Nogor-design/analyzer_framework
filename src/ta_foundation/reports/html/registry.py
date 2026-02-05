@@ -14,7 +14,8 @@ from ta_foundation.reports.html.sections.run_executive_profile_cards import (
     render_run_executive_profile_cards,
 )
 from ta_foundation.reports.html.sections.run_card_catalog import render_run_card_catalog
-
+from ta_foundation.reports.html.sections.daily_leaderboard_cards import render_daily_leaderboard_cards
+from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
 
 SectionRenderer = Callable[[dict], str]
 
@@ -72,6 +73,16 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="run_card_catalog",
         default_title="Run Card Catalog",
         render_fn=render_run_card_catalog,
+    ),
+    "daily_leaderboard_cards": SectionDef(
+        id="daily_leaderboard_cards",
+        default_title="Daily Leaders (Session Winners)",
+        render_fn=render_daily_leaderboard_cards,
+    ),
+    "weekly_leaderboard_cards": SectionDef(
+        id="weekly_leaderboard_cards",
+        default_title="Weekly Leaders",
+        render_fn=render_weekly_leaderboard_cards,
     ),
 
 }

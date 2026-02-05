@@ -115,6 +115,30 @@ Sections are registered in:
 ### Cross-run comparisons
 - Always label output by run_id.
 - Prefer daily-based series when available for stability.
+### daily_leaderboard_cards
+**Default title:** Daily Leaders (Session Winners)  
+**File:** `reports/html/sections/daily_leaderboard_cards.py`  
+**Purpose:** For a selected day, show top winners per session using `_card.png` tiles, plus a bar chart summarizing session PnL.  
+**Data sources:** `_Trades.csv` (profit via exit_time date; session inferred via entry_time)  
+**Options:**
+- `target_date`: "YYYY-MM-DD" (defaults to most recent date found)
+- `top_n`: int (default 8)
+- `hide_missing_cards`: bool (default true)
+- `session_windows`: custom windows (same schema as `run_card_catalog.py`)
+- `fallback_session_label`, `fallback_market_label`
+
+---
+
+### weekly_leaderboard_cards
+**Default title:** Weekly Leaders  
+**File:** `reports/html/sections/weekly_leaderboard_cards.py`  
+**Purpose:** Top bots by total PnL for the week.  
+**Data sources:** `_Trades.csv`  
+**Options:**
+- `week_ending`: "YYYY-MM-DD" (defaults to most recent date found; week is Mon→Sun around that date)
+- `top_n`: int (default 12)
+- `hide_missing_cards`: bool (default true)
+- `session_windows`, `fallback_session_label`, `fallback_market_label`
 
 ### 5) drawdown_curve
 **Default title:** Drawdown Curve Comparison  

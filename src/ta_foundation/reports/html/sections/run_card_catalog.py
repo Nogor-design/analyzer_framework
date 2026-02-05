@@ -141,7 +141,6 @@ def _infer_session(pkg, windows: Iterable[SessionWindow]) -> Optional[str]:
 
 def render_run_card_catalog(ctx: Dict[str, Any]) -> str:
     packages: Dict[str, AnalysisPackage] = ctx.get("packages", {}) or {}
-    # packages: Dict[str, Any] = ctx.get("packages") or {}
     options: Dict[str, Any] = ctx.get("options") or {}
 
     metric = options.get("metric", "profit_factor")
@@ -153,10 +152,6 @@ def render_run_card_catalog(ctx: Dict[str, Any]) -> str:
 
     windows = _parse_session_windows(options)
 
-    # derived = pkg.metadata.setdefault("derived", {})
-    # derived["card_image_path"] = str(candidate)
-    # derived["card_image_uri"] = file_to_base64_data_uri(candidate, mime="image/png")
-    # derived["card_image_source"] = "card"
 
     rows: List[Dict[str, Any]] = []
     # for run_id, pkg in packages.items():
