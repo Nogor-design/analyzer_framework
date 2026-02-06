@@ -7,6 +7,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 
 from ta_foundation.core.model import AnalysisPackage
+from ta_foundation.analysis.prop_trailing import PropDaySnapshot, compute_prop_trailing_states
+
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,10 @@ def _parse_time_hhmm(s: str) -> time:
     hh, mm = (s or "").strip().split(":")
     return time(int(hh), int(mm))
 
+def _prop_cfg(options: Dict[str, Any]) -> Tuple[float, float]:
+    start_balance = float(options.get("starting_balance", 50000))
+    trailing_dd = float(options.get("trailing_dd", 2500))
+    return start_balance, trailing_dd
 
 def parse_session_windows(options: Dict[str, Any]) -> Tuple[SessionWindow, ...]:
     wins = options.get("session_windows")
@@ -412,9 +418,13 @@ def build_daily_leaderboard_rows(
     fallback_session: str = "Unclassified",
     fallback_market: str = "Unknown",
     lookback_days: int = 10,
+    prop_options: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     ctx = compute_daily_week_context(target)
     recent_days = get_recent_trading_days(packages, end_date=target, lookback_days=lookback_days)
+
+    prop_options = prop_options or {}
+    start_balance, trailing_dd = _prop_cfg(prop_options)
 
     rows: List[Dict[str, Any]] = []
     for run_id in sorted(packages.keys()):
@@ -426,6 +436,23 @@ def build_daily_leaderboard_rows(
         card_uri = derived.get("card_image_uri")
 
         trades = getattr(pkg, "trades", None)
+
+        prop_states = None
+        cont_snap: Optional[PropDaySnapshot] = None
+        reset_snap: Optional[PropDaySnapshot] = None
+        cont_series: Dict[date, PropDaySnapshot] = {}
+        reset_series: Dict[date, PropDaySnapshot] = {}
+
+        if trades is not None and len(trades) > 0:
+            prop_states = compute_prop_trailing_states(
+                trades,
+                start_balance=start_balance,
+                trailing_dd=trailing_dd,
+            )
+            cont_series = prop_states.get("continuous", {}) or {}
+            reset_series = prop_states.get("daily_reset", {}) or {}
+            cont_snap = cont_series.get(target)
+            reset_snap = reset_series.get(target)
 
         session = (
             infer_session_from_trades(trades, windows, fallback=fallback_session, restrict_to_date=target)
@@ -474,6 +501,27 @@ def build_daily_leaderboard_rows(
                 "peak_runup_day": ddm.get("peak_runup_day"),
                 "end_pnl_day": ddm.get("end_pnl_day"),
                 "max_dd_day": ddm.get("max_dd_day"),
+                # Prop trailing drawdown state (daily reset vs continuous)
+                "prop_start_balance": start_balance,
+                "prop_trailing_dd": trailing_dd,
+
+                "cont_trail_level": (cont_snap.trail_close if cont_snap else None),
+                "cont_buffer_close": (cont_snap.buffer_close if cont_snap else None),
+                "cont_trail_move_today": (cont_snap.trail_move_today if cont_snap else None),
+                "cont_hwm_close": (cont_snap.hwm_close if cont_snap else None),
+                "cont_equity_close": (cont_snap.equity_close if cont_snap else None),
+
+                "reset_trail_level": (reset_snap.trail_close if reset_snap else None),
+                "reset_buffer_close": (reset_snap.buffer_close if reset_snap else None),
+                "reset_trail_move_today": (reset_snap.trail_move_today if reset_snap else None),
+                "reset_hwm_close": (reset_snap.hwm_close if reset_snap else None),
+                "reset_equity_close": (reset_snap.equity_close if reset_snap else None),
+
+                # For charts: continuous buffer series over recent_days (aligned to row["recent_days"])
+                "cont_buffer_series": [
+                    (cont_series.get(d).buffer_close if cont_series.get(d) else None) for d in recent_days
+                ],
+
             }
         )
     return rows

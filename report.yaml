@@ -238,30 +238,30 @@ sections:
 #        - pattern: ".*_GC_.*"
 #          market: "GC"
 
-
-
+#
+#
 #  - id: daily_leaderboard_cards
 #    title: "Daily Leaders"
 #    options:
 #      target_date: "2026-02-03"   # optional; omit to auto-pick most recent
-#      top_n: 8
+#      top_n: 30
 #      hide_missing_cards: true
-#
+
 #  - id: weekly_leaderboard_cards
 #    title: "Weekly Leaders"
 #    options:
 #      week_ending: "2026-02-03"   # optional; omit to auto-pick most recent
 #      top_n: 12
 #      hide_missing_cards: true
-
-  - id: daily_leaderboard_cards
-    title: "Daily Leaders"
-    options:
-      target_date: "2026-02-03"     # optional
-      top_n: 8
-      lookback_days: 10
-      heatmap_top_bots: 30
-      hide_missing_cards: true
+#
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"     # optional
+#      top_n: 8
+#      lookback_days: 10
+#      heatmap_top_bots: 30
+#      hide_missing_cards: true
 
 #  - id: daily_leaderboard_cards
 #  title: "Daily Leaders"
@@ -271,3 +271,32 @@ sections:
 #    lookback_days: 10             # consistency window used for badge + heatmap
 #    heatmap_top_bots: 30          # number of bots shown in the heatmap
 #    hide_missing_cards: true
+
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"         # optional
+#      top_n: 8
+#      lookback_days: 10
+#      buffer_chart_top_bots: 8
+#      starting_balance: 50000
+#      trailing_dd: 2500
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+#      week_ending: "2026-02-07"   # optional
+#      top_n: 40
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      hide_missing_cards: true
+
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+#      week_ending: "2026-02-07"   # optional
+      top_n: 80
+      starting_balance: 50000
+      trailing_dd: 2500
+      show_chart: false           # ✅ new flag
+

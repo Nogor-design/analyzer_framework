@@ -101,6 +101,7 @@ def render_daily_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         fallback_session=fallback_session,
         fallback_market=fallback_market,
         lookback_days=lookback_days,
+        prop_options=options,
     )
 
     if hide_missing_cards:
@@ -129,6 +130,53 @@ def render_daily_leaderboard_cards(ctx: Dict[str, Any]) -> str:
     ax.tick_params(axis="x", labelrotation=15)
     chart_uri = fig_to_base64_png(fig)
     plt.close(fig)
+
+    # Continuous buffer chart for top bots
+    chart_top_bots = int(options.get("buffer_chart_top_bots", 8))
+
+    rows_for_buffer = sorted(
+        rows,
+        key=lambda r: (
+            r.get("wtd_profit") is None,
+            (r.get("wtd_profit") or 0.0),
+        ),
+        reverse=True,
+    )
+    if chart_top_bots > 0:
+        rows_for_buffer = rows_for_buffer[:chart_top_bots]
+
+    # Determine day axis from first row (recent_days is already computed)
+    day_axis = []
+    for r in rows_for_buffer:
+        if r.get("recent_days"):
+            day_axis = list(r["recent_days"])
+            break
+
+    buffer_chart_uri = None
+    if day_axis and rows_for_buffer:
+        fig2 = plt.figure(figsize=(max(9, 0.6 * len(day_axis)), 4.8))
+        ax2 = fig2.add_subplot(111)
+
+        x = list(range(len(day_axis)))
+        xlabels = [d.strftime("%m/%d") for d in day_axis]
+
+        for r in rows_for_buffer:
+            y = r.get("cont_buffer_series") or [None] * len(day_axis)
+            # convert None to nan for plotting gaps
+            yy = [float(v) if v is not None else float("nan") for v in y]
+            ax2.plot(x, yy, label=r["run_id"])
+
+        ax2.set_title(f"Continuous Buffer to Trail (last {lookback_days} trading days)")
+        ax2.set_ylabel("Buffer ($)")
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(xlabels, rotation=30, ha="right", fontsize=8)
+        ax2.legend(loc="best", fontsize=8)
+        fig2.tight_layout()
+
+        buffer_chart_uri = fig_to_base64_png(fig2)
+        plt.close(fig2)
+
+
 
     # Heatmap (bots x recent days)
     rows_for_heat = sorted(
@@ -237,10 +285,29 @@ def render_daily_leaderboard_cards(ctx: Dict[str, Any]) -> str:
     """
 
     html: List[str] = [css, '<div class="tf-daily">']
+    start_balance = rows[0].get("prop_start_balance") if rows else 50000
+    trailing_dd = rows[0].get("prop_trailing_dd") if rows else 2500
+
+    html.append('<div class="tf-panel" style="padding:14px 16px;">')
+    html.append(
+        '<div style="font-weight:750; font-size:1.02rem; margin-bottom:6px;">How to read Prop Trail metrics</div>')
+    html.append(
+        f'<div style="opacity:0.88; font-size:0.90rem; line-height:1.35;">'
+        f'<b>Daily Reset</b> shows what the bot did <i>today</i> assuming a fresh start (Start ${start_balance:,.0f}, Trailing DD ${trailing_dd:,.0f}). '
+        f'<b>Continuous</b> carries the High Water Mark forward across days (prop-realistic “what if I ran this bot all week?”). '
+        f'<b>Trail Move</b> only increases when a trade sets a new intraday high (uses MFE). '
+        f'<b>Buffer</b> is distance from current equity to the trailing threshold (lower = closer to bust).</div>'
+    )
+    html.append("</div>")
 
     html.append('<div class="tf-panel">')
     html.append(f'<img src="{chart_uri}" alt="Daily session bar chart" />')
     html.append("</div>")
+
+    if buffer_chart_uri:
+        html.append('<div class="tf-panel">')
+        html.append(f'<img src="{buffer_chart_uri}" alt="Continuous buffer chart" />')
+        html.append("</div>")
 
     if heatmap_uri:
         html.append('<div class="tf-panel">')
@@ -269,6 +336,14 @@ def render_daily_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
             trail_move_day = r.get("trail_move_day")
             max_dd_day = r.get("max_dd_day")
+
+            reset_trail_level = r.get("reset_trail_level")
+            reset_buffer_close = r.get("reset_buffer_close")
+            reset_trail_move_today = r.get("reset_trail_move_today")
+
+            cont_trail_level = r.get("cont_trail_level")
+            cont_buffer_close = r.get("cont_buffer_close")
+            cont_trail_move_today = r.get("cont_trail_move_today")
 
             html.append('<div class="tf-daily-item">')
             if card_uri:
@@ -300,6 +375,30 @@ def render_daily_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             html.append('<div class="tf-daily-kpi"><div class="tf-daily-k">Avg MAE</div><div class="tf-daily-v">' + _fmt_num(r.get("avg_mae")) + "</div></div>")
             html.append('<div class="tf-daily-kpi"><div class="tf-daily-k">Avg MFE</div><div class="tf-daily-v">' + _fmt_num(r.get("avg_mfe")) + "</div></div>")
             html.append('<div class="tf-daily-kpi"><div class="tf-daily-k">Avg ETD</div><div class="tf-daily-v">' + _fmt_num(r.get("avg_etd")) + "</div></div>")
+            html.append("</div>")
+
+            html.append('<div class="tf-daily-subkpis">')
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Reset: Trail Move</div><div class="tf-daily-v">' + _fmt_money(
+                    reset_trail_move_today) + "</div></div>")
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Reset: Buffer (EOD)</div><div class="tf-daily-v">' + _fmt_money(
+                    reset_buffer_close) + "</div></div>")
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Reset: Trail Level</div><div class="tf-daily-v">' + _fmt_money(
+                    reset_trail_level) + "</div></div>")
+            html.append("</div>")
+
+            html.append('<div class="tf-daily-subkpis">')
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Cont: Trail Move</div><div class="tf-daily-v">' + _fmt_money(
+                    cont_trail_move_today) + "</div></div>")
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Cont: Buffer (EOD)</div><div class="tf-daily-v">' + _fmt_money(
+                    cont_buffer_close) + "</div></div>")
+            html.append(
+                '<div class="tf-daily-kpi"><div class="tf-daily-k">Cont: Trail Level</div><div class="tf-daily-v">' + _fmt_money(
+                    cont_trail_level) + "</div></div>")
             html.append("</div>")
 
             # Prop trailing drawdown movement row
