@@ -187,8 +187,8 @@ sections:
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
 #      show_detail_charts: true
-#      detail_chart_layout: stack     # two-up | stack
-#      detail_chart_width_px: 1080  #540  | 1080
+#      detail_chart_layout: two-up     # two-up | stack
+#      detail_chart_width_px: 540  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
 #      timeline_cell_h_px: 10
 #      timeline_show_hours: true
@@ -275,8 +275,8 @@ sections:
 #  - id: daily_leaderboard_cards
 #    title: "Daily Leaders"
 #    options:
-#      target_date: "2026-02-03"         # optional
-#      top_n: 8
+##      target_date: "2026-02-03"         # optional
+#      top_n: 40
 #      lookback_days: 10
 #      buffer_chart_top_bots: 8
 #      starting_balance: 50000
@@ -291,12 +291,83 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 
-  - id: weekly_leaderboard_cards
-    title: "Weekly Prop Dashboard"
-    options:
-#      week_ending: "2026-02-07"   # optional
-      top_n: 80
-      starting_balance: 50000
-      trailing_dd: 2500
-      show_chart: false           # ✅ new flag
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+##      week_ending: "2026-02-07"   # optional
+#      top_n: 80
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      show_chart: false           # ✅ new flag
+#  -
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL Bars (with MFE)"
+#    options:
+#      max_days_per_run: 8
+#      max_trades_per_day: 200
+#      mfe_alpha: 0.25
+#      show_run_card: true
+#      show_legend_hint: true
 
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 30
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+#
+#  - id: trades_intraday_pnl_by_day
+#    title: "Hourly Totals Only"
+#    options:
+#      show_only_totals: true
+#      hourly_totals_mode: "net"
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (MFE + MAE + Cum)"
+#    options:
+#      show_mae_bar: true
+#      mae_alpha: 0.20
+#      mae_width_ratio: 0.55
+#      mae_offset_ratio: 0.80
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 5
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      show_mae_bar: true
+#      mae_alpha: 0.80
+#      mae_width_ratio: .55
+#      mae_offset_ratio: 0.80
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+
+  - id: trades_intraday_pnl_by_day
+    title: "Trades (ETD Line + Threshold + Ledger)"
+    options:
+      show_mae_bar: true
+      show_etd_line: true
+      show_etd_threshold_line: true
+      etd_threshold: 2500
+      show_ledger: true
+      show_explanation: true
+
+      show_cum_line: true
+      weekdays_include: [ "mon","tue","wed","thu","fri" ]

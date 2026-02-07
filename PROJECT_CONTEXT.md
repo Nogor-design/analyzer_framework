@@ -61,6 +61,20 @@ Metadata recorded:
     - Run Metadata Cards
     - Run KPI Cards
 
+### trades_intraday_pnl_by_day
+**Default title:** Intraday Trade PnL by Day (MFE Overlay)  
+**File:** `reports/html/sections/trades_intraday_pnl_by_day.py`  
+**Purpose:** For each run, render a chart per trading day showing direction-adjusted realized PnL bars at entry times, with a blue MFE (potential) overlay.  
+**Data sources:**
+- `pkg.trades` (entry time, profit, direction, mfe)
+
+**Options:**
+- `max_days_per_run` (default 10)
+- `max_trades_per_day` (default 250)
+- `mfe_alpha` (default 0.22)
+- `show_run_card` (default True)
+- `show_legend_hint` (default True)
+
 ## How to run (CLI)
 Example:
 python -m ta_foundation.cli.main --input "C:/path/to/folder" --output ./outputs

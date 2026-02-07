@@ -16,6 +16,9 @@ from ta_foundation.reports.html.sections.run_executive_profile_cards import (
 from ta_foundation.reports.html.sections.run_card_catalog import render_run_card_catalog
 from ta_foundation.reports.html.sections.daily_leaderboard_cards import render_daily_leaderboard_cards
 from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
+from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
+    render_trades_intraday_pnl_by_day,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -83,6 +86,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="weekly_leaderboard_cards",
         default_title="Weekly Leaders",
         render_fn=render_weekly_leaderboard_cards,
+    ),
+    "trades_intraday_pnl_by_day": SectionDef(
+        id="trades_intraday_pnl_by_day",
+        default_title="Intraday Trade PnL by Day (MFE Overlay)",
+        render_fn=render_trades_intraday_pnl_by_day,
     ),
 
 }
