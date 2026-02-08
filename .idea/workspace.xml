@@ -4,14 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Added Daily and weekly reports">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/prop_trailing.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Weekly Report modified for ETD and charts">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/leaderboards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/leaderboards.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/daily_leaderboard_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/daily_leaderboard_cards.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/prop_trailing.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/prop_trailing.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -186,7 +184,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770296924796</updated>
     </task>
-    <option name="localTasksCounter" value="16" />
+    <task id="LOCAL-00016" summary="Weekly Report modified">
+      <option name="closed" value="true" />
+      <created>1770385721907</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1770385721907</updated>
+    </task>
+    <task id="LOCAL-00017" summary="Weekly Report modified for ETD and charts">
+      <option name="closed" value="true" />
+      <created>1770482215907</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1770482215907</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -200,7 +214,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="master" />
+                        <option value="analyzer_framework/CardFeature" />
                       </list>
                     </value>
                   </entry>
@@ -226,7 +240,9 @@
     <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
     <MESSAGE value="Added Run Card Catalog based on when they trade." />
     <MESSAGE value="Added Daily and weekly reports" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added Daily and weekly reports" />
+    <MESSAGE value="Weekly Report modified" />
+    <MESSAGE value="Weekly Report modified for ETD and charts" />
+    <option name="LAST_COMMIT_MESSAGE" value="Weekly Report modified for ETD and charts" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

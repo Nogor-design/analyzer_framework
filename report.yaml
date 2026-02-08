@@ -186,7 +186,7 @@ sections:
 #      image_width_px: 420
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
-#      show_detail_charts: true
+#      show_detail_charts: false
 #      detail_chart_layout: two-up     # two-up | stack
 #      detail_chart_width_px: 540  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
@@ -291,14 +291,20 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 
-#  - id: weekly_leaderboard_cards
-#    title: "Weekly Prop Dashboard"
-#    options:
-##      week_ending: "2026-02-07"   # optional
-#      top_n: 80
-#      starting_balance: 50000
-#      trailing_dd: 2500
-#      show_chart: false           # ✅ new flag
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+#      week_ending: "2026-02-07"   # optional
+      top_n: 80
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week      # or: continuous
+      show_card_image: false          # or: false
+      show_chart: false
+      show_debug_table: true
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1
 #  -
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
@@ -359,15 +365,15 @@ sections:
 #        - { name: "NY", start: "06:00", end: "15:00" }
 #        - { name: "ASIA",     start: "16:00", end: "23:00" }
 
-  - id: trades_intraday_pnl_by_day
-    title: "Trades (ETD Line + Threshold + Ledger)"
-    options:
-      show_mae_bar: true
-      show_etd_line: true
-      show_etd_threshold_line: true
-      etd_threshold: 2500
-      show_ledger: true
-      show_explanation: true
-
-      show_cum_line: true
-      weekdays_include: [ "mon","tue","wed","thu","fri" ]
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (ETD Line + Threshold + Ledger)"
+#    options:
+#      show_mae_bar: true
+#      show_etd_line: true
+#      show_etd_threshold_line: true
+#      etd_threshold: 2500
+#      show_ledger: true
+#      show_explanation: true
+#
+#      show_cum_line: true
+#      weekdays_include: [ "mon","tue","wed","thu","fri" ]

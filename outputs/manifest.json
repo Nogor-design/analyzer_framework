@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-07T08:37:08",
+  "generated_at": "2026-02-08T10:29:42",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2765,23 +2765,19 @@
       "output_filename": "comparison_report.html",
       "sections": [
         {
-          "id": "trades_intraday_pnl_by_day",
-          "title": "Trades (ETD Line + Threshold + Ledger)",
+          "id": "weekly_leaderboard_cards",
+          "title": "Weekly Prop Dashboard",
           "options": {
-            "show_mae_bar": true,
-            "show_etd_line": true,
-            "show_etd_threshold_line": true,
-            "etd_threshold": 2500,
-            "show_ledger": true,
-            "show_explanation": true,
-            "show_cum_line": true,
-            "weekdays_include": [
-              "mon",
-              "tue",
-              "wed",
-              "thu",
-              "fri"
-            ]
+            "top_n": 80,
+            "starting_balance": 50000,
+            "trailing_dd": 2500,
+            "baseline_mode": "fresh_week",
+            "show_card_image": false,
+            "show_chart": false,
+            "show_debug_table": true,
+            "warn_buffer": 500,
+            "compact_noimg": true,
+            "bot_columns": 1
           }
         }
       ]
