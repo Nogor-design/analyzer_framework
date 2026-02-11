@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional, Any
+from ta_foundation.marketdata.store import MarketDataStore
 import pandas as pd
 
 
@@ -21,6 +22,7 @@ class AnalysisPackage:
     trades: Optional[pd.DataFrame] = None
     daily: Optional[pd.DataFrame] = None
     summary: Optional[SummaryBlock] = None
+
 
     # NEW: parsed Settings table (from *_Settings.csv)
     settings: Optional[pd.DataFrame] = None

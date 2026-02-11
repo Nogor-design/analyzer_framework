@@ -18,6 +18,8 @@ from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_ma
 from ta_foundation.core.registry import read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
 from ta_foundation.reports.html.config import load_report_config, build_report_from_config
+from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLastTxtParser
+
 
 
 
@@ -57,18 +59,20 @@ def main() -> int:
         default=None,
         help="Output directory for exported exec card PNGs. Default: <output>/cards",
     )
+    ap.add_argument("--market-data", default=None, help="Shared folder containing *.Last.txt minute bars")
 
     args = ap.parse_args()
 
     in_dir = Path(args.input)
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    market_folder = Path(args.market_data) if args.market_data else None
     registry = ParserRegistry(parsers=[
         NinjaTraderTradesCsvParser(),
         NinjaTraderDailyAnalysisCsvParser(),
         NinjaTraderSummaryCsvParser(),
         NinjaTraderSettingsCsvParser(),
+        MinuteBarsLastTxtParser(),
     ])
 
     # Ingest (multi-run)
@@ -78,6 +82,7 @@ def main() -> int:
         recursive=args.recursive,
         run_id_regex=args.run_id_regex,
         include_run_images=args.include_run_images,  # NEW
+        market_data_folder=market_folder,  # if you add this param
     )
 
 
@@ -85,8 +90,9 @@ def main() -> int:
     # Build report
     cfg_path = Path(args.report_config) if args.report_config else None
     cfg = load_report_config(cfg_path)
+    # print("market loaded:", 0 if result.market is None else len(result.market.minute_bars))
 
-    html, output_filename = build_report_from_config(result.packages, cfg)
+    html, output_filename = build_report_from_config(result.packages, cfg, market=result.market)
     out_path = out_dir / output_filename
     out_path.write_text(html, encoding="utf-8")
 

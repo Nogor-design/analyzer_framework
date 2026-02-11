@@ -19,6 +19,7 @@ from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_
 from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
     render_trades_intraday_pnl_by_day,
 )
+from ta_foundation.reports.html.sections.trade_candle_overlay import render_trade_candle_overlay
 
 SectionRenderer = Callable[[dict], str]
 
@@ -91,6 +92,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="trades_intraday_pnl_by_day",
         default_title="Intraday Trade PnL by Day (MFE Overlay)",
         render_fn=render_trades_intraday_pnl_by_day,
+    ),
+    "trade_candle_overlay": SectionDef(
+        id="trade_candle_overlay",
+        default_title="Trades on Candles",
+        render_fn=render_trade_candle_overlay,
     ),
 
 }

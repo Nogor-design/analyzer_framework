@@ -9,6 +9,7 @@ import yaml
 from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 
+from ta_foundation.marketdata.store import MarketDataStore
 
 @dataclass
 class ReportConfig:
@@ -57,14 +58,19 @@ def load_report_config(path: Optional[Path]) -> ReportConfig:
     )
 
 
-def build_report_from_config(packages: dict, cfg: ReportConfig) -> tuple[str, str]:
+
+def build_report_from_config(packages, cfg, market: Optional[MarketDataStore] = None):
     """
     Returns: (html_string, output_filename)
     """
     sections: list[HtmlSection] = []
 
     # base ctx is whatever your builder/sections expect
-    base_ctx = {"packages": packages}
+    base_ctx = {
+        "packages": packages,
+        "market": market,
+        "report_config": cfg,
+    }
 
     # Deduplicate section ids while preserving order
     seen: set[str] = set()

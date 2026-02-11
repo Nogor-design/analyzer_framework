@@ -13,6 +13,67 @@ from ta_foundation.reports.html.embed import fig_to_base64_png
 
 WEEKDAY_LABELS_6 = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
 
+def _compute_streaks(snaps_week: List[Optional[PropDaySnapshot]]) -> Dict[str, Any]:
+    """
+    Streaks are computed on the weekday sequence (Sun..Fri):
+      - W: pnl > 0
+      - L: pnl < 0
+      - N: no trade or pnl == 0 (breaks streaks)
+
+    Returns:
+      {
+        "max_w": int,
+        "max_l": int,
+        "current": str  # e.g. "W2", "L1", "N"
+      }
+    """
+    def cls(s: Optional[PropDaySnapshot]) -> str:
+        if s is None:
+            return "N"
+        pnl = s.equity_close - s.equity_open
+        if pnl > 0:
+            return "W"
+        if pnl < 0:
+            return "L"
+        return "N"
+
+    seq = [cls(s) for s in snaps_week]
+
+    max_w = 0
+    max_l = 0
+    cur_type = "N"
+    cur_len = 0
+
+    for x in seq:
+        if x not in ("W", "L"):
+            cur_type = "N"
+            cur_len = 0
+            continue
+
+        if x == cur_type:
+            cur_len += 1
+        else:
+            cur_type = x
+            cur_len = 1
+
+        if cur_type == "W":
+            max_w = max(max_w, cur_len)
+        elif cur_type == "L":
+            max_l = max(max_l, cur_len)
+
+    # current streak ending on last day (Fri)
+    last = seq[-1] if seq else "N"
+    if last in ("W", "L"):
+        i = len(seq) - 1
+        n = 0
+        while i >= 0 and seq[i] == last:
+            n += 1
+            i -= 1
+        current = f"{last}{n}"
+    else:
+        current = "N"
+    # print(max_w)
+    return {"max_w": int(max_w), "max_l": int(max_l), "current": current}
 
 def _fmt_money(v: Optional[float]) -> str:
     if v is None:
@@ -257,13 +318,14 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
     bot_rows: List[Dict[str, Any]] = []
     all_pnls: List[float] = []
 
+    # assert "market" in ctx
     for run_id in sorted(packages.keys()):
         pkg = packages[run_id]
         if not pkg:
             continue
 
         derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg else {}
-        card_uri = derived.get("card_image_uri")
+        card_uri = derived.get("run_image_uri")
 
         # Only enforce card existence if we plan to show it
         if show_card_image and hide_missing_cards and not card_uri:
@@ -324,6 +386,8 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             else:
                 no_trade_days += 1
 
+        streaks = _compute_streaks(snaps_week)
+
         prev_have_any = any(s is not None for s in snaps_prev)
 
         week_profit = _week_profit(snaps_week)
@@ -355,7 +419,21 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
         prev_last = _last_non_none(snaps_prev)
         prev_buffer_eow = (prev_last.buffer_close if prev_last is not None else None)
+        # ✅ Track if any day was prop-risk (Worst Buf <= warn_buffer)
+        had_tight_day = False
+        had_breach_day = False
 
+        for s in snaps_week:
+            if s is None:
+                continue
+            worst_buf = getattr(s, "min_buffer", None)
+            if worst_buf is None:
+                continue
+            if worst_buf <= 0:
+                had_breach_day = True
+                had_tight_day = True
+            elif worst_buf <= warn_buffer:
+                had_tight_day = True
         bot_rows.append(
             dict(
                 run_id=run_id,
@@ -375,8 +453,15 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
                 win_days=win_days,
                 loss_days=loss_days,
                 no_trade_days=no_trade_days,
+                max_w_streak=streaks["max_w"],
+                max_l_streak=streaks["max_l"],
+                current_streak=streaks["current"],
+                had_tight_day=had_tight_day,
+                had_breach_day=had_breach_day,
             )
         )
+
+
 
     # Rank: safest first (highest worst-trough), then profit
     bot_rows.sort(
@@ -550,6 +635,22 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
       .tf-out-win { color: rgba(90,210,140,1); }
       .tf-out-loss { color: rgba(230,110,110,1); }
       .tf-out-none { color: rgba(180,180,190,1); }
+      
+      .tf-week-card--badwl {
+        border: 2px solid rgba(230,110,110,0.65) !important;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 0 4px rgba(230,110,110,0.10);
+      }
+            .tf-week-card--risk {
+        border: 2px solid rgba(255,210,120,0.70) !important;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 0 4px rgba(255,210,120,0.10);
+      }
+
+      .tf-week-card--breach {
+        border: 2px solid rgba(255,120,120,0.75) !important;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 0 4px rgba(255,120,120,0.12);
+      }
+
+
 
     </style>
     """
@@ -595,11 +696,32 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         if noimg and compact_noimg:
             row_cls += " tf-week-row--compact"
 
+
         win_days = row.get("win_days", 0)
         loss_days = row.get("loss_days", 0)
         no_trade_days = row.get("no_trade_days", 0)
+        max_w_streak = row.get("max_w_streak", 0)
+        max_l_streak = row.get("max_l_streak", 0)
+        current_streak = row.get("current_streak", "N")
+        had_tight_day = bool(row.get("had_tight_day", False))
+        had_breach_day = bool(row.get("had_breach_day", False))
 
-        html.append('<div class="tf-week-card">')
+        # html.append('<div class="tf-week-card">')
+        # badwl = (loss_days > win_days)
+        # card_cls = "tf-week-card tf-week-card--badwl" if badwl else "tf-week-card"
+        # html.append(f'<div class="{card_cls}">')
+        badwl = (loss_days > win_days)
+
+        card_cls = "tf-week-card"
+        if badwl:
+            card_cls += " tf-week-card--badwl"
+        elif had_breach_day:
+            card_cls += " tf-week-card--breach"
+        elif had_tight_day:
+            card_cls += " tf-week-card--risk"
+
+        html.append(f'<div class="{card_cls}">')
+
         html.append(f'<div class="{row_cls}">')
 
         # Left meta (optional image)
@@ -615,6 +737,8 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         #     f'</div>'
         # )
         # Badge: include Equity (EOW) + Worst + Min
+
+
         html.append(
             f'<div class="tf-week-badge">'
             
@@ -625,6 +749,10 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             f'<span class="tf-out-win">W {win_days}</span>'
             f'<span class="tf-out-loss">L {loss_days}</span>'
             f'<span class="tf-out-none">N {no_trade_days}</span>'
+            f'<span style="opacity:0.55;">|</span>'
+            f'<span class="tf-out-win">Wst {max_w_streak}</span>'
+            f'<span class="tf-out-loss">Lst {max_l_streak}</span>'
+            f'<span class="tf-out-none">Now {current_streak}</span>'
             f'</div>'
             f"</div>"
         )

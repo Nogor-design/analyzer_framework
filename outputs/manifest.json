@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-08T10:29:42",
+  "generated_at": "2026-02-11T14:32:33",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2664,7 +2664,9 @@
       "parser_name": "NinjaTraderTradesCsvParser"
     }
   ],
-  "unparsed_files": [],
+  "unparsed_files": [
+    "C:\\Users\\Owner\\Downloads\\BT1\\NinjaTrader Grid 2026-02-10 06-03 PM.csv"
+  ],
   "warnings_by_run_id": {
     "BrassAphroditeHunter": [],
     "BrassAphroditeMist": [],
@@ -2765,19 +2767,15 @@
       "output_filename": "comparison_report.html",
       "sections": [
         {
-          "id": "weekly_leaderboard_cards",
-          "title": "Weekly Prop Dashboard",
+          "id": "run_kpi_cards"
+        },
+        {
+          "id": "trade_candle_overlay",
+          "title": "Trades on Candles",
           "options": {
-            "top_n": 80,
-            "starting_balance": 50000,
-            "trailing_dd": 2500,
-            "baseline_mode": "fresh_week",
-            "show_card_image": false,
-            "show_chart": false,
-            "show_debug_table": true,
-            "warn_buffer": 500,
-            "compact_noimg": true,
-            "bot_columns": 1
+            "window_minutes": 480,
+            "padding_minutes": 30,
+            "max_trades": 300
           }
         }
       ]
