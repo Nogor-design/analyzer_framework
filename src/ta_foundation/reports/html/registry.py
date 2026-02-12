@@ -20,6 +20,8 @@ from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
     render_trades_intraday_pnl_by_day,
 )
 from ta_foundation.reports.html.sections.trade_candle_overlay import render_trade_candle_overlay
+from ta_foundation.reports.html.sections.apex_drawdown_survival_profile import render_apex_drawdown_survival_profile
+
 
 SectionRenderer = Callable[[dict], str]
 
@@ -98,42 +100,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Trades on Candles",
         render_fn=render_trade_candle_overlay,
     ),
+    "apex_drawdown_survival_profile": SectionDef(
+        id="apex_drawdown_survival_profile",
+        default_title="apex drawdown",
+        render_fn=render_apex_drawdown_survival_profile,
+    ),
 
 }
-
-# from __future__ import annotations
-#
-# from typing import Any, Callable
-#
-# # NOTE:
-# # This registry is the single source of truth for allowed section IDs in report.yaml.
-# # build_report_from_config() raises KeyError if a YAML section id is not present here.
-#
-# RenderFn = Callable[[dict[str, Any]], str]
-#
-# # --- Core sections (existing) ---
-# from ta_foundation.reports.html.sections.comparison_overview import render_comparison_overview
-# from ta_foundation.reports.html.sections.equity_curve import render_equity_curve_all_runs
-# from ta_foundation.reports.html.sections.run_metadata import render_run_metadata_cards
-# from ta_foundation.reports.html.sections.run_kpis import render_run_kpis
-#
-# # --- New section (this chat) ---
-# # If you have not yet added this file, either add it first or comment out the import temporarily.
-# from ta_foundation.reports.html.sections.run_snapshot_clipboard import render_run_snapshot_clipboard
-#
-#
-# SECTION_REGISTRY: dict[str, RenderFn] = {
-#     # Comparison / summary
-#     "comparison_overview": render_comparison_overview,
-#
-#     # Charts
-#     "equity_curve_comparison": render_equity_curve_all_runs,
-#
-#     # Per-run cards
-#     "run_metadata_cards": render_run_metadata_cards,
-#     "run_kpi_cards": render_run_kpis,
-#
-#     # Copy/paste friendly per-run snapshot table (Google Slides friendly)
-#     "run_snapshot_clipboard": render_run_snapshot_clipboard,
-# }
 

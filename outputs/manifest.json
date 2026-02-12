@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-11T14:32:33",
+  "generated_at": "2026-02-12T10:17:40",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BT1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -2770,12 +2770,32 @@
           "id": "run_kpi_cards"
         },
         {
-          "id": "trade_candle_overlay",
-          "title": "Trades on Candles",
+          "id": "apex_drawdown_survival_profile",
+          "title": "Apex 50K Drawdown Survival",
           "options": {
-            "window_minutes": 480,
-            "padding_minutes": 30,
-            "max_trades": 300
+            "apex": {
+              "starting_balance": 50000,
+              "trailing_drawdown": 2500,
+              "lock_profit": 2600
+            },
+            "instruments": {
+              "NQ": {
+                "tick_size": 0.25,
+                "tick_value": 5.0
+              },
+              "ES": {
+                "tick_size": 0.25,
+                "tick_value": 12.5
+              },
+              "MNQ": {
+                "tick_size": 0.25,
+                "tick_value": 0.5
+              },
+              "MES": {
+                "tick_size": 0.25,
+                "tick_value": 1.25
+              }
+            }
           }
         }
       ]

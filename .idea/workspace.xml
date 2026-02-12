@@ -4,13 +4,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Weekly Report modified for ETD and charts">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Loading candle data">
+      <change afterPath="$PROJECT_DIR$/AI_EXTENSION_TEMPLATE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/CONTRIBUTING.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/apex_trailing_model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/apex_drawdown_survival_profile.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ARCHITECTURE.md" beforeDir="false" afterPath="$PROJECT_DIR$/ARCHITECTURE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/prop_trailing.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/prop_trailing.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -200,7 +205,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770482215907</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="Weekly Report modified and fix drawdown">
+      <option name="closed" value="true" />
+      <created>1770571869946</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1770571869946</updated>
+    </task>
+    <task id="LOCAL-00019" summary="Loading candle data">
+      <option name="closed" value="true" />
+      <created>1770846188833</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1770846188833</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -242,7 +263,9 @@
     <MESSAGE value="Added Daily and weekly reports" />
     <MESSAGE value="Weekly Report modified" />
     <MESSAGE value="Weekly Report modified for ETD and charts" />
-    <option name="LAST_COMMIT_MESSAGE" value="Weekly Report modified for ETD and charts" />
+    <MESSAGE value="Weekly Report modified and fix drawdown" />
+    <MESSAGE value="Loading candle data" />
+    <option name="LAST_COMMIT_MESSAGE" value="Loading candle data" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
