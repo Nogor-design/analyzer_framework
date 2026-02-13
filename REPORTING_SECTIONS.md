@@ -169,4 +169,22 @@ If a section needs parameters (e.g., top N trades), prefer YAML-driven options:
   options:
     top_n: 20
 
+---
+
+### drawdown_survival_profile
+**Default title:** Drawdown Survival Profile  
+**File:** `reports/html/sections/drawdown_survival_profile.py`  
+**Purpose:** Visualizes the Drawdown Governor (survival layer) and regime-aware risk budgets.  
+**Data sources:**
+- Primary: `pkg.metadata["derived"]["drawdown_governor"]["daily"]`
+- Derived is computed by: `analysis/drawdown_governor.py` (invoked in `reports/html/config.py` when section enabled)
+- Optional regime inputs: shared market bars from `ctx["market"].get(instrument, contract)`
+
+**Outputs:**
+- Embedded PNG: equity vs trailing line, plus final budget series
+- KPI tiles and a recent-days table
+
+**Notes:**
+- Section is a pure renderer (no disk IO, no heavy compute).
+- All behavior is configured via `report.yaml` section `options`.
 

@@ -21,6 +21,8 @@ from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
 )
 from ta_foundation.reports.html.sections.trade_candle_overlay import render_trade_candle_overlay
 from ta_foundation.reports.html.sections.apex_drawdown_survival_profile import render_apex_drawdown_survival_profile
+from ta_foundation.reports.html.sections.tick_data_diagnostics import render_tick_data_diagnostics
+from ta_foundation.reports.html.sections.filter_discovery import render_filter_discovery
 
 
 SectionRenderer = Callable[[dict], str]
@@ -104,6 +106,16 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="apex_drawdown_survival_profile",
         default_title="apex drawdown",
         render_fn=render_apex_drawdown_survival_profile,
+    ),
+    "tick_data_diagnostics": SectionDef(
+        id="tick_data_diagnostics",
+        default_title="Tick Data Diagnostics",
+        render_fn=render_tick_data_diagnostics,
+    ),
+    "filter_discovery": SectionDef(
+        id="filter_discovery",
+        default_title="Filter Discovery",
+        render_fn=render_filter_discovery,
     ),
 
 }

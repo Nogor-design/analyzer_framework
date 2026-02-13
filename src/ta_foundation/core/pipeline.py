@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional
 import re
 
+import pandas as pd
+
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.model import AnalysisPackage, SummaryBlock
 from ta_foundation.parsers.base import ParsedArtifact
@@ -20,6 +22,14 @@ from ta_foundation.core.daily_outcomes import derive_daily_outcomes_for_package
 from ta_foundation.core.market_time_profile import derive_trade_time_profile_for_package
 from ta_foundation.reports.html.embed import file_to_base64_data_uri
 from ta_foundation.marketdata.store import MarketDataStore
+
+from ta_foundation.marketdata.tick_cache import (
+    TickCacheConfig,
+    is_tick_last_txt,
+    parse_instrument_contract_from_tick_filename,
+    try_load_tick_cache,
+    write_tick_cache,
+)
 
 KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
 RUN_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
@@ -44,16 +54,6 @@ def _apply_daily_outcomes(pkg) -> None:
 
 
 def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
-    """
-    Derives run_id from filename.
-
-    If run_id_regex is provided:
-      - it must contain at least one capture group
-      - the first capture group is used as run_id
-
-    Else:
-      - strip known suffixes (default behavior)
-    """
     name = path.name
 
     if run_id_regex:
@@ -78,9 +78,6 @@ class IngestResult:
 
 
 def _attach_run_image_if_present(pkg: "AnalysisPackage", folder: Path) -> None:
-    """
-    If a file named <run_id>.<ext> exists next to the CSVs, embed it as a base64 data URI.
-    """
     for ext in RUN_IMAGE_EXTS:
         candidate = folder / f"{pkg.run_id}{ext}"
         if candidate.exists() and candidate.is_file():
@@ -92,31 +89,32 @@ def _attach_run_image_if_present(pkg: "AnalysisPackage", folder: Path) -> None:
                     "code": "RUN_IMAGE_EMBED_FAILED",
                     "message": f"Failed to embed run image {candidate.name}: {e}",
                 })
-            return  # first match wins
+            return
 
 
 def _attach_market_artifact(market: MarketDataStore, art: ParsedArtifact, warnings_sink: list[dict]) -> None:
     """
     Attaches shared artifacts (run_id=None) to the shared MarketDataStore.
+
+    Delegates to MarketDataStore.ingest_artifact(...) so the store owns kind routing.
     """
-    if art.kind == "market_minute_bars":
-        instrument = (art.summary or {}).get("instrument")
-        contract = (art.summary or {}).get("contract")
-        if instrument and contract and art.df is not None:
-            market.add_minute_bars(instrument, contract, art.df, art.source_path)
-        else:
-            warnings_sink.append({
-                "code": "MARKET_BARS_INCOMPLETE",
-                "message": "market_minute_bars missing instrument/contract/df",
-                "path": str(art.source_path),
-            })
+    try:
+        ok = market.ingest_artifact(art)
+    except Exception as e:
+        warnings_sink.append({
+            "code": "MARKET_INGEST_FAILED",
+            "message": f"Failed to ingest shared market artifact: {e}",
+            "kind": getattr(art, "kind", None),
+            "path": str(getattr(art, "source_path", "")),
+        })
         return
 
-    warnings_sink.append({
-        "code": "UNKNOWN_SHARED_KIND",
-        "message": f"Unhandled shared artifact kind: {art.kind}",
-        "path": str(art.source_path),
-    })
+    if not ok:
+        warnings_sink.append({
+            "code": "UNKNOWN_SHARED_KIND",
+            "message": f"Unhandled shared artifact kind: {art.kind}",
+            "path": str(art.source_path),
+        })
 
 
 def ingest_folder(
@@ -125,7 +123,8 @@ def ingest_folder(
     recursive: bool = False,
     run_id_regex: str | None = None,
     include_run_images: bool = False,
-    market_data_folder: Path | None = None,  # ✅ NEW
+    market_data_folder: Path | None = None,
+    tick_cache_enabled: bool = True,
 ) -> IngestResult:
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -133,6 +132,7 @@ def ingest_folder(
     packages: dict[str, AnalysisPackage] = {}
     unparsed: list[Path] = []
     market = MarketDataStore()
+    market_warnings: list[dict] = []
 
     # -------------------------
     # 1) Parse run-scoped CSVs
@@ -152,7 +152,7 @@ def ingest_folder(
 
         # If a parser ever returns run_id=None, treat as shared
         if art.run_id is None:
-            _attach_market_artifact(market, art, warnings_sink=[])
+            _attach_market_artifact(market, art, warnings_sink=market_warnings)
             continue
 
         pkg = packages.get(run_id)
@@ -163,7 +163,6 @@ def ingest_folder(
                     "timezone": "America/Denver",
                     "timestamp_source": "ninjatrader_local_pc_time",
                     "datetime_policy": "localized_on_ingest",
-                    # recursive-safe source folder
                     "source_folder": str(path.parent),
                 },
             )
@@ -184,23 +183,53 @@ def ingest_folder(
             pkg.warnings.append({"code": "UNKNOWN_KIND", "message": f"Unknown kind: {art.kind}"})
 
     # -------------------------
-    # 2) Parse shared market data (*.Last.txt)
+    # 2) Parse shared market data (*.Last.txt and tick)
     # -------------------------
     if market_data_folder is not None:
         if not market_data_folder.exists():
             raise FileNotFoundError(market_data_folder)
 
+        tick_cache_cfg = TickCacheConfig(enabled=bool(tick_cache_enabled), cache_dir=None)
+
         for path in sorted(market_data_folder.glob("**/*.Last.txt")):
-            # No header; but registry expects (path, header) so just pass empty
             parser = registry.find_parser(path, header="")
             if parser is None:
                 continue
 
+            # Tick caching shortcut
+            if is_tick_last_txt(path):
+                cached = try_load_tick_cache(path, market_data_folder=market_data_folder, cfg=tick_cache_cfg)
+                if cached is not None and not cached.empty:
+                    ic = parse_instrument_contract_from_tick_filename(path)
+                    if ic is not None:
+                        instrument, contract = ic
+                        art = ParsedArtifact(
+                            kind="market_ticks",
+                            run_id=None,
+                            source_path=path,
+                            df=cached,
+                            summary={"instrument": instrument, "contract": contract, "cache": "parquet"},
+                            warnings=[],
+                        )
+                        _attach_market_artifact(market, art, warnings_sink=market_warnings)
+                        continue
+                    # If filename parse fails, fall through to parser.parse
+
             art = parser.parse(path, run_id=None)
             if art.run_id is not None:
-                # defensive: ensure shared artifacts stay shared
-                art.run_id = None  # type: ignore[attr-defined]
-            _attach_market_artifact(market, art, warnings_sink=[])
+                art.run_id = None  # defensive
+
+            _attach_market_artifact(market, art, warnings_sink=market_warnings)
+
+            # Write cache for ticks after successful parse
+            if is_tick_last_txt(path) and art.df is not None and not art.df.empty:
+                wrote = write_tick_cache(path, art.df, market_data_folder=market_data_folder, cfg=tick_cache_cfg)
+                if wrote is not None:
+                    market_warnings.append({
+                        "code": "TICK_CACHE_WRITTEN",
+                        "message": f"Wrote tick parquet cache: {wrote.name}",
+                        "path": str(wrote),
+                    })
 
     # -----------------------------------------
     # 3) Post-processing (once per ingest call)
@@ -248,9 +277,11 @@ def ingest_folder(
     for pkg in packages.values():
         _apply_daily_outcomes(pkg)
         _apply_trade_time_profile(pkg, bin_minutes=15)
+        if market_warnings:
+            pkg.warnings.extend(market_warnings)
 
     return IngestResult(
         packages=packages,
         unparsed_files=unparsed,
-        market=market if market.minute_bars else None,
+        market=market if (market.minute_bars or market.ticks) else None,
     )

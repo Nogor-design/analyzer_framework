@@ -378,7 +378,7 @@ sections:
 #      show_cum_line: true
 #      weekdays_include: [ "mon","tue","wed","thu","fri" ]
 
-  - id: run_kpi_cards
+#  - id: run_kpi_cards
 
 #  - id: trade_candle_overlay
 #    title: "Trades on Candles"
@@ -387,15 +387,70 @@ sections:
 #      padding_minutes: 30
 #      max_trades: 300
 
-  - id: apex_drawdown_survival_profile
-    title: "Apex 50K Drawdown Survival"
+#  - id: apex_drawdown_survival_profile
+#    title: "Apex 50K Drawdown Survival"
+#    options:
+#      apex:
+#        starting_balance: 50000
+#        trailing_drawdown: 2500
+#        lock_profit: 2600
+#      instruments:
+#        NQ: { tick_size: 0.25, tick_value: 5.0 }
+#        ES: { tick_size: 0.25, tick_value: 12.5 }
+#        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+#        MES: { tick_size: 0.25, tick_value: 1.25 }
+
+#  - id: tick_data_diagnostics
+#    title: Tick Data Diagnostics
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      show_sample_rows: 20
+#      compare_to_minute: true
+#      compare_window_minutes: 240
+
+
+#  - id: filter_discovery
+#    title: "Filter Discovery (Bars + Ticks)"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 60
+#      min_trades: 10
+#      sort_by: "net_pnl"           # net_pnl | trades | win_rate
+#      include_run_id_regex: null   # e.g. "NQ_.*_EMA50"
+#      exclude_run_id_regex: null
+
+  - id: filter_discovery
+    title: "Filter Discovery — per bot"
     options:
-      apex:
-        starting_balance: 50000
-        trailing_drawdown: 2500
-        lock_profit: 2600
-      instruments:
-        NQ: { tick_size: 0.25, tick_value: 5.0 }
-        ES: { tick_size: 0.25, tick_value: 12.5 }
-        MNQ: { tick_size: 0.25, tick_value: 0.5 }
-        MES: { tick_size: 0.25, tick_value: 1.25 }
+      bar_tf: "5m"
+      htf_tf: "15m"
+      ema_period: 50
+      atr_period: 14
+      include_micro: true
+
+      top_n_runs: 12
+      min_trades: 10
+      sort_by: "net_pnl"
+
+      write_recommendations_json: true
+      rec_min_trades_run: 150
+      rec_min_trades_bucket: 25
+      rec_max_hour_buckets: 4
+      rec_max_atr_quartiles: 3
+      rec_require_better_by: 0.0
+      out_dir: "./outputs"

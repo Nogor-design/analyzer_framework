@@ -19,7 +19,7 @@ from ta_foundation.core.registry import read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
 from ta_foundation.reports.html.config import load_report_config, build_report_from_config
 from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLastTxtParser
-
+from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
 
 
 
@@ -73,6 +73,7 @@ def main() -> int:
         NinjaTraderSummaryCsvParser(),
         NinjaTraderSettingsCsvParser(),
         MinuteBarsLastTxtParser(),
+        TickLastTxtParser(),
     ])
 
     # Ingest (multi-run)
