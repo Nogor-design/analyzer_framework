@@ -5,3 +5,4 @@ Summary: Reusable trading analysis foundation
 Requires-Python: >=3.10
 Requires-Dist: pandas
 Requires-Dist: matplotlib
+Requires-Dist: pyyaml

@@ -9,6 +9,7 @@ import yaml
 from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 
+from ta_foundation.marketdata.store import MarketDataStore
 
 @dataclass
 class ReportConfig:
@@ -27,8 +28,8 @@ DEFAULT_CONFIG = {
     "sections": [
         {"id": "comparison_overview"},
         {"id": "equity_curve_comparison"},
-        {"id": "run_metadata_cards"},
         {"id": "run_kpi_cards"},
+        {"id": "run_snapshot_clipboard"},
 
     ],
 }
@@ -57,31 +58,58 @@ def load_report_config(path: Optional[Path]) -> ReportConfig:
     )
 
 
-def build_report_from_config(packages: dict, cfg: ReportConfig) -> tuple[str, str]:
+
+def build_report_from_config(packages, cfg, market: Optional[MarketDataStore] = None):
     """
     Returns: (html_string, output_filename)
     """
     sections: list[HtmlSection] = []
 
+    # base ctx is whatever your builder/sections expect
+    base_ctx = {
+        "packages": packages,
+        "market": market,
+        "report_config": cfg,
+    }
+
+    # Deduplicate section ids while preserving order
+    seen: set[str] = set()
+    sections_cfg: list[dict[str, Any]] = []
+    duplicates: list[str] = []
+
     for s in cfg.sections:
-        sid = s.get("id")
+        if not isinstance(s, dict):
+            continue
+        sid = (s.get("id") or "").strip()
         if not sid:
             continue
+        if sid in seen:
+            duplicates.append(sid)
+            continue
+        seen.add(sid)
+        sections_cfg.append(s)
+
+    if duplicates:
+        print(f"[ta_foundation] WARNING: Duplicate section ids ignored: {duplicates}")
+
+    # Build HtmlSection list exactly once
+    for s in sections_cfg:
+        sid = s["id"]
         if sid not in SECTION_REGISTRY:
             raise KeyError(f"Unknown section id in report config: {sid!r}")
 
         reg = SECTION_REGISTRY[sid]
+        section_options = s.get("options", {}) or {}
 
         sections.append(
             HtmlSection(
                 id=sid,
                 title=s.get("title") or reg.default_title,
                 render_fn=reg.render_fn,
-                options=s.get("options") or {},   # ✅ CRITICAL FIX
+                options=section_options,  # ✅ pass through options
             )
         )
 
     builder = HtmlReportBuilder(report_title=cfg.title, sections=sections)
-    html = builder.build({"packages": packages})
+    html = builder.build(base_ctx)
     return html, cfg.output_filename
-

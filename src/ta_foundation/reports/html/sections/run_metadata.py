@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
+import html
 
 from ta_foundation.core.model import AnalysisPackage
 
@@ -34,6 +35,11 @@ def render_run_metadata_cards(ctx: dict) -> str:
     """
     packages: dict[str, AnalysisPackage] = ctx["packages"]
 
+    options = ctx.get("options", {}) or {}
+    show_run_image = bool(options.get("show_run_image", False))
+    run_image_max_width = int(options.get("run_image_max_width", 280))
+
+
     blocks: list[str] = []
     for run_id, pkg in packages.items():
         start_dt = pkg.summary.start_dt if pkg.summary else None
@@ -43,7 +49,16 @@ def render_run_metadata_cards(ctx: dict) -> str:
         has_trades = "Yes" if pkg.trades is not None and len(pkg.trades) > 0 else "No"
         has_daily = "Yes" if pkg.daily is not None and len(pkg.daily) > 0 else "No"
         has_summary = "Yes" if pkg.summary is not None else "No"
-
+        # when rendering each run card:
+        if show_run_image:
+            uri = (pkg.assets or {}).get("run_image_uri")
+            if uri:
+                blocks.append(
+                    f'<div style="margin: 8px 0 10px 0;">'
+                    f'<img src="{uri}" alt="{html.escape(run_id)} image" '
+                    f'style="max-width:{run_image_max_width}px; width:100%; height:auto; border-radius:8px;" />'
+                    f"</div>"
+                )
         blocks.append(f"""
         <div class="card" style="grid-column: span 12;">
           <div class="row" style="justify-content:space-between; align-items:baseline;">

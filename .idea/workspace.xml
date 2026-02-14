@@ -4,13 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Adding missing files">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Added recommendations to the analysis">
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/simulate.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/parsers/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/parsers/base.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,7 +31,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="stratParserFeature" />
+        <entry key="$PROJECT_DIR$" value="master" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -41,12 +45,13 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config.executor": "Debug",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "CardFeature"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -71,7 +76,167 @@
       <option name="project" value="LOCAL" />
       <updated>1769358720360</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Adding missing files">
+      <option name="closed" value="true" />
+      <created>1769360127103</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1769360127103</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Adding missing files">
+      <option name="closed" value="true" />
+      <created>1769360136763</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1769360136763</updated>
+    </task>
+    <task id="LOCAL-00004" summary="added settings info chart">
+      <option name="closed" value="true" />
+      <created>1769386607485</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1769386607485</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Parse and show images and settings">
+      <option name="closed" value="true" />
+      <created>1769400185662</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1769400185662</updated>
+    </task>
+    <task id="LOCAL-00006" summary="New Bot Card">
+      <option name="closed" value="true" />
+      <created>1769442054801</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1769442054801</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Refined Card creation">
+      <option name="closed" value="true" />
+      <created>1769530140906</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1769530140906</updated>
+    </task>
+    <task id="LOCAL-00008" summary="Fixed Duplicate charts in report.">
+      <option name="closed" value="true" />
+      <created>1769534135067</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1769534135067</updated>
+    </task>
+    <task id="LOCAL-00009" summary="New daily scoreboard">
+      <option name="closed" value="true" />
+      <created>1769559656923</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1769559656923</updated>
+    </task>
+    <task id="LOCAL-00010" summary="Updated cards">
+      <option name="closed" value="true" />
+      <created>1769621175029</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1769621175029</updated>
+    </task>
+    <task id="LOCAL-00011" summary="Fixed timeline">
+      <option name="closed" value="true" />
+      <created>1769663408965</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1769663408965</updated>
+    </task>
+    <task id="LOCAL-00012" summary="I added in the MFE ranking">
+      <option name="closed" value="true" />
+      <created>1769744621345</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1769744621345</updated>
+    </task>
+    <task id="LOCAL-00013" summary="Change maxprofit and stop to use kill profit and stop">
+      <option name="closed" value="true" />
+      <created>1769958616592</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1769958616592</updated>
+    </task>
+    <task id="LOCAL-00014" summary="Added Run Card Catalog based on when they trade.">
+      <option name="closed" value="true" />
+      <created>1770109072092</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1770109072092</updated>
+    </task>
+    <task id="LOCAL-00015" summary="Added Daily and weekly reports">
+      <option name="closed" value="true" />
+      <created>1770296924796</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1770296924796</updated>
+    </task>
+    <task id="LOCAL-00016" summary="Weekly Report modified">
+      <option name="closed" value="true" />
+      <created>1770385721907</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1770385721907</updated>
+    </task>
+    <task id="LOCAL-00017" summary="Weekly Report modified for ETD and charts">
+      <option name="closed" value="true" />
+      <created>1770482215907</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1770482215907</updated>
+    </task>
+    <task id="LOCAL-00018" summary="Weekly Report modified and fix drawdown">
+      <option name="closed" value="true" />
+      <created>1770571869946</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1770571869946</updated>
+    </task>
+    <task id="LOCAL-00019" summary="Loading candle data">
+      <option name="closed" value="true" />
+      <created>1770846188833</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1770846188833</updated>
+    </task>
+    <task id="LOCAL-00020" summary="Candle data report">
+      <option name="closed" value="true" />
+      <created>1770927368328</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1770927368328</updated>
+    </task>
+    <task id="LOCAL-00021" summary="Added recommendations to the analysis">
+      <option name="closed" value="true" />
+      <created>1771010079972</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1771010079972</updated>
+    </task>
+    <option name="localTasksCounter" value="22" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -85,7 +250,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="master" />
+                        <option value="analyzer_framework/CardFeature" />
                       </list>
                     </value>
                   </entry>
@@ -99,6 +264,34 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Adding missing files" />
-    <option name="LAST_COMMIT_MESSAGE" value="Adding missing files" />
+    <MESSAGE value="added settings info chart" />
+    <MESSAGE value="Parse and show images and settings" />
+    <MESSAGE value="New Bot Card" />
+    <MESSAGE value="Refined Card creation" />
+    <MESSAGE value="Fixed Duplicate charts in report." />
+    <MESSAGE value="New daily scoreboard" />
+    <MESSAGE value="Updated cards" />
+    <MESSAGE value="Fixed timeline" />
+    <MESSAGE value="I added in the MFE ranking" />
+    <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
+    <MESSAGE value="Added Run Card Catalog based on when they trade." />
+    <MESSAGE value="Added Daily and weekly reports" />
+    <MESSAGE value="Weekly Report modified" />
+    <MESSAGE value="Weekly Report modified for ETD and charts" />
+    <MESSAGE value="Weekly Report modified and fix drawdown" />
+    <MESSAGE value="Loading candle data" />
+    <MESSAGE value="Candle data report" />
+    <MESSAGE value="Added recommendations to the analysis" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added recommendations to the analysis" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py</url>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
 from pathlib import Path
 
+
+from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.core.registry import ParserRegistry
 from ta_foundation.core.pipeline import ingest_folder
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
 from ta_foundation.parsers.ninjatrader.analysis_by_day_csv import NinjaTraderDailyAnalysisCsvParser
 from ta_foundation.parsers.ninjatrader.summary_csv import NinjaTraderSummaryCsvParser
+from ta_foundation.parsers.ninjatrader.settings_csv import NinjaTraderSettingsCsvParser
 
 from ta_foundation.reports.html.comparison_report import build_comparison_report
 from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_manifest
 from ta_foundation.core.registry import read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
 from ta_foundation.reports.html.config import load_report_config, build_report_from_config
+from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLastTxtParser
+from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
 
 
 
@@ -35,17 +41,39 @@ def main() -> int:
         help="Path to report YAML config (e.g., report.yaml). If omitted, defaults are used.",
     )
 
+    # wherever argparse is defined:
+    ap.add_argument(
+        "--include-run-images",
+        action="store_true",
+        help="If set, embed <run_id>.png/jpg/webp/gif images found in the input folder into HTML sections (as base64).",
+    )
+
+    ap.add_argument(
+        "--export-exec-cards-png",
+        action="store_true",
+        help="Export each Executive Strategy Profile card as a PNG (requires Playwright).",
+    )
+    ap.add_argument(
+        "--exec-cards-dir",
+        type=str,
+        default=None,
+        help="Output directory for exported exec card PNGs. Default: <output>/cards",
+    )
+    ap.add_argument("--market-data", default=None, help="Shared folder containing *.Last.txt minute bars")
 
     args = ap.parse_args()
 
     in_dir = Path(args.input)
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    market_folder = Path(args.market_data) if args.market_data else None
     registry = ParserRegistry(parsers=[
         NinjaTraderTradesCsvParser(),
         NinjaTraderDailyAnalysisCsvParser(),
         NinjaTraderSummaryCsvParser(),
+        NinjaTraderSettingsCsvParser(),
+        MinuteBarsLastTxtParser(),
+        TickLastTxtParser(),
     ])
 
     # Ingest (multi-run)
@@ -54,6 +82,8 @@ def main() -> int:
         registry=registry,
         recursive=args.recursive,
         run_id_regex=args.run_id_regex,
+        include_run_images=args.include_run_images,  # NEW
+        market_data_folder=market_folder,  # if you add this param
     )
 
 
@@ -61,10 +91,23 @@ def main() -> int:
     # Build report
     cfg_path = Path(args.report_config) if args.report_config else None
     cfg = load_report_config(cfg_path)
+    # print("market loaded:", 0 if result.market is None else len(result.market.minute_bars))
 
-    html, output_filename = build_report_from_config(result.packages, cfg)
+    html, output_filename = build_report_from_config(result.packages, cfg, market=result.market)
     out_path = out_dir / output_filename
     out_path.write_text(html, encoding="utf-8")
+
+    if args.export_exec_cards_png:
+
+
+        cards_dir = Path(args.exec_cards_dir) if args.exec_cards_dir else (Path(args.output) / "cards")
+        res = export_exec_cards_to_png(Path(out_path), cards_dir)
+
+        print(f"[ta_foundation] Exported {len(res.exported)} exec cards to: {res.output_dir}")
+        if res.skipped:
+            print("[ta_foundation] Some cards failed to export:")
+            for s in res.skipped:
+                print("  -", s)
 
     # Write unparsed list (optional)
     if result.unparsed_files:

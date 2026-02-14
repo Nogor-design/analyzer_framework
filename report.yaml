@@ -5,20 +5,498 @@ report:
   timezone: "America/Denver"
 
 sections:
-  - id: comparison_overview
-    title: "Comparison Overview"
 
-  - id: equity_curve_comparison
-    title: "Equity Curve Comparison"
 
-  - id: run_metadata_cards
-    title: "Run Metadata Cards"
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard + Combo Selection"
+#    options:
+#      include_all_bot_charts: true
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#      combo_sets:
+#        - name: "Top 5 Pairs (k=2)"
+#          mode: top
+#          k: 2
+#          top_n: 5
+#          max_render: 5
+#
+#        - name: "Top 5 Triples (k=3)"
+#          mode: top
+#          k: 3
+#          top_n: 5
+#          beam_width: 250
+#          max_render: 5
+#
+#        - name: "Top 5 Quads (k=4)"
+#          mode: top
+#          k: 4
+#          top_n: 5
+#          beam_width: 300
+#          max_render: 5
+#
+#        - name: "My Explicit Combos (always render)"
+#          mode: explicit
+#          combos:
+#            - bot_numbers: [ 1, 3 ]
+#            - bot_numbers: [ 1, 3, 4, 8 ]
+#
+#  - id: comparison_overview
+#    title: "Comparison Overview"
+#
+#  - id: equity_curve_comparison
+#    title: "Equity Curve Comparison"
+#
+#  - id: run_kpi_cards
+#    title: "Run KPI Cards"
 
-  - id: run_kpi_cards
-    title: "Run KPI Cards"
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Copy/Paste)"
+#    options:
+#      compact: false
+#      show_hint: true
 
-  - id: drawdown_curve
-    title: "Drawdown Curve + Recovery"
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Slides)"
+#    options:
+#      style: slides
+#      density: comfortable
+#      layout: grid
+#      columns: 2
+#      show_hint: true
+#
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Minimal)"
+#    options:
+#      style: minimal
+#      density: compact
+#      layout: stack
+#      columns: 1
+#      show_hint: false
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Dark)"
+#    options:
+#      style: contrast
+#      density: compact
+#      layout: grid
+#      columns: 2
+#
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Dark)"
+#    options:
+#      style: contrast
+#      density: compact
+#      layout: grid
+#      columns: 3
+
+
+#  - id: run_settings_table
+#    title: "Run Settings"
+#    options:
+#      max_rows: 500
+
+
+#  - id: run_settings_table
+#    title: "Run Settings"
+#    options:
+#      max_rows: 500
+#      show_run_image: true
+#      run_image_max_width: 420
+#
+##   Optional: also show in metadata cards
+#  - id: run_metadata_cards
+#    title: "Run Metadata Cards"
+#    options:
+#      show_run_image: true
+#      run_image_max_width: 280
+
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      card_width_px: 1280
+#      card_padding_px: 24
+#      image_width_px: 420
+#
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard (W/L/No-Trade)"
+#    options:
+#      max_runs: null
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard + Best Non-Co-Losing Combos"
+#    options:
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#      include_top_combos: true
+#      top_combo_n: 5
+#      beam_width: 250   # bump if you have many bots
+#      include_k2: true
+#      include_k3: true
+#      include_k4: true
+
+
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      background_style: image-soft-overlay   # options below
+#      card_width_px: 1280
+#      card_padding_px: 24
+#      image_width_px: 420
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_run_image: true
+#      background_style: image-dark-overlay
+#      show_detail_charts: true
+#      detail_chart_layout: stack     # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
+#      detail_chart_gap_px: 16
+
+#Supported background_style values
+#Style	Description
+#solid	Current black background
+#image-cover	Full image, no overlay
+#image-soft-overlay	Light dark overlay (best for light images)
+#image-dark-overlay	Strong overlay (best for busy images)
+
+#  - id: run_executive_profile_cards
+#    title: Executive Strategy Profiles
+#    options:
+#      wlr_days_back: 30         # <- configurable N
+#      wlr_box_px: 10
+#      wlr_gap_px: 2
+#      wlr_show_legend: false
+
+#  - id: run_executive_profile_cards
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      background_style: image-dark-overlay   # options below
+#      card_width_px: 1180
+#      card_padding_px: 24
+#      image_width_px: 420
+#      wlr_days_back: 30
+#      wlr_gap_px: 2
+#      show_detail_charts: false
+#      detail_chart_layout: two-up     # two-up | stack
+#      detail_chart_width_px: 540  #540  | 1080
+#      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+#      timeline_cell_h_px: 10
+#      timeline_show_hours: true
+#      timeline_show_summary: true
+
+#
+#profit_factor
+#total_net_profit
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 20
+#      hide_missing_cards: true
+#      fallback_session_label: "Unclassified"
+#      fallback_market_label: "Unknown"
+#      session_windows:
+#        - { label: "London",        start: "00:00", end: "04:00" }
+#        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+#        - { label: "NY Late",       start: "10:30", end: "16:00" }
+#        - { label: "Asia",          start: "16:00", end: "23:59" }
+#      overrides:
+#          "BrassAtlasFire":
+#            session: "NY Pre→Early"
+#            market: "NQ"
+#          "SomeOtherRun":
+#            session: "NY Pre→Early"
+
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 20
+#
+#      overrides:
+#        "BrassAtlasFire":
+#          session: "London"
+#          market: "NQ"
+#        "SomeOtherRun":
+#          session: "NY Late"
+#
+#      regex_overrides:
+#        - pattern: "^LDN_"
+#          session: "London"
+#        - pattern: ".*_GC_.*"
+#          market: "GC"
+
+#
+#
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"   # optional; omit to auto-pick most recent
+#      top_n: 30
+#      hide_missing_cards: true
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Leaders"
+#    options:
+#      week_ending: "2026-02-03"   # optional; omit to auto-pick most recent
+#      top_n: 12
+#      hide_missing_cards: true
+#
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"     # optional
+#      top_n: 8
+#      lookback_days: 10
+#      heatmap_top_bots: 30
+#      hide_missing_cards: true
+
+#  - id: daily_leaderboard_cards
+#  title: "Daily Leaders"
+#  options:
+#    target_date: "2026-02-03"     # optional; omit to auto-pick most recent
+#    top_n: 8
+#    lookback_days: 10             # consistency window used for badge + heatmap
+#    heatmap_top_bots: 30          # number of bots shown in the heatmap
+#    hide_missing_cards: true
+
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+##      target_date: "2026-02-03"         # optional
+#      top_n: 40
+#      lookback_days: 10
+#      buffer_chart_top_bots: 8
+#      starting_balance: 50000
+#      trailing_dd: 2500
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+#      week_ending: "2026-02-07"   # optional
+#      top_n: 40
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      hide_missing_cards: true
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+##      week_ending: "2026-02-07"   # optional
+#      top_n: 80
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      baseline_mode: fresh_week      # or: continuous
+#      show_card_image: false          # or: false
+#      show_chart: false
+#      show_debug_table: true
+#      warn_buffer: 500
+#      compact_noimg: true
+#      bot_columns: 1
+#  -
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL Bars (with MFE)"
+#    options:
+#      max_days_per_run: 8
+#      max_trades_per_day: 200
+#      mfe_alpha: 0.25
+#      show_run_card: true
+#      show_legend_hint: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 30
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+#
+#  - id: trades_intraday_pnl_by_day
+#    title: "Hourly Totals Only"
+#    options:
+#      show_only_totals: true
+#      hourly_totals_mode: "net"
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (MFE + MAE + Cum)"
+#    options:
+#      show_mae_bar: true
+#      mae_alpha: 0.20
+#      mae_width_ratio: 0.55
+#      mae_offset_ratio: 0.80
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 5
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      show_mae_bar: true
+#      mae_alpha: 0.80
+#      mae_width_ratio: .55
+#      mae_offset_ratio: 0.80
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (ETD Line + Threshold + Ledger)"
+#    options:
+#      show_mae_bar: true
+#      show_etd_line: true
+#      show_etd_threshold_line: true
+#      etd_threshold: 2500
+#      show_ledger: true
+#      show_explanation: true
+#
+#      show_cum_line: true
+#      weekdays_include: [ "mon","tue","wed","thu","fri" ]
+
+#  - id: run_kpi_cards
+
+#  - id: trade_candle_overlay
+#    title: "Trades on Candles"
+#    options:
+#      window_minutes: 480
+#      padding_minutes: 30
+#      max_trades: 300
+
+#  - id: apex_drawdown_survival_profile
+#    title: "Apex 50K Drawdown Survival"
+#    options:
+#      apex:
+#        starting_balance: 50000
+#        trailing_drawdown: 2500
+#        lock_profit: 2600
+#      instruments:
+#        NQ: { tick_size: 0.25, tick_value: 5.0 }
+#        ES: { tick_size: 0.25, tick_value: 12.5 }
+#        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+#        MES: { tick_size: 0.25, tick_value: 1.25 }
+
+  - id: tick_data_diagnostics
+    title: Tick Data Diagnostics
     options:
-      max_runs_plot: 4
-      show_recovery_lines: False
+      instrument: NQ
+      contract: "03-26"
+      show_sample_rows: 20
+      compare_to_minute: true
+      compare_window_minutes: 240
+
+
+#  - id: filter_discovery
+#    title: "Filter Discovery (Bars + Ticks)"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 60
+#      min_trades: 10
+#      sort_by: "net_pnl"           # net_pnl | trades | win_rate
+#      include_run_id_regex: null   # e.g. "NQ_.*_EMA50"
+#      exclude_run_id_regex: null
+
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 12
+#      min_trades: 10
+#      sort_by: "net_pnl"
+#
+#      write_recommendations_json: true
+#      rec_min_trades_run: 150
+#      rec_min_trades_bucket: 25
+#      rec_max_hour_buckets: 4
+#      rec_max_atr_quartiles: 3
+#      rec_require_better_by: 0.0
+#      out_dir: "./outputs"
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      # Output control
+#      top_n_runs: 12
+#      min_trades: 20
+#      include_run_id_regex: null
+#      exclude_run_id_regex: null
+#
+#      # Tick & ATR config
+#      tick_size: 0.25          # NQ
+#      atr_tf: "5m"
+#      atr_period: 14
+#      use_bid_ask_triggers: true
+#
+#      # Window rules
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      # Policies
+#      fixed_stop_atr_mult: 1.0
+#      fixed_target_atr_mult: 1.5
+#
+#      trail_stop_atr_mult: 1.0
+#      trail_atr_mult: 1.0
+#      trail_profit_target_atr_mult: null
+#
+#      be_enable: true
+#      be_trigger_atr_mult: 1.0
+#      be_offset_ticks: 0
+#      be_trail_atr_mult: 1.0
+#      be_profit_target_atr_mult: null
+
+  - id: exit_policy_simulation
+    title: "Exit Policy Simulation (Ticks)"
+    options:
+      instrument: NQ
+      contract: "03-26"
+      min_trades: 5
+      top_n_runs: 12
+      tick_size: 0.25
+      atr_tf: "5m"
+      atr_period: 14
+      bounded_to_original_exit: true
+      use_bid_ask_triggers: true
