@@ -1,4 +1,3 @@
-# src/ta_foundation/core/pipeline.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -7,6 +6,16 @@ from typing import Optional
 import re
 
 import pandas as pd
+from ta_foundation.marketdata.tick_cache import (
+    TickCacheConfig,
+    is_tick_last_txt,
+    is_tick_cache_parquet,
+    parse_instrument_contract_from_tick_filename,
+    try_load_tick_cache,
+    write_tick_cache,
+    load_tick_cache_parquet,
+    parquet_engine_available,
+)
 
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.model import AnalysisPackage, SummaryBlock
@@ -29,6 +38,7 @@ from ta_foundation.marketdata.tick_cache import (
     parse_instrument_contract_from_tick_filename,
     try_load_tick_cache,
     write_tick_cache,
+    parquet_engine_available,
 )
 
 KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
@@ -183,7 +193,7 @@ def ingest_folder(
             pkg.warnings.append({"code": "UNKNOWN_KIND", "message": f"Unknown kind: {art.kind}"})
 
     # -------------------------
-    # 2) Parse shared market data (*.Last.txt and tick)
+    # 2) Parse shared market data (*.Last*.txt and tick)
     # -------------------------
     if market_data_folder is not None:
         if not market_data_folder.exists():
@@ -191,8 +201,56 @@ def ingest_folder(
 
         tick_cache_cfg = TickCacheConfig(enabled=bool(tick_cache_enabled), cache_dir=None)
 
-        for path in sorted(market_data_folder.glob("**/*.Last.txt")):
-            parser = registry.find_parser(path, header="")
+        # If parquet engine isn't installed, disable caching *and* surface a warning.
+        if tick_cache_cfg.enabled and (not parquet_engine_available()):
+            tick_cache_cfg = TickCacheConfig(
+                enabled=False,
+                cache_dir=tick_cache_cfg.cache_dir,
+                target_tz=tick_cache_cfg.target_tz,
+            )
+            market_warnings.append({
+                "code": "PARQUET_ENGINE_MISSING",
+                "message": "Tick cache requested but no parquet engine found. Install 'pyarrow' (recommended) or 'fastparquet' to enable .parquet caching.",
+                "path": str(market_data_folder),
+            })
+        # 2a) Ingest tick cache parquet files directly (so cache works even if the source .txt was removed)
+        cache_dir = market_data_folder / ".ta_cache"
+        if cache_dir.exists() and cache_dir.is_dir():
+            for p in sorted(cache_dir.glob("*.parquet")):
+                if not is_tick_cache_parquet(p):
+                    continue
+                df = load_tick_cache_parquet(p, cfg=tick_cache_cfg)
+                if df is None or df.empty:
+                    continue
+                ic = parse_instrument_contract_from_tick_filename(p)
+                if ic is None:
+                    market_warnings.append({
+                        "code": "TICK_CACHE_PARSE_FAILED",
+                        "message": f"Could not parse instrument/contract from cache filename: {p.name}",
+                        "path": str(p),
+                    })
+                    continue
+                instrument, contract = ic
+                art = ParsedArtifact(
+                    kind="market_ticks",
+                    run_id=None,
+                    source_path=p,
+                    df=df,
+                    summary={"instrument": instrument, "contract": contract, "cache": "parquet_only"},
+                    warnings=[],
+                )
+                _attach_market_artifact(market, art, warnings_sink=market_warnings)
+
+        # IMPORTANT:
+        # Your original glob '**/*.Last.txt' misses common NinjaTrader duplicate exports like:
+        #   'NQ 03-26 Tick.Last (1).txt'
+        # So we scan txt files containing 'last' and let the registry decide.
+        txt_candidates = sorted(market_data_folder.glob("**/*.txt"))
+        lastish = [p for p in txt_candidates if "last" in p.name.lower()]
+
+        for path in lastish:
+            header = read_header_sample(path)
+            parser = registry.find_parser(path, header=header)
             if parser is None:
                 continue
 
@@ -230,6 +288,14 @@ def ingest_folder(
                         "message": f"Wrote tick parquet cache: {wrote.name}",
                         "path": str(wrote),
                     })
+                else:
+                    # If caching is enabled but write failed, surface a warning (write_tick_cache swallows exceptions).
+                    if tick_cache_cfg.enabled:
+                        market_warnings.append({
+                            "code": "TICK_CACHE_WRITE_FAILED",
+                            "message": "Tick cache write failed (unknown reason). If this persists, verify parquet engine install and filesystem permissions.",
+                            "path": str(path),
+                        })
 
     # -----------------------------------------
     # 3) Post-processing (once per ingest call)

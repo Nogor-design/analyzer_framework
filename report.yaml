@@ -400,14 +400,14 @@ sections:
 #        MNQ: { tick_size: 0.25, tick_value: 0.5 }
 #        MES: { tick_size: 0.25, tick_value: 1.25 }
 
-#  - id: tick_data_diagnostics
-#    title: Tick Data Diagnostics
-#    options:
-#      instrument: NQ
-#      contract: "03-26"
-#      show_sample_rows: 20
-#      compare_to_minute: true
-#      compare_window_minutes: 240
+  - id: tick_data_diagnostics
+    title: Tick Data Diagnostics
+    options:
+      instrument: NQ
+      contract: "03-26"
+      show_sample_rows: 20
+      compare_to_minute: true
+      compare_window_minutes: 240
 
 
 #  - id: filter_discovery
@@ -434,23 +434,69 @@ sections:
 #      include_run_id_regex: null   # e.g. "NQ_.*_EMA50"
 #      exclude_run_id_regex: null
 
-  - id: filter_discovery
-    title: "Filter Discovery — per bot"
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 12
+#      min_trades: 10
+#      sort_by: "net_pnl"
+#
+#      write_recommendations_json: true
+#      rec_min_trades_run: 150
+#      rec_min_trades_bucket: 25
+#      rec_max_hour_buckets: 4
+#      rec_max_atr_quartiles: 3
+#      rec_require_better_by: 0.0
+#      out_dir: "./outputs"
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      # Output control
+#      top_n_runs: 12
+#      min_trades: 20
+#      include_run_id_regex: null
+#      exclude_run_id_regex: null
+#
+#      # Tick & ATR config
+#      tick_size: 0.25          # NQ
+#      atr_tf: "5m"
+#      atr_period: 14
+#      use_bid_ask_triggers: true
+#
+#      # Window rules
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      # Policies
+#      fixed_stop_atr_mult: 1.0
+#      fixed_target_atr_mult: 1.5
+#
+#      trail_stop_atr_mult: 1.0
+#      trail_atr_mult: 1.0
+#      trail_profit_target_atr_mult: null
+#
+#      be_enable: true
+#      be_trigger_atr_mult: 1.0
+#      be_offset_ticks: 0
+#      be_trail_atr_mult: 1.0
+#      be_profit_target_atr_mult: null
+
+  - id: exit_policy_simulation
+    title: "Exit Policy Simulation (Ticks)"
     options:
-      bar_tf: "5m"
-      htf_tf: "15m"
-      ema_period: 50
-      atr_period: 14
-      include_micro: true
-
+      instrument: NQ
+      contract: "03-26"
+      min_trades: 5
       top_n_runs: 12
-      min_trades: 10
-      sort_by: "net_pnl"
-
-      write_recommendations_json: true
-      rec_min_trades_run: 150
-      rec_min_trades_bucket: 25
-      rec_max_hour_buckets: 4
-      rec_max_atr_quartiles: 3
-      rec_require_better_by: 0.0
-      out_dir: "./outputs"
+      tick_size: 0.25
+      atr_tf: "5m"
+      atr_period: 14
+      bounded_to_original_exit: true
+      use_bid_ask_triggers: true

@@ -23,6 +23,7 @@ from ta_foundation.reports.html.sections.trade_candle_overlay import render_trad
 from ta_foundation.reports.html.sections.apex_drawdown_survival_profile import render_apex_drawdown_survival_profile
 from ta_foundation.reports.html.sections.tick_data_diagnostics import render_tick_data_diagnostics
 from ta_foundation.reports.html.sections.filter_discovery import render_filter_discovery
+from ta_foundation.reports.html.sections.exit_policy_simulation import render_exit_policy_simulation
 
 
 SectionRenderer = Callable[[dict], str]
@@ -116,6 +117,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="filter_discovery",
         default_title="Filter Discovery",
         render_fn=render_filter_discovery,
+    ),
+    "exit_policy_simulation": SectionDef(
+        id="exit_policy_simulation",
+        default_title="Exit Policy Simulation",
+        render_fn=render_exit_policy_simulation,
     ),
 
 }

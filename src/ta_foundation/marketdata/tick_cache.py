@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
+import importlib.util
 
 import pandas as pd
 
@@ -10,26 +11,69 @@ import pandas as pd
 @dataclass(frozen=True)
 class TickCacheConfig:
     enabled: bool = True
-    # If None: use market_data_folder / ".ta_cache"
     cache_dir: Optional[Path] = None
+    target_tz: str = "America/Denver"
+
+
+def parquet_engine_available() -> bool:
+    return (importlib.util.find_spec("pyarrow") is not None) or (
+        importlib.util.find_spec("fastparquet") is not None
+    )
 
 
 def is_tick_last_txt(path: Path) -> bool:
-    # Your tick export naming: "NQ 03-26 Tick.Last.txt"
-    return path.name.endswith("Tick.Last.txt")
+    n = path.name.lower()
+    if not n.endswith(".txt"):
+        return False
+    return ("tick" in n) and ("last" in n)
+
+
+def is_tick_cache_parquet(path: Path) -> bool:
+    """
+    Cache files look like: 'NQ 03-26 Tick.Last.txt.parquet'
+    """
+    n = path.name.lower()
+    if not n.endswith(".txt.parquet"):
+        return False
+    return ("tick" in n) and ("last" in n)
 
 
 def parse_instrument_contract_from_tick_filename(path: Path) -> Optional[Tuple[str, str]]:
-    # "NQ 03-26 Tick.Last.txt" -> instrument="NQ", contract="03-26"
+    # Accept both .txt and .txt.parquet as input
     name = path.name
-    if not name.endswith("Tick.Last.txt"):
+    low = name.lower()
+    if not (is_tick_last_txt(path) or is_tick_cache_parquet(path)):
         return None
-    stem = name[:-len("Tick.Last.txt")].strip()  # "NQ 03-26"
-    parts = stem.split(" ")
-    if len(parts) != 2:
+
+    # strip trailing extensions
+    if low.endswith(".txt.parquet"):
+        stem = name[:-len(".txt.parquet")]
+    elif low.endswith(".txt"):
+        stem = name[:-len(".txt")]
+    else:
+        stem = path.stem
+
+    # remove common tokens
+    stem = stem.replace("Tick.Last", "").replace("tick.last", "")
+    stem = stem.replace("Tick Last", "").replace("tick last", "")
+    stem = stem.replace("Tick", "").replace("tick", "")
+    stem = stem.replace("Last", "").replace("last", "")
+    stem = stem.replace(".", " ").replace("_", " ")
+    stem = " ".join(stem.split())
+
+    parts = stem.split()
+    if not parts:
         return None
-    instr, contract = parts[0].strip(), parts[1].strip()
-    if not instr or len(contract) != 5 or contract[2] != "-":
+
+    instr = parts[0].strip().upper()
+    contract = None
+    for p in parts[1:]:
+        p = p.strip()
+        if len(p) == 5 and p[2] == "-" and p[:2].isdigit() and p[3:].isdigit():
+            contract = p
+            break
+
+    if not instr or not contract:
         return None
     return instr, contract
 
@@ -37,9 +81,6 @@ def parse_instrument_contract_from_tick_filename(path: Path) -> Optional[Tuple[s
 def cache_path_for_tick_file(path: Path, *, market_data_folder: Path, cfg: TickCacheConfig) -> Path:
     cache_root = cfg.cache_dir if cfg.cache_dir is not None else (market_data_folder / ".ta_cache")
     cache_root.mkdir(parents=True, exist_ok=True)
-
-    # Include original filename + a stable suffix
-    # Safer than instrument/contract only because users may keep multiple exports around.
     return cache_root / f"{path.name}.parquet"
 
 
@@ -51,9 +92,29 @@ def try_load_tick_cache(path: Path, *, market_data_folder: Path, cfg: TickCacheC
         return None
     try:
         df = pd.read_parquet(cpath)
-        # Ensure dt is datetime64[ns, tz] if possible
         if "dt" in df.columns:
-            df["dt"] = pd.to_datetime(df["dt"], errors="coerce")
+            dt = pd.to_datetime(df["dt"], errors="coerce")
+            if getattr(dt.dt, "tz", None) is None:
+                dt = dt.dt.tz_localize(cfg.target_tz, nonexistent="shift_forward", ambiguous="NaT")
+            df["dt"] = dt
+        return df
+    except Exception:
+        return None
+
+
+def load_tick_cache_parquet(path: Path, *, cfg: TickCacheConfig) -> Optional[pd.DataFrame]:
+    """
+    Load a cache parquet directly (used when original txt is absent).
+    """
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_parquet(path)
+        if "dt" in df.columns:
+            dt = pd.to_datetime(df["dt"], errors="coerce")
+            if getattr(dt.dt, "tz", None) is None:
+                dt = dt.dt.tz_localize(cfg.target_tz, nonexistent="shift_forward", ambiguous="NaT")
+            df["dt"] = dt
         return df
     except Exception:
         return None
@@ -70,7 +131,6 @@ def write_tick_cache(
         return None
     cpath = cache_path_for_tick_file(path, market_data_folder=market_data_folder, cfg=cfg)
     try:
-        # Parquet write needs pyarrow or fastparquet (we’ll add pyarrow dependency)
         df.to_parquet(cpath, index=False)
         return cpath
     except Exception:

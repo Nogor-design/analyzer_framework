@@ -4,17 +4,16 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Loading candle data">
-      <change afterPath="$PROJECT_DIR$/AI_EXTENSION_TEMPLATE.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/CONTRIBUTING.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/apex_trailing_model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/apex_drawdown_survival_profile.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Added recommendations to the analysis">
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/simulate.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ARCHITECTURE.md" beforeDir="false" afterPath="$PROJECT_DIR$/ARCHITECTURE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -221,7 +220,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770846188833</updated>
     </task>
-    <option name="localTasksCounter" value="20" />
+    <task id="LOCAL-00020" summary="Candle data report">
+      <option name="closed" value="true" />
+      <created>1770927368328</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1770927368328</updated>
+    </task>
+    <task id="LOCAL-00021" summary="Added recommendations to the analysis">
+      <option name="closed" value="true" />
+      <created>1771010079972</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1771010079972</updated>
+    </task>
+    <option name="localTasksCounter" value="22" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -265,7 +280,9 @@
     <MESSAGE value="Weekly Report modified for ETD and charts" />
     <MESSAGE value="Weekly Report modified and fix drawdown" />
     <MESSAGE value="Loading candle data" />
-    <option name="LAST_COMMIT_MESSAGE" value="Loading candle data" />
+    <MESSAGE value="Candle data report" />
+    <MESSAGE value="Added recommendations to the analysis" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added recommendations to the analysis" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
