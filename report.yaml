@@ -186,9 +186,9 @@ sections:
 #      image_width_px: 420
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
-#      show_detail_charts: false
-#      detail_chart_layout: two-up     # two-up | stack
-#      detail_chart_width_px: 540  #540  | 1080
+#      show_detail_charts: true
+#      detail_chart_layout: stack     # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
 #      timeline_cell_h_px: 10
 #      timeline_show_hours: true
@@ -285,8 +285,8 @@ sections:
 #  - id: weekly_leaderboard_cards
 #    title: "Weekly Prop Dashboard"
 #    options:
-#      week_ending: "2026-02-07"   # optional
-#      top_n: 40
+#      week_ending: "2026-02-13"   # optional
+#      top_n: 100
 #      starting_balance: 50000
 #      trailing_dd: 2500
 #      hide_missing_cards: true
@@ -295,13 +295,13 @@ sections:
 #    title: "Weekly Prop Dashboard"
 #    options:
 ##      week_ending: "2026-02-07"   # optional
-#      top_n: 80
+#      top_n: 100
 #      starting_balance: 50000
 #      trailing_dd: 2500
 #      baseline_mode: fresh_week      # or: continuous
 #      show_card_image: false          # or: false
 #      show_chart: false
-#      show_debug_table: true
+#      show_debug_table: false
 #      warn_buffer: 500
 #      compact_noimg: true
 #      bot_columns: 1
@@ -400,14 +400,14 @@ sections:
 #        MNQ: { tick_size: 0.25, tick_value: 0.5 }
 #        MES: { tick_size: 0.25, tick_value: 1.25 }
 
-  - id: tick_data_diagnostics
-    title: Tick Data Diagnostics
-    options:
-      instrument: NQ
-      contract: "03-26"
-      show_sample_rows: 20
-      compare_to_minute: true
-      compare_window_minutes: 240
+#  - id: tick_data_diagnostics
+#    title: Tick Data Diagnostics
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      show_sample_rows: 20
+#      compare_to_minute: true
+#      compare_window_minutes: 240
 
 
 #  - id: filter_discovery
@@ -488,15 +488,121 @@ sections:
 #      be_trail_atr_mult: 1.0
 #      be_profit_target_atr_mult: null
 
-  - id: exit_policy_simulation
-    title: "Exit Policy Simulation (Ticks)"
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      min_trades: 5
+#      top_n_runs: 12
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      use_bid_ask_triggers: false
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
+#
+#      time_stop_enable: true
+#      time_stop_minutes: 68
+#      time_stop_min_mfe_ticks: 6.0
+#
+#      giveback_enable: true
+#      giveback_arm_mfe_ticks: 18.0
+#      giveback_ticks: 10.0
+#
+#      be_enable: true
+#
+#      # Arm after +12 ticks instead of ATR-based threshold
+#      be_trigger_ticks: 10
+#
+#      # Stop goes to +4 ticks profit once armed
+#      be_offset_ticks: 4
+#
+#      # Other BE trail settings
+#      be_trail_atr_mult: 0.25
+
+
+
+
+#  - id: exit_policy_trade_debug
+#    options:
+#      run_id: BronzeAthenaGod
+#      trade_idx: 4
+#      tick_size: 0.25
+#      show_minutes: true
+#      candle_tf: "1m"
+#      pad_seconds: 30
+#      # Optional: keep these aligned with your exit_policy_simulation settings
+#      stop_ticks: 100
+##      target_ticks: 10
+#      start_trail_ticks: 40.0
+#      trail_amount:  20.0
+#      atr_tf: "1m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      use_bid_ask_triggers: true
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#      trade_idx: 3
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      overlay_stops: true
+#      overlay_targets: true
+#      overlay_be_arm: true
+#      show_trace_events: true
+#
+#      show_pnl_chart: true
+#      pnl_lockin_shading: true
+#      pnl_policy: "be_atr_trail"   # optional; defaults to first policy
+#      trace_every_n: 1
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug (All Trades)"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#
+#      run_all_trades: true
+#      start_trade_idx: 0
+#      max_trades: 25         # strongly recommended
+#      trace_every_n: 5       # recommended for speed
+#
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
+#
+  - id: exit_policy_trade_debug
+    title: "Exit Policy Debug (All Trades + Index)"
     options:
-      instrument: NQ
-      contract: "03-26"
-      min_trades: 5
-      top_n_runs: 12
+      run_id: "BronzeAtlasEmber"
+
+      run_all_trades: true
+      start_trade_idx: 0
+      max_trades: 40
+      trace_every_n: 8
+
+      show_index: true
+      index_show_actual_pnl: true
+
       tick_size: 0.25
       atr_tf: "5m"
       atr_period: 14
       bounded_to_original_exit: true
-      use_bid_ask_triggers: true
+      max_minutes_unbounded: 180
+
+      overlay_stops: true
+      show_pnl_chart: true

@@ -9,7 +9,16 @@ import matplotlib.pyplot as plt
 
 from ta_foundation.core.model import AnalysisPackage
 from ta_foundation.reports.html.embed import fig_to_base64_png
-from ta_foundation.analysis.exits.policies import FixedStopTargetPolicy, AtrTrailPolicy, BreakEvenAtrTrailPolicy
+
+# ✅ FIX: import the new policies so we can instantiate them in this section
+from ta_foundation.analysis.exits.policies import (
+    FixedStopTargetPolicy,
+    AtrTrailPolicy,
+    BreakEvenAtrTrailPolicy,
+    ChandelierAtrTrailPolicy,
+    TimeStopNoProgressPolicy,
+    GivebackAfterMfePolicy,
+)
 from ta_foundation.analysis.exits.simulate import ExitSimConfig, simulate_exit_policies_for_run
 
 
@@ -83,7 +92,7 @@ def _parse_instrument_contract(inst_val: str) -> Optional[tuple[str, str]]:
         return None
     return instr, contract
 
-# helper: infer instrument/contract from a trades df (same semantics as your tick diagnostic)
+
 def _infer_ic_from_trades(trades: pd.DataFrame) -> Optional[tuple[str, str]]:
     inst_col = _find_col(trades, ["instrument", "Instrument"])
     if not inst_col:
@@ -95,6 +104,19 @@ def _infer_ic_from_trades(trades: pd.DataFrame) -> Optional[tuple[str, str]]:
     if len(parts) >= 2:
         return parts[0], parts[1]
     return None
+
+
+def _coerce_bool(v: Any, default: bool) -> bool:
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("1", "true", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "no", "n", "off"):
+        return False
+    return default
 
 
 def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
@@ -135,41 +157,140 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
     atr_tf = str(opts.get("atr_tf", "5m"))
     atr_period = int(opts.get("atr_period", 14))
 
-    bounded = bool(opts.get("bounded_to_original_exit", True))
+    bounded = _coerce_bool(opts.get("bounded_to_original_exit", True), True)
     max_minutes = int(opts.get("max_minutes_unbounded", 180))
-    use_bid_ask = bool(opts.get("use_bid_ask_triggers", True))
+    use_bid_ask = _coerce_bool(opts.get("use_bid_ask_triggers", True), True)
 
-    # Policies
+    # -----------------------
+    # Policies (YAML-driven)
+    # -----------------------
+    # Existing
     fixed_stop_atr = float(opts.get("fixed_stop_atr_mult", 1.0))
     fixed_target_atr = float(opts.get("fixed_target_atr_mult", 1.5))
 
     trail_stop_atr = float(opts.get("trail_stop_atr_mult", 1.0))
-    trail_trail_atr = float(opts.get("trail_atr_mult", 1.0))
+    trail_trail_atr = float(opts.get("trail_atr_mult", 1.25))
     trail_target_atr = opts.get("trail_profit_target_atr_mult", None)
     trail_target_atr = float(trail_target_atr) if trail_target_atr is not None else None
 
-    be_enable = bool(opts.get("be_enable", True))
-    be_trigger_atr = float(opts.get("be_trigger_atr_mult", 1.0))
-    be_offset_ticks = float(opts.get("be_offset_ticks", 0.0))
-    be_trail_atr = float(opts.get("be_trail_atr_mult", 1.0))
+    be_enable = _coerce_bool(opts.get("be_enable", True), True)
+    be_trigger_atr = float(opts.get("be_trigger_atr_mult", 0.8))
+    be_offset_ticks = float(opts.get("be_offset_ticks", 4.0))
+    be_trail_atr = float(opts.get("be_trail_atr_mult", 1.25))
     be_target_atr = opts.get("be_profit_target_atr_mult", None)
     be_target_atr = float(be_target_atr) if be_target_atr is not None else None
+    be_trigger_ticks = opts.get("be_trigger_ticks", None)
+    be_trigger_ticks = float(be_trigger_ticks) if be_trigger_ticks is not None else None
 
-    policies = [
-        FixedStopTargetPolicy(name="fixed_atr", stop_atr_mult=fixed_stop_atr, target_atr_mult=fixed_target_atr),
-        AtrTrailPolicy(name="atr_trail", stop_atr_mult=trail_stop_atr, trail_atr_mult=trail_trail_atr, profit_target_atr_mult=trail_target_atr),
-    ]
-    if be_enable:
+    # ✅ New: Chandelier ATR trail
+    chandelier_enable = _coerce_bool(opts.get("chandelier_enable", False), False)
+    chandelier_stop_atr = float(opts.get("chandelier_stop_atr_mult", 1.0))
+    chandelier_trail_atr = float(opts.get("chandelier_trail_atr_mult", 1.75))
+    chandelier_target_atr = opts.get("chandelier_profit_target_atr_mult", None)
+    chandelier_target_atr = float(chandelier_target_atr) if chandelier_target_atr is not None else None
+
+    # ✅ New: Time stop (no progress)
+    time_no_prog_enable = _coerce_bool(opts.get("time_stop_no_progress_enable", False), False)
+    time_no_prog_max_minutes = int(opts.get("time_stop_no_progress_max_minutes", 8))
+    time_no_prog_min_mfe_ticks = float(opts.get("time_stop_no_progress_min_mfe_ticks", 6.0))
+
+    # ✅ New: Giveback after MFE
+    giveback_enable = _coerce_bool(opts.get("giveback_after_mfe_enable", False), False)
+    giveback_arm_mfe_ticks = float(opts.get("giveback_arm_mfe_ticks", 18.0))
+    giveback_giveback_ticks = float(opts.get("giveback_ticks", 10.0))
+
+    # Optional selector:
+    # - If provided, we ONLY run those policies (plus "actual" which is computed inside simulate for reference).
+    # - Accepts: ["fixed_atr","atr_trail","be_atr_trail","chandelier_atr_trail","time_stop_no_progress","giveback_after_mfe"]
+    selected = opts.get("policies") or opts.get("policy_set")
+    if isinstance(selected, str):
+        selected = [p.strip() for p in selected.split(",") if p.strip()]
+    selected_set = {str(p).strip().lower() for p in (selected or [])}
+
+    def _want(policy_name: str, enabled_default: bool = True) -> bool:
+        if selected_set:
+            return policy_name.lower() in selected_set
+        return enabled_default
+
+    policies: List[Any] = []
+
+    if _want("fixed_atr", True):
+        policies.append(
+            FixedStopTargetPolicy(
+                name="fixed_atr",
+                stop_atr_mult=fixed_stop_atr,
+                target_atr_mult=fixed_target_atr,
+            )
+        )
+
+    if _want("atr_trail", True):
+        policies.append(
+            AtrTrailPolicy(
+                name="atr_trail",
+                stop_atr_mult=trail_stop_atr,
+                trail_atr_mult=trail_trail_atr,
+                profit_target_atr_mult=trail_target_atr,
+            )
+        )
+
+    if _want("be_atr_trail", be_enable) and be_enable:
         policies.append(
             BreakEvenAtrTrailPolicy(
                 name="be_atr_trail",
                 stop_atr_mult=trail_stop_atr,
                 be_trigger_atr_mult=be_trigger_atr,
+                be_trigger_ticks=be_trigger_ticks,  # ✅ new
                 be_offset_ticks=be_offset_ticks,
                 trail_atr_mult=be_trail_atr,
                 profit_target_atr_mult=be_target_atr,
             )
         )
+
+    if _want("chandelier_atr_trail", chandelier_enable) and chandelier_enable:
+        policies.append(
+            ChandelierAtrTrailPolicy(
+                name="chandelier_atr_trail",
+                stop_atr_mult=chandelier_stop_atr,
+                trail_atr_mult=chandelier_trail_atr,
+                profit_target_atr_mult=chandelier_target_atr,
+            )
+        )
+
+    if _want("time_stop_no_progress", time_no_prog_enable) and time_no_prog_enable:
+        policies.append(
+            TimeStopNoProgressPolicy(
+                name="time_stop_no_progress",
+                max_minutes=time_no_prog_max_minutes,
+                min_mfe_ticks=time_no_prog_min_mfe_ticks,
+            )
+        )
+
+    if _want("giveback_after_mfe", giveback_enable) and giveback_enable:
+        policies.append(
+            GivebackAfterMfePolicy(
+                name="giveback_after_mfe",
+                arm_mfe_ticks=giveback_arm_mfe_ticks,
+                giveback_ticks=giveback_giveback_ticks,
+            )
+        )
+
+    # If selector was provided and nothing matched, fall back safely to the classic set
+    if not policies:
+        policies = [
+            FixedStopTargetPolicy(name="fixed_atr", stop_atr_mult=fixed_stop_atr, target_atr_mult=fixed_target_atr),
+            AtrTrailPolicy(name="atr_trail", stop_atr_mult=trail_stop_atr, trail_atr_mult=trail_trail_atr, profit_target_atr_mult=trail_target_atr),
+        ]
+        if be_enable:
+            policies.append(
+                BreakEvenAtrTrailPolicy(
+                    name="be_atr_trail",
+                    stop_atr_mult=trail_stop_atr,
+                    be_trigger_atr_mult=be_trigger_atr,
+                    be_offset_ticks=be_offset_ticks,
+                    trail_atr_mult=be_trail_atr,
+                    profit_target_atr_mult=be_target_atr,
+                )
+            )
 
     sim_cfg = ExitSimConfig(
         tick_size=tick_size,
@@ -179,6 +300,7 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
         max_minutes_unbounded=max_minutes,
         use_bid_ask_triggers=use_bid_ask,
     )
+
     instr_opt = opts.get("instrument")
     contract_opt = opts.get("contract")
 
@@ -187,7 +309,6 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
     if instr_opt and contract_opt:
         probe_ic = (str(instr_opt).strip(), str(contract_opt).strip())
     else:
-        # best-effort: use first package trades
         for _, pkg in packages.items():
             tr = getattr(pkg, "trades", None)
             if tr is not None and not tr.empty:
@@ -206,14 +327,6 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
         except Exception:
             probe_ticks_rows = None
 
-    # Diagnostics about market store
-    tick_keys = []
-    try:
-        if getattr(market, "ticks", None):
-            tick_keys = list(market.ticks.keys())
-    except Exception:
-        tick_keys = []
-
     # Header card
     html.append("<div class='tf-exit-card'>")
     html.append("<div class='tf-exit-title'>Exit Policy Simulation (tick-path, results in ticks)</div>")
@@ -224,11 +337,11 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
     )
     html.append("<div class='tf-exit-kv'>")
     html.append(f"<div class='muted'>Packages (runs)</div><div>{len(packages):,}</div>")
-    # html.append(f"<div class='muted'>Market tick streams</div><div>{len(tick_keys):,} { _h(str(tick_keys[:5])) if tick_keys else '' }</div>")
     html.append(
-        f"<div class='muted'>Tick probe</div><div>{_h(probe_ic_str) if probe_ic_str else '—'} • rows: <b>{probe_ticks_rows if probe_ticks_rows is not None else '—'}</b></div>")
-
+        f"<div class='muted'>Tick probe</div><div>{_h(probe_ic_str) if probe_ic_str else '—'} • rows: <b>{probe_ticks_rows if probe_ticks_rows is not None else '—'}</b></div>"
+    )
     html.append(f"<div class='muted'>min_trades / top_n</div><div>{min_trades} / {top_n}</div>")
+    html.append(f"<div class='muted'>Policies</div><div><code>{_h(', '.join([getattr(p, 'name', p.__class__.__name__) for p in policies]))}</code></div>")
     if include_regex:
         html.append(f"<div class='muted'>include regex</div><div><code>{_h(str(include_regex))}</code></div>")
     if exclude_regex:
@@ -258,27 +371,7 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
             skip["MIN_TRADES"] += 1
             continue
 
-        inst_col = _find_col(trades, ["instrument", "Instrument"])
-        if not inst_col:
-            skip["MISSING_INSTRUMENT_COL"] += 1
-            continue
-
-        inst_val = str(trades[inst_col].dropna().iloc[0]) if trades[inst_col].dropna().any() else ""
-        ic = _parse_instrument_contract(inst_val)
-        if not ic:
-            skip["BAD_INSTRUMENT_FORMAT"] += 1
-            continue
-
-        instrument, contract = ic
-        # If ticks store has no key, you can still try sim (store might load via get_ticks),
-        # but this is a helpful early indicator
-        if tick_keys and (instrument, contract) not in tick_keys:
-            skip["NO_TICKS_FOR_INSTRUMENT_CONTRACT_KEY"] += 1
-            # still allow; do not continue
-
-        ic = None
         if instr_opt and contract_opt:
-            # If user pins instrument/contract, only include runs that match
             ic = _infer_ic_from_trades(trades)
             if not ic:
                 skip["BAD_INSTRUMENT_FORMAT"] += 1
@@ -287,16 +380,12 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
                 skip["NOT_TARGET_INSTRUMENT_CONTRACT"] += 1
                 continue
         else:
-            # current behavior: infer per run
             ic = _infer_ic_from_trades(trades)
             if not ic:
                 skip["BAD_INSTRUMENT_FORMAT"] += 1
                 continue
 
-        instrument, contract = ic
         run_rows.append((run_id, n))
-
-
 
     run_rows.sort(key=lambda x: x[1], reverse=True)
     run_rows = run_rows[:top_n]
@@ -320,13 +409,6 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
         trades = getattr(pkg, "trades", None)
         if trades is None or trades.empty:
             continue
-
-        # inst_col = _find_col(trades, ["instrument", "Instrument"])
-        # inst_val = str(trades[inst_col].dropna().iloc[0]) if inst_col and trades[inst_col].dropna().any() else ""
-        # ic = _parse_instrument_contract(inst_val)
-        # if not ic:
-        #     continue
-        # instrument, contract = ic
 
         ic = _infer_ic_from_trades(trades)
         if not ic:
@@ -354,7 +436,6 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
         if "policy" in sim.columns and (sim["policy"] == "DIAGNOSTIC").any():
             diag = sim.loc[sim["policy"] == "DIAGNOSTIC"].copy()
 
-            # Prefer the most informative columns if they exist
             cols = []
             for c in ["exit_reason", "detail", "run_id", "trade_idx", "entry_dt", "exit_dt"]:
                 if c in diag.columns:
@@ -387,6 +468,10 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
             )
         ).sort_values("net_ticks", ascending=False)
 
+        # Optional: Armed rate (only meaningful for BE-like policies)
+        if "be_armed" in sim.columns:
+            armed = sim.groupby("policy")["be_armed"].mean().reset_index().rename(columns={"be_armed": "armed_rate"})
+            agg = agg.merge(armed, on="policy", how="left")
         # Chart net ticks
         uri = None
         try:
