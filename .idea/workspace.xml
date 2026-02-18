@@ -4,21 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed simulate.py to read tick data correct">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/constants.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/debug_plot.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/ta_foundation.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/ta_foundation.iml" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed debug report for exit strategies">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/simulate.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/simulate.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/trades_intraday_pnl_by_day.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/trades_intraday_pnl_by_day.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -40,6 +33,18 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "Nogor-design"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/Nogor-design/analyzer_framework.git",
+    "accountId": "4b6153b9-a4ed-4655-80ee-5a38b066e1e5"
+  }
+}]]></component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 3
 }</component>
@@ -250,7 +255,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771077719821</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="Fixed debug report for exit strategies">
+      <option name="closed" value="true" />
+      <created>1771338036270</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1771338036271</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -297,6 +310,7 @@
     <MESSAGE value="Candle data report" />
     <MESSAGE value="Added recommendations to the analysis" />
     <MESSAGE value="Fixed simulate.py to read tick data correct" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed simulate.py to read tick data correct" />
+    <MESSAGE value="Fixed debug report for exit strategies" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed debug report for exit strategies" />
   </component>
 </project>

@@ -585,24 +585,63 @@ sections:
 #      overlay_stops: true
 #      show_pnl_chart: true
 #
-  - id: exit_policy_trade_debug
-    title: "Exit Policy Debug (All Trades + Index)"
-    options:
-      run_id: "BronzeAtlasEmber"
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Debug (All Trades + Index)"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#
+#      run_all_trades: true
+#      start_trade_idx: 0
+#      max_trades: 40
+#      trace_every_n: 8
+#
+#      show_index: true
+#      index_show_actual_pnl: true
+#
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 15
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
 
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Debug"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#      run_all_trades: true
+#      start_trade_idx: 0
+##      trade_idx: 3
+#
+#      policies: [  "be_atr_trail",  "TimeStopNoProgressPolicy"]
+
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#
+#      # Fixed-then-trail (arm at 40 ticks MFE)
+#      fixed_then_arm_mfe_ticks: 40
+#      fixed_then_stop_atr_mult: 1.0
+#      fixed_then_trail_atr_mult: 1.25
+#
+#      # BE trail tuning
+#      be_trigger_ticks: 40
+#      be_offset_ticks: 4
+#      be_trail_atr_mult: 1.25
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
+#      trace_every_n: 1
+
+  - id: exit_policy_trade_debug
+    options:
+      run_id: BronzeAtlasEmber
       run_all_trades: true
       start_trade_idx: 0
-      max_trades: 40
-      trace_every_n: 8
-
-      show_index: true
-      index_show_actual_pnl: true
-
-      tick_size: 0.25
-      atr_tf: "5m"
-      atr_period: 14
-      bounded_to_original_exit: true
-      max_minutes_unbounded: 180
-
-      overlay_stops: true
-      show_pnl_chart: true
+#      trade_idx: 3
+      policies: [ "fixed_atr", "fixed_then_trail", "be_atr_trail", "atr_trail", "time_stop_no_progress", "fixed_then_chandelier" ]
+      fixed_then_arm_mfe_ticks: 40
+      time_stop_minutes: 8
+      time_stop_min_mfe_ticks: 6

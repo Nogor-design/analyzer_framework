@@ -1,4 +1,3 @@
-# src/ta_foundation/analysis/exits/simulate.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +17,8 @@ from ta_foundation.analysis.exits.policies import (
     ChandelierAtrTrailPolicy,
     TimeStopNoProgressPolicy,
     GivebackAfterMfePolicy,
+    FixedAtrThenAtrTrailPolicy,
+    FixedAtrThenChandelierPolicy,  # NEW
 )
 
 Policy = Union[
@@ -28,6 +29,8 @@ Policy = Union[
     ChandelierAtrTrailPolicy,
     TimeStopNoProgressPolicy,
     GivebackAfterMfePolicy,
+    FixedAtrThenAtrTrailPolicy,
+    FixedAtrThenChandelierPolicy,  # NEW
 ]
 
 
@@ -246,6 +249,8 @@ def _simulate_one_trade(
     start_trail_ticks: Optional[float] = None
     trail_amount: Optional[float] = None
 
+    fixed_then_arm_mfe_ticks: Optional[float] = None
+
     if isinstance(policy, FixedStopTargetPolicy):
         # Prefer ATR distances if multipliers are provided; otherwise tick-based
         if policy.stop_atr_mult is not None:
@@ -257,6 +262,20 @@ def _simulate_one_trade(
             target_pts = float(atr_entry) * float(policy.target_atr_mult)
         elif policy.target_ticks is not None:
             target_pts = float(policy.target_ticks) * float(cfg.tick_size)
+
+    elif isinstance(policy, FixedAtrThenAtrTrailPolicy):
+        stop_pts = float(atr_entry) * float(policy.stop_atr_mult)
+        trail_mult = float(policy.trail_atr_mult)
+        fixed_then_arm_mfe_ticks = float(policy.arm_mfe_ticks)
+        if policy.profit_target_atr_mult is not None:
+            target_pts = float(atr_entry) * float(policy.profit_target_atr_mult)
+
+    elif isinstance(policy, FixedAtrThenChandelierPolicy):
+        stop_pts = float(atr_entry) * float(policy.stop_atr_mult)
+        trail_mult = float(policy.trail_atr_mult)
+        fixed_then_arm_mfe_ticks = float(policy.arm_mfe_ticks)
+        if policy.profit_target_atr_mult is not None:
+            target_pts = float(atr_entry) * float(policy.profit_target_atr_mult)
 
     elif isinstance(policy, AtrTrailPolicy):
         stop_pts = float(atr_entry) * float(policy.stop_atr_mult)
@@ -424,7 +443,12 @@ def _simulate_one_trade(
                     stop_price = max(float(stop_price), float(new_trail_stop)) if direction > 0 else min(float(stop_price), float(new_trail_stop))
 
         # --- ATR-based trail policies ---
-        if seen_entry_tick and trail_distance_pts is not None:
+        # For FixedAtrThen* policies: only trail after MFE >= arm threshold
+        can_trail = True
+        if fixed_then_arm_mfe_ticks is not None:
+            can_trail = best_fav_ticks_dbg >= float(fixed_then_arm_mfe_ticks)
+
+        if seen_entry_tick and trail_distance_pts is not None and can_trail:
             if direction > 0:
                 new_trail_stop = best_price - float(trail_distance_pts)
             else:
@@ -434,7 +458,9 @@ def _simulate_one_trade(
             if stop_price is None:
                 stop_price = float(new_trail_stop)
             else:
-                stop_price = max(float(stop_price), float(new_trail_stop)) if direction > 0 else min(float(stop_price), float(new_trail_stop))
+                stop_price = max(float(stop_price), float(new_trail_stop)) if direction > 0 else min(
+                    float(stop_price), float(new_trail_stop)
+                )
 
         if stop_before is None and stop_price is not None:
             stop_changed = True
@@ -704,6 +730,11 @@ def simulate_exit_policy_for_trade_debug(
     if trace is None:
         trace = pd.DataFrame()
     return res, trace
+
+
+# (rest of file unchanged)
+# simulate_exit_policies_for_run(...) remains unchanged from your current version
+
 
 
 def simulate_exit_policies_for_run(

@@ -20,6 +20,9 @@ from ta_foundation.analysis.exits.policies import (
     AtrTrailPolicy,
     BreakEvenAtrTrailPolicy,
     ChandelierAtrTrailPolicy,
+    FixedAtrThenAtrTrailPolicy,
+    FixedAtrThenChandelierPolicy,
+    TimeStopNoProgressPolicy,
 )
 
 
@@ -100,50 +103,156 @@ def _parse_trade_idx_option(v: Any) -> Union[int, str, None]:
 
 
 def _make_policies(opts: Dict[str, Any]) -> List[Any]:
+    """
+    Build policy objects from ctx["options"].
+
+    Supported keys in opts["policies"] (strings):
+      - "trail"
+      - "fixed_atr"
+      - "atr_trail"
+      - "be_atr_trail"
+      - "chandelier_atr_trail"
+      - "fixed_then_trail"         -> FixedAtrThenAtrTrailPolicy
+      - "fixed_then_chandelier"    -> FixedAtrThenChandelierPolicy
+      - "time_stop_no_progress"    -> TimeStopNoProgressPolicy
+
+    IMPORTANT:
+      - This function is the ONLY policy factory in this file. (No duplicates.)
+      - The string list in opts["policies"] is treated case-insensitively.
+    """
+    selected = opts.get("policies", None)
+    if selected is not None:
+        if isinstance(selected, str):
+            selected = [s.strip() for s in selected.split(",") if s.strip()]
+        selected = [str(s).strip().lower() for s in (selected or [])]
+    else:
+        selected = ["trail", "fixed_atr", "atr_trail", "be_atr_trail", "chandelier_atr_trail"]
+
+    # Shared defaults/overrides
     start_trail_ticks = float(opts.get("start_trail_ticks", 50))
     trail_amount = float(opts.get("trail_amount", 20))
 
-    stop_ticks = opts.get("stop_ticks", 200)
-    target_ticks = opts.get("target_ticks", 400)
-    stop_ticks = float(stop_ticks) if stop_ticks is not None else 200.0
-    target_ticks = float(target_ticks) if target_ticks is not None else 400.0
+    stop_ticks = float(opts.get("stop_ticks", 200))
+    target_ticks = float(opts.get("target_ticks", 400))
 
-    return [
-        TrailStopTargetPolicy(
+    # Fixed ATR stop/target overrides
+    fixed_stop_atr_mult = opts.get("fixed_stop_atr_mult", None)
+    fixed_target_atr_mult = opts.get("fixed_target_atr_mult", None)
+
+    # ATR trail
+    trail_stop_atr_mult = float(opts.get("trail_stop_atr_mult", 1.0))
+    trail_atr_mult = float(opts.get("trail_atr_mult", 1.25))
+
+    # BE + ATR trail
+    be_trigger_atr_mult = float(opts.get("be_trigger_atr_mult", 0.8))
+    be_trigger_ticks = opts.get("be_trigger_ticks", None)
+    be_offset_ticks = float(opts.get("be_offset_ticks", 4.0))
+    be_trail_atr_mult = float(opts.get("be_trail_atr_mult", 1.25))
+
+    # Chandelier
+    chandelier_stop_atr_mult = float(opts.get("chandelier_stop_atr_mult", 1.0))
+    chandelier_trail_atr_mult = float(opts.get("chandelier_trail_atr_mult", 1.75))
+
+    # Fixed-then arm + trail
+    fixed_then_arm_mfe_ticks = float(opts.get("fixed_then_arm_mfe_ticks", 40.0))
+    fixed_then_stop_atr_mult = float(opts.get("fixed_then_stop_atr_mult", 1.0))
+    fixed_then_trail_atr_mult = float(opts.get("fixed_then_trail_atr_mult", 1.25))
+
+    # Fixed-then arm + chandelier
+    fixed_then_chand_arm_mfe_ticks = float(opts.get("fixed_then_chand_arm_mfe_ticks", fixed_then_arm_mfe_ticks))
+    fixed_then_chand_stop_atr_mult = float(opts.get("fixed_then_chand_stop_atr_mult", fixed_then_stop_atr_mult))
+    fixed_then_chand_trail_atr_mult = float(opts.get("fixed_then_chand_trail_atr_mult", chandelier_trail_atr_mult))
+
+    # Time stop no progress
+    time_stop_minutes = float(opts.get("time_stop_minutes", 8))
+    time_stop_min_mfe_ticks = float(opts.get("time_stop_min_mfe_ticks", 6.0))
+
+    def mk_trail() -> TrailStopTargetPolicy:
+        return TrailStopTargetPolicy(
             name="trail",
             start_trail_ticks=start_trail_ticks,
             trail_amount=trail_amount,
             stop_ticks=float(opts.get("trail_stop_ticks", stop_ticks)),
-        ),
-        FixedStopTargetPolicy(
+        )
+
+    def mk_fixed_atr() -> FixedStopTargetPolicy:
+        return FixedStopTargetPolicy(
             name="fixed_atr",
             stop_ticks=float(opts.get("fixed_stop_ticks", stop_ticks)),
             target_ticks=float(opts.get("fixed_target_ticks", target_ticks)),
-            stop_atr_mult=(float(opts["fixed_stop_atr_mult"]) if opts.get("fixed_stop_atr_mult") is not None else None),
-            target_atr_mult=(float(opts["fixed_target_atr_mult"]) if opts.get("fixed_target_atr_mult") is not None else None),
-        ),
-        AtrTrailPolicy(
+            stop_atr_mult=(float(fixed_stop_atr_mult) if fixed_stop_atr_mult is not None else None),
+            target_atr_mult=(float(fixed_target_atr_mult) if fixed_target_atr_mult is not None else None),
+        )
+
+    def mk_atr_trail() -> AtrTrailPolicy:
+        return AtrTrailPolicy(
             name="atr_trail",
-            stop_atr_mult=float(opts.get("trail_stop_atr_mult", 1.0)),
-            trail_atr_mult=float(opts.get("trail_atr_mult", 1.25)),
+            stop_atr_mult=trail_stop_atr_mult,
+            trail_atr_mult=trail_atr_mult,
             profit_target_atr_mult=None,
-        ),
-        BreakEvenAtrTrailPolicy(
+        )
+
+    def mk_be_atr_trail() -> BreakEvenAtrTrailPolicy:
+        return BreakEvenAtrTrailPolicy(
             name="be_atr_trail",
-            stop_atr_mult=float(opts.get("trail_stop_atr_mult", 1.0)),
-            be_trigger_atr_mult=float(opts.get("be_trigger_atr_mult", 0.8)),
-            be_trigger_ticks=(float(opts["be_trigger_ticks"]) if opts.get("be_trigger_ticks") is not None else None),
-            be_offset_ticks=float(opts.get("be_offset_ticks", 4.0)),
-            trail_atr_mult=float(opts.get("be_trail_atr_mult", 1.25)),
+            stop_atr_mult=trail_stop_atr_mult,
+            trail_atr_mult=be_trail_atr_mult,
+            be_trigger_atr_mult=be_trigger_atr_mult,
+            be_trigger_ticks=(float(be_trigger_ticks) if be_trigger_ticks is not None else None),
+            be_offset_ticks=be_offset_ticks,
             profit_target_atr_mult=None,
-        ),
-        ChandelierAtrTrailPolicy(
+        )
+
+    def mk_chandelier() -> ChandelierAtrTrailPolicy:
+        return ChandelierAtrTrailPolicy(
             name="chandelier_atr_trail",
-            stop_atr_mult=float(opts.get("chandelier_stop_atr_mult", 1.0)),
-            trail_atr_mult=float(opts.get("chandelier_trail_atr_mult", 1.75)),
+            stop_atr_mult=chandelier_stop_atr_mult,
+            trail_atr_mult=chandelier_trail_atr_mult,
             profit_target_atr_mult=None,
-        ),
-    ]
+        )
+
+    def mk_fixed_then_trail() -> FixedAtrThenAtrTrailPolicy:
+        return FixedAtrThenAtrTrailPolicy(
+            name="fixed_then_trail",
+            stop_atr_mult=fixed_then_stop_atr_mult,
+            trail_atr_mult=fixed_then_trail_atr_mult,
+            arm_mfe_ticks=fixed_then_arm_mfe_ticks,
+            profit_target_atr_mult=None,
+        )
+
+    def mk_fixed_then_chandelier() -> FixedAtrThenChandelierPolicy:
+        return FixedAtrThenChandelierPolicy(
+            name="fixed_then_chandelier",
+            stop_atr_mult=fixed_then_chand_stop_atr_mult,
+            trail_atr_mult=fixed_then_chand_trail_atr_mult,
+            arm_mfe_ticks=fixed_then_chand_arm_mfe_ticks,
+            profit_target_atr_mult=None,
+        )
+
+    def mk_time_stop_no_progress() -> TimeStopNoProgressPolicy:
+        return TimeStopNoProgressPolicy(
+            name="time_stop_no_progress",
+            max_minutes=time_stop_minutes,
+            min_mfe_ticks=time_stop_min_mfe_ticks,
+        )
+
+    builders = {
+        "trail": mk_trail,
+        "fixed_atr": mk_fixed_atr,
+        "atr_trail": mk_atr_trail,
+        "be_atr_trail": mk_be_atr_trail,
+        "chandelier_atr_trail": mk_chandelier,
+        "fixed_then_trail": mk_fixed_then_trail,
+        "fixed_then_chandelier": mk_fixed_then_chandelier,
+        "time_stop_no_progress": mk_time_stop_no_progress,
+    }
+
+    out: List[Any] = []
+    for key in selected:
+        k = str(key).strip().lower()
+        if k in builders:
+            out.append(builders[k]())
+    return out
 
 
 def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
@@ -154,7 +263,7 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
       - Second chart: PnL ticks (LAST-based) vs time from simulator trace
       - Stop lock-in shading: stop PnL >= 0 vs < 0 relative to entry
       - Option to render all trades: per-trade chart set
-      - NEW: all-trades navigation index (anchors)
+      - All-trades navigation index (anchors)
 
     Contract:
       - options come from ctx["options"]
@@ -247,9 +356,8 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         except Exception:
             max_trades = None
 
-    # NEW: index controls
+    # Index controls
     show_index = bool(opts.get("show_index", True))
-    index_cols = int(opts.get("index_cols", 8))
     index_show_actual_pnl = bool(opts.get("index_show_actual_pnl", True))
 
     # Trace sampling: default higher sampling if rendering all trades
@@ -290,6 +398,7 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         bars = bars.sort_values("dt").reset_index(drop=True)
         try:
             from ta_foundation.analysis.features.regime import atr_wilder
+
             bars["atr"] = atr_wilder(bars, period=atr_period)
             atr_bars = bars.dropna(subset=["atr"])
         except Exception:
@@ -351,16 +460,12 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         parts.append("<div style='margin:10px 0 14px 0;'>")
         parts.append("<b>Trade Index</b>")
         parts.append("<div class='muted' style='margin-top:4px;'>Click a trade to jump to its charts.</div>")
-
-        # Build a simple grid of links
-        # We avoid relying on external CSS; use inline flex-wrap.
         parts.append("<div style='display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;'>")
 
         for i in idxs:
             a = _trade_anchor(i)
             pnl = _actual_pnl_ticks(i) if index_show_actual_pnl else None
 
-            # small pill
             label = f"{i}"
             title = f"trade_idx={i}"
             if pnl is not None:
@@ -426,7 +531,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         )
 
         out: List[str] = []
-        # Anchor wrapper
         out.append(f"<div id='{_h(_trade_anchor(trade_idx))}' style='margin-top:18px;'>")
         out.append(
             f"<div class='muted'>Instrument: <b>{_h(instrument)} { _h(contract) }</b> • "
@@ -537,7 +641,11 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
 
         # Sim rows table for this trade
         if not sim_trade.empty:
-            cols = [c for c in ["policy", "exit_reason", "exit_dt", "exit_price", "pnl_ticks", "mfe_ticks", "mae_ticks", "be_armed", "stop_at_arm"] if c in sim_trade.columns]
+            cols = [
+                c
+                for c in ["policy", "exit_reason", "exit_dt", "exit_price", "pnl_ticks", "mfe_ticks", "mae_ticks", "be_armed", "stop_at_arm"]
+                if c in sim_trade.columns
+            ]
             if cols:
                 out.append("<div style='margin-top:10px;'>")
                 out.append("<b>Simulation rows (this trade)</b>")
@@ -601,7 +709,10 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             html.append(_render_one_trade(i))
     else:
         if trade_idx_opt is None or isinstance(trade_idx_opt, str):
-            html.append("<div class='muted'>Missing/invalid <code>trade_idx</code>. Provide an int, or set <code>run_all_trades: true</code>.</div>")
+            html.append(
+                "<div class='muted'>Missing/invalid <code>trade_idx</code>. "
+                "Provide an int, or set <code>run_all_trades: true</code>.</div>"
+            )
             html.append("</div></div>")
             return "\n".join(html)
         html.append(_render_one_trade(int(trade_idx_opt)))

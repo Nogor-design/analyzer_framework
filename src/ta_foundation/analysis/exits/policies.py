@@ -6,76 +6,56 @@ from typing import Optional, Literal
 
 ExitReason = Literal["stop", "target", "time", "eod", "unknown"]
 
-@dataclass(frozen=True)
-class TrailStopTargetPolicy:
-    """
-    Standard trail
-    """
-    name: str = "trail"
-    start_trail_ticks: float = 20.0
-    trail_amount: float = 10.0
-    stop_ticks: float = 20.0
-
 
 @dataclass(frozen=True)
 class FixedStopTargetPolicy:
-    """
-    Stop/Target can be ATR-based (preferred) and/or tick-based.
-    If both are provided, ATR-based distances are used.
-    """
-    name: str = "fixed_atr"
-    stop_atr_mult: float = None#1.0
-    target_atr_mult: float = None#1.5
+    name: str
     stop_ticks: Optional[float] = None
     target_ticks: Optional[float] = None
+    stop_atr_mult: Optional[float] = None
+    target_atr_mult: Optional[float] = None
 
 
 @dataclass(frozen=True)
 class AtrTrailPolicy:
-    """
-    ATR trailing stop:
-      - Initial stop at entry +/- stop_atr_mult * ATR(entry)
-      - Trail behind watermark by trail_atr_mult * ATR(entry)
-      - Optional profit target (ATR-based)
-    """
-    name: str = "atr_trail"
-    stop_atr_mult: float = 1.0
-    trail_atr_mult: float = 1.25
+    name: str
+    stop_atr_mult: float
+    trail_atr_mult: float
     profit_target_atr_mult: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class TrailStopTargetPolicy:
+    name: str
+    start_trail_ticks: float
+    trail_amount: float
+    stop_ticks: float
 
 
 @dataclass(frozen=True)
 class BreakEvenAtrTrailPolicy:
-    name: str = "be_atr_trail"
-
-    # Base stop and trailing behavior
-    stop_atr_mult: float = 1.0
-    trail_atr_mult: float = 1.25
+    """
+    Initial fixed ATR stop, optional profit target, plus:
+      - arm break-even after a profit threshold (either ATR-based or ticks-based)
+      - move stop to entry +/- offset ticks (conservative snap handled in simulator)
+      - then keep ATR trailing
+    """
+    name: str
+    stop_atr_mult: float
+    trail_atr_mult: float
+    be_trigger_atr_mult: float
+    be_offset_ticks: float = 0.0
+    be_trigger_ticks: Optional[float] = None
     profit_target_atr_mult: Optional[float] = None
 
-    # Break-even / stop-in-profit behavior
-    # Existing: arm after move of ATR * be_trigger_atr_mult
-    be_trigger_atr_mult: float = 0.8
-
-    # ✅ New: arm after move of N ticks (if set, overrides ATR trigger)
-    be_trigger_ticks: Optional[float] = None
-
-    # Where to set stop once armed:
-    # 0 => break-even, positive => stop in profit, negative => stop still in loss (rare)
-    be_offset_ticks: float = 0.0
 
 @dataclass(frozen=True)
 class ChandelierAtrTrailPolicy:
-    """
-    Chandelier ATR trail:
-      - Initial stop at entry +/- stop_atr_mult * ATR(entry)
-      - Trail stop = watermark -/+ trail_atr_mult * ATR(entry) (watermark = best favorable price)
-      - Optional profit target (ATR-based)
-    """
-    name: str = "chandelier_atr_trail"
-    stop_atr_mult: float = 1.0
-    trail_atr_mult: float = 1.75
+    name: str
+    stop_atr_mult: float
+    trail_atr_mult: float
     profit_target_atr_mult: Optional[float] = None
+
 
 @dataclass(frozen=True)
 class TimeStopNoProgressPolicy:
@@ -83,18 +63,48 @@ class TimeStopNoProgressPolicy:
     Time stop if trade doesn't show enough progress.
       - If minutes_in_trade >= max_minutes AND best_favorable_ticks < min_mfe_ticks => exit (market)
     """
-    name: str = "time_stop_no_progress"
-    max_minutes: int = 8
-    min_mfe_ticks: float = 6.0
+    name: str
+    max_minutes: float
+    min_mfe_ticks: float
+
 
 @dataclass(frozen=True)
 class GivebackAfterMfePolicy:
-    """
-    Giveback stop:
-      - Once MFE >= arm_mfe_ticks, exit if giveback >= giveback_ticks from the peak.
-    This directly attacks 'winner turns into loser' behavior.
-    """
-    name: str = "giveback_after_mfe"
-    arm_mfe_ticks: float = 18.0
-    giveback_ticks: float = 10.0
+    name: str
+    arm_mfe_ticks: float
+    giveback_ticks: float
 
+
+@dataclass(frozen=True)
+class FixedAtrThenAtrTrailPolicy:
+    """
+    Fixed ATR stop until MFE >= arm_mfe_ticks, then ATR trail starts.
+
+    - Stop starts at entry +/- stop_atr_mult * ATR
+    - Once armed, stop becomes max/min(current_stop, best_price -/+ trail_atr_mult * ATR)
+    - Optional profit target can be added (constant)
+    """
+    name: str
+    stop_atr_mult: float
+    trail_atr_mult: float
+    arm_mfe_ticks: float = 40.0
+    profit_target_atr_mult: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class FixedAtrThenChandelierPolicy:
+    """
+    Fixed ATR stop until MFE >= arm_mfe_ticks, then "chandelier" behavior after arming.
+
+    In this simulator, chandelier behavior is implemented as:
+      - watermark best_price (LAST-based)
+      - stop = best_price -/+ trail_atr_mult * ATR  (long/short)
+      - stop is monotone in the favorable direction
+
+    This is intentionally aligned with ChandelierAtrTrailPolicy mechanics, but gated by arm_mfe_ticks.
+    """
+    name: str
+    stop_atr_mult: float
+    trail_atr_mult: float
+    arm_mfe_ticks: float = 40.0
+    profit_target_atr_mult: Optional[float] = None
