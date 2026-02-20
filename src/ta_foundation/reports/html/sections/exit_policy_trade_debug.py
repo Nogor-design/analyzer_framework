@@ -106,134 +106,245 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
     """
     Build policy objects from ctx["options"].
 
-    Supported keys in opts["policies"] (strings):
-      - "trail"
-      - "fixed_atr"
-      - "atr_trail"
-      - "be_atr_trail"
-      - "chandelier_atr_trail"
-      - "fixed_then_trail"         -> FixedAtrThenAtrTrailPolicy
-      - "fixed_then_chandelier"    -> FixedAtrThenChandelierPolicy
-      - "time_stop_no_progress"    -> TimeStopNoProgressPolicy
+    Supported policy identifiers in opts["policies"] (case/spacing/punct tolerant):
+      - "trail"                  (TrailStopTargetPolicy)
+      - "fixed_atr"              (FixedStopTargetPolicy)
+      - "atr_trail"              (AtrTrailPolicy)
+      - "be_atr_trail"           (BreakEvenAtrTrailPolicy)
+      - "chandelier_atr_trail"   (ChandelierAtrTrailPolicy)
+      - "fixed_then_trail"       (FixedAtrThenAtrTrailPolicy)
+      - "fixed_then_chandelier"  (FixedAtrThenChandelierPolicy)
+      - "time_stop_no_progress"  (TimeStopNoProgressPolicy)
 
-    IMPORTANT:
-      - This function is the ONLY policy factory in this file. (No duplicates.)
-      - The string list in opts["policies"] is treated case-insensitively.
+    Also accepts class-name style identifiers:
+      - "TrailStopTargetPolicy"
+      - "FixedStopTargetPolicy"
+      - "AtrTrailPolicy"
+      - "BreakEvenAtrTrailPolicy"
+      - "ChandelierAtrTrailPolicy"
+      - "FixedAtrThenAtrTrailPolicy"
+      - "FixedAtrThenChandelierPolicy"
+      - "TimeStopNoProgressPolicy"
+
+    Parameter sweeps:
+      opts["policy_params"] may provide per-policy overrides with scalar OR list values.
+      Values that are lists are expanded as a cartesian product (one policy instance per combo).
+
+      IMPORTANT:
+        policy_params keys can be either canonical ids (e.g. "trail") OR the class-style name
+        used in policies (e.g. "TrailStopTargetPolicy"). Both now work.
     """
-    selected = opts.get("policies", None)
-    if selected is not None:
-        if isinstance(selected, str):
-            selected = [s.strip() for s in selected.split(",") if s.strip()]
-        selected = [str(s).strip().lower() for s in (selected or [])]
-    else:
-        selected = ["trail", "fixed_atr", "atr_trail", "be_atr_trail", "chandelier_atr_trail"]
 
-    # Shared defaults/overrides
+    def _norm_key(x: Any) -> str:
+        s = str(x or "").strip().lower()
+        return "".join([c for c in s if c.isalnum()])
+
+    def _as_list(v: Any) -> List[Any]:
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        return [v]
+
+    def _param_grid(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not spec:
+            return [{}]
+
+        keys = list(spec.keys())
+        vals: List[List[Any]] = []
+        for k in keys:
+            v = spec.get(k)
+            if isinstance(v, (list, tuple)):
+                vals.append(list(v))
+            else:
+                vals.append([v])
+
+        out: List[Dict[str, Any]] = [{}]
+        for k, vlist in zip(keys, vals):
+            nxt: List[Dict[str, Any]] = []
+            for base in out:
+                for vv in vlist:
+                    d = dict(base)
+                    d[k] = vv
+                    nxt.append(d)
+            out = nxt
+        return out
+
+    def _fmt_name(base: str, overrides: Dict[str, Any]) -> str:
+        if not overrides:
+            return base
+        parts: List[str] = []
+        for k in sorted(overrides.keys()):
+            v = overrides.get(k)
+            if isinstance(v, float):
+                parts.append(f"{k}={v:g}")
+            else:
+                parts.append(f"{k}={v}")
+        return f"{base}({', '.join(parts)})"
+
+    # ---------------- Selection ----------------
+    selected_raw = opts.get("policies", None)
+    if selected_raw is None:
+        selected_raw = ["trail", "fixed_atr", "atr_trail", "be_atr_trail", "chandelier_atr_trail"]
+    elif isinstance(selected_raw, str):
+        selected_raw = [s.strip() for s in selected_raw.split(",") if s.strip()]
+    selected_raw = _as_list(selected_raw)
+
+    # Alias map (normalized) -> canonical builder key
+    alias_to_key = {
+        # canonical ids
+        _norm_key("trail"): "trail",
+        _norm_key("fixed_atr"): "fixed_atr",
+        _norm_key("atr_trail"): "atr_trail",
+        _norm_key("be_atr_trail"): "be_atr_trail",
+        _norm_key("chandelier_atr_trail"): "chandelier_atr_trail",
+        _norm_key("fixed_then_trail"): "fixed_then_trail",
+        _norm_key("fixed_then_chandelier"): "fixed_then_chandelier",
+        _norm_key("time_stop_no_progress"): "time_stop_no_progress",
+        # class names
+        _norm_key("TrailStopTargetPolicy"): "trail",
+        _norm_key("FixedStopTargetPolicy"): "fixed_atr",
+        _norm_key("AtrTrailPolicy"): "atr_trail",
+        _norm_key("BreakEvenAtrTrailPolicy"): "be_atr_trail",
+        _norm_key("ChandelierAtrTrailPolicy"): "chandelier_atr_trail",
+        _norm_key("FixedAtrThenAtrTrailPolicy"): "fixed_then_trail",
+        _norm_key("FixedAtrThenChandelierPolicy"): "fixed_then_chandelier",
+        _norm_key("TimeStopNoProgressPolicy"): "time_stop_no_progress",
+    }
+
+    # ---------------- Defaults ----------------
     start_trail_ticks = float(opts.get("start_trail_ticks", 50))
     trail_amount = float(opts.get("trail_amount", 20))
 
-    stop_ticks = float(opts.get("stop_ticks", 200))
-    target_ticks = float(opts.get("target_ticks", 400))
+    stop_ticks_default = float(opts.get("stop_ticks", 200))
+    target_ticks_default = float(opts.get("target_ticks", 400))
 
-    # Fixed ATR stop/target overrides
     fixed_stop_atr_mult = opts.get("fixed_stop_atr_mult", None)
     fixed_target_atr_mult = opts.get("fixed_target_atr_mult", None)
 
-    # ATR trail
     trail_stop_atr_mult = float(opts.get("trail_stop_atr_mult", 1.0))
     trail_atr_mult = float(opts.get("trail_atr_mult", 1.25))
 
-    # BE + ATR trail
     be_trigger_atr_mult = float(opts.get("be_trigger_atr_mult", 0.8))
     be_trigger_ticks = opts.get("be_trigger_ticks", None)
     be_offset_ticks = float(opts.get("be_offset_ticks", 4.0))
     be_trail_atr_mult = float(opts.get("be_trail_atr_mult", 1.25))
 
-    # Chandelier
     chandelier_stop_atr_mult = float(opts.get("chandelier_stop_atr_mult", 1.0))
     chandelier_trail_atr_mult = float(opts.get("chandelier_trail_atr_mult", 1.75))
 
-    # Fixed-then arm + trail
     fixed_then_arm_mfe_ticks = float(opts.get("fixed_then_arm_mfe_ticks", 40.0))
     fixed_then_stop_atr_mult = float(opts.get("fixed_then_stop_atr_mult", 1.0))
     fixed_then_trail_atr_mult = float(opts.get("fixed_then_trail_atr_mult", 1.25))
 
-    # Fixed-then arm + chandelier
     fixed_then_chand_arm_mfe_ticks = float(opts.get("fixed_then_chand_arm_mfe_ticks", fixed_then_arm_mfe_ticks))
     fixed_then_chand_stop_atr_mult = float(opts.get("fixed_then_chand_stop_atr_mult", fixed_then_stop_atr_mult))
     fixed_then_chand_trail_atr_mult = float(opts.get("fixed_then_chand_trail_atr_mult", chandelier_trail_atr_mult))
 
-    # Time stop no progress
     time_stop_minutes = float(opts.get("time_stop_minutes", 8))
     time_stop_min_mfe_ticks = float(opts.get("time_stop_min_mfe_ticks", 6.0))
 
-    def mk_trail() -> TrailStopTargetPolicy:
+    # Per-policy param sweeps (from YAML)
+    policy_params: Dict[str, Any] = opts.get("policy_params") or {}
+    if not isinstance(policy_params, dict):
+        policy_params = {}
+
+    def _params_for_canon(canon: str) -> Dict[str, Any]:
+        """
+        Accept params keyed by either:
+          - the canonical id (e.g. "trail")
+          - ANY alias that maps to that canonical id (e.g. "TrailStopTargetPolicy")
+        """
+        canon_norm = _norm_key(canon)
+        acceptable_norms = {canon_norm}
+        for alias_norm, mapped in alias_to_key.items():
+            if mapped == canon:
+                acceptable_norms.add(alias_norm)
+
+        for k, v in policy_params.items():
+            if _norm_key(k) in acceptable_norms and isinstance(v, dict):
+                return v
+        return {}
+
+    # ---------------- Builders (accept override dict) ----------------
+    def mk_trail(over: Dict[str, Any]) -> TrailStopTargetPolicy:
         return TrailStopTargetPolicy(
-            name="trail",
-            start_trail_ticks=start_trail_ticks,
-            trail_amount=trail_amount,
-            stop_ticks=float(opts.get("trail_stop_ticks", stop_ticks)),
+            name=_fmt_name("trail", over),
+            start_trail_ticks=float(over.get("start_trail_ticks", start_trail_ticks)),
+            trail_amount=float(over.get("trail_amount", trail_amount)),
+            stop_ticks=float(over.get("stop_ticks", float(opts.get("trail_stop_ticks", stop_ticks_default)))),
         )
 
-    def mk_fixed_atr() -> FixedStopTargetPolicy:
+    def mk_fixed_atr(over: Dict[str, Any]) -> FixedStopTargetPolicy:
+        stop_ticks = over.get("stop_ticks", float(opts.get("fixed_stop_ticks", stop_ticks_default)))
+        target_ticks = over.get("target_ticks", float(opts.get("fixed_target_ticks", target_ticks_default)))
         return FixedStopTargetPolicy(
-            name="fixed_atr",
-            stop_ticks=float(opts.get("fixed_stop_ticks", stop_ticks)),
-            target_ticks=float(opts.get("fixed_target_ticks", target_ticks)),
-            stop_atr_mult=(float(fixed_stop_atr_mult) if fixed_stop_atr_mult is not None else None),
-            target_atr_mult=(float(fixed_target_atr_mult) if fixed_target_atr_mult is not None else None),
+            name=_fmt_name("fixed_atr", over),
+            stop_ticks=float(stop_ticks) if stop_ticks is not None else None,
+            target_ticks=float(target_ticks) if target_ticks is not None else None,
+            stop_atr_mult=(
+                float(over.get("stop_atr_mult", fixed_stop_atr_mult))
+                if (over.get("stop_atr_mult", fixed_stop_atr_mult) is not None)
+                else None
+            ),
+            target_atr_mult=(
+                float(over.get("target_atr_mult", fixed_target_atr_mult))
+                if (over.get("target_atr_mult", fixed_target_atr_mult) is not None)
+                else None
+            ),
         )
 
-    def mk_atr_trail() -> AtrTrailPolicy:
+    def mk_atr_trail(over: Dict[str, Any]) -> AtrTrailPolicy:
         return AtrTrailPolicy(
-            name="atr_trail",
-            stop_atr_mult=trail_stop_atr_mult,
-            trail_atr_mult=trail_atr_mult,
+            name=_fmt_name("atr_trail", over),
+            stop_atr_mult=float(over.get("stop_atr_mult", trail_stop_atr_mult)),
+            trail_atr_mult=float(over.get("trail_atr_mult", trail_atr_mult)),
             profit_target_atr_mult=None,
         )
 
-    def mk_be_atr_trail() -> BreakEvenAtrTrailPolicy:
+    def mk_be_atr_trail(over: Dict[str, Any]) -> BreakEvenAtrTrailPolicy:
+        trig_ticks = over.get("be_trigger_ticks", be_trigger_ticks)
         return BreakEvenAtrTrailPolicy(
-            name="be_atr_trail",
-            stop_atr_mult=trail_stop_atr_mult,
-            trail_atr_mult=be_trail_atr_mult,
-            be_trigger_atr_mult=be_trigger_atr_mult,
-            be_trigger_ticks=(float(be_trigger_ticks) if be_trigger_ticks is not None else None),
-            be_offset_ticks=be_offset_ticks,
+            name=_fmt_name("be_atr_trail", over),
+            stop_atr_mult=float(over.get("stop_atr_mult", trail_stop_atr_mult)),
+            trail_atr_mult=float(over.get("trail_atr_mult", be_trail_atr_mult)),
+            be_trigger_atr_mult=float(over.get("be_trigger_atr_mult", be_trigger_atr_mult)),
+            be_trigger_ticks=(float(trig_ticks) if trig_ticks is not None else None),
+            be_offset_ticks=float(over.get("be_offset_ticks", be_offset_ticks)),
             profit_target_atr_mult=None,
         )
 
-    def mk_chandelier() -> ChandelierAtrTrailPolicy:
+    def mk_chandelier(over: Dict[str, Any]) -> ChandelierAtrTrailPolicy:
         return ChandelierAtrTrailPolicy(
-            name="chandelier_atr_trail",
-            stop_atr_mult=chandelier_stop_atr_mult,
-            trail_atr_mult=chandelier_trail_atr_mult,
+            name=_fmt_name("chandelier_atr_trail", over),
+            stop_atr_mult=float(over.get("stop_atr_mult", chandelier_stop_atr_mult)),
+            trail_atr_mult=float(over.get("trail_atr_mult", chandelier_trail_atr_mult)),
             profit_target_atr_mult=None,
         )
 
-    def mk_fixed_then_trail() -> FixedAtrThenAtrTrailPolicy:
+    def mk_fixed_then_trail(over: Dict[str, Any]) -> FixedAtrThenAtrTrailPolicy:
         return FixedAtrThenAtrTrailPolicy(
-            name="fixed_then_trail",
-            stop_atr_mult=fixed_then_stop_atr_mult,
-            trail_atr_mult=fixed_then_trail_atr_mult,
-            arm_mfe_ticks=fixed_then_arm_mfe_ticks,
+            name=_fmt_name("fixed_then_trail", over),
+            stop_atr_mult=float(over.get("stop_atr_mult", fixed_then_stop_atr_mult)),
+            trail_atr_mult=float(over.get("trail_atr_mult", fixed_then_trail_atr_mult)),
+            arm_mfe_ticks=float(over.get("arm_mfe_ticks", fixed_then_arm_mfe_ticks)),
             profit_target_atr_mult=None,
         )
 
-    def mk_fixed_then_chandelier() -> FixedAtrThenChandelierPolicy:
+    def mk_fixed_then_chandelier(over: Dict[str, Any]) -> FixedAtrThenChandelierPolicy:
         return FixedAtrThenChandelierPolicy(
-            name="fixed_then_chandelier",
-            stop_atr_mult=fixed_then_chand_stop_atr_mult,
-            trail_atr_mult=fixed_then_chand_trail_atr_mult,
-            arm_mfe_ticks=fixed_then_chand_arm_mfe_ticks,
+            name=_fmt_name("fixed_then_chandelier", over),
+            stop_atr_mult=float(over.get("stop_atr_mult", fixed_then_chand_stop_atr_mult)),
+            trail_atr_mult=float(over.get("trail_atr_mult", fixed_then_chand_trail_atr_mult)),
+            arm_mfe_ticks=float(over.get("arm_mfe_ticks", fixed_then_chand_arm_mfe_ticks)),
             profit_target_atr_mult=None,
         )
 
-    def mk_time_stop_no_progress() -> TimeStopNoProgressPolicy:
+    def mk_time_stop_no_progress(over: Dict[str, Any]) -> TimeStopNoProgressPolicy:
         return TimeStopNoProgressPolicy(
-            name="time_stop_no_progress",
-            max_minutes=time_stop_minutes,
-            min_mfe_ticks=time_stop_min_mfe_ticks,
+            name=_fmt_name("time_stop_no_progress", over),
+            max_minutes=float(over.get("max_minutes", time_stop_minutes)),
+            min_mfe_ticks=float(over.get("min_mfe_ticks", time_stop_min_mfe_ticks)),
         )
 
     builders = {
@@ -247,35 +358,81 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
         "time_stop_no_progress": mk_time_stop_no_progress,
     }
 
+    # ---------------- Materialize policies ----------------
     out: List[Any] = []
-    for key in selected:
-        k = str(key).strip().lower()
-        if k in builders:
-            out.append(builders[k]())
+    for raw in selected_raw:
+        canon = alias_to_key.get(_norm_key(raw))
+        if not canon:
+            continue
+
+        grid_spec = _params_for_canon(canon)
+        for overrides in _param_grid(grid_spec):
+            out.append(builders[canon](overrides))
+
     return out
 
 
+
 def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
-    """
-    Debug plot for one trade OR all trades.
-
-    Adds:
-      - Second chart: PnL ticks (LAST-based) vs time from simulator trace
-      - Stop lock-in shading: stop PnL >= 0 vs < 0 relative to entry
-      - Option to render all trades: per-trade chart set
-      - All-trades navigation index (anchors)
-
-    Contract:
-      - options come from ctx["options"]
-      - market data from ctx["market"]
-      - packages are AnalysisPackage objects (no reloads)
-    """
     packages: Dict[str, AnalysisPackage] = ctx.get("packages", {}) or {}
     market = ctx.get("market")
     opts = ctx.get("options") or {}
 
+    # ---- FIXED: high-contrast, section-local CSS so tables are readable even if global CSS is washed out ----
+    if bool(opts.get("include_section_css", True)):
+        html_css = (
+            "<style>"
+            # /* Scope everything under .epdbg to avoid fighting the global theme */
+            ".epdbg{"
+            "  margin:18px 0;"
+            "  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
+            "  color:#111 !important;"
+            "}"
+            ".epdbg *{color:inherit; opacity:1 !important;}"
+            ".epdbg .card{"
+            "  background:#fff;"
+            "  border:1px solid rgba(0,0,0,.12);"
+            "  border-radius:14px;"
+            "  padding:14px 16px;"
+            "  box-shadow:0 1px 10px rgba(0,0,0,.06);"
+            "}"
+            ".epdbg h3{margin:0 0 10px 0;font-size:18px;color:#111 !important;}"
+            ".epdbg .muted{color:rgba(0,0,0,.72) !important;font-size:13px;}"
+            ".epdbg code{background:rgba(0,0,0,.08);padding:1px 6px;border-radius:8px;}"
+            ".epdbg a{color:#0b57d0 !important;text-decoration:none;}"
+            ".epdbg a:hover{text-decoration:underline;}"
+            ".epdbg img{border:1px solid rgba(0,0,0,.10);}"
+
+            ".epdbg .table{"
+            "  width:100%;"
+            "  border-collapse:collapse;"
+            "  margin-top:8px;"
+            "  font-size:13.5px;"
+            "  color:#111 !important;"
+            "}"
+            ".epdbg .table th,.epdbg .table td{"
+            "  border-bottom:1px solid rgba(0,0,0,.12);"
+            "  padding:7px 9px;"
+            "  text-align:left;"
+            "  vertical-align:top;"
+            "  color:#111 !important;"
+            "}"
+            ".epdbg .table th{"
+            "  font-weight:700;"
+            "  color:#111 !important;"
+            "  background:rgba(0,0,0,.06);"
+            "}"
+            ".epdbg .table tr:nth-child(even) td{background:rgba(0,0,0,.02);}"
+            ".epdbg .table tr:hover td{background:rgba(11,87,208,.06);}"
+            "</style>"
+        )
+    else:
+        html_css = ""
+
     html: List[str] = []
-    html.append("<div class='section'>")
+    html.append("<div class='section epdbg'>")
+    if html_css:
+        html.append(html_css)
     html.append("<div class='card'>")
     html.append("<h3>Exit Policy Trade Debug</h3>")
 
@@ -318,7 +475,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         html.append("</div></div>")
         return "\n".join(html)
 
-    # ---- Options ----
     show_minutes = bool(opts.get("show_minutes", True))
     candle_tf = str(opts.get("candle_tf", "1m"))
     pad_seconds = int(opts.get("pad_seconds", 30))
@@ -330,7 +486,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
     max_minutes = int(opts.get("max_minutes_unbounded", 180))
     use_bid_ask = bool(opts.get("use_bid_ask_triggers", True))
 
-    # Trace / overlays
     overlay_stops = bool(opts.get("overlay_stops", True))
     overlay_targets = bool(opts.get("overlay_targets", True))
     overlay_be_arm = bool(opts.get("overlay_be_arm", True))
@@ -338,16 +493,13 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
     stop_alpha = float(opts.get("stop_alpha", 0.85))
     stop_lw = float(opts.get("stop_linewidth", 1.2))
 
-    # PnL chart controls
     show_pnl_chart = bool(opts.get("show_pnl_chart", True))
     pnl_lockin_shading = bool(opts.get("pnl_lockin_shading", True))
     pnl_chart_height = float(opts.get("pnl_chart_height", 3.4))
 
-    # All-trades mode
     trade_idx_opt = _parse_trade_idx_option(opts.get("trade_idx"))
     run_all_trades = bool(opts.get("run_all_trades", False)) or (trade_idx_opt == "all")
 
-    # Limits for all-trades mode
     max_trades = opts.get("max_trades", None)
     start_trade_idx = int(opts.get("start_trade_idx", 0))
     if max_trades is not None:
@@ -356,11 +508,9 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         except Exception:
             max_trades = None
 
-    # Index controls
     show_index = bool(opts.get("show_index", True))
     index_show_actual_pnl = bool(opts.get("index_show_actual_pnl", True))
 
-    # Trace sampling: default higher sampling if rendering all trades
     default_trace_every_n = 5 if run_all_trades else 1
     trace_every_n = int(opts.get("trace_every_n", default_trace_every_n))
 
@@ -387,7 +537,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
     if getattr(ticks_all["dt"].dt, "tz", None) is None:
         ticks_all["dt"] = ticks_all["dt"].dt.tz_localize("America/Denver")
 
-    # Bars for ATR-at-entry (same as simulator)
     bars = market.get_bars(instrument, contract, timeframe=atr_tf, source="ticks")
     atr_bars = None
     if bars is not None and not bars.empty and "dt" in bars.columns:
@@ -404,7 +553,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         except Exception:
             atr_bars = None
 
-    # Run-level sim table (for per-trade summary rows table)
     sim_all = simulate_exit_policies_for_run(
         run_id=str(run_id),
         trades=trades,
@@ -430,10 +578,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         return f"trade-{trade_idx}"
 
     def _actual_pnl_ticks(trade_idx: int) -> Optional[float]:
-        """
-        Prefer the simulator "actual" row if present (direction-correct).
-        Fallback: compute from trades entry/exit if available.
-        """
         try:
             if sim_all is not None and not sim_all.empty and "trade_idx" in sim_all.columns and "policy" in sim_all.columns:
                 s = sim_all[(sim_all["trade_idx"] == trade_idx) & (sim_all["policy"] == "actual")]
@@ -475,7 +619,7 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             parts.append(
                 f"<a href='#{_h(a)}' title='{_h(title)}' "
                 "style='display:inline-block; padding:4px 8px; border:1px solid rgba(0,0,0,0.15); "
-                "border-radius:999px; text-decoration:none;'>"
+                "border-radius:999px;'>"
                 f"{_h(label)}</a>"
             )
 
@@ -536,10 +680,9 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             f"<div class='muted'>Instrument: <b>{_h(instrument)} { _h(contract) }</b> • "
             f"trade_idx: <b>{trade_idx}</b> • side: <b>{side}</b> • window ticks: <b>{len(w):,}</b> • "
             f"entry: <b>{_h(str(entry_dt))}</b> → end: <b>{_h(str(end_dt))}</b> • atr_entry: <b>{atr_entry:.4f}</b> "
-            f"• <a href='#top' style='text-decoration:none;'>↑ top</a></div>"
+            f"• <a href='#top'>↑ top</a></div>"
         )
 
-        # ---- Chart 1: Price + stops/targets/BE/exit ----
         fig = plt.figure(figsize=(12, 5.2))
         ax = fig.add_subplot(111)
 
@@ -598,9 +741,8 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
         plt.close(fig)
         out.append(f"<img src='{uri}' style='max-width:100%; border-radius:10px;'/>")
 
-        # ---- Chart 2: PnL ticks (trace) + stop lock-in shading ----
         if show_pnl_chart and traces_by_policy:
-            fig2 = plt.figure(figsize=(12, pnl_chart_height))
+            fig2 = plt.figure(figsize=(12, float(opts.get("pnl_chart_height", 3.4))))
             ax2 = fig2.add_subplot(111)
 
             pnl_policy_name = str(opts.get("pnl_policy", "")).strip()
@@ -614,7 +756,7 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
                 ax2.plot(trc["dt"], trc["pnl_ticks_last"], label=f"{label_base} pnl_ticks_last", linewidth=1.0)
                 ax2.axhline(0.0, linestyle=":", label="breakeven")
 
-                if pnl_lockin_shading and "stop_price" in trc.columns and trc["stop_price"].notna().any():
+                if bool(opts.get("pnl_lockin_shading", True)) and "stop_price" in trc.columns and trc["stop_price"].notna().any():
                     stop_pnl_ticks = ((trc["stop_price"] - entry_px) * direction) / float(tick_size)
                     profit_mask = stop_pnl_ticks >= 0
                     loss_mask = stop_pnl_ticks < 0
@@ -639,7 +781,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             plt.close(fig2)
             out.append(f"<img src='{uri2}' style='max-width:100%; border-radius:10px; margin-top:10px;'/>")
 
-        # Sim rows table for this trade
         if not sim_trade.empty:
             cols = [
                 c
@@ -656,7 +797,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
                 out.append("</table>")
                 out.append("</div>")
 
-        # Trace events table
         if show_trace_events and traces_by_policy:
             out.append("<div style='margin-top:10px;'>")
             out.append("<b>Trace events (stop moves / BE arm / exits)</b>")
@@ -685,10 +825,9 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             out.append("</table>")
             out.append("</div>")
 
-        out.append("</div>")  # anchor wrapper
+        out.append("</div>")
         return "\n".join(out)
 
-    # ---- Render one trade or many trades ----
     html.append("<div id='top'></div>")
 
     if run_all_trades:
@@ -702,9 +841,7 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             f"Rendering {len(idxs)} trade(s) starting at trade_idx={start_trade_idx}. "
             f"(trace_every_n={trace_every_n})</div>"
         )
-
         html.append(_render_index(idxs))
-
         for i in idxs:
             html.append(_render_one_trade(i))
     else:
@@ -717,6 +854,6 @@ def render_exit_policy_trade_debug(ctx: Dict[str, Any]) -> str:
             return "\n".join(html)
         html.append(_render_one_trade(int(trade_idx_opt)))
 
-    html.append("</div>")  # card
-    html.append("</div>")  # section
+    html.append("</div>")
+    html.append("</div>")
     return "\n".join(html)
