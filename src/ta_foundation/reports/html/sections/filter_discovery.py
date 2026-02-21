@@ -12,6 +12,12 @@ from ta_foundation.reports.html.embed import fig_to_base64_png
 from ta_foundation.analysis.trade_feature_store import FeatureStoreConfig, build_trade_feature_frame
 from ta_foundation.analysis.recommendations import RecommendationConfig, build_recommendations
 
+# NEW
+from ta_foundation.analysis.trade_entry_signal_store import (
+    EntrySignalStoreConfig,
+    build_trade_entry_signal_frame,
+)
+
 
 def _h(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -85,27 +91,37 @@ def _write_json(path: Path, payload: dict) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _bucket_near_zero(x: pd.Series, edges: list[float], labels: list[str]) -> pd.Categorical:
+    """
+    Bucket a signed series by absolute value ranges (near/far), keeping sign implicit in label text if desired.
+    edges: ascending, e.g. [0.5, 1.0, 2.0]
+    """
+    v = pd.to_numeric(x, errors="coerce").abs()
+    bins = [-1e18] + edges + [1e18]
+    return pd.cut(v, bins=bins, labels=labels)
+
+
 def render_filter_discovery(ctx: dict[str, Any]) -> str:
     packages = ctx.get("packages", {}) or {}
     market = ctx.get("market")
     section = ctx.get("section") or {}
     opts = (section.get("options") or {}) if isinstance(section, dict) else {}
 
-    # Feature build options
+    # Feature build options (existing)
     bar_tf = str(opts.get("bar_tf", "5m"))
     htf_tf = str(opts.get("htf_tf", "15m"))
     ema_period = int(opts.get("ema_period", 50))
     atr_period = int(opts.get("atr_period", 14))
     include_micro = bool(opts.get("include_micro", True))
 
-    # Per-run rendering controls
+    # Per-run rendering controls (existing)
     top_n = int(opts.get("top_n_runs", 12))
     min_trades = int(opts.get("min_trades", 50))
     sort_by = str(opts.get("sort_by", "net_pnl")).strip().lower()
     include_regex = opts.get("include_run_id_regex")
     exclude_regex = opts.get("exclude_run_id_regex")
 
-    # Recommendations options
+    # Recommendations options (existing)
     rec_enable = bool(opts.get("write_recommendations_json", True))
     rec_min_trades_run = int(opts.get("rec_min_trades_run", max(100, min_trades)))
     rec_min_trades_bucket = int(opts.get("rec_min_trades_bucket", 25))
@@ -113,6 +129,17 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
     rec_max_atr_quartiles = int(opts.get("rec_max_atr_quartiles", 3))
     rec_require_better_by = float(opts.get("rec_require_better_by", 0.0))
     out_dir = str(opts.get("out_dir"))
+
+    # NEW: Entry Signal Discovery options
+    entry_signal_enable = bool(opts.get("entry_signal_enable", False))
+    entry_tick_size = opts.get("tick_size", 0.25)
+    entry_prev_bars = int(opts.get("entry_prev_bars", 1))
+    entry_swing_k = int(opts.get("entry_swing_k", 2))
+    entry_near_edges_atr = opts.get("entry_near_edges_atr", [0.5, 1.0, 2.0])  # abs(distance)/ATR
+    entry_near_labels = opts.get(
+        "entry_near_labels",
+        ["<=0.5 ATR", "0.5–1 ATR", "1–2 ATR", ">2 ATR"]
+    )
 
     cfg = FeatureStoreConfig(
         bar_tf=bar_tf,
@@ -122,7 +149,7 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
         include_micro=include_micro,
     )
 
-    # In-report cache
+    # In-report cache (existing)
     cache = ctx.setdefault("_cache", {})
     cache_key = f"trade_features|{bar_tf}|{htf_tf}|ema{ema_period}|atr{atr_period}|micro{int(include_micro)}"
     feats = cache.get(cache_key)
@@ -146,15 +173,13 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
         + f". Total trades: <b>{len(feats):,}</b></div>"
     )
 
-    # Build + write recommendations.json once per report build
+    # Build + write recommendations.json once per report build (existing)
     rec_status = None
     rec_path = None
     if rec_enable and not cache.get("_recommendations_written"):
-        # Ensure required bucket columns exist (the report already creates these per-run; here we compute once globally)
         f_all = feats.copy()
         f_all["pnl"] = pd.to_numeric(f_all.get("pnl"), errors="coerce")
 
-        # Global bucketing (same as report)
         f_all["atr"] = pd.to_numeric(f_all.get("atr"), errors="coerce")
         if f_all["atr"].notna().sum() > 4:
             f_all["atr_q"] = pd.qcut(f_all["atr"], 4, labels=["Q1 (low)", "Q2", "Q3", "Q4 (high)"], duplicates="drop")
@@ -174,7 +199,6 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
             labels=["0-3", "4-6", "7-9", "10-12", "13-15", "16-18", "19-21", "22-24"],
         )
 
-        # Apply include/exclude filters to run_ids (same semantics as report)
         if include_regex:
             f_all = f_all[f_all["run_id"].astype(str).apply(lambda s: _matches(include_regex, str(s)))]
         if exclude_regex:
@@ -200,7 +224,7 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
             },
         )
 
-        output_dir =  Path(str(out_dir))
+        output_dir = Path(str(out_dir))
         if out_dir is not None:
             rec_path = output_dir / "recommendations.json"
             ok, err = _write_json(rec_path, payload)
@@ -209,12 +233,10 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
         else:
             rec_status = ("error", "Could not determine output directory from report context; no file written.")
             cache["_recommendations_written"] = True
-            cache["_recommendations_payload"] = payload  # keep accessible for debugging
+            cache["_recommendations_payload"] = payload
 
-    # Show status in report header card
     if rec_enable:
         if rec_status is None and cache.get("_recommendations_written"):
-            # likely written by prior section render in this build
             html.append("<div class='muted' style='margin-top:8px;'><b>recommendations.json</b>: generated (see outputs folder).</div>")
         elif rec_status is not None:
             status, err = rec_status
@@ -226,12 +248,67 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
     html.append("</div>")  # header card
 
     # -----------------------
-    # Per-run selection list
+    # NEW: Entry Signal Discovery (global + per-run)
+    # -----------------------
+    if entry_signal_enable:
+        es_key = f"entry_signals|{bar_tf}|atr{atr_period}|k{entry_swing_k}|prev{entry_prev_bars}|tick{entry_tick_size}"
+        es = cache.get(es_key)
+        if es is None:
+            es_cfg = EntrySignalStoreConfig(
+                bar_tf=bar_tf,
+                atr_period=atr_period,
+                swing_k=entry_swing_k,
+                tick_size=float(entry_tick_size) if entry_tick_size is not None else None,
+                prev_bars=entry_prev_bars,
+            )
+            es = build_trade_entry_signal_frame(packages, market, es_cfg)
+            cache[es_key] = es
+
+        html.append("<div class='card'>")
+        html.append("<h3>Entry Signal Discovery (context @ entry)</h3>")
+
+        if es is None or es.empty:
+            html.append("<div class='muted'>No entry-signal feature data available. Check that market bars are loaded for your instrument/timeframe.</div>")
+            html.append("</div>")
+        else:
+            html.append(f"<div class='muted'>Trades with entry-context features: <b>{len(es):,}</b></div>")
+
+            # Make near/far buckets in ATR units
+            es2 = es.copy()
+            es2["pnl"] = pd.to_numeric(es2.get("pnl"), errors="coerce")
+
+            for col in ("d_pd_high_atr", "d_pd_low_atr", "d_pd_pp_atr"):
+                if col in es2.columns:
+                    es2[col + "_bucket"] = _bucket_near_zero(
+                        es2[col],
+                        edges=list(entry_near_edges_atr),
+                        labels=list(entry_near_labels),
+                    )
+
+            # Global tables (across all runs)
+            if "d_pd_high_atr_bucket" in es2.columns:
+                html.append("<h4 style='margin-top:12px;'>PnL by proximity to Prev-Day High (abs dist / ATR)</h4>")
+                t = _metric_table(es2.dropna(subset=["d_pd_high_atr_bucket"]), "d_pd_high_atr_bucket")
+                html.append(_render_df_table(t, max_rows=12))
+
+            if "d_pd_low_atr_bucket" in es2.columns:
+                html.append("<h4 style='margin-top:12px;'>PnL by proximity to Prev-Day Low (abs dist / ATR)</h4>")
+                t = _metric_table(es2.dropna(subset=["d_pd_low_atr_bucket"]), "d_pd_low_atr_bucket")
+                html.append(_render_df_table(t, max_rows=12))
+
+            if "d_pd_pp_atr_bucket" in es2.columns:
+                html.append("<h4 style='margin-top:12px;'>PnL by proximity to Prev-Day Pivot (PP) (abs dist / ATR)</h4>")
+                t = _metric_table(es2.dropna(subset=["d_pd_pp_atr_bucket"]), "d_pd_pp_atr_bucket")
+                html.append(_render_df_table(t, max_rows=12))
+
+        html.append("</div>")  # card
+
+    # -----------------------
+    # Existing per-run selection list
     # -----------------------
     f = feats.copy()
     f["pnl"] = pd.to_numeric(f.get("pnl"), errors="coerce")
 
-    # Filter by regex
     runs = []
     for rid in sorted(set([str(x) for x in f["run_id"].dropna().unique()])):
         if not _matches(include_regex, rid):
@@ -265,7 +342,7 @@ def render_filter_discovery(ctx: dict[str, Any]) -> str:
     run_summary = run_summary.sort_values(sort_by, ascending=False).head(top_n)
 
     # -----------------------
-    # Render per-run cards
+    # Render per-run cards (existing)
     # -----------------------
     for _, rs in run_summary.iterrows():
         rid = str(rs["run_id"])

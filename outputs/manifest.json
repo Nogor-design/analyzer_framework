@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-21T06:10:16",
+  "generated_at": "2026-02-21T14:58:43",
   "input_folder": "C:\\Users\\Owner\\Downloads\\BB1",
   "timestamp_policy": {
     "timezone": "America/Denver",
@@ -116,33 +116,39 @@
       "type": "html",
       "self_contained": true,
       "embedded_images": true,
-      "output_filename": "Exit_policy_report.html",
-      "output_path": "outputs\\Exit_policy_report.html",
-      "report_config_path": "exitPolicyReport.yaml"
+      "output_filename": "Filter_Discovery_report.html",
+      "output_path": "outputs\\Filter_Discovery_report.html",
+      "report_config_path": "FilterDiscoveryReport.yaml"
     },
     "report_config_resolved": {
       "title": "Strategy Comparison Report",
-      "output_filename": "Exit_policy_report.html",
+      "output_filename": "Filter_Discovery_report.html",
       "sections": [
         {
-          "id": "exit_policy_simulation2",
-          "title": "Exit Policy Simulation (Ticks)",
+          "id": "filter_discovery",
+          "title": "Filter + Entry Signal Discovery",
           "options": {
-            "instrument": "NQ",
-            "contract": "03-26",
-            "min_trades": 5,
-            "top_n_runs": 12,
-            "tick_size": 0.25,
-            "atr_tf": "5m",
+            "bar_tf": "5m",
+            "htf_tf": "15m",
             "atr_period": 14,
-            "bounded_to_original_exit": false,
-            "use_bid_ask_triggers": false,
-            "render_per_run_cards": false,
-            "prop_dd_ticks": 500,
-            "dd_limit_ticks": 250,
-            "cvar05_min_ticks": -60,
-            "worst_trade_min_ticks": -120,
-            "max_loss_streak_max": 6
+            "ema_period": 50,
+            "top_n_runs": 60,
+            "min_trades": 10,
+            "entry_signal_enable": true,
+            "tick_size": 0.25,
+            "entry_prev_bars": 1,
+            "entry_swing_k": 2,
+            "entry_near_edges_atr": [
+              0.5,
+              1.0,
+              2.0
+            ],
+            "entry_near_labels": [
+              "<=0.5 ATR",
+              "0.5\u20131 ATR",
+              "1\u20132 ATR",
+              ">2 ATR"
+            ]
           }
         }
       ]
