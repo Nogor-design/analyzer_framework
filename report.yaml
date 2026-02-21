@@ -685,19 +685,94 @@ sections:
 #          target_ticks: [ 120 ]
 #
 
-  - id: exit_policy_trade_debug
-    title: "Exit Policy Trade Debug"
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAphroditeMist"
+#      trade_idx: 4
+#      policies: [ "TrailStopTargetPolicy", "BreakEvenAtrTrailPolicy" ]
+#      show_trace_events: false
+#      policy_params:
+#        TrailStopTargetPolicy:
+#          start_trail_ticks: [ 40,60 ]
+#          trail_amount: [ 20,10 ]
+#          stop_ticks: 200
+#        BreakEvenAtrTrailPolicy:
+#          be_trigger_ticks: [ 20 , 40 ]
+#          be_offset_ticks: 4
+#          be_trail_atr_mult: [.8, 1.25, 1.5 ]
+
+#  policies: "nt8_dynamic"
+#
+#    # MaxStop baseline (ticks)
+#    nt8_max_stop_ticks: 100
+#
+#    # Lock-in (stop-in-profit)
+#    nt8_use_lockin: true
+#    nt8_lockin_trigger_ticks: 25
+#    nt8_lockin_plus_ticks: 3
+#
+#    # Giveback from best high/low (MFE-based)
+#    nt8_use_giveback: true
+#    nt8_giveback_start_ticks: 70
+#    nt8_giveback_ticks: 25
+#
+#    # Optional classic trailing
+#    nt8_use_trail: false
+#    nt8_trail_start_ticks: 30
+#    nt8_trail_distance_ticks: 12
+
+  - id: exit_policy_simulation
+    title: "Exit Policy Simulation (Ticks)"
     options:
-      run_id: "BronzeAphroditeMist"
-      trade_idx: 4
-      policies: [ "TrailStopTargetPolicy", "BreakEvenAtrTrailPolicy" ]
-      show_trace_events: false
-      policy_params:
-        TrailStopTargetPolicy:
-          start_trail_ticks: [ 40,60 ]
-          trail_amount: [ 20,10 ]
-          stop_ticks: 200
-        BreakEvenAtrTrailPolicy:
-          be_trigger_ticks: [ 20 , 40 ]
-          be_offset_ticks: 4
-          be_trail_atr_mult: [.8, 1.25, 1.5 ]
+      instrument: NQ
+      contract: "03-26"
+      min_trades: 5
+      top_n_runs: 12
+      tick_size: 0.25
+      atr_tf: "5m"
+      atr_period: 14
+      bounded_to_original_exit: false
+      use_bid_ask_triggers: false
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
+
+#      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance"
+      policies: "nt8_dynamic"
+      # MaxStop baseline (ticks)
+      nt8_max_stop_ticks: 100
+
+      # Lock-in (stop-in-profit)
+      nt8_use_lockin: true
+      nt8_lockin_trigger_ticks: 25
+      nt8_lockin_plus_ticks: 3
+
+      # Giveback from best high/low (MFE-based)
+      nt8_use_giveback: true
+      nt8_giveback_start_ticks: 70
+      nt8_giveback_ticks: 25
+
+      # Optional classic trailing
+      nt8_use_trail: false
+      nt8_trail_start_ticks: 30
+      nt8_trail_distance_ticks: 12
+#      time_stop_enable: true
+#      time_stop_minutes: 68
+#      time_stop_min_mfe_ticks: 6.0
+#
+#      giveback_enable: true
+#      giveback_arm_mfe_ticks: 18.0
+#      giveback_ticks: 10.0
+#
+#      be_enable: true
+#
+#      # Arm after +12 ticks instead of ATR-based threshold
+#      be_trigger_ticks: 10
+#
+#      # Stop goes to +4 ticks profit once armed
+#      be_offset_ticks: 4
+#
+#      # Other BE trail settings
+#      be_trail_atr_mult: 0.25

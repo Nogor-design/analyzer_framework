@@ -4,12 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="new exit_policy_simulation.py">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="exit_policy_simulation_debug improved">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -277,7 +277,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771537269532</updated>
     </task>
-    <option name="localTasksCounter" value="26" />
+    <task id="LOCAL-00026" summary="exit_policy_simulation_debug improved">
+      <option name="closed" value="true" />
+      <created>1771603391406</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1771603391406</updated>
+    </task>
+    <option name="localTasksCounter" value="27" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -327,6 +335,7 @@
     <MESSAGE value="Fixed debug report for exit strategies" />
     <MESSAGE value="new debug report for exit strategies" />
     <MESSAGE value="new exit_policy_simulation.py" />
-    <option name="LAST_COMMIT_MESSAGE" value="new exit_policy_simulation.py" />
+    <MESSAGE value="exit_policy_simulation_debug improved" />
+    <option name="LAST_COMMIT_MESSAGE" value="exit_policy_simulation_debug improved" />
   </component>
 </project>

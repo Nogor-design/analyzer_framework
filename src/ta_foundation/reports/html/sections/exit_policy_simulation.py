@@ -117,6 +117,7 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
       - "fixed_then_chandelier"    -> FixedAtrThenChandelierPolicy
       - "time_stop_no_progress"    -> TimeStopNoProgressPolicy
       - "giveback_after_mfe"       -> GivebackAfterMfePolicy
+      - "nt8_dynamic"              -> bundle approximating your new NT8 DynamicStop stack
 
     Default selection (if not provided) mirrors debug:
       ["trail","fixed_atr","atr_trail","be_atr_trail","chandelier_atr_trail"]
@@ -171,6 +172,22 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
     # Giveback
     giveback_arm_mfe_ticks = float(opts.get("giveback_arm_mfe_ticks", 18.0))
     giveback_ticks = float(opts.get("giveback_ticks", 10.0))
+
+    # --- NT8 DynamicStop bundle (MaxStop + LockIn + Giveback + optional Trail)
+    # These are expressed in *ticks* (not ATR) to match your NinjaTrader strategy behavior.
+    nt8_max_stop_ticks = float(opts.get("nt8_max_stop_ticks", stop_ticks))
+
+    nt8_use_lockin = _coerce_bool(opts.get("nt8_use_lockin", True), True)
+    nt8_lockin_trigger_ticks = float(opts.get("nt8_lockin_trigger_ticks", 25.0))
+    nt8_lockin_plus_ticks = float(opts.get("nt8_lockin_plus_ticks", 3.0))
+
+    nt8_use_giveback = _coerce_bool(opts.get("nt8_use_giveback", True), True)
+    nt8_giveback_start_ticks = float(opts.get("nt8_giveback_start_ticks", 70.0))
+    nt8_giveback_ticks = float(opts.get("nt8_giveback_ticks", 25.0))
+
+    nt8_use_trail = _coerce_bool(opts.get("nt8_use_trail", False), False)
+    nt8_trail_start_ticks = float(opts.get("nt8_trail_start_ticks", 30.0))
+    nt8_trail_distance_ticks = float(opts.get("nt8_trail_distance_ticks", 12.0))
 
     def mk_trail() -> TrailStopTargetPolicy:
         return TrailStopTargetPolicy(
@@ -248,6 +265,67 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
             giveback_ticks=giveback_ticks,
         )
 
+    def mk_nt8_dynamic_bundle() -> List[Any]:
+        """\
+        Approximate your NT8 DynamicStop stack using existing tick-based policies:
+
+        - MaxStop: Fixed stop, huge target (effectively stop-only)
+        - LockIn: modelled as GivebackAfterMfe with (arm = LockInTriggerTicks) and
+                  (giveback = LockInTriggerTicks - LockInPlusTicks)
+                  This sets the stop to entry+plus at arming, and then ratchets with MFE.
+        - Giveback: GivebackAfterMfe with (arm = GivebackStartTicks, giveback = GivebackTicks)
+        - Optional Trail: TrailStopTargetPolicy (close-based trail), if enabled
+
+        Notes:
+          * This is a close approximation for research/comparison. Your NT8 code uses
+            order-state constraints and may clamp stop vs. market; slippage isn't modelled here.
+        """
+        out: List[Any] = []
+
+        out.append(
+            FixedStopTargetPolicy(
+                name="nt8_maxstop",
+                stop_ticks=nt8_max_stop_ticks,
+                target_ticks=float(opts.get("nt8_target_ticks", 1e9)),
+                stop_atr_mult=None,
+                target_atr_mult=None,
+            )
+        )
+
+        if nt8_use_lockin:
+            # Lock-in is "arm at trigger, stop to entry + plus".
+            # Using GivebackAfterMfe: stop = entry + (MFE - giveback).
+            # At arming MFE≈trigger => stop = entry + plus when giveback = trigger - plus.
+            giveback_for_lock = max(1.0, nt8_lockin_trigger_ticks - nt8_lockin_plus_ticks)
+            out.append(
+                GivebackAfterMfePolicy(
+                    name="nt8_lockin",
+                    arm_mfe_ticks=nt8_lockin_trigger_ticks,
+                    giveback_ticks=giveback_for_lock,
+                )
+            )
+
+        if nt8_use_giveback:
+            out.append(
+                GivebackAfterMfePolicy(
+                    name="nt8_giveback",
+                    arm_mfe_ticks=nt8_giveback_start_ticks,
+                    giveback_ticks=nt8_giveback_ticks,
+                )
+            )
+
+        if nt8_use_trail:
+            out.append(
+                TrailStopTargetPolicy(
+                    name="nt8_trail",
+                    start_trail_ticks=nt8_trail_start_ticks,
+                    trail_amount=nt8_trail_distance_ticks,
+                    stop_ticks=nt8_max_stop_ticks,
+                )
+            )
+
+        return out
+
     builders = {
         "trail": mk_trail,
         "fixed_atr": mk_fixed_atr,
@@ -258,13 +336,19 @@ def _make_policies(opts: Dict[str, Any]) -> List[Any]:
         "fixed_then_chandelier": mk_fixed_then_chandelier,
         "time_stop_no_progress": mk_time_stop_no_progress,
         "giveback_after_mfe": mk_giveback_after_mfe,
+        "nt8_dynamic": mk_nt8_dynamic_bundle,
     }
 
     out: List[Any] = []
     for key in selected:
         k = str(key).strip().lower()
-        if k in builders:
-            out.append(builders[k]())
+        if k not in builders:
+            continue
+        built = builders[k]()
+        if isinstance(built, list):
+            out.extend(built)
+        else:
+            out.append(built)
     return out
 
 
@@ -433,6 +517,7 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
         return "\n".join(html)
 
     # Render per-run cards
+    all_sim_rows: List[pd.DataFrame] = []
     for run_id, n_trades in run_rows:
         pkg = packages[run_id]
         trades = getattr(pkg, "trades", None)
@@ -463,6 +548,16 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
             )
             html.append("</div>")
             continue
+
+        # Track for cross-run comparison (only non-diagnostic)
+        try:
+            if "policy" in sim.columns and not (sim["policy"] == "DIAGNOSTIC").any():
+                tmp = sim.copy()
+                if "run_id" not in tmp.columns:
+                    tmp["run_id"] = run_id
+                all_sim_rows.append(tmp)
+        except Exception:
+            pass
 
         # If we got DIAGNOSTIC rows, render them explicitly (do not try to aggregate)
         if "policy" in sim.columns and (sim["policy"] == "DIAGNOSTIC").any():
@@ -536,6 +631,70 @@ def render_exit_policy_simulation(ctx: Dict[str, Any]) -> str:
 
         html.append("</div>")  # grid
         html.append("</div>")  # card
+
+    # Cross-run comparison (all displayed runs)
+    if all_sim_rows:
+        try:
+            big = pd.concat(all_sim_rows, axis=0, ignore_index=True)
+            big["pnl_ticks"] = pd.to_numeric(big.get("pnl_ticks"), errors="coerce")
+
+            # Overall per-policy summary across runs
+            pol = (
+                big.groupby("policy", as_index=False)
+                .agg(
+                    trades=("pnl_ticks", "size"),
+                    net_ticks=("pnl_ticks", "sum"),
+                    avg_ticks=("pnl_ticks", "mean"),
+                    win_rate=("pnl_ticks", lambda s: float((s > 0).mean()) if len(s) else 0.0),
+                    p10=("pnl_ticks", lambda s: float(s.quantile(0.10)) if len(s) else 0.0),
+                    p90=("pnl_ticks", lambda s: float(s.quantile(0.90)) if len(s) else 0.0),
+                )
+                .sort_values("net_ticks", ascending=False)
+            )
+
+            # Per-run, per-policy net ticks (wide table)
+            wide = (
+                big.groupby(["run_id", "policy"], as_index=False)
+                .agg(net_ticks=("pnl_ticks", "sum"), trades=("pnl_ticks", "size"))
+            )
+            piv = wide.pivot(index="run_id", columns="policy", values="net_ticks").fillna(0.0)
+            piv = piv.loc[piv.sum(axis=1).sort_values(ascending=False).index]
+
+            # Chart overall net ticks per policy
+            uri2 = None
+            try:
+                fig = plt.figure(figsize=(9.0, 3.0))
+                ax = fig.add_subplot(111)
+                ax.bar(pol["policy"].tolist(), pol["net_ticks"].tolist())
+                ax.axhline(0, linewidth=1)
+                ax.set_title("All displayed runs — Net ticks by policy")
+                ax.set_ylabel("Net ticks")
+                fig.tight_layout()
+                uri2 = fig_to_base64_png(fig)
+                plt.close(fig)
+            except Exception:
+                uri2 = None
+
+            html.append("<div class='tf-exit-card'>")
+            html.append("<div class='tf-exit-title'>Cross-run comparison</div>")
+            html.append(
+                "<div class='tf-exit-sub muted'>Aggregated across the displayed runs above. Use this to compare policies and bots in one view.</div>"
+            )
+
+            html.append("<h4 style='margin:8px 0 6px 0;'>Overall policy summary (ticks)</h4>")
+            html.append(_render_table(pol.round(2), max_rows=50))
+
+            if uri2:
+                html.append("<div style='margin-top:10px;'>")
+                html.append(f"<img class='tf-exit-img' src='{uri2}' alt='overall net ticks by policy' />")
+                html.append("</div>")
+
+            html.append("<h4 style='margin:10px 0 6px 0;'>Bots (runs) × policies (net ticks)</h4>")
+            html.append(_render_table(piv.round(1).reset_index(), max_rows=top_n))
+            html.append("</div>")
+        except Exception:
+            # Never break the report section because of aggregation
+            pass
 
     html.append("</div>")  # wrapper
     return "\n".join(html)
