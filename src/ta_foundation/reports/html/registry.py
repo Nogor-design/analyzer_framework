@@ -24,6 +24,7 @@ from ta_foundation.reports.html.sections.apex_drawdown_survival_profile import r
 from ta_foundation.reports.html.sections.tick_data_diagnostics import render_tick_data_diagnostics
 from ta_foundation.reports.html.sections.filter_discovery import render_filter_discovery
 from ta_foundation.reports.html.sections.exit_policy_simulation import render_exit_policy_simulation
+from ta_foundation.reports.html.sections.exit_policy_simulation2 import render_exit_policy_simulation2
 from ta_foundation.reports.html.sections.exit_policy_trade_debug import render_exit_policy_trade_debug
 
 
@@ -129,6 +130,12 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Exit Policy debug",
         render_fn=render_exit_policy_trade_debug,
     ),
+    "exit_policy_simulation2": SectionDef(
+        id="exit_policy_simulation2",
+        default_title="Exit Policy Simulation2",
+        render_fn=render_exit_policy_simulation2,
+    ),
+
 
 
 }

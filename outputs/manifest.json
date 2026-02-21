@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-02-20T13:05:44",
-  "input_folder": "C:\\Users\\Owner\\Downloads\\BTGOD",
+  "generated_at": "2026-02-21T06:10:16",
+  "input_folder": "C:\\Users\\Owner\\Downloads\\BB1",
   "timestamp_policy": {
     "timezone": "America/Denver",
     "timestamp_source": "ninjatrader_local_pc_time",
@@ -8,371 +8,107 @@
   },
   "parsed_files": [
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BrassAtlasGod_Analysis.csv",
-      "sha256": "79e8ede6af337f3cc57325ec082e46bc04dc4c1bb8c09a2e7d9660355c8d7521",
-      "size_bytes": 11730,
-      "run_id": "BrassAtlasGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAphroditeBalance_Analysis.csv",
+      "sha256": "d61cb270d0726217cb8a6711c708b7f4a5eb6db502e616b397ffc08fe079b2d5",
+      "size_bytes": 2553,
+      "run_id": "BronzeAphroditeBalance",
       "parser_kind": "daily",
       "parser_name": "NinjaTraderDailyAnalysisCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BrassAtlasGod_Settings.csv",
-      "sha256": "56506cf46f9fdc9e52512ca7b734ef9a66f219aa20768959c4c8685452cb4d51",
-      "size_bytes": 1270,
-      "run_id": "BrassAtlasGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BrassAtlasGod_Summery.csv",
-      "sha256": "792e7b73df0c01ec019278314cfe750246d0a026f37b5a51a58dc8e367802019",
-      "size_bytes": 1566,
-      "run_id": "BrassAtlasGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BrassAtlasGod_Trades.csv",
-      "sha256": "2387e0d9d4517277d41430c890e43cd677e8718084fdb60739dc9df473c10cb7",
-      "size_bytes": 565281,
-      "run_id": "BrassAtlasGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAphroditeGod_Analysis.csv",
-      "sha256": "2ecef48f819b4af66e1943c6e13692efa24b008866b90df95ebf38b84d728970",
-      "size_bytes": 11045,
-      "run_id": "BronzeAphroditeGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAphroditeGod_Settings.csv",
-      "sha256": "4f35b32b9cbb67d7b18a9100cb150ef9cec45a9b2990c09fd19298b5c3053e6e",
-      "size_bytes": 1274,
-      "run_id": "BronzeAphroditeGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAphroditeGod_Summery.csv",
-      "sha256": "bddfe4bd75e1c2b0054a3014c35faace665d9f069677c752e832e7d3eef4ea00",
-      "size_bytes": 1564,
-      "run_id": "BronzeAphroditeGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAphroditeGod_Trades.csv",
-      "sha256": "742f4835c1f9c71a82c60afaa81ab1e982e570f4840d294e7ce9d665ceceaf67",
-      "size_bytes": 268432,
-      "run_id": "BronzeAphroditeGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeApolloGod_Analysis.csv",
-      "sha256": "f0f814a90db630be1db32126674749c7eaebe5de69a950b6ad57466e2ddd6392",
-      "size_bytes": 11707,
-      "run_id": "BronzeApolloGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeApolloGod_Settings.csv",
-      "sha256": "42e3252bce1431629b8f126f0cb1bcb94376d57039a9324e25babcec55a26554",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAphroditeBalance_Settings.csv",
+      "sha256": "e2e9dc08f631bcb2398adbbb52fa11d7cd5558f8c8bfd79cc72819e5ce769ebd",
       "size_bytes": 1271,
-      "run_id": "BronzeApolloGod",
+      "run_id": "BronzeAphroditeBalance",
       "parser_kind": "settings",
       "parser_name": "NinjaTraderSettingsCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeApolloGod_Summery.csv",
-      "sha256": "ef219af2d3721ec7239ffdbb9375145c51ec1b4ecdcb22f36027c8a52fc8d779",
-      "size_bytes": 1563,
-      "run_id": "BronzeApolloGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAphroditeBalance_Summery.csv",
+      "sha256": "63a32e0f996919ae6b7045b42bee4d99c06f74c69ceb7a443431f2b6e111d987",
+      "size_bytes": 1467,
+      "run_id": "BronzeAphroditeBalance",
       "parser_kind": "summary",
       "parser_name": "NinjaTraderSummaryCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeApolloGod_Trades.csv",
-      "sha256": "6bdee581c17dfec7f6916cf80cebc85ffd13312c6db1cb43e2d6da696431293a",
-      "size_bytes": 407536,
-      "run_id": "BronzeApolloGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAphroditeBalance_Trades.csv",
+      "sha256": "84021a78cad4f09c417e35e0acabd94d0edab050dffcc8b115449e0374e8ab77",
+      "size_bytes": 3880,
+      "run_id": "BronzeAphroditeBalance",
       "parser_kind": "trades",
       "parser_name": "NinjaTraderTradesCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAresGod_Analysis.csv",
-      "sha256": "71f8eab333118fac349583e6341ecfe6c0a4712444ff6b55f2d70065c039d082",
-      "size_bytes": 11235,
-      "run_id": "BronzeAresGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasBalance_Analysis.csv",
+      "sha256": "4dd0a3c6b0dbc372bb71c4bbe032ee530522f9d8a75b9e1346019b842b07dcad",
+      "size_bytes": 4043,
+      "run_id": "BronzeAtlasBalance",
       "parser_kind": "daily",
       "parser_name": "NinjaTraderDailyAnalysisCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAresGod_Settings.csv",
-      "sha256": "90c4ba7892a9f9ed3fe7a234e4ae27b5ed02e9ccfd13ad862e861c08f4400236",
-      "size_bytes": 1269,
-      "run_id": "BronzeAresGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasBalance_Settings.csv",
+      "sha256": "4fe7f277e802246543ef00f189e7406b1a226227f28b1a215f49d865368afc59",
+      "size_bytes": 1263,
+      "run_id": "BronzeAtlasBalance",
       "parser_kind": "settings",
       "parser_name": "NinjaTraderSettingsCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAresGod_Summery.csv",
-      "sha256": "7e94fae9cd7a665be089a82e6e1e95cb278d57b075d7ff2985109f5652386357",
-      "size_bytes": 1566,
-      "run_id": "BronzeAresGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasBalance_Summery.csv",
+      "sha256": "9ca49369189ddbc6cf26350214b46f2166d0be715a5970ac1fe7fefbcac1ffb7",
+      "size_bytes": 1471,
+      "run_id": "BronzeAtlasBalance",
       "parser_kind": "summary",
       "parser_name": "NinjaTraderSummaryCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAresGod_Trades.csv",
-      "sha256": "0c624a73ea34b30a6cb5e7cd14463701a95eca7e1a36fed60c45c0a3b215bd7d",
-      "size_bytes": 298849,
-      "run_id": "BronzeAresGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasBalance_Trades.csv",
+      "sha256": "3770699971e127a447a713ad1b1798505880f5eac15283d6c2edb957c5a8b3f3",
+      "size_bytes": 5772,
+      "run_id": "BronzeAtlasBalance",
       "parser_kind": "trades",
       "parser_name": "NinjaTraderTradesCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAthenaGod_Analysis.csv",
-      "sha256": "3692b3230779a9eab824236a8c4f04b0dba68e7c268d7f6dd66e1063186a7566",
-      "size_bytes": 10933,
-      "run_id": "BronzeAthenaGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasEmber_Analysis.csv",
+      "sha256": "b3c6e49818e4afc79ee317dbc67600247c098c5f0a601b47b82bb77586065641",
+      "size_bytes": 4301,
+      "run_id": "BronzeAtlasEmber",
       "parser_kind": "daily",
       "parser_name": "NinjaTraderDailyAnalysisCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAthenaGod_Settings.csv",
-      "sha256": "1d16e7e5a6066e58b29f24126f5ea5488afb2223aef9ea98e491c93079bd2b46",
-      "size_bytes": 1271,
-      "run_id": "BronzeAthenaGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasEmber_Settings.csv",
+      "sha256": "0a86fb422758c7c79c4bb3f9b3e4b00917e9da57834aa527614c4b5f7d463eeb",
+      "size_bytes": 1262,
+      "run_id": "BronzeAtlasEmber",
       "parser_kind": "settings",
       "parser_name": "NinjaTraderSettingsCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAthenaGod_Summery.csv",
-      "sha256": "27576c0f0d827e5dcea02d014da9a520bb160ae732c0f4a869e062cfda958228",
-      "size_bytes": 1565,
-      "run_id": "BronzeAthenaGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasEmber_Summery.csv",
+      "sha256": "62f9eda72b5bcf4d71f38711608dccbb28f6859fba660283367d9a22101f8223",
+      "size_bytes": 1477,
+      "run_id": "BronzeAtlasEmber",
       "parser_kind": "summary",
       "parser_name": "NinjaTraderSummaryCsvParser"
     },
     {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAthenaGod_Trades.csv",
-      "sha256": "68d1e1ab59e7a315471dbd64680fa4f782c8fc7fb7a8c3450f04c183dde76370",
-      "size_bytes": 288508,
-      "run_id": "BronzeAthenaGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAtlasGod_Analysis.csv",
-      "sha256": "c562b47e3ffc3e6e9fa6cb7001906816c92faddbf63a307f960e3d705d759866",
-      "size_bytes": 11731,
-      "run_id": "BronzeAtlasGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAtlasGod_Settings.csv",
-      "sha256": "56506cf46f9fdc9e52512ca7b734ef9a66f219aa20768959c4c8685452cb4d51",
-      "size_bytes": 1270,
-      "run_id": "BronzeAtlasGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAtlasGod_Summery.csv",
-      "sha256": "6b5ca561f7e9edbbac7132793b1170c16bed67d900e62fe197fb128dfd97b0d0",
-      "size_bytes": 1566,
-      "run_id": "BronzeAtlasGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeAtlasGod_Trades.csv",
-      "sha256": "a1f7f5fa1efe33ca7330a47a51c00ccefe178b2bf6e9bcb30784dd586b2e4d57",
-      "size_bytes": 565282,
-      "run_id": "BronzeAtlasGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeGorgonGod_Analysis.csv",
-      "sha256": "c51ed74e6da79d7584513bb46366289c5d0625ded47472e6edf4a8a48a59babd",
-      "size_bytes": 10327,
-      "run_id": "BronzeGorgonGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeGorgonGod_Settings.csv",
-      "sha256": "2f5f0b392c16b83bc3a9d6a78145b58ba08d6bc58b7ac281ddcb6e30466712f3",
-      "size_bytes": 1271,
-      "run_id": "BronzeGorgonGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeGorgonGod_Summery.csv",
-      "sha256": "1d7de0b9308e8d0f7a2278fda12bb5e7c198aa3098d1a2da25d67636f6b92099",
-      "size_bytes": 1564,
-      "run_id": "BronzeGorgonGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeGorgonGod_Trades.csv",
-      "sha256": "a04f6f1a45b462a40637ed084382522dc0ba845048b08ff4dedd7982ec44a04c",
-      "size_bytes": 252964,
-      "run_id": "BronzeGorgonGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeHadesGod_Analysis.csv",
-      "sha256": "998d88dc4cacd8d4b5cdf90630ec92b845576a9008e23f868860533161e380cc",
-      "size_bytes": 11656,
-      "run_id": "BronzeHadesGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeHadesGod_Settings.csv",
-      "sha256": "3f268ee5ec19b7d5ecac471914095be24cfbef1af434b794108c9a6f8247556e",
-      "size_bytes": 1269,
-      "run_id": "BronzeHadesGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeHadesGod_Summery.csv",
-      "sha256": "a3c954ad3e82948c1e2fb7537df289820736d859738840574e96a0d2351fe40d",
-      "size_bytes": 1570,
-      "run_id": "BronzeHadesGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeHadesGod_Trades.csv",
-      "sha256": "5ff2ead115afaa1b7fe2bd55113d4f66e564b8d7c58fede12039d5bbaf6d3ffa",
-      "size_bytes": 836157,
-      "run_id": "BronzeHadesGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeMedusaGod_Analysis.csv",
-      "sha256": "3229dc12723a357680f79911ed1ffe760acc348707e46d882526c02b011d1120",
-      "size_bytes": 10909,
-      "run_id": "BronzeMedusaGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeMedusaGod_Settings.csv",
-      "sha256": "60c6074bf492b40df7a2d31239ba4fa45095e12e17a6f13d3f709d0f0f168d19",
-      "size_bytes": 1271,
-      "run_id": "BronzeMedusaGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeMedusaGod_Summery.csv",
-      "sha256": "e8f24ac108cca5904d2c0eee34dd6f1ca819924af92049a73c8130f0c68f652a",
-      "size_bytes": 1565,
-      "run_id": "BronzeMedusaGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeMedusaGod_Trades.csv",
-      "sha256": "6d62eddc3649946ae0be6bd17e27b40f1786a6239e7bc8a63ea71e0b1677e7a5",
-      "size_bytes": 275168,
-      "run_id": "BronzeMedusaGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzePoseidonGod_Analysis.csv",
-      "sha256": "7f4125348ca70e0e2f206f4b1fe424a8de5fee52d62ae3a3485c3574710fa7b4",
-      "size_bytes": 11488,
-      "run_id": "BronzePoseidonGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzePoseidonGod_Settings.csv",
-      "sha256": "a140d65997bc8d5a0e908c428946406582d1a4477d0c60219577d1b53e6755d5",
-      "size_bytes": 1273,
-      "run_id": "BronzePoseidonGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzePoseidonGod_Summery.csv",
-      "sha256": "4e70318fe7fed5ec3ab93a0d99a9f73a92028f93db875d51152f916ab5982b2d",
-      "size_bytes": 1563,
-      "run_id": "BronzePoseidonGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzePoseidonGod_Trades.csv",
-      "sha256": "e34a1585d73d39105e87343432ec3ca63228dbd7f50f45f81482dbc037bee375",
-      "size_bytes": 453171,
-      "run_id": "BronzePoseidonGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeZeusGod_Analysis.csv",
-      "sha256": "e14d51d7d6814d713bb3053ebe7f5e9f84f3e534c7bb2df8f5ea0f5f00255973",
-      "size_bytes": 11324,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeZeusGod_Settings.csv",
-      "sha256": "5564a029a7ba544ef8ae298f5beffa20358b1a49315ee95e193fbb850fa3bf4a",
-      "size_bytes": 1269,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeZeusGod_Summery.csv",
-      "sha256": "be0dc59c49a7c0066a938080aa39d9424020c52ed5f188b98ed872fbc3951917",
-      "size_bytes": 1565,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BTGOD\\BronzeZeusGod_Trades.csv",
-      "sha256": "eb206d39dbe7e0fa5957c49db468a3a3568d3157d3b5da9996d554fa321efeaa",
-      "size_bytes": 356150,
-      "run_id": "BronzeZeusGod",
+      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeAtlasEmber_Trades.csv",
+      "sha256": "26edf974c3cc31380e6f982102785674da58e8a3158c7a088e694ef78952fd1f",
+      "size_bytes": 5704,
+      "run_id": "BronzeAtlasEmber",
       "parser_kind": "trades",
       "parser_name": "NinjaTraderTradesCsvParser"
     }
   ],
   "unparsed_files": [],
   "warnings_by_run_id": {
-    "BrassAtlasGod": [],
-    "BronzeAphroditeGod": [],
-    "BronzeApolloGod": [],
-    "BronzeAresGod": [],
-    "BronzeAthenaGod": [],
-    "BronzeAtlasGod": [],
-    "BronzeGorgonGod": [],
-    "BronzeHadesGod": [],
-    "BronzeMedusaGod": [],
-    "BronzePoseidonGod": [],
-    "BronzeZeusGod": []
+    "BronzeAphroditeBalance": [],
+    "BronzeAtlasBalance": [],
+    "BronzeAtlasEmber": []
   },
   "extra": {
     "run_id_regex": null,
@@ -380,16 +116,16 @@
       "type": "html",
       "self_contained": true,
       "embedded_images": true,
-      "output_filename": "comparison_report.html",
-      "output_path": "outputs\\comparison_report.html",
-      "report_config_path": "report.yaml"
+      "output_filename": "Exit_policy_report.html",
+      "output_path": "outputs\\Exit_policy_report.html",
+      "report_config_path": "exitPolicyReport.yaml"
     },
     "report_config_resolved": {
       "title": "Strategy Comparison Report",
-      "output_filename": "comparison_report.html",
+      "output_filename": "Exit_policy_report.html",
       "sections": [
         {
-          "id": "exit_policy_simulation",
+          "id": "exit_policy_simulation2",
           "title": "Exit Policy Simulation (Ticks)",
           "options": {
             "instrument": "NQ",
@@ -401,17 +137,12 @@
             "atr_period": 14,
             "bounded_to_original_exit": false,
             "use_bid_ask_triggers": false,
-            "policies": "nt8_dynamic",
-            "nt8_max_stop_ticks": 100,
-            "nt8_use_lockin": true,
-            "nt8_lockin_trigger_ticks": 25,
-            "nt8_lockin_plus_ticks": 3,
-            "nt8_use_giveback": true,
-            "nt8_giveback_start_ticks": 70,
-            "nt8_giveback_ticks": 25,
-            "nt8_use_trail": false,
-            "nt8_trail_start_ticks": 30,
-            "nt8_trail_distance_ticks": 12
+            "render_per_run_cards": false,
+            "prop_dd_ticks": 500,
+            "dd_limit_ticks": 250,
+            "cvar05_min_ticks": -60,
+            "worst_trade_min_ticks": -120,
+            "max_loss_streak_max": 6
           }
         }
       ]

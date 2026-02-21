@@ -758,6 +758,14 @@ sections:
       nt8_use_trail: false
       nt8_trail_start_ticks: 30
       nt8_trail_distance_ticks: 12
+
+
+#       downside filters (ticks)
+#      dd_limit_ticks: 250
+#      p05_min_ticks: -35
+#      cvar05_min_ticks: -60
+#      worst_trade_min_ticks: -120
+#      max_loss_streak_max: 6
 #      time_stop_enable: true
 #      time_stop_minutes: 68
 #      time_stop_min_mfe_ticks: 6.0
@@ -776,3 +784,21 @@ sections:
 #
 #      # Other BE trail settings
 #      be_trail_atr_mult: 0.25
+#  How to use it (options / config knobs)
+#
+#  Add these to your options (where you already set top_n_runs, min_trades, etc.):
+#
+#  Downside constraints (filter policies before ranking)
+#
+#  dd_limit_ticks
+#
+#  p05_min_ticks
+#
+#  cvar05_min_ticks
+#
+#  worst_trade_min_ticks
+#
+#  max_loss_streak_max
+#
+#  Example (prop-safe style):
+

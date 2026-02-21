@@ -1,0 +1,105 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "Exit_policy_report.html"
+  embedded_images: true   # enforced by builder; kept for clarity
+  timezone: "America/Denver"
+
+sections:
+
+
+
+  - id: exit_policy_simulation2
+    title: "Exit Policy Simulation (Ticks)"
+    options:
+      instrument: NQ
+      contract: "03-26"
+      min_trades: 5
+      top_n_runs: 12
+      tick_size: 0.25
+      atr_tf: "5m"
+      atr_period: 14
+      bounded_to_original_exit: false
+      use_bid_ask_triggers: false
+
+
+      # contract: <whatever your trade instrument string uses>
+
+#      policies: "nt8_dynamic"
+
+
+      render_per_run_cards: false   # makes it a prop/risk report
+      prop_dd_ticks: 500            # NQ 1 contract, $2500 trailing
+
+      # Optional downside filters (tighten/loosen as you like)
+      dd_limit_ticks: 250
+      cvar05_min_ticks: -60
+      worst_trade_min_ticks: -120
+      max_loss_streak_max: 6
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
+
+#      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance"
+#      policies: "nt8_dynamic"
+#      # MaxStop baseline (ticks)
+#      nt8_max_stop_ticks: 100
+#
+#      # Lock-in (stop-in-profit)
+#      nt8_use_lockin: true
+#      nt8_lockin_trigger_ticks: 25
+#      nt8_lockin_plus_ticks: 3
+#
+#      # Giveback from best high/low (MFE-based)
+#      nt8_use_giveback: true
+#      nt8_giveback_start_ticks: 70
+#      nt8_giveback_ticks: 25
+#
+#      # Optional classic trailing
+#      nt8_use_trail: false
+#      nt8_trail_start_ticks: 30
+#      nt8_trail_distance_ticks: 12
+#
+
+#       downside filters (ticks)
+#      dd_limit_ticks: 250
+#      p05_min_ticks: -35
+#      cvar05_min_ticks: -60
+#      worst_trade_min_ticks: -120
+#      max_loss_streak_max: 6
+#      time_stop_enable: true
+#      time_stop_minutes: 68
+#      time_stop_min_mfe_ticks: 6.0
+#
+#      giveback_enable: true
+#      giveback_arm_mfe_ticks: 18.0
+#      giveback_ticks: 10.0
+#
+#      be_enable: true
+#
+#      # Arm after +12 ticks instead of ATR-based threshold
+#      be_trigger_ticks: 10
+#
+#      # Stop goes to +4 ticks profit once armed
+#      be_offset_ticks: 4
+#
+#      # Other BE trail settings
+#      be_trail_atr_mult: 0.25
+#  How to use it (options / config knobs)
+#
+#  Add these to your options (where you already set top_n_runs, min_trades, etc.):
+#
+#  Downside constraints (filter policies before ranking)
+#
+#  dd_limit_ticks
+#
+#  p05_min_ticks
+#
+#  cvar05_min_ticks
+#
+#  worst_trade_min_ticks
+#
+#  max_loss_streak_max
+#
+#  Example (prop-safe style):
+
