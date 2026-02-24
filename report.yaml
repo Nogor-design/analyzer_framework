@@ -186,7 +186,7 @@ sections:
 #      image_width_px: 420
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
-#      show_detail_charts: true
+#      show_detail_charts: false
 #      detail_chart_layout: stack     # two-up | stack
 #      detail_chart_width_px: 1080  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
@@ -291,21 +291,21 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 
-#  - id: weekly_leaderboard_cards
-#    title: "Weekly Prop Dashboard"
-#    options:
-##      week_ending: "2026-02-07"   # optional
-#      top_n: 100
-#      starting_balance: 50000
-#      trailing_dd: 2500
-#      baseline_mode: fresh_week      # or: continuous
-#      show_card_image: false          # or: false
-#      show_chart: false
-#      show_debug_table: false
-#      warn_buffer: 500
-#      compact_noimg: true
-#      bot_columns: 1
-#  -
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+      week_ending: "2026-02-19"   # optional
+      top_n: 299
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week      # or: continuous
+      show_card_image: true          # or: false
+      show_chart: false
+      show_debug_table: false
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1
+
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
 #    options:
@@ -722,43 +722,43 @@ sections:
 #    nt8_trail_start_ticks: 30
 #    nt8_trail_distance_ticks: 12
 
-  - id: exit_policy_simulation
-    title: "Exit Policy Simulation (Ticks)"
-    options:
-      instrument: NQ
-      contract: "03-26"
-      min_trades: 5
-      top_n_runs: 12
-      tick_size: 0.25
-      atr_tf: "5m"
-      atr_period: 14
-      bounded_to_original_exit: false
-      use_bid_ask_triggers: false
-#      chandelier_enable: true
-#      chandelier_stop_atr_mult: .5
-#      chandelier_trail_atr_mult: 1.0
-#      chandelier_profit_target_atr_mult: null
-
-#      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance"
-      policies: "nt8_dynamic"
-      # MaxStop baseline (ticks)
-      nt8_max_stop_ticks: 100
-
-      # Lock-in (stop-in-profit)
-      nt8_use_lockin: true
-      nt8_lockin_trigger_ticks: 25
-      nt8_lockin_plus_ticks: 3
-
-      # Giveback from best high/low (MFE-based)
-      nt8_use_giveback: true
-      nt8_giveback_start_ticks: 70
-      nt8_giveback_ticks: 25
-
-      # Optional classic trailing
-      nt8_use_trail: false
-      nt8_trail_start_ticks: 30
-      nt8_trail_distance_ticks: 12
-
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      min_trades: 5
+#      top_n_runs: 12
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: false
+#      use_bid_ask_triggers: false
+##      chandelier_enable: true
+##      chandelier_stop_atr_mult: .5
+##      chandelier_trail_atr_mult: 1.0
+##      chandelier_profit_target_atr_mult: null
+#
+##      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance"
+#      policies: "nt8_dynamic"
+#      # MaxStop baseline (ticks)
+#      nt8_max_stop_ticks: 100
+#
+#      # Lock-in (stop-in-profit)
+#      nt8_use_lockin: true
+#      nt8_lockin_trigger_ticks: 25
+#      nt8_lockin_plus_ticks: 3
+#
+#      # Giveback from best high/low (MFE-based)
+#      nt8_use_giveback: true
+#      nt8_giveback_start_ticks: 70
+#      nt8_giveback_ticks: 25
+#
+#      # Optional classic trailing
+#      nt8_use_trail: false
+#      nt8_trail_start_ticks: 30
+#      nt8_trail_distance_ticks: 12
+#
 
 #       downside filters (ticks)
 #      dd_limit_ticks: 250

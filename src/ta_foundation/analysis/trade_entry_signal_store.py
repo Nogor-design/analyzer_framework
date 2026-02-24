@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ta_foundation.analysis.indicators.registry import IndicatorSpec, DEFAULT_INDICATORS
+from ta_foundation.analysis.indicators.registry import IndicatorSpec
 from ta_foundation.analysis.trade_enrichment import (
     TradeEnrichmentConfig,
     enrich_trades_with_bars_and_indicators,
@@ -19,11 +19,15 @@ class EntrySignalStoreConfig:
     atr_period: int = 14
     swing_k: int = 2
 
-    # If tick_size exists in cfg/options we can normalize to "ticks" for distance features.
-    tick_size: Optional[float] = 0.25
+    # Session structure (America/Denver, bars tz-aware on ingest)
+    session_start: str = "07:30"
+    globex_start: str = "16:00"
+    opening_range_minutes: int = 15
 
-    # how many previous bars to attach (for micro-structure-ish context)
+    tick_size: Optional[float] = 0.25
     prev_bars: int = 1
+
+    bars_source: str = "auto"
 
 
 def _norm(s: str) -> str:
@@ -46,48 +50,46 @@ def _find_col(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
     return None
 
 
-def _detect_instrument(trades: pd.DataFrame) -> Optional[str]:
-    col = _find_col(trades, ["instrument", "symbol", "market", "contract"])
-    if col is None:
+def infer_instrument_contract_from_trades(trades: pd.DataFrame) -> Optional[Tuple[str, str]]:
+    if trades is None or trades.empty:
         return None
-    s = trades[col].dropna().astype(str)
-    return str(s.iloc[0]) if len(s) else None
+    c = _find_col(trades, ["instrument"])
+    if c is None:
+        return None
+    v = trades[c].dropna()
+    if v.empty:
+        return None
+    parts = str(v.iloc[0]).strip().split()
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return None
 
 
-def _get_bars_from_market(market: Any, instrument: str, tf: str) -> Optional[pd.DataFrame]:
-    """
-    Best-effort adapter to whatever MarketDataStore exposes.
-    We try a few common shapes WITHOUT assuming a specific class.
-    """
-    if market is None or not instrument:
+def _get_bars_from_market(market: Any, instrument: str, contract: str, tf: str, source: str) -> Optional[pd.DataFrame]:
+    if market is None or not instrument or not contract:
         return None
 
-    # 1) method: get_bars(instrument, tf)
     fn = getattr(market, "get_bars", None)
     if callable(fn):
         try:
-            return fn(instrument, tf)
+            return fn(instrument, contract, timeframe=tf, source=source)
+        except TypeError:
+            try:
+                return fn(instrument, contract, tf, source)
+            except Exception:
+                return None
         except Exception:
-            pass
+            return None
 
-    # 2) method: bars(instrument, tf)
-    fn = getattr(market, "bars", None)
-    if callable(fn):
-        try:
-            return fn(instrument, tf)
-        except Exception:
-            pass
-
-    # 3) dict-like: market["bars"][(instrument, tf)] or market.bars_map
-    for attr in ("bars_map", "bars_by_key", "bars_store"):
-        m = getattr(market, attr, None)
-        if isinstance(m, dict):
-            for key in ((instrument, tf), f"{instrument}|{tf}", instrument):
-                if key in m:
-                    try:
-                        return m[key]
-                    except Exception:
-                        pass
+    bars_cache = getattr(market, "bars_cache", None)
+    if isinstance(bars_cache, dict):
+        for src in (source, "auto", "ticks", "bars"):
+            key = (instrument, contract, tf, src)
+            if key in bars_cache:
+                try:
+                    return bars_cache[key]
+                except Exception:
+                    pass
 
     return None
 
@@ -111,18 +113,6 @@ def build_trade_entry_signal_frame(
     market: Any,
     cfg: EntrySignalStoreConfig,
 ) -> pd.DataFrame:
-    """
-    Build a per-trade feature frame for entry decision discovery.
-
-    - no file IO
-    - uses market data from ctx["market"]
-    - uses TradeEnrichment join pattern (as-of to entry time)
-    - computes distances to prev-day levels / pivots / swings at entry
-
-    Returns:
-      DataFrame with at least:
-        run_id, entry_dt, pnl, entry_price, atr, pd_* levels, pivot levels, distance features
-    """
     rows: list[pd.DataFrame] = []
 
     for run_id, pkg in (packages or {}).items():
@@ -130,17 +120,38 @@ def build_trade_entry_signal_frame(
         if trades is None or trades.empty:
             continue
 
-        inst = _detect_instrument(trades)
-        bars = _get_bars_from_market(market, inst, cfg.bar_tf)
+        ic = infer_instrument_contract_from_trades(trades)
+        if ic is None:
+            continue
+        instrument, contract = ic
+
+        bars = _get_bars_from_market(market, instrument, contract, cfg.bar_tf, cfg.bars_source)
         if bars is None or bars.empty:
             continue
 
-        # Indicators to apply on bars BEFORE joining to trades
         specs = [
             IndicatorSpec(name="atr", params={"period": int(cfg.atr_period), "out": f"atr_{int(cfg.atr_period)}"}),
             IndicatorSpec(name="prev_day_ohlc", params={"out_prefix": "pd_"}),
             IndicatorSpec(name="prev_day_pivots", params={"in_prefix": "pd_", "out_prefix": "pd_"}),
             IndicatorSpec(name="swing_points", params={"k": int(cfg.swing_k)}),
+
+            IndicatorSpec(
+                name="opening_range",
+                params={
+                    "session_start": str(cfg.session_start),
+                    "globex_start": str(cfg.globex_start),
+                    "minutes": int(cfg.opening_range_minutes),
+                    "out_prefix": "or_",
+                },
+            ),
+            IndicatorSpec(
+                name="overnight_levels",
+                params={
+                    "session_start": str(cfg.session_start),
+                    "globex_start": str(cfg.globex_start),
+                    "out_prefix": "on_",
+                },
+            ),
         ]
 
         te_cfg = TradeEnrichmentConfig(
@@ -154,13 +165,16 @@ def build_trade_entry_signal_frame(
         if enriched is None or enriched.empty:
             continue
 
-        # normalize key trade columns
-        entry_dt_col = _find_col(enriched, ["entry_dt", "entry time", "entry_time", "entry date/time"])
-        pnl_col = _find_col(enriched, ["pnl", "profit", "profitcurrency", "profit currency", "p&l"])
+        entry_dt_col = _find_col(enriched, ["entry_dt", "entry time", "entry_time", "entry date/time", "entrydatetime"])
+        pnl_col = _find_col(enriched, ["pnl", "profit", "net profit", "netprofit", "profitcurrency", "profit currency", "p&l"])
         entry_px_col = _find_col(enriched, ["entry_price", "entry price", "entryprice"])
 
-        out = pd.DataFrame()
+        # CRITICAL FIX: seed index so scalar assignments broadcast to rows
+        out = pd.DataFrame(index=enriched.index)
+
         out["run_id"] = str(run_id)
+        out["instrument"] = instrument
+        out["contract"] = contract
 
         if entry_dt_col is not None:
             out["entry_dt"] = pd.to_datetime(enriched[entry_dt_col], errors="coerce")
@@ -172,63 +186,65 @@ def build_trade_entry_signal_frame(
         if entry_px_col is not None:
             out["entry_price"] = _safe_num(enriched[entry_px_col])
         else:
-            # fall back to entry bar close
-            if "entry_bar_close" in enriched.columns:
-                out["entry_price"] = _safe_num(enriched["entry_bar_close"])
-            else:
-                out["entry_price"] = np.nan
+            out["entry_price"] = _safe_num(enriched["entry_bar_close"]) if "entry_bar_close" in enriched.columns else np.nan
 
-        # pull indicator snapshot columns from the entry bar join
-        # trade_enrichment prefixes as entry_bar_<col> where <col> is the bar column name
         atr_col = f"entry_bar_atr_{int(cfg.atr_period)}"
         out["atr"] = _safe_num(enriched[atr_col]) if atr_col in enriched.columns else np.nan
 
-        # previous day OHLC levels (broadcast per bar, so should be present in entry snapshot)
         for k in ("pd_open", "pd_high", "pd_low", "pd_close"):
             c = f"entry_bar_{k}"
             out[k] = _safe_num(enriched[c]) if c in enriched.columns else np.nan
 
-        # pivot levels
         for k in ("pd_pp", "pd_r1", "pd_s1", "pd_r2", "pd_s2"):
             c = f"entry_bar_{k}"
             out[k] = _safe_num(enriched[c]) if c in enriched.columns else np.nan
 
-        # swing points (raw at entry bar)
-        swing_high_col = f"entry_bar_swing_high_k{int(cfg.swing_k)}"
-        swing_low_col = f"entry_bar_swing_low_k{int(cfg.swing_k)}"
-        out["swing_high"] = _safe_num(enriched[swing_high_col]) if swing_high_col in enriched.columns else np.nan
-        out["swing_low"] = _safe_num(enriched[swing_low_col]) if swing_low_col in enriched.columns else np.nan
+        sh = f"entry_bar_swing_high_k{int(cfg.swing_k)}"
+        sl = f"entry_bar_swing_low_k{int(cfg.swing_k)}"
+        out["swing_high"] = _safe_num(enriched[sh]) if sh in enriched.columns else np.nan
+        out["swing_low"] = _safe_num(enriched[sl]) if sl in enriched.columns else np.nan
 
-        # Distance features (price - level)
+        for k in ("or_high", "or_low", "on_high", "on_low"):
+            c = f"entry_bar_{k}"
+            out[k] = _safe_num(enriched[c]) if c in enriched.columns else np.nan
+
         px = out["entry_price"]
+        atr = out["atr"].replace(0, np.nan)
 
         out["d_px_pd_high"] = _dist(px, out["pd_high"])
         out["d_px_pd_low"] = _dist(px, out["pd_low"])
         out["d_px_pd_close"] = _dist(px, out["pd_close"])
         out["d_px_pd_pp"] = _dist(px, out["pd_pp"])
-        out["d_px_pd_r1"] = _dist(px, out["pd_r1"])
-        out["d_px_pd_s1"] = _dist(px, out["pd_s1"])
 
-        # ATR-normalized distances (robust across regimes)
-        atr = out["atr"].replace(0, np.nan)
+        out["d_px_or_high"] = _dist(px, out["or_high"])
+        out["d_px_or_low"] = _dist(px, out["or_low"])
+        out["d_px_on_high"] = _dist(px, out["on_high"])
+        out["d_px_on_low"] = _dist(px, out["on_low"])
+
         out["d_pd_high_atr"] = out["d_px_pd_high"] / atr
         out["d_pd_low_atr"] = out["d_px_pd_low"] / atr
         out["d_pd_pp_atr"] = out["d_px_pd_pp"] / atr
 
-        # Tick-normalized distances (nice for futures intuition)
+        out["d_or_high_atr"] = out["d_px_or_high"] / atr
+        out["d_or_low_atr"] = out["d_px_or_low"] / atr
+        out["d_on_high_atr"] = out["d_px_on_high"] / atr
+        out["d_on_low_atr"] = out["d_px_on_low"] / atr
+
         out["d_pd_high_ticks"] = _to_ticks(out["d_px_pd_high"], cfg.tick_size)
         out["d_pd_low_ticks"] = _to_ticks(out["d_px_pd_low"], cfg.tick_size)
         out["d_pd_pp_ticks"] = _to_ticks(out["d_px_pd_pp"], cfg.tick_size)
 
-        rows.append(out)
+        out["d_or_high_ticks"] = _to_ticks(out["d_px_or_high"], cfg.tick_size)
+        out["d_or_low_ticks"] = _to_ticks(out["d_px_or_low"], cfg.tick_size)
+        out["d_on_high_ticks"] = _to_ticks(out["d_px_on_high"], cfg.tick_size)
+        out["d_on_low_ticks"] = _to_ticks(out["d_px_on_low"], cfg.tick_size)
+
+        rows.append(out.reset_index(drop=True))
 
     if not rows:
         return pd.DataFrame()
 
     res = pd.concat(rows, axis=0, ignore_index=True)
-
-    # keep it deterministic
     if "entry_dt" in res.columns:
         res = res.sort_values(["run_id", "entry_dt"], kind="mergesort")
-
     return res

@@ -4,13 +4,39 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment=" New policy sim">
-      <change afterPath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_entry_signal_store.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New filter_discovery.py">
+      <change afterPath="$PROJECT_DIR$/AI EXTENSION STARTER PROMPT.MD" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/EXTENSION_DESIGN_SPEC.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/FULL INSTITUTIONAL RESEARCH ROADMAP.MD" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_DESIGN.MD" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_HANDOFF.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_REDESIGN.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/PROP FIRM PASSING STRATEGY BLUEPRINT.MD" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Quantitative Pass Probability Optimizer.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/cluster.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/meta_model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/robustness_cv.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/orb.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ta_foundation_EXTENSION_DESIGN_SPEC_Pantheon.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/basic.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_entry_signal_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_entry_signal_store.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/filter_discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/filter_discovery.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -309,7 +335,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771690706452</updated>
     </task>
-    <option name="localTasksCounter" value="29" />
+    <task id="LOCAL-00029" summary="New filter_discovery.py">
+      <option name="closed" value="true" />
+      <created>1771712669991</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1771712669991</updated>
+    </task>
+    <option name="localTasksCounter" value="30" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -336,7 +370,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="added settings info chart" />
     <MESSAGE value="Parse and show images and settings" />
     <MESSAGE value="New Bot Card" />
     <MESSAGE value="Refined Card creation" />
@@ -361,6 +394,7 @@
     <MESSAGE value="exit_policy_simulation_debug improved" />
     <MESSAGE value=" exit policy sim updated again" />
     <MESSAGE value=" New policy sim" />
-    <option name="LAST_COMMIT_MESSAGE" value=" New policy sim" />
+    <MESSAGE value="New filter_discovery.py" />
+    <option name="LAST_COMMIT_MESSAGE" value="New filter_discovery.py" />
   </component>
 </project>

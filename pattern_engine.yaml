@@ -1,0 +1,68 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "comparison_report.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+pattern_engine:
+  enabled: true
+  instrument: NQ
+  contract: "03-26"
+  tick_size: 0.25
+  timeframe: "1m"
+  bars_source: "auto"
+  output_dir: ""
+  horizons: [10, 20, 40]
+
+  sweep:
+    patterns:
+      - family: ORB
+        structure: orb_break_retest
+        params:
+          orb_minutes: [ 5, 10 ]
+          retest_bars: [ 1, 2 ]
+          session_start: [ "07:30" ]
+          globex_start: [ "16:00" ]
+          buffer_ticks: [ 2 ]
+
+  clusters:
+    method: kmeans
+    k: 25
+    representative_k: 2
+
+  cv:
+    n_folds: 5
+    day_col: day_id
+
+  prop:
+    trailing_drawdown_usd: 1500
+    daily_loss_limit_usd: 1000
+    tick_value_usd: 12.5
+
+  monte_carlo:
+    n_paths: 2000
+    block_unit: day
+    stress:
+      slippage_ticks: [0, 1, 2, 4]
+
+  mc_horizon: 20
+
+sections:
+  - id: pattern_engine_overview
+    title: "Pattern Engine"
+    options:
+      top_n_runs: 12
+      top_k_clusters: 20
+      top_k_patterns: 20
+      horizon: 20
+      include_run_id_regex: "Bronze.*"
+      exclude_run_id_regex: ".*OLD.*"
+
+  - id: pattern_cluster_drilldown
+    title: "Pattern Engine Drilldown"
+    options:
+      run_id: "BronzeAtlasEmber"
+      cluster_id: ""
+      horizons: [ 10, 20, 40 ]
+      mc_horizon: 20
+      top_k_members: 25

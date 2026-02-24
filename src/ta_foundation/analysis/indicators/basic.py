@@ -6,11 +6,44 @@ import pandas as pd
 from ta_foundation.analysis.indicators.registry import DEFAULT_INDICATORS
 
 
+def _parse_hhmm(s: str) -> tuple[int, int]:
+    s = (s or "").strip()
+    if not s or ":" not in s:
+        return (0, 0)
+    hh, mm = s.split(":", 1)
+    return (int(hh), int(mm))
+
+
+def _minutes_since_midnight(dt: pd.Series) -> pd.Series:
+    return (dt.dt.hour.astype("int64") * 60 + dt.dt.minute.astype("int64")).astype("int64")
+
+
+def _session_day_date(dt: pd.Series, session_start: str, globex_start: str) -> pd.Series:
+    """
+    Futures session_day:
+      - if time >= globex_start (e.g., 16:00) => belongs to NEXT calendar day (session_day = date+1)
+      - else                                 => belongs to current calendar day
+
+    Returns python date objects (dt assumed tz-aware already).
+    """
+    sh, sm = _parse_hhmm(session_start)
+    gh, gm = _parse_hhmm(globex_start)
+    session_start_min = sh * 60 + sm
+    globex_start_min = gh * 60 + gm
+
+    dt = pd.to_datetime(dt, errors="coerce")
+    mins = _minutes_since_midnight(dt)
+    cal_day = dt.dt.floor("D")
+
+    # After 16:00, shift to next day; otherwise same day.
+    sess_day = cal_day.where(mins < globex_start_min, cal_day + pd.Timedelta(days=1))
+    return pd.to_datetime(sess_day).dt.date
+
+
 def ema(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
     period = int(params.get("period", 20))
     col = str(params.get("col", "close"))
     out_col = str(params.get("out", f"ema_{period}_{col}"))
-
     if col not in bars.columns:
         return bars
     s = pd.to_numeric(bars[col], errors="coerce")
@@ -22,15 +55,14 @@ def rsi(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
     period = int(params.get("period", 14))
     col = str(params.get("col", "close"))
     out_col = str(params.get("out", f"rsi_{period}_{col}"))
-
     if col not in bars.columns:
         return bars
+
     s = pd.to_numeric(bars[col], errors="coerce")
     delta = s.diff()
     gain = delta.clip(lower=0.0)
     loss = (-delta).clip(lower=0.0)
 
-    # Wilder-style smoothing via EWM alpha=1/period
     avg_gain = gain.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
     avg_loss = loss.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
 
@@ -58,10 +90,6 @@ def atr(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
 
 
 def session_vwap(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Session VWAP anchored by local date (America/Denver).
-    This is a pragmatic default; you can later refine to actual futures session boundaries.
-    """
     out_col = str(params.get("out", "vwap_session"))
     price_col = str(params.get("price_col", "close"))
     vol_col = str(params.get("vol_col", "volume"))
@@ -73,25 +101,13 @@ def session_vwap(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
     px = pd.to_numeric(bars[price_col], errors="coerce")
     vol = pd.to_numeric(bars[vol_col], errors="coerce")
 
-    # Local date buckets (tz-aware dt assumed America/Denver already)
     day = dt.dt.date
     pv = px * vol
-
     bars[out_col] = (pv.groupby(day).cumsum() / vol.groupby(day).cumsum()).replace([np.inf, -np.inf], np.nan)
     return bars
 
 
 def prev_day_ohlc(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Previous-day OHLC levels broadcast onto each bar of the current day.
-
-    Requires:
-      - bars["dt"] tz-aware (America/Denver)
-      - open/high/low/close columns
-
-    Output columns (defaults):
-      pd_open, pd_high, pd_low, pd_close
-    """
     if bars is None or bars.empty:
         return bars
     req = {"dt", "open", "high", "low", "close"}
@@ -117,7 +133,6 @@ def prev_day_ohlc(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
     )
     prev = day_agg.shift(1)
 
-    # Map prev-day values back onto each bar row by current day
     bars[f"{out_prefix}open"] = pd.Series(day).map(prev["day_open"])
     bars[f"{out_prefix}high"] = pd.Series(day).map(prev["day_high"])
     bars[f"{out_prefix}low"] = pd.Series(day).map(prev["day_low"])
@@ -126,13 +141,6 @@ def prev_day_ohlc(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
 
 
 def prev_day_pivots(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Classic floor pivots derived from previous-day OHLC (pd_*).
-    Requires prev_day_ohlc to have been applied, or equivalent columns.
-
-    Output columns (defaults):
-      pd_pp, pd_r1, pd_s1, pd_r2, pd_s2
-    """
     if bars is None or bars.empty:
         return bars
 
@@ -164,19 +172,9 @@ def prev_day_pivots(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
 
 
 def swing_points(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Simple fractal swing points on bar highs/lows.
-    A "swing high" at i means high[i] is the max in window [i-k, i+k].
-    A "swing low" at i means low[i] is the min in window [i-k, i+k].
-
-    Outputs:
-      swing_high (price at swing, else NaN)
-      swing_low  (price at swing, else NaN)
-    """
     if bars is None or bars.empty:
         return bars
-    req = {"high", "low"}
-    if not req.issubset(set(bars.columns)):
+    if not {"high", "low"}.issubset(set(bars.columns)):
         return bars
 
     k = int(params.get("k", 2))
@@ -194,13 +192,108 @@ def swing_points(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
     return bars
 
 
+def opening_range(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """
+    Opening Range High/Low for first N minutes after session_start of each futures session_day.
+
+    Defaults (Denver time):
+      session_start: "07:30"
+      globex_start:  "16:00"
+      minutes: 15
+
+    Outputs:
+      or_high, or_low (broadcast onto all bars of the same session_day)
+    """
+    if bars is None or bars.empty:
+        return bars
+    if not {"dt", "high", "low"}.issubset(set(bars.columns)):
+        return bars
+
+    session_start = str(params.get("session_start", "07:30"))
+    globex_start = str(params.get("globex_start", "16:00"))
+    minutes = int(params.get("minutes", 15))
+    out_prefix = str(params.get("out_prefix", "or_"))
+
+    sh, sm = _parse_hhmm(session_start)
+    start_min = sh * 60 + sm
+
+    dt = pd.to_datetime(bars["dt"], errors="coerce")
+    mins = _minutes_since_midnight(dt)
+    sess_day = _session_day_date(dt, session_start=session_start, globex_start=globex_start)
+
+    h = pd.to_numeric(bars["high"], errors="coerce")
+    l = pd.to_numeric(bars["low"], errors="coerce")
+
+    in_or = (mins >= start_min) & (mins < (start_min + minutes))
+
+    tmp = pd.DataFrame({"session_day": sess_day, "high": h, "low": l, "in_or": in_or})
+    or_agg = tmp[tmp["in_or"]].groupby("session_day", dropna=False).agg(
+        or_high=("high", "max"),
+        or_low=("low", "min"),
+    )
+
+    bars[f"{out_prefix}high"] = pd.Series(sess_day).map(or_agg["or_high"])
+    bars[f"{out_prefix}low"] = pd.Series(sess_day).map(or_agg["or_low"])
+    return bars
+
+
+def overnight_levels(bars: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """
+    Overnight High/Low for each futures session_day.
+
+    Defaults (Denver time):
+      globex_start:  "16:00"
+      session_start: "07:30"
+
+    Overnight window is:
+      time >= globex_start OR time < session_start
+
+    Outputs:
+      on_high, on_low (broadcast onto all bars with that session_day)
+    """
+    if bars is None or bars.empty:
+        return bars
+    if not {"dt", "high", "low"}.issubset(set(bars.columns)):
+        return bars
+
+    session_start = str(params.get("session_start", "07:30"))
+    globex_start = str(params.get("globex_start", "16:00"))
+    out_prefix = str(params.get("out_prefix", "on_"))
+
+    sh, sm = _parse_hhmm(session_start)
+    gh, gm = _parse_hhmm(globex_start)
+    session_start_min = sh * 60 + sm
+    globex_start_min = gh * 60 + gm
+
+    dt = pd.to_datetime(bars["dt"], errors="coerce")
+    mins = _minutes_since_midnight(dt)
+    sess_day = _session_day_date(dt, session_start=session_start, globex_start=globex_start)
+
+    h = pd.to_numeric(bars["high"], errors="coerce")
+    l = pd.to_numeric(bars["low"], errors="coerce")
+
+    is_overnight = (mins >= globex_start_min) | (mins < session_start_min)
+
+    tmp = pd.DataFrame({"session_day": sess_day, "high": h, "low": l, "is_overnight": is_overnight})
+    on_agg = tmp[tmp["is_overnight"]].groupby("session_day", dropna=False).agg(
+        on_high=("high", "max"),
+        on_low=("low", "min"),
+    )
+
+    bars[f"{out_prefix}high"] = pd.Series(sess_day).map(on_agg["on_high"])
+    bars[f"{out_prefix}low"] = pd.Series(sess_day).map(on_agg["on_low"])
+    return bars
+
+
 # Register defaults
 DEFAULT_INDICATORS.register("ema", ema)
 DEFAULT_INDICATORS.register("rsi", rsi)
 DEFAULT_INDICATORS.register("atr", atr)
 DEFAULT_INDICATORS.register("session_vwap", session_vwap)
 
-# New: entry-context primitives
 DEFAULT_INDICATORS.register("prev_day_ohlc", prev_day_ohlc)
 DEFAULT_INDICATORS.register("prev_day_pivots", prev_day_pivots)
 DEFAULT_INDICATORS.register("swing_points", swing_points)
+
+DEFAULT_INDICATORS.register("opening_range", opening_range)
+DEFAULT_INDICATORS.register("overnight_levels", overnight_levels)

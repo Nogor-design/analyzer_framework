@@ -1,3 +1,5 @@
+# src/ta_foundation/reports/html/registry.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,6 +29,13 @@ from ta_foundation.reports.html.sections.exit_policy_simulation import render_ex
 from ta_foundation.reports.html.sections.exit_policy_simulation2 import render_exit_policy_simulation2
 from ta_foundation.reports.html.sections.exit_policy_trade_debug import render_exit_policy_trade_debug
 
+# NEW
+from ta_foundation.reports.html.sections.pattern_engine_overview import (
+    render_pattern_engine_overview,
+)
+from ta_foundation.reports.html.sections.pattern_cluster_drilldown import (
+    render_pattern_cluster_drilldown,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -39,6 +48,7 @@ class SectionDef:
 
 
 SECTION_REGISTRY: dict[str, SectionDef] = {
+    # --- existing sections ---
     "comparison_overview": SectionDef(
         id="comparison_overview",
         default_title="Comparison Overview",
@@ -64,7 +74,6 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Run Settings",
         render_fn=render_run_settings_table,
     ),
-
     "run_metadata_cards": SectionDef(
         id="run_metadata_cards",
         default_title="Run Metadata Cards",
@@ -107,7 +116,7 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
     ),
     "apex_drawdown_survival_profile": SectionDef(
         id="apex_drawdown_survival_profile",
-        default_title="apex drawdown",
+        default_title="Apex Drawdown Survival",
         render_fn=render_apex_drawdown_survival_profile,
     ),
     "tick_data_diagnostics": SectionDef(
@@ -127,16 +136,24 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
     ),
     "exit_policy_trade_debug": SectionDef(
         id="exit_policy_trade_debug",
-        default_title="Exit Policy debug",
+        default_title="Exit Policy Debug",
         render_fn=render_exit_policy_trade_debug,
     ),
     "exit_policy_simulation2": SectionDef(
         id="exit_policy_simulation2",
-        default_title="Exit Policy Simulation2",
+        default_title="Exit Policy Simulation 2",
         render_fn=render_exit_policy_simulation2,
     ),
 
-
-
+    # --- NEW: Pattern Engine ---
+    "pattern_engine_overview": SectionDef(
+        id="pattern_engine_overview",
+        default_title="Pattern Engine Overview",
+        render_fn=render_pattern_engine_overview,
+    ),
+    "pattern_cluster_drilldown": SectionDef(
+        id="pattern_cluster_drilldown",
+        default_title="Pattern Cluster Drilldown",
+        render_fn=render_pattern_cluster_drilldown,
+    ),
 }
-
