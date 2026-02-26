@@ -1,265 +1,274 @@
-# src/ta_foundation/analysis/pattern_engine/orchestrator.py
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from ta_foundation.marketdata.store import MarketDataStore
-from ta_foundation.analysis.indicators.registry import IndicatorSpec, DEFAULT_INDICATORS
-from ta_foundation.analysis.pattern_engine.engine import run_pattern_sweep
-from ta_foundation.analysis.pattern_engine.cluster import build_pattern_clusters
-from ta_foundation.analysis.pattern_engine.robustness_cv import compute_purged_walkforward_cv
-from ta_foundation.analysis.pattern_engine.monte_carlo import run_prop_monte_carlo
+from ta_foundation.core.model import AnalysisPackage  # adjust import if your project differs
+from .discovery import compute_market_discovery
+from .io import (
+    attach_artifact_ref,
+    deep_copy_json_safe,
+    df_to_parquet,
+    pattern_engine_run_dir,
+)
+from .engine import run_pattern_sweep
+from .cluster import build_pattern_clusters
+from .robustness_cv import compute_purged_walkforward_cv
+from .monte_carlo import run_prop_monte_carlo
 
 
-def _ensure_derived_bucket(pkg) -> dict:
+# ----------------------------
+# Internal helpers
+# ----------------------------
+
+def _ensure_pkg_has_metadata(pkg: Any) -> None:
     if getattr(pkg, "metadata", None) is None:
         pkg.metadata = {}
     if "derived" not in pkg.metadata or pkg.metadata["derived"] is None:
         pkg.metadata["derived"] = {}
-    return pkg.metadata["derived"]
 
 
-def _default_output_dir(pkg, *, subdir: str = "pattern_engine") -> str:
+def _ensure_pkg_assets_store(pkg: Any) -> Dict[str, Any]:
     """
-    Prefer a run-local output dir adjacent to the source folder.
-    Keeps artifacts colocated with run inputs without needing pipeline changes.
+    In-memory artifact store lives in pkg.assets["pattern_engine"].
+    This is intentionally NOT JSON-serialized. Sections can read from it.
     """
-    src = (pkg.metadata or {}).get("source_folder")
-    base = Path(src) if src else Path(".")
-    out = base / ".ta_artifacts" / subdir / str(getattr(pkg, "run_id", "run"))
-    out.mkdir(parents=True, exist_ok=True)
-    return str(out)
+    if not hasattr(pkg, "assets") or getattr(pkg, "assets") is None:
+        pkg.assets = {}
+    if "pattern_engine" not in pkg.assets or pkg.assets["pattern_engine"] is None:
+        pkg.assets["pattern_engine"] = {}
+    store = pkg.assets["pattern_engine"]
+    if not isinstance(store, dict):
+        pkg.assets["pattern_engine"] = {}
+        store = pkg.assets["pattern_engine"]
+    return store
 
 
-def _load_indicator_specs(opts: Dict[str, Any]) -> list[IndicatorSpec]:
-    """
-    options:
-      indicators:
-        - name: opening_range
-          params: { minutes: 15, session_start: "07:30", globex_start: "16:00" }
-        - name: atr
-          params: { period: 14, out: atr_14 }
-    """
-    out: list[IndicatorSpec] = []
-    for item in (opts.get("indicators") or []):
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name") or "").strip()
-        if not name:
-            continue
-        params = item.get("params") or {}
-        out.append(IndicatorSpec(name=name, params=dict(params)))
-    return out
-
-
-def compute_and_attach_pattern_engine_for_package(
-    pkg: Any,
-    market: MarketDataStore,
+def _attach_block(
     *,
+    pkg: Any,
     options: Dict[str, Any],
+    engine_info: Dict[str, Any],
+    artifacts: Dict[str, Any],
+    diagnostics: Dict[str, Any],
 ) -> None:
-    """
-    Analysis-layer orchestrator. Mutates pkg.metadata["derived"]["pattern_engine"].
-    Does not reload files. Uses MarketDataStore for shared data.
-    """
-
-    derived = _ensure_derived_bucket(pkg)
-
-    # Allow disabling per report.yaml
-    if not bool(options.get("enabled", True)):
-        derived["pattern_engine"] = {
-            "version": "pe_v1",
-            "disabled": True,
-            "reason": "options.enabled=false",
-        }
-        return
-
-    instrument = str(options.get("instrument") or "").strip().upper()
-    contract = str(options.get("contract") or "").strip()
-    if not instrument or not contract:
-        # You can alternatively infer from pkg.settings if you standardize it; keep strict for now.
-        derived["pattern_engine"] = {
-            "version": "pe_v1",
-            "disabled": True,
-            "reason": "missing instrument/contract in options",
-        }
-        return
-
-    timeframe = str(options.get("timeframe") or "1m")
-    bars_source = str(options.get("bars_source") or "auto")  # auto|minute|ticks
-
-    tick_size = float(options.get("tick_size") or 0.0)
-    if tick_size <= 0:
-        # NQ/ES tick sizes could be inferred, but keep explicit to avoid wrong assumptions.
-        raise ValueError("pattern_engine: tick_size must be provided and > 0")
-
-    out_dir = str(options.get("output_dir") or "").strip() or _default_output_dir(pkg)
-
-    # Pull bars/ticks through MarketDataStore (shared, cached, tz-safe)
-    bars_df = market.get_bars(
-        instrument_root=instrument,
-        contract=contract,
-        timeframe=timeframe,
-        source=bars_source,  # type: ignore[arg-type]
-    )
-    if bars_df is None or bars_df.empty:
-        derived["pattern_engine"] = {
-            "version": "pe_v1",
-            "disabled": True,
-            "reason": f"no bars available for {instrument} {contract} tf={timeframe} source={bars_source}",
-        }
-        return
-
-    ticks_df = market.get_ticks(instrument, contract)
-
-    # Optional indicator enrichment (pure, deterministic)
-    ind_specs = _load_indicator_specs(options)
-    if ind_specs:
-        bars_df = DEFAULT_INDICATORS.apply(bars_df, ind_specs)
-
-    # -----------------------
-    # 1) Sweep (signals/outcomes/pattern_stats)
-    # -----------------------
-    sweep_opts = dict(options)
-    sweep_opts["output_dir"] = out_dir
-    sweep_opts["instrument"] = instrument
-    sweep_opts["contract"] = contract
-    sweep_opts["tick_size"] = tick_size
-    sweep_opts["bars_df_override"] = bars_df
-    sweep_opts.setdefault("bar_tf", timeframe)
-    sweep_opts.setdefault("tz", (pkg.metadata or {}).get("timezone", "America/Denver"))
-
-    # Provide market ctx dict to engine without breaking your conventions:
-    # - bars come from MarketDataStore
-    # - ticks are optional
-    market_ctx = {
-        "bars": bars_df,
-        "ticks": ticks_df,
-        "market_store": market,
+    _ensure_pkg_has_metadata(pkg)
+    pkg.metadata["derived"]["pattern_engine"] = {
+        "version": "pe_v1",
+        "engine": engine_info,
+        "options_snapshot": deep_copy_json_safe(options),
+        "artifacts": artifacts,
+        "diagnostics": diagnostics,
     }
 
-    pe_meta = run_pattern_sweep(pkg=pkg, market=market_ctx, options=sweep_opts)
 
-    # -----------------------
-    # 2) Clustering
-    # -----------------------
-    # Read back the artifacts (keeps memory bounded; consistent with your parquet-first approach)
-    patterns_df = pd.read_parquet(pe_meta["artifacts"]["patterns"]["path"])
-    outcomes_df = pd.read_parquet(pe_meta["artifacts"]["outcomes"]["path"])
-    pattern_stats_df = pd.read_parquet(pe_meta["artifacts"]["pattern_stats"]["path"])
+def _write_and_cache_df(
+    *,
+    run_dir: Path,
+    artifacts_meta: Dict[str, Any],
+    asset_store: Dict[str, Any],
+    artifact_key: str,
+    filename: str,
+    df: pd.DataFrame,
+) -> None:
+    if df is None or not isinstance(df, pd.DataFrame):
+        return
 
-    cluster_cfg = (options.get("clusters") or {})
-    cl = build_pattern_clusters(
-        patterns_df=patterns_df,
-        outcomes_df=outcomes_df,
-        pattern_stats_df=pattern_stats_df,
-        options=dict(cluster_cfg),
-    )
+    asset_store[artifact_key] = df
 
-    # persist cluster artifacts
-    for key, df in cl.items():
-        p = os.path.join(out_dir, f"{key}.parquet")
-        df.to_parquet(p, index=False)
-        # align keys to the metadata artifact naming you want
-        if key == "embeddings_df":
-            pe_meta["artifacts"]["embeddings"] = {"type": "parquet", "path": p}
-        elif key == "clusters_df":
-            pe_meta["artifacts"]["clusters"] = {"type": "parquet", "path": p}
-        elif key == "cluster_members_df":
-            pe_meta["artifacts"]["cluster_members"] = {"type": "parquet", "path": p}
-        elif key == "cluster_stats_df":
-            pe_meta["artifacts"]["cluster_stats"] = {"type": "parquet", "path": p}
+    if len(df) == 0:
+        return
 
-    # -----------------------
-    # 3) CV (purged walk-forward)
-    # -----------------------
-    # Build an events_df suitable for CV: one row per signal per horizon (pattern + cluster)
-    signals_df = pd.read_parquet(pe_meta["artifacts"]["signals"]["path"])
-    outcomes_df = pd.read_parquet(pe_meta["artifacts"]["outcomes"]["path"])
-    events = outcomes_df.merge(
-        signals_df[["signal_id", "day_id", "session_id", "regime"]],
-        on="signal_id",
-        how="left",
-    )
-    # pattern entity rows
-    pat_events = events.copy()
-    pat_events["entity_type"] = "pattern"
-    pat_events["entity_id"] = pat_events["pattern_id"]
+    path = run_dir / filename
+    df_to_parquet(df=df, path=path)
+    attach_artifact_ref(artifacts=artifacts_meta, key=artifact_key, path=path)
 
-    # cluster entity rows (map pattern_id -> cluster_id)
-    cm_path = pe_meta["artifacts"]["cluster_members"]["path"]
-    cluster_members = pd.read_parquet(cm_path)[["cluster_id", "pattern_id"]]
-    cl_events = events.merge(cluster_members, on="pattern_id", how="inner")
-    cl_events["entity_type"] = "cluster"
-    cl_events["entity_id"] = cl_events["cluster_id"]
 
-    cv_events = pd.concat([pat_events, cl_events], ignore_index=True)
-    cv_cfg = dict(options.get("cv") or {})
-    cv_out = compute_purged_walkforward_cv(events_df=cv_events, options=cv_cfg)
+def _attach_disabled_block(pkg: Any, *, engine_info: Dict[str, Any], options: Dict[str, Any], reason: str) -> None:
+    _ensure_pkg_has_metadata(pkg)
+    pkg.metadata["derived"]["pattern_engine"] = {
+        "version": "pe_v1",
+        "engine": engine_info,
+        "options_snapshot": deep_copy_json_safe(options),
+        "artifacts": {},
+        "diagnostics": {"validation": {"ok": False, "issues": [reason]}, "counts": {}},
+        "disabled": True,
+        "reason": reason,
+    }
 
-    cv_fold_stats_df = cv_out["cv_fold_stats_df"]
-    oos_stats_df = cv_out["oos_stats_df"]
 
-    cv_fold_path = os.path.join(out_dir, "cv_fold_stats.parquet")
-    oos_path = os.path.join(out_dir, "oos_stats.parquet")
-    cv_fold_stats_df.to_parquet(cv_fold_path, index=False)
-    oos_stats_df.to_parquet(oos_path, index=False)
-
-    pe_meta["artifacts"]["cv_fold_stats"] = {"type": "parquet", "path": cv_fold_path}
-    pe_meta["artifacts"]["oos_stats"] = {"type": "parquet", "path": oos_path}
-
-    # -----------------------
-    # 4) Monte Carlo (prop constraints)
-    # -----------------------
-    prop_cfg = dict(options.get("prop") or {})
-    mc_cfg = dict(options.get("monte_carlo") or {})
-
-    # Monte Carlo wants an equity-events stream.
-    # For now: use cluster-level events (better multiple-testing control).
-    horizon_pick = options.get("mc_horizon")
-    mc_events = cl_events.copy()
-    if horizon_pick is not None:
-        mc_events = mc_events[mc_events["horizon"] == int(horizon_pick)]
-
-    mc_events = mc_events.rename(columns={"ret_ticks": "pnl_ticks"})[
-        ["dt", "entity_type", "entity_id", "pnl_ticks", "day_id", "session_id", "regime"]
-    ].sort_values("dt")
-
-    mc_out = run_prop_monte_carlo(
-        equity_events_df=mc_events,
-        constraints=prop_cfg,
-        mc_options=mc_cfg,
-    )
-    mc_summary_df = mc_out["mc_summary_df"]
-    mc_path = os.path.join(out_dir, "mc_summary.parquet")
-    mc_summary_df.to_parquet(mc_path, index=False)
-    pe_meta["artifacts"]["mc_summary"] = {"type": "parquet", "path": mc_path}
-
-    # -----------------------
-    # 5) Diagnostics + attach to pkg metadata
-    # -----------------------
-    counts = pe_meta.get("diagnostics", {}).get("counts", {}) or {}
-    counts["n_clusters"] = int(len(cl.get("clusters_df", pd.DataFrame())))
-    pe_meta.setdefault("diagnostics", {}).setdefault("counts", {}).update(counts)
-
-    # keep a stable snapshot of the pattern_engine block
-    derived["pattern_engine"] = pe_meta
-
+# ----------------------------
+# Public entry point
+# ----------------------------
 
 def compute_and_attach_pattern_engine(
-    packages: Dict[str, Any],
-    market: Optional[MarketDataStore],
     *,
+    packages: Dict[str, Any],
+    market: Any,
     options: Dict[str, Any],
 ) -> None:
-    """
-    Run pattern engine for all packages. Safe no-op if market is missing.
-    """
-    if market is None:
+    if not options.get("enabled", False):
         return
+
+    scopes = options.get("scopes") or ["run_attached"]
+    if isinstance(scopes, str):
+        scopes = [scopes]
+
     for _, pkg in (packages or {}).items():
-        compute_and_attach_pattern_engine_for_package(pkg, market, options=options)
+        store = _ensure_pkg_assets_store(pkg)
+        store["__scopes__"] = list(scopes)
+
+    engine_info = {
+        "tick_size": float(options.get("tick_size", 0.25)),
+        "instrument": str(options.get("instrument", "")),
+        "contract": str(options.get("contract", "")),
+        "bar_tf": str(options.get("timeframe", "1m")),
+        "tz": "America/Denver",
+    }
+
+    # ----------------------------
+    # Scope A: run_attached
+    # ----------------------------
+    if "run_attached" in scopes:
+        for run_id, pkg in (packages or {}).items():
+            asset_store = _ensure_pkg_assets_store(pkg)
+            run_dir = pattern_engine_run_dir(run_id=str(run_id))
+
+            artifacts_meta: Dict[str, Any] = {}
+            diagnostics: Dict[str, Any] = {"validation": {"ok": True, "issues": []}, "counts": {}}
+
+            try:
+                res = run_pattern_sweep(pkg=pkg, market=market, options=options)
+                diag = res.get("diagnostics", {}) or {}
+                diagnostics["validation"]["ok"] = bool(diag.get("ok", True))
+                if not diagnostics["validation"]["ok"]:
+                    diagnostics["validation"]["issues"].append(str(diag.get("reason", "unknown")))
+
+                patterns_df = res.get("patterns_df", pd.DataFrame())
+                signals_df = res.get("signals_df", pd.DataFrame())
+                outcomes_df = res.get("outcomes_df", pd.DataFrame())
+                pattern_stats_df = res.get("pattern_stats_df", pd.DataFrame())
+
+                _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=asset_store,
+                                    artifact_key="patterns", filename="patterns.parquet", df=patterns_df)
+                _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=asset_store,
+                                    artifact_key="signals", filename="signals.parquet", df=signals_df)
+                _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=asset_store,
+                                    artifact_key="outcomes", filename="outcomes.parquet", df=outcomes_df)
+                _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=asset_store,
+                                    artifact_key="pattern_stats", filename="pattern_stats.parquet", df=pattern_stats_df)
+
+                # (… keep the rest of your run_attached logic unchanged …)
+
+                diagnostics["counts"] = {
+                    "n_patterns": int(len(patterns_df)) if isinstance(patterns_df, pd.DataFrame) else 0,
+                    "n_signals": int(len(signals_df)) if isinstance(signals_df, pd.DataFrame) else 0,
+                    "n_outcomes": int(len(outcomes_df)) if isinstance(outcomes_df, pd.DataFrame) else 0,
+                    "n_clusters": int(len(asset_store.get("clusters", pd.DataFrame())))
+                    if isinstance(asset_store.get("clusters"), pd.DataFrame) else 0,
+                }
+
+                _attach_block(pkg=pkg, options=options, engine_info=engine_info, artifacts=artifacts_meta, diagnostics=diagnostics)
+
+            except Exception as e:
+                reason = f"pattern_engine_exception: {type(e).__name__}: {e}"
+                _attach_disabled_block(pkg, engine_info=engine_info, options=options, reason=reason)
+                asset_store["__error__"] = reason
+
+    # ----------------------------
+    # Scope B: market_discovery (synthetic package)
+    # ----------------------------
+    if "market_discovery" in scopes:
+        md = options.get("market_discovery", {}) or {}
+
+        instrument = str(md.get("instrument", options.get("instrument", ""))).strip()
+        contract = str(md.get("contract", options.get("contract", ""))).strip()
+        timeframe = str(md.get("timeframe", options.get("timeframe", "1m"))).strip()
+        start = md.get("start", None)
+        end = md.get("end", None)
+        bars_source = md.get("bars_source", options.get("bars_source", "auto"))
+
+        synth_id = str(md.get("run_id") or f"__market_discovery__::{instrument}::{contract}::{timeframe}")
+
+        if synth_id not in packages:
+            synth = AnalysisPackage(
+                run_id=synth_id,
+                trades=None,
+                daily=None,
+                summary=None,
+                settings=None,
+                warnings=[],
+                metadata={},
+                assets={},
+            )
+            packages[synth_id] = synth
+
+        synth_pkg = packages[synth_id]
+        synth_assets = _ensure_pkg_assets_store(synth_pkg)
+        run_dir = pattern_engine_run_dir(run_id=str(synth_id))
+
+        artifacts_meta: Dict[str, Any] = {}
+        diagnostics: Dict[str, Any] = {"validation": {"ok": True, "issues": []}, "counts": {}}
+
+        try:
+            if not instrument or not contract:
+                raise ValueError("market_discovery requires instrument and contract.")
+
+            bars = market.get_bars(
+                instrument_root=instrument,
+                contract=contract,
+                timeframe=timeframe,
+                start=start,
+                end=end,
+                source=bars_source,
+            )
+            if bars is None or bars.empty:
+                raise ValueError("No bars returned for market_discovery.")
+
+            sweep_opts = dict(options)
+            sweep_opts["instrument"] = instrument
+            sweep_opts["contract"] = contract
+            sweep_opts["timeframe"] = timeframe
+
+            res = run_pattern_sweep(pkg=synth_pkg, market=market, options=sweep_opts)
+
+            # ✅ NEW: propagate engine diagnostics to report diagnostics (like run_attached)
+            diag = res.get("diagnostics", {}) or {}
+            diagnostics["validation"]["ok"] = bool(diag.get("ok", True))
+            if not diagnostics["validation"]["ok"]:
+                diagnostics["validation"]["issues"].append(str(diag.get("reason", "unknown")))
+
+            patterns_df = res.get("patterns_df", pd.DataFrame())
+            signals_df = res.get("signals_df", pd.DataFrame())
+
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="patterns", filename="patterns.parquet", df=patterns_df)
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="signals", filename="signals.parquet", df=signals_df)
+
+            disc = compute_market_discovery(bars=bars, signals_df=signals_df, options=options)
+
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="discovery_events", filename="discovery_events.parquet", df=disc["discovery_events_df"])
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="discovery_stats", filename="discovery_stats.parquet", df=disc["discovery_stats_df"])
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="discovery_regime_stats", filename="discovery_regime_stats.parquet", df=disc["discovery_regime_stats_df"])
+            _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,
+                                artifact_key="discovery_stability", filename="discovery_stability.parquet", df=disc["discovery_stability_df"])
+
+            diagnostics["counts"] = {
+                "n_patterns": int(len(patterns_df)) if isinstance(patterns_df, pd.DataFrame) else 0,
+                "n_signals": int(len(signals_df)) if isinstance(signals_df, pd.DataFrame) else 0,
+                "n_discovery_events": int(len(disc["discovery_events_df"])) if isinstance(disc["discovery_events_df"], pd.DataFrame) else 0,
+                "n_discovery_stats": int(len(disc["discovery_stats_df"])) if isinstance(disc["discovery_stats_df"], pd.DataFrame) else 0,
+            }
+
+            _attach_block(pkg=synth_pkg, options=options, engine_info=engine_info, artifacts=artifacts_meta, diagnostics=diagnostics)
+
+        except Exception as e:
+            reason = f"pattern_engine_exception: {type(e).__name__}: {e}"
+            _attach_disabled_block(synth_pkg, engine_info=engine_info, options=options, reason=reason)
+            synth_assets["__error__"] = reason

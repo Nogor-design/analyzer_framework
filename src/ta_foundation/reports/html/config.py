@@ -10,6 +10,7 @@ from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 
 from ta_foundation.marketdata.store import MarketDataStore
+from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
 
 
 @dataclass
@@ -33,7 +34,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         {"id": "run_kpi_cards"},
         {"id": "run_snapshot_clipboard"},
     ],
-    # NOTE: leave room for top-level feature blocks like:
+    # Leave room for top-level feature blocks like:
     # "pattern_engine": {...}
 }
 
@@ -87,17 +88,19 @@ def load_report_config(path: Optional[Path]) -> ReportConfig:
     )
 
 
-def build_report_from_config(packages, cfg: ReportConfig, market: Optional[MarketDataStore] = None):
+def build_report_from_config(
+    packages: Dict[str, Any],
+    cfg: ReportConfig,
+    market: Optional[MarketDataStore] = None,
+):
     """
     Returns: (html_string, output_filename)
 
-    IMPORTANT CONTEXT CONTRACT:
-      - ctx["options"] is SECTION-LOCAL options (kept as-is for backwards compatibility)
+    CONTEXT CONTRACT:
+      - ctx["options"] is SECTION-LOCAL options (set by HtmlReportBuilder per section)
       - ctx["all_options"] is the FULL merged YAML config (top-level blocks like pattern_engine live here)
     """
-    sections: list[HtmlSection] = []
-
-    # base ctx is whatever your builder/sections expect
+    # Base ctx passed to builder; builder is responsible for injecting section-local ctx["options"]
     base_ctx: Dict[str, Any] = {
         "packages": packages,
         "market": market,
@@ -106,24 +109,31 @@ def build_report_from_config(packages, cfg: ReportConfig, market: Optional[Marke
     }
 
     # ---- Run Pattern Engine once BEFORE rendering (analysis phase) ----
+    pe_opts = (cfg.raw.get("pattern_engine") or {}) if isinstance(cfg.raw, dict) else {}
     try:
-        from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
-
-        pe_opts = (cfg.raw.get("pattern_engine") or {}) if isinstance(cfg.raw, dict) else {}
-        compute_and_attach_pattern_engine(packages, market, options=pe_opts)
+        compute_and_attach_pattern_engine(
+            packages=packages,
+            market=market,
+            options=pe_opts,
+        )
     except Exception as e:
         # Never crash report generation because pattern engine failed.
-        # Store error on each package so the report can show it.
+        # Attach a disabled/error block per package so sections can report it.
+        reason = f"pattern_engine_exception: {type(e).__name__}: {e}"
         for _, pkg in (packages or {}).items():
             md = getattr(pkg, "metadata", None)
             if md is None:
                 pkg.metadata = {}
                 md = pkg.metadata
-            md.setdefault("derived", {})
+            if "derived" not in md or md["derived"] is None:
+                md["derived"] = {}
+
             md["derived"]["pattern_engine"] = {
                 "version": "pe_v1",
                 "disabled": True,
-                "reason": f"pattern_engine_exception: {type(e).__name__}: {e}",
+                "reason": reason,
+                "diagnostics": {"ok": False, "reason": reason},
+                "artifacts": {},
             }
 
     # ---- Deduplicate section ids while preserving order ----
@@ -147,6 +157,7 @@ def build_report_from_config(packages, cfg: ReportConfig, market: Optional[Marke
         print(f"[ta_foundation] WARNING: Duplicate section ids ignored: {duplicates}")
 
     # ---- Build HtmlSection list exactly once ----
+    sections: list[HtmlSection] = []
     for s in sections_cfg:
         sid = s["id"]
         if sid not in SECTION_REGISTRY:

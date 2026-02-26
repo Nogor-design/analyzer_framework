@@ -28,7 +28,10 @@ from ta_foundation.reports.html.sections.filter_discovery import render_filter_d
 from ta_foundation.reports.html.sections.exit_policy_simulation import render_exit_policy_simulation
 from ta_foundation.reports.html.sections.exit_policy_simulation2 import render_exit_policy_simulation2
 from ta_foundation.reports.html.sections.exit_policy_trade_debug import render_exit_policy_trade_debug
-
+from ta_foundation.reports.html.sections.pattern_engine_diagnostics import render_pattern_engine_diagnostics
+from ta_foundation.reports.html.sections.pattern_market_discovery import render_pattern_market_discovery
+# render_pattern_engine_diagnostics
+# render_pattern_market_discovery
 # NEW
 from ta_foundation.reports.html.sections.pattern_engine_overview import (
     render_pattern_engine_overview,
@@ -156,4 +159,16 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Pattern Cluster Drilldown",
         render_fn=render_pattern_cluster_drilldown,
     ),
+    "pattern_engine_diagnostics": SectionDef(
+        id="pattern_engine_diagnostics",
+        default_title="Pattern Diagnostic",
+        render_fn=render_pattern_engine_diagnostics,
+    ),
+    "pattern_market_discovery": SectionDef(
+        id="pattern_market_discovery",
+        default_title="Pattern Discovery",
+        render_fn=render_pattern_market_discovery,
+    ),
+
+# render_pattern_engine_diagnostics
 }

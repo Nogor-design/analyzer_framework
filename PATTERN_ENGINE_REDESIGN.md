@@ -989,3 +989,353 @@ The TemplateRegistry is intentionally minimal. In your repo you likely already h
 
 No pipeline flow changes
 You can implement this as a new analysis stage that runs after bars are in ctx["market"].
+
+PATTERN ENGINE – DUAL SCOPE & DISCOVERY ADDENDUM
+
+Status: Design Contract
+Applies To: ta_foundation Pattern Engine
+Purpose: Formalize dual usage modes (run-attached + market-discovery) while enforcing institutional-grade robustness and prop-survival objectives.
+
+1. Core Principle
+
+The Pattern Engine operates in two distinct scopes under a single orchestrator:
+
+run_attached
+
+market_discovery
+
+Both scopes:
+
+Execute during report build
+
+Run exactly once per invocation
+
+Persist artifacts deterministically
+
+Attach outputs under:
+
+pkg.metadata["derived"]["pattern_engine"]
+
+Sections remain pure renderers.
+
+No section may compute or reload data.
+
+2. Scope Model
+2.1 Scope A — run_attached
+
+Purpose:
+
+Analyze existing backtest runs.
+
+Use trades, timestamps, and market data context.
+
+Diagnose filters, exits, and structural signal behaviors.
+
+Data Inputs:
+
+AnalysisPackage (trades, daily, summary, settings)
+
+MarketDataStore (bars, ticks)
+
+Outputs:
+
+Sweep results
+
+Outcome statistics
+
+Stability metrics
+
+Clusters
+
+Walk-forward results
+
+Prop Monte Carlo (if enabled)
+
+Attached to:
+
+The real AnalysisPackage per run_id.
+
+2.2 Scope B — market_discovery
+
+Purpose:
+
+Discover candidate signal templates directly from market data.
+
+Produce hypotheses suitable for prop firm survival.
+
+Not tied to any specific backtest.
+
+2.2.1 Synthetic Market Package
+
+A synthetic AnalysisPackage SHALL be created with:
+
+run_id = "__market__::<instrument>::<tf>::<date_range>::<session>::<hash>"
+
+This package:
+
+Has no trades/daily/summary requirements.
+
+Exists only to hold derived Pattern Engine artifacts.
+
+Is included in packages list so sections remain unaware of scope differences.
+
+This preserves architectural uniformity.
+
+3. Configuration Contract
+
+Top-level YAML block:
+
+pattern_engine:
+  enabled: true
+  scopes: ["run_attached", "market_discovery"]
+
+  tier: 1
+  families: [...]
+  structures: [...]
+  directions: [...]
+  regimes: [...]
+  horizons: [...]
+  min_signals: 30
+
+  market_discovery:
+    instrument: NQ
+    timeframe: 1m
+    date_range: [2025-01-01, 2025-03-01]
+    session: RTH
+    prop_constraints:
+      trailing_dd: 1500
+      daily_loss: 1000
+      profit_target: 3000
+      eval_days: 15
+
+Rules:
+
+Analysis parameters live in top-level block.
+
+Section-specific rendering options remain under sections[].options.
+
+Deterministic hashing required for artifact identity.
+
+4. Mandatory Robustness Gates (Non-Optional)
+
+Discovery mode SHALL NOT rank candidates by raw expectancy.
+
+All scopes must implement the following gates before promotion:
+
+4.1 Multiple Testing Control
+
+Required:
+
+Benjamini–Hochberg FDR correction
+
+q-values computed within sweep family/horizon group
+
+Artifact Fields:
+
+p_value
+
+q_value
+
+passes_fdr
+
+No candidate may advance without passing FDR threshold.
+
+4.2 Parameter Neighborhood Stability
+
+For each pattern instance:
+
+Evaluate local parameter neighborhood
+
+Compute stability score (mean performance of neighbors vs center)
+
+Penalize isolated optima
+
+Artifact Fields:
+
+neighborhood_score
+
+is_spiky_optimum
+
+Spiky optima are down-ranked or rejected.
+
+4.3 Walk-Forward Validation (Purged)
+
+Required:
+
+Anchored or expanding WFO
+
+Purged splits
+
+No leakage across folds
+
+Artifact Fields:
+
+fold_sign_consistency
+
+fold_dispersion
+
+stability_score
+
+Must satisfy minimum sign consistency threshold.
+
+4.4 Regime Robustness
+
+Patterns must be evaluated across:
+
+Volatility buckets
+
+Trend states
+
+Sessions (RTH / Globex)
+
+Artifact Fields:
+
+regime_dispersion
+
+worst_regime_pnl
+
+regime_stability_score
+
+Single-regime dependency is penalized.
+
+5. Prop Survival Objective (Discovery Mode Primary Metric)
+
+In market_discovery scope:
+
+Primary ranking metric SHALL be:
+
+P(TargetBeforeTrailingDD)
+
+Monte Carlo simulation MUST model:
+
+Trailing drawdown path dependence
+
+Daily loss limits
+
+Evaluation window length
+
+Equity path clustering
+
+Artifact Fields:
+
+mc_pass_prob
+
+mc_dd_p90
+
+mc_dd_p99
+
+daily_loss_breach_prob
+
+max_consec_loss_p95
+
+Expectancy alone is insufficient.
+
+6. Promotion Pipeline
+
+Pattern Engine SHALL implement staged promotion:
+
+Stage A – Broad Sweep
+Stage B – FDR Filter
+Stage C – Neighborhood Stability
+Stage D – Walk-Forward Stability
+Stage E – Regime Robustness
+Stage F – Prop Survival MC
+Stage G – (Optional) Tick-Path Execution Realism
+
+Only Stage F survivors become:
+
+Candidate Strategy Specs
+7. Candidate Strategy Specification Artifact
+
+Discovery scope MUST output:
+
+candidate_specs.parquet
+
+Schema:
+
+Field	Description
+template_key	Pattern template
+params	Parameter dict
+direction	long/short/both
+session	Allowed session
+regime_constraints	Required regime filters
+horizon	Exit horizon
+trade_freq_est	Estimated trades/day
+mc_pass_prob	Prop survival probability
+mc_dd_p90	Drawdown p90
+q_value	FDR adjusted p
+neighborhood_score	Stability metric
+regime_stability_score	Robustness metric
+promotion_stage	Final stage achieved
+
+These specs are hypotheses, not final strategies.
+
+8. Artifact Determinism
+
+All artifacts must:
+
+Be reproducible via config hash
+
+Persist under:
+
+.ta_artifacts/pattern_engine/<run_id>/
+
+Market synthetic run_ids must include option hash to avoid collision.
+
+9. Explicit Non-Goals
+
+The Pattern Engine SHALL NOT:
+
+Auto-generate NinjaTrader code.
+
+Optimize exits during broad discovery sweeps.
+
+Use tick-path execution in Tier 1 exploration.
+
+Promote raw net-profit leaders without survival validation.
+
+10. Complexity Justification Rule
+
+Complexity is justified only if:
+
+Each additional feature reduces false discovery risk, OR
+
+Improves prop survival modeling realism.
+
+If neither is true, it SHALL NOT be added.
+
+11. Future Extensions (Tiered)
+
+Tier 2:
+
+Regime-aware Monte Carlo
+
+Bayesian shrinkage scoring
+
+Label-shuffled empirical nulls
+
+Tier 3:
+
+Meta-model ranking layer
+
+Portfolio-of-pattern optimization
+
+These require Phase 1–2 gates fully validated first.
+
+12. Summary
+
+The Pattern Engine now supports:
+
+Diagnostic analysis of existing strategies
+
+Pure market-based prop survival discovery
+
+Institutional-grade overfitting controls
+
+Deterministic artifact management
+
+Strict separation of compute vs render
+
+Discovery outputs are candidates, not edges.
+
+Promotion requires survival under path-dependent prop constraints.

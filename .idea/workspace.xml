@@ -4,40 +4,31 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New filter_discovery.py">
-      <change afterPath="$PROJECT_DIR$/AI EXTENSION STARTER PROMPT.MD" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/EXTENSION_DESIGN_SPEC.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/FULL INSTITUTIONAL RESEARCH ROADMAP.MD" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_DESIGN.MD" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_HANDOFF.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/PATTERN_ENGINE_REDESIGN.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/PROP FIRM PASSING STRATEGY BLUEPRINT.MD" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Quantitative Pass Probability Optimizer.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/cluster.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/meta_model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/robustness_cv.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/orb.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/ta_foundation_EXTENSION_DESIGN_SPEC_Pantheon.md" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New Pattern Engine">
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/discovery.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/io.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/registry.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_diagnostics.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_market_discovery.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/PATTERN_ENGINE_HANDOFF.md" beforeDir="false" afterPath="$PROJECT_DIR$/PATTERN_ENGINE_HANDOFF.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/PATTERN_ENGINE_REDESIGN.md" beforeDir="false" afterPath="$PROJECT_DIR$/PATTERN_ENGINE_REDESIGN.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pattern_engine.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/basic.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/indicators/registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_entry_signal_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_entry_signal_store.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/top_level.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/top_level.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/cluster.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/cluster.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/robustness_cv.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/robustness_cv.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/filter_discovery.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/filter_discovery.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -59,18 +50,18 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "Nogor-design"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Nogor-design&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/Nogor-design/analyzer_framework.git",
-    "accountId": "4b6153b9-a4ed-4655-80ee-5a38b066e1e5"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Nogor-design/analyzer_framework.git&quot;,
+    &quot;accountId&quot;: &quot;4b6153b9-a4ed-4655-80ee-5a38b066e1e5&quot;
   }
-}]]></component>
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 3
 }</component>
@@ -87,9 +78,19 @@
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "Simulator",
     "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation"
+    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation",
+    "settings.editor.selected.configurable": "PyConsoleConfigurable.Python Console"
   }
 }]]></component>
+  <component name="PyConsoleOptionsProvider">
+    <option name="myPythonConsoleState">
+      <console-settings module-name="ta_foundation" is-module-sdk="true" working-directory="$PROJECT_DIR$">
+        <option name="myUseModuleSdk" value="true" />
+        <option name="myModuleName" value="ta_foundation" />
+        <option name="myWorkingDirectory" value="$PROJECT_DIR$" />
+      </console-settings>
+    </option>
+  </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\Backup\projects\PythonProject\ta_foundation" />
@@ -343,7 +344,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771712669991</updated>
     </task>
-    <option name="localTasksCounter" value="30" />
+    <task id="LOCAL-00030" summary="New Pattern Engine">
+      <option name="closed" value="true" />
+      <created>1771953322030</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1771953322030</updated>
+    </task>
+    <option name="localTasksCounter" value="31" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -370,7 +379,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Parse and show images and settings" />
     <MESSAGE value="New Bot Card" />
     <MESSAGE value="Refined Card creation" />
     <MESSAGE value="Fixed Duplicate charts in report." />
@@ -395,6 +403,7 @@
     <MESSAGE value=" exit policy sim updated again" />
     <MESSAGE value=" New policy sim" />
     <MESSAGE value="New filter_discovery.py" />
-    <option name="LAST_COMMIT_MESSAGE" value="New filter_discovery.py" />
+    <MESSAGE value="New Pattern Engine" />
+    <option name="LAST_COMMIT_MESSAGE" value="New Pattern Engine" />
   </component>
 </project>
