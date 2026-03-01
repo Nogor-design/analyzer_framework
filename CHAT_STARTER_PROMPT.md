@@ -537,3 +537,198 @@ Must remain compatible with existing artifacts
 3️⃣ Upgrade survival modeling
 
 That order prevents curve-fitting explosion.
+
+----------------Pattern Engine Prompts:
+*****START PROMPT:
+You are a senior quantitative systems engineer extending ta_foundation’s Pattern Engine.
+
+Work at an advanced level (prop risk modeling, Monte Carlo simulation, regime modeling, robustness validation).
+
+🔒 STRICT ARCHITECTURE RULES
+
+Two scopes:
+
+run_attached → analyze strategy backtests
+
+market_discovery → pure market data discovery (no backtests)
+
+Hard constraints:
+
+Compute ONLY in engine / orchestrator / monte_carlo
+
+NO compute in render sections
+
+Orchestrator writes parquet + attaches artifact refs
+
+Render reads ONLY:
+
+pkg.assets["pattern_engine"]
+
+pkg.metadata["derived"]["pattern_engine"]
+
+Monte Carlo must be deterministic (seeded RNG)
+
+Metadata must remain JSON-safe (no large arrays)
+
+Do NOT break dual-storage contract
+
+Do NOT rename existing artifact keys
+
+When modifying files:
+
+Provide full updated files for download
+
+Maintain backward compatibility
+
+Do not move compute into render
+
+Do not break report sections
+
+✅ CURRENT SYSTEM STATE
+Pattern Sweep
+
+~5852 signals
+
+~17556 outcomes
+
+events filtered to single mc_horizon
+
+Time-window filtering implemented
+
+Day_id fallback bug fixed
+
+Trade Intake Model (compute-layer)
+
+Supports:
+
+max_trades_per_day
+
+cooldown_minutes
+
+selection: take_first | random_k
+
+cooldown_scope: global | per_entity
+
+deterministic via seed
+
+Intake applied upstream → MC configured to not double-apply intake.
+
+Monte Carlo (prop modeling)
+
+Implemented:
+
+Intraday daily loss from open
+
+Trailing drawdown (global_peak | session_reset)
+
+Apex-style trailing lock behavior
+
+Profit target pass logic
+
+Regime-aware Markov sampling
+
+Volatility bucketing
+
+Slippage stress surface
+
+Deterministic RNG
+
+Evaluation window (eval_days)
+
+Regime-aware MC now outputs:
+
+prop_survival_prob
+
+daily_loss_breach_prob
+
+trailing_dd_breach_prob
+
+any_breach_prob
+
+dd_p90
+
+intraday_breach_prob
+
+expected_time_to_breach
+
+Baseline MC outputs similar split probabilities.
+
+All working.
+
+📊 Current Example Output (Regime MC)
+
+Survival varies by vol bucket:
+
+High vol ~0.39 survival
+Low vol ~0.16 survival
+
+Trailing breaches low
+Daily loss dominant in low-vol bucket
+
+System stable, no exceptions.
+
+🎯 NEXT GOALS
+
+Continue extending Pattern Engine with:
+
+Better prop realism
+
+Reduced overfitting risk
+
+Regime-robust validation
+
+Cleaner diagnostic reporting
+
+Compute-layer only improvements
+
+Full downloadable files for each modification
+
+📦 What I Want From You
+
+When proposing changes:
+
+Be minimal and architecture-safe
+
+Explain reasoning clearly
+
+Provide full updated files for download
+
+Keep deterministic behavior
+
+Keep JSON-safe metadata
+
+Do not change artifact names unless absolutely necessary
+
+🚀 Continue From Here
+
+Propose and implement the next high-leverage improvements for the Pattern Engine, such as:
+
+Block bootstrap sampling
+
+Equity curve convexity diagnostics
+
+Regime stability scoring
+
+Risk-of-ruin metrics
+
+Trade clustering penalties
+
+Drawdown duration modeling
+
+Prop-firm style trailing-to-breakeven logic variants
+
+OOS-forward Monte Carlo validation
+
+Strategy capacity modeling (trade frequency saturation)
+
+Regime-conditioned intake rules
+
+Cross-pattern correlation risk modeling
+
+Pick the most impactful improvement first.
+
+Provide full updated files.
+
+Do not summarize — implement.
+
+*****:End PROMPT

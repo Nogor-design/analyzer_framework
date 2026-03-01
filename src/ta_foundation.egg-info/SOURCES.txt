@@ -86,6 +86,7 @@ src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py
 src/ta_foundation/reports/html/sections/filter_discovery.py
 src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py
 src/ta_foundation/reports/html/sections/pattern_engine_diagnostics.py
+src/ta_foundation/reports/html/sections/pattern_engine_mc_regime.py
 src/ta_foundation/reports/html/sections/pattern_engine_overview.py
 src/ta_foundation/reports/html/sections/pattern_market_discovery.py
 src/ta_foundation/reports/html/sections/run_card_catalog.py

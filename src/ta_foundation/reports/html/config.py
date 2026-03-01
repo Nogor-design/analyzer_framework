@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List, Tuple
 
 import yaml
 
 from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
-
 from ta_foundation.marketdata.store import MarketDataStore
 from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
 
@@ -18,7 +17,7 @@ class ReportConfig:
     title: str
     output_filename: str
     sections: list[dict[str, Any]]  # each has id + optional title + options
-    raw: dict[str, Any]             # full YAML (merged with defaults)
+    raw: dict[str, Any]             # merged YAML (defaults + overrides)
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -34,8 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         {"id": "run_kpi_cards"},
         {"id": "run_snapshot_clipboard"},
     ],
-    # Leave room for top-level feature blocks like:
-    # "pattern_engine": {...}
+    # room for other top-level blocks (pattern_engine, etc.)
 }
 
 
@@ -48,19 +46,16 @@ def _deepish_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
     """
     out = dict(base)
 
-    # merge report
     base_report = dict(base.get("report", {}) or {})
-    override_report = dict(override.get("report", {}) or {})
+    override_report = dict((override or {}).get("report", {}) or {})
     base_report.update(override_report)
     out["report"] = base_report
 
-    # sections replace if present
-    if "sections" in override and override.get("sections") is not None:
+    if isinstance(override, dict) and "sections" in override and override.get("sections") is not None:
         out["sections"] = override.get("sections")
     else:
         out["sections"] = base.get("sections")
 
-    # preserve all other top-level keys from override
     for k, v in (override or {}).items():
         if k in ("report", "sections"):
             continue
@@ -69,7 +64,103 @@ def _deepish_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, 
     return out
 
 
+def _normalize_multi_report_root(raw_root: dict[str, Any]) -> Tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    Multi-report YAML supported shapes:
+
+    A) preferred:
+      reports:
+        - report: {...}
+          sections: [...]
+        - report: {...}
+          sections: [...]
+
+    B) your current myReports.yaml nesting:
+      reports:
+        - report:
+            title: ...
+            output_filename: ...
+            sections: [...]   # <-- nested
+        - report:
+            ...
+
+    Returns:
+      shared_override: applied to each report item (top-level blocks aside from reports)
+      normalized_items: each item normalized so sections are top-level
+    """
+    shared_override = dict(raw_root or {})
+    report_items = shared_override.pop("reports", None)
+
+    if not isinstance(report_items, list):
+        return {}, []
+
+    shared_override = {k: v for k, v in shared_override.items() if v is not None}
+
+    normalized_items: list[dict[str, Any]] = []
+    for item in report_items:
+        if not isinstance(item, dict):
+            continue
+
+        it = dict(item)
+        rep = it.get("report")
+
+        # Lift nested report.sections -> top-level sections
+        if isinstance(rep, dict):
+            rep = dict(rep)
+            if "sections" not in it and isinstance(rep.get("sections"), list):
+                it["sections"] = rep.pop("sections")
+            it["report"] = rep
+
+        normalized_items.append(it)
+
+    return shared_override, normalized_items
+
+
+def load_report_configs(path: Optional[Path]) -> List[ReportConfig]:
+    """
+    Auto-detect single vs multi YAML:
+      - single: top-level report/sections => returns [ReportConfig]
+      - multi: top-level reports: [...]  => returns N ReportConfigs
+    """
+    if path is None:
+        return [load_report_config(None)]
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not raw:
+        return [load_report_config(None)]
+
+    if isinstance(raw.get("reports"), list):
+        shared_override, report_items = _normalize_multi_report_root(raw)
+        configs: list[ReportConfig] = []
+
+        for item in report_items:
+            merged_override = dict(shared_override)
+            merged_override.update(item)
+
+            cfg_raw = _deepish_merge(DEFAULT_CONFIG, merged_override)
+            report = cfg_raw.get("report", {}) or {}
+            sections = cfg_raw.get("sections", DEFAULT_CONFIG["sections"])
+
+            configs.append(
+                ReportConfig(
+                    title=str(report.get("title", DEFAULT_CONFIG["report"]["title"])),
+                    output_filename=str(report.get("output_filename", DEFAULT_CONFIG["report"]["output_filename"])),
+                    sections=list(sections) if isinstance(sections, list) else list(DEFAULT_CONFIG["sections"]),
+                    raw=cfg_raw,
+                )
+            )
+
+        # If someone provided reports: [] accidentally
+        return configs if configs else [load_report_config(None)]
+
+    # Single-report legacy
+    return [load_report_config(path)]
+
+
 def load_report_config(path: Optional[Path]) -> ReportConfig:
+    """
+    Legacy single-report loader (kept for backward compatibility).
+    """
     cfg_raw: dict[str, Any] = dict(DEFAULT_CONFIG)
 
     if path is not None:
@@ -100,25 +191,18 @@ def build_report_from_config(
       - ctx["options"] is SECTION-LOCAL options (set by HtmlReportBuilder per section)
       - ctx["all_options"] is the FULL merged YAML config (top-level blocks like pattern_engine live here)
     """
-    # Base ctx passed to builder; builder is responsible for injecting section-local ctx["options"]
     base_ctx: Dict[str, Any] = {
         "packages": packages,
         "market": market,
         "report_config": cfg,
-        "all_options": cfg.raw,  # ✅ full YAML (includes pattern_engine)
+        "all_options": cfg.raw,  # full merged config
     }
 
-    # ---- Run Pattern Engine once BEFORE rendering (analysis phase) ----
+    # Pattern engine compute (analysis phase). Never crash report generation.
     pe_opts = (cfg.raw.get("pattern_engine") or {}) if isinstance(cfg.raw, dict) else {}
     try:
-        compute_and_attach_pattern_engine(
-            packages=packages,
-            market=market,
-            options=pe_opts,
-        )
+        compute_and_attach_pattern_engine(packages=packages, market=market, options=pe_opts)
     except Exception as e:
-        # Never crash report generation because pattern engine failed.
-        # Attach a disabled/error block per package so sections can report it.
         reason = f"pattern_engine_exception: {type(e).__name__}: {e}"
         for _, pkg in (packages or {}).items():
             md = getattr(pkg, "metadata", None)
@@ -127,7 +211,6 @@ def build_report_from_config(
                 md = pkg.metadata
             if "derived" not in md or md["derived"] is None:
                 md["derived"] = {}
-
             md["derived"]["pattern_engine"] = {
                 "version": "pe_v1",
                 "disabled": True,
@@ -136,11 +219,10 @@ def build_report_from_config(
                 "artifacts": {},
             }
 
-    # ---- Deduplicate section ids while preserving order ----
+    # Deduplicate section ids preserving order
     seen: set[str] = set()
     sections_cfg: list[dict[str, Any]] = []
     duplicates: list[str] = []
-
     for s in cfg.sections:
         if not isinstance(s, dict):
             continue
@@ -156,7 +238,7 @@ def build_report_from_config(
     if duplicates:
         print(f"[ta_foundation] WARNING: Duplicate section ids ignored: {duplicates}")
 
-    # ---- Build HtmlSection list exactly once ----
+    # Build HtmlSection list
     sections: list[HtmlSection] = []
     for s in sections_cfg:
         sid = s["id"]
@@ -171,7 +253,7 @@ def build_report_from_config(
                 id=sid,
                 title=s.get("title") or reg.default_title,
                 render_fn=reg.render_fn,
-                options=section_options,  # ✅ section-local options
+                options=section_options,  # section-local options
             )
         )
 

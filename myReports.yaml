@@ -1,46 +1,228 @@
-report:
-  title: "Strategy Comparison Report"
-  output_filename: "Exec_Cards_Year_W_Charts3-1.html"
-  embedded_images: true   # enforced by builder; kept for clarity
-  timezone: "America/Denver"
+reports:
 
-sections:
+  - report:
+      title: "Comparison Report"
+      output_filename: "Comparison_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+
+      #Shows all bots ranked from net profit. Shows Net Profit,Profit Factor,Max Drawdown,Trades,Win Rate
+      - id: comparison_overview
+        title: "Comparison Overview"
+
+      #Shows a chart with all bots on an equity curve
+      - id: equity_curve_comparison
+        title: "Equity Curve Comparison"
+
+      #Shows this in nice row card format
+      #Net Profit,#$10,625.00,#Profit Factor,#2.21,#Max Drawdown,#$-1,875.00,#Win Rate,#81.58%,#Trades: 38
+      - id: run_kpi_cards
+        title: "Run KPI Cards"
+
+  - report:
+      title: "Comparison Overview"
+      output_filename: "Comparison_overview_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+
+      #Shows all bots ranked from net profit. Shows Net Profit,Profit Factor,Max Drawdown,Trades,Win Rate
+      - id: comparison_overview
+        title: "Comparison Overview"
 
 
-#  - id: daily_scoreboard
-#    title: "Daily Scoreboard + Combo Selection"
-#    options:
-#      include_all_bot_charts: true
-#      show_individual_equity: true
-#      include_summary_table: true
+  - report:
+      title: "Daily Scoreboard"
+      output_filename: "Daily_Scoreboard_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+    - id: daily_scoreboard
+      title: "Daily Scoreboard + Combo Selection"
+      options:
+        include_all_bot_charts: true
+        show_individual_equity: true
+        include_summary_table: true
+
+        combo_sets:
+          - name: "Top 5 Pairs (k=2)"
+            mode: top
+            k: 2
+            top_n: 5
+            max_render: 5
+
+          - name: "Top 5 Triples (k=3)"
+            mode: top
+            k: 3
+            top_n: 5
+            beam_width: 250
+            max_render: 5
+
+          - name: "Top 5 Quads (k=4)"
+            mode: top
+            k: 4
+            top_n: 5
+            beam_width: 300
+            max_render: 5
+
+          - name: "My Explicit Combos (always render)"
+            mode: explicit
+            combos:
+              - bot_numbers: [ 1, 3 ]
+              - bot_numbers: [ 1, 3, 4, 8 ]
+
+  - report:
+      title: "Overview Scoreboard"
+      output_filename: "Overview_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: comparison_overview
+        title: "Comparison Overview"
+
+      - id: equity_curve_comparison
+        title: "Equity Curve Comparison"
+
+      - id: run_kpi_cards
+        title: "Run KPI Cards"
+
+      - id: run_snapshot_clipboard
+        title: "Run Snapshot (Copy/Paste)"
+        options:
+          compact: false
+          show_hint: true
+
+
+#  - report:
+#      title: "Executive Strategy Profiles"
+#      output_filename: "Executive_Strategy_Profiles_2_28.html"
+#      embedded_images: true   # enforced by builder; kept for clarity
+#      timezone: "America/Denver"
 #
-#      combo_sets:
-#        - name: "Top 5 Pairs (k=2)"
-#          mode: top
-#          k: 2
-#          top_n: 5
-#          max_render: 5
+#    sections:
+#      - id: run_executive_profile_cards
+#        title: "Executive Strategy Profiles"
+#        options:
+#          show_hint: true
+#          show_run_image: true
+#          background_style: image-dark-overlay   # options below
+#          card_width_px: 1180
+#          card_padding_px: 24
+#          image_width_px: 420
+#          wlr_days_back: 30
+#          wlr_gap_px: 2
+#          show_detail_charts: true
+#          detail_chart_layout: two-up     # two-up | stack
+#          detail_chart_width_px: 540  #540  | 1080
+#          timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+#          timeline_cell_h_px: 10
+#          timeline_show_hours: true
+#          timeline_show_summary: true
+
+
+  - report:
+      title: "Daily Scoreboard"
+      output_filename: "Daily_Scoreboard2_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: daily_scoreboard
+        title: "Daily Scoreboard + Best Non-Co-Losing Combos"
+        options:
+          show_individual_equity: true
+          include_summary_table: true
+
+          include_top_combos: true
+          top_combo_n: 5
+          beam_width: 250   # bump if you have many bots
+          include_k2: true
+          include_k3: true
+          include_k4: true
+
+  - report:
+      title: "Daily run_card_catalog"
+      output_filename: "run_card_catalog_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: run_card_catalog
+        title: "Cards by Session → Market"
+        options:
+          metric: profit_factor
+          sort_desc: true
+          max_per_group: 200
+          hide_missing_cards: true
+          fallback_session_label: "Unclassified"
+          fallback_market_label: "Unknown"
+          session_windows:
+            - { label: "London",        start: "00:00", end: "04:00" }
+            - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+            - { label: "NY Late",       start: "10:30", end: "16:00" }
+            - { label: "Asia",          start: "16:00", end: "23:59" }
+#          overrides:
+#              "BrassAtlasFire":
+#                session: "NY Pre→Early"
+#                market: "NQ"
+#              "SomeOtherRun":
+#                session: "NY Pre→Early"
+
+
+#  - report:
+#      title: "weekly_leaderboard_cards"
+#      output_filename: "weekly_leaderboard_cards_2_28.html"
+#      embedded_images: true   # enforced by builder; kept for clarity
+#      timezone: "America/Denver"
 #
-#        - name: "Top 5 Triples (k=3)"
-#          mode: top
-#          k: 3
-#          top_n: 5
-#          beam_width: 250
-#          max_render: 5
+#    sections:
+#      - id: weekly_leaderboard_cards
+#        title: "Weekly Prop Dashboard"
+#        options:
+#          #      week_ending: "2026-02-27"   # optional
+#          top_n: 299
+#          starting_balance: 50000
+#          trailing_dd: 2500
+#          baseline_mode: fresh_week      # or: continuous
+#          show_card_image: true          # or: false
+#          show_chart: false
+#          show_debug_table: false
+#          warn_buffer: 500
+#          compact_noimg: true
+#          bot_columns: 1
+
+  - report:
+      title: "apex_drawdown_survival_profile"
+      output_filename: "apex_drawdown_survival_profile_1_3.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: apex_drawdown_survival_profile
+        title: "Apex 50K Drawdown Survival"
+        options:
+          apex:
+            starting_balance: 50000
+            trailing_drawdown: 2500
+            lock_profit: 2600
+          instruments:
+            NQ: { tick_size: 0.25, tick_value: 5.0 }
+            ES: { tick_size: 0.25, tick_value: 12.5 }
+            MNQ: { tick_size: 0.25, tick_value: 0.5 }
+            MES: { tick_size: 0.25, tick_value: 1.25 }
+
+#  - report:
+#      title: "Daily Scoreboard"
+#      output_filename: "Daily_Scoreboard_2_28.html"
+#      embedded_images: true   # enforced by builder; kept for clarity
+#      timezone: "America/Denver"
 #
-#        - name: "Top 5 Quads (k=4)"
-#          mode: top
-#          k: 4
-#          top_n: 5
-#          beam_width: 300
-#          max_render: 5
-#
-#        - name: "My Explicit Combos (always render)"
-#          mode: explicit
-#          combos:
-#            - bot_numbers: [ 1, 3 ]
-#            - bot_numbers: [ 1, 3, 4, 8 ]
-#
+#    sections:
 #  - id: comparison_overview
 #    title: "Comparison Overview"
 #
@@ -186,8 +368,8 @@ sections:
 #      image_width_px: 420
 #      wlr_days_back: 30
 #      wlr_gap_px: 2
-#      show_detail_charts: true
-#      detail_chart_layout: stack    # two-up | stack
+#      show_detail_charts: false
+#      detail_chart_layout: stack     # two-up | stack
 #      detail_chart_width_px: 1080  #540  | 1080
 #      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
 #      timeline_cell_h_px: 10
@@ -291,20 +473,7 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 
-#  - id: weekly_leaderboard_cards
-#    title: "Weekly Prop Dashboard"
-#    options:
-#      week_ending: "2026-02-27"   # optional
-#      top_n: 299
-#      starting_balance: 50000
-#      trailing_dd: 2500
-#      baseline_mode: fresh_week      # or: continuous
-#      show_card_image: true          # or: false
-#      show_chart: false
-#      show_debug_table: false
-#      warn_buffer: 500
-#      compact_noimg: true
-#      bot_columns: 1
+
 
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
@@ -387,18 +556,18 @@ sections:
 #      padding_minutes: 30
 #      max_trades: 300
 
-  - id: apex_drawdown_survival_profile
-    title: "Apex 50K Drawdown Survival"
-    options:
-      apex:
-        starting_balance: 50000
-        trailing_drawdown: 2500
-        lock_profit: 2600
-      instruments:
-        NQ: { tick_size: 0.25, tick_value: 5.0 }
-        ES: { tick_size: 0.25, tick_value: 12.5 }
-        MNQ: { tick_size: 0.25, tick_value: 0.5 }
-        MES: { tick_size: 0.25, tick_value: 1.25 }
+#  - id: apex_drawdown_survival_profile
+#    title: "Apex 50K Drawdown Survival"
+#    options:
+#      apex:
+#        starting_balance: 50000
+#        trailing_drawdown: 2500
+#        lock_profit: 2600
+#      instruments:
+#        NQ: { tick_size: 0.25, tick_value: 5.0 }
+#        ES: { tick_size: 0.25, tick_value: 12.5 }
+#        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+#        MES: { tick_size: 0.25, tick_value: 1.25 }
 
 #  - id: tick_data_diagnostics
 #    title: Tick Data Diagnostics

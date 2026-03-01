@@ -30,6 +30,7 @@ from ta_foundation.reports.html.sections.exit_policy_simulation2 import render_e
 from ta_foundation.reports.html.sections.exit_policy_trade_debug import render_exit_policy_trade_debug
 from ta_foundation.reports.html.sections.pattern_engine_diagnostics import render_pattern_engine_diagnostics
 from ta_foundation.reports.html.sections.pattern_market_discovery import render_pattern_market_discovery
+from ta_foundation.reports.html.sections.pattern_engine_mc_regime  import render_pattern_engine_mc_regime
 # render_pattern_engine_diagnostics
 # render_pattern_market_discovery
 # NEW
@@ -168,6 +169,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="pattern_market_discovery",
         default_title="Pattern Discovery",
         render_fn=render_pattern_market_discovery,
+    ),
+    "pattern_engine_mc_regime": SectionDef(
+        id="pattern_engine_mc_regime",
+        default_title="Pattern Engine MC",
+        render_fn=render_pattern_engine_mc_regime,
     ),
 
 # render_pattern_engine_diagnostics

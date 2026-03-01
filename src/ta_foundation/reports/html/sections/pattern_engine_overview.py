@@ -165,20 +165,43 @@ def render_pattern_engine_overview(ctx: Dict[str, Any]) -> str:
     if len(pattern_stats) > 0:
         # prefer stability / oos if present, else rank_score_raw, else avg_ticks * sqrt(n)
         sort_cols = []
-        if "stability_oos_score" in pattern_stats.columns:
-            sort_cols = ["stability_oos_score"]
-        elif "rank_score_raw" in pattern_stats.columns:
-            sort_cols = ["rank_score_raw"]
-        elif "avg_ticks" in pattern_stats.columns and "n_signals" in pattern_stats.columns:
-            pattern_stats = pattern_stats.copy()
-            pattern_stats["rank_score_tmp"] = pattern_stats["avg_ticks"].astype(float) * (pattern_stats["n_signals"].astype(float) ** 0.5)
-            sort_cols = ["rank_score_tmp"]
+        ps = pattern_stats.copy()
 
-        cols_keep = [c for c in ["pattern_id", "horizon", "n_signals", "avg_ticks", "win_rate", "p10", "p50", "p90", "rank_score_raw", "stability_oos_score"] if c in pattern_stats.columns]
-        d2 = pattern_stats[cols_keep].copy() if cols_keep else pattern_stats.copy()
+        if "stability_oos_score" in ps.columns:
+            sort_cols = ["stability_oos_score"]
+        elif "rank_score_raw" in ps.columns:
+            sort_cols = ["rank_score_raw"]
+        elif "avg_ticks" in ps.columns and "n_signals" in ps.columns:
+            # Compute a temporary rank score
+            try:
+                ps["rank_score_tmp"] = ps["avg_ticks"].astype(float) * (ps["n_signals"].astype(float) ** 0.5)
+                sort_cols = ["rank_score_tmp"]
+            except Exception:
+                sort_cols = []
+
+        # Keep columns for display
+        cols_keep = [
+            c for c in [
+                "pattern_id", "horizon", "n_signals", "avg_ticks", "win_rate",
+                "p10", "p50", "p90", "rank_score_raw", "stability_oos_score"
+            ]
+            if c in ps.columns
+        ]
+
+        # IMPORTANT: if we're sorting by rank_score_tmp, keep it during sort, then drop it
+        sort_cols = [c for c in sort_cols if c in ps.columns]
+
+        d2 = ps[cols_keep + [c for c in sort_cols if c not in cols_keep]].copy() if cols_keep else ps.copy()
 
         if sort_cols:
-            d2 = d2.sort_values(sort_cols, ascending=False)
+            existing = [c for c in sort_cols if c in d2.columns]
+            if existing:
+                d2 = d2.sort_values(existing, ascending=False)
+
+        # Drop tmp column from display if present
+        if "rank_score_tmp" in d2.columns and "rank_score_tmp" not in cols_keep:
+            d2 = d2.drop(columns=["rank_score_tmp"], errors="ignore")
+
         top_patterns_tbl = _html_table(d2, max_rows=top_n_patterns, title=f"Top patterns (run {frid})")
 
     # Simple diagnostics block
