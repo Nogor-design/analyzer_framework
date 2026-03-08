@@ -1,6 +1,6 @@
 report:
   title: "Strategy Comparison Report"
-  output_filename: "Exec_Cards_Year_W_Charts3-1.html"
+  output_filename: "Analysis-3-7.html"
   embedded_images: true   # enforced by builder; kept for clarity
   timezone: "America/Denver"
 
@@ -243,7 +243,7 @@ sections:
 #  - id: daily_leaderboard_cards
 #    title: "Daily Leaders"
 #    options:
-#      target_date: "2026-02-03"   # optional; omit to auto-pick most recent
+#      target_date: "2026-03-06"   # optional; omit to auto-pick most recent
 #      top_n: 30
 #      hide_missing_cards: true
 
@@ -294,11 +294,11 @@ sections:
 #  - id: weekly_leaderboard_cards
 #    title: "Weekly Prop Dashboard"
 #    options:
-#      week_ending: "2026-02-27"   # optional
-#      top_n: 299
+##      week_ending: "2026-03-07"   # optional
+#      top_n: 200
 #      starting_balance: 50000
 #      trailing_dd: 2500
-#      baseline_mode: fresh_week      # or: continuous
+#      baseline_mode: fresh_week      # fresh_week or: continuous
 #      show_card_image: true          # or: false
 #      show_chart: false
 #      show_debug_table: false
@@ -387,18 +387,24 @@ sections:
 #      padding_minutes: 30
 #      max_trades: 300
 
-  - id: apex_drawdown_survival_profile
-    title: "Apex 50K Drawdown Survival"
-    options:
-      apex:
-        starting_balance: 50000
-        trailing_drawdown: 2500
-        lock_profit: 2600
-      instruments:
-        NQ: { tick_size: 0.25, tick_value: 5.0 }
-        ES: { tick_size: 0.25, tick_value: 12.5 }
-        MNQ: { tick_size: 0.25, tick_value: 0.5 }
-        MES: { tick_size: 0.25, tick_value: 1.25 }
+#  - id: apex_drawdown_survival_profile
+#    title: "Apex 50K Drawdown Survival"
+#    options:
+#      portfolio_mc:
+#        n_paths: 3000
+#        seed: 123
+#        mode: correlated #iid or correlated
+#      apex:
+#        starting_balance: 50000
+#        trailing_drawdown: 2500
+#        lock_profit: 2600
+#      instruments:
+#        NQ: { tick_size: 0.25, tick_value: 5.0 }
+#        ES: { tick_size: 0.25, tick_value: 12.5 }
+#        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+#        MES: { tick_size: 0.25, tick_value: 1.25 }
+#        YM: { tick_size: 1.00, tick_value: 5.00 }
+#        NG: { tick_size: 0.001, tick_value: 10.0 }
 
 #  - id: tick_data_diagnostics
 #    title: Tick Data Diagnostics
@@ -610,7 +616,7 @@ sections:
 #  - id: exit_policy_trade_debug
 #    title: "Exit Policy Debug"
 #    options:
-#      run_id: "BronzeAphroditeBalance"
+#      run_id: "BronzeAresHunterV4"
 #      run_all_trades: true
 #      start_trade_idx: 0
 ##      trade_idx: 3
@@ -734,14 +740,30 @@ sections:
 #      atr_period: 14
 #      bounded_to_original_exit: false
 #      use_bid_ask_triggers: false
-##      chandelier_enable: true
-##      chandelier_stop_atr_mult: .5
-##      chandelier_trail_atr_mult: 1.0
-##      chandelier_profit_target_atr_mult: null
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
 #
-##      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance"
-#      policies: "nt8_dynamic"
-#      # MaxStop baseline (ticks)
+#      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance|BronzeAresHunterV4|BronzeAresHunterV2|BronzeAresHunterV3"
+#      policies: [ "fixed_atr", "atr_trail", "be_atr_trail", "fixed_then_trail", "fixed_then_chandelier" ]
+#
+#
+#
+#      start_trail_ticks: [30,40,50]
+#      trail_amount: 20
+#      stop_ticks: 100
+#
+#
+#      # Fixed-then-trail (arm at 40 ticks MFE)
+#      fixed_then_arm_mfe_ticks: 20
+#      fixed_then_stop_atr_mult: 1.0
+#      fixed_then_trail_atr_mult: 1.25
+#
+#      # BE trail tuning
+#      be_trigger_ticks: 60
+#      be_offset_ticks: 4
+#      be_trail_atr_mult: .5
 #      nt8_max_stop_ticks: 100
 #
 #      # Lock-in (stop-in-profit)

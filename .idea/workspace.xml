@@ -4,28 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New Pattern Engine">
-      <change afterPath="$PROJECT_DIR$/PatternE.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/cli_report_prompts.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/exec_profile_cards.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/myReport.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/myReports.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pattern.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_mc_regime.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Muilti report functionality added">
+      <change afterPath="$PROJECT_DIR$/AI Build Plan.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AI Market Analysis Prompt.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/apex_portfolio_mc.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" beforeDir="false" afterPath="$PROJECT_DIR$/CHAT_STARTER_PROMPT.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pattern_engine.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/engine.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/monte_carlo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/pattern_engine_overview.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/parsers/ninjatrader/minute_bars_last_txt.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/parsers/ninjatrader/minute_bars_last_txt.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/apex_drawdown_survival_profile.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/apex_drawdown_survival_profile.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -349,7 +338,15 @@
       <option name="project" value="LOCAL" />
       <updated>1771953322030</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="Muilti report functionality added">
+      <option name="closed" value="true" />
+      <created>1772370228557</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1772370228557</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -376,7 +373,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="New Bot Card" />
     <MESSAGE value="Refined Card creation" />
     <MESSAGE value="Fixed Duplicate charts in report." />
     <MESSAGE value="New daily scoreboard" />
@@ -401,6 +397,7 @@
     <MESSAGE value=" New policy sim" />
     <MESSAGE value="New filter_discovery.py" />
     <MESSAGE value="New Pattern Engine" />
-    <option name="LAST_COMMIT_MESSAGE" value="New Pattern Engine" />
+    <MESSAGE value="Muilti report functionality added" />
+    <option name="LAST_COMMIT_MESSAGE" value="Muilti report functionality added" />
   </component>
 </project>
