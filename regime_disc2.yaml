@@ -1,0 +1,32 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "Market_Regime_report.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+
+  - id: market_regime_discovery
+    title: "Market Regime Discovery"
+    options:
+      bar_tf: "5m"
+      htf_tf: "15m"
+      ema_period: 50
+      atr_period: 14
+      include_micro: false
+
+      top_n_runs: 12
+      min_trades_run: 20
+      min_trades_bucket: 5
+      hour_min_trades_bucket: 3
+      entry_hour_top_n: 24
+      max_rows_per_table: 12
+
+      trend_flat_threshold: 0.0
+      vwap_near_threshold_atr: 0.25
+
+      include_run_id_regex:
+      exclude_run_id_regex:
+
+      show_validation: true
+      show_entry_hour_discovery: true

@@ -98,33 +98,6 @@ reports:
           show_hint: true
 
 
-#  - report:
-#      title: "Executive Strategy Profiles"
-#      output_filename: "Executive_Strategy_Profiles_2_28.html"
-#      embedded_images: true   # enforced by builder; kept for clarity
-#      timezone: "America/Denver"
-#
-#    sections:
-#      - id: run_executive_profile_cards
-#        title: "Executive Strategy Profiles"
-#        options:
-#          show_hint: true
-#          show_run_image: true
-#          background_style: image-dark-overlay   # options below
-#          card_width_px: 1180
-#          card_padding_px: 24
-#          image_width_px: 420
-#          wlr_days_back: 30
-#          wlr_gap_px: 2
-#          show_detail_charts: true
-#          detail_chart_layout: two-up     # two-up | stack
-#          detail_chart_width_px: 540  #540  | 1080
-#          timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
-#          timeline_cell_h_px: 10
-#          timeline_show_hours: true
-#          timeline_show_summary: true
-
-
   - report:
       title: "Daily Scoreboard"
       output_filename: "Daily_Scoreboard2_1_3.html"
@@ -174,31 +147,31 @@ reports:
 #                session: "NY Pre→Early"
 
 
-#  - report:
-#      title: "weekly_leaderboard_cards"
-#      output_filename: "weekly_leaderboard_cards_2_28.html"
-#      embedded_images: true   # enforced by builder; kept for clarity
-#      timezone: "America/Denver"
-#
-#    sections:
-#      - id: weekly_leaderboard_cards
-#        title: "Weekly Prop Dashboard"
-#        options:
-#          #      week_ending: "2026-02-27"   # optional
-#          top_n: 299
-#          starting_balance: 50000
-#          trailing_dd: 2500
-#          baseline_mode: fresh_week      # or: continuous
-#          show_card_image: true          # or: false
-#          show_chart: false
-#          show_debug_table: false
-#          warn_buffer: 500
-#          compact_noimg: true
-#          bot_columns: 1
+  - report:
+      title: "weekly_leaderboard_cards"
+      output_filename: "weekly_leaderboard_cards_3_14.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: weekly_leaderboard_cards
+        title: "Weekly Prop Dashboard"
+        options:
+          #      week_ending: "2026-02-27"   # optional
+          top_n: 299
+          starting_balance: 50000
+          trailing_dd: 2500
+          baseline_mode: fresh_week      # or: continuous
+          show_card_image: true          # or: false
+          show_chart: false
+          show_debug_table: false
+          warn_buffer: 500
+          compact_noimg: true
+          bot_columns: 1
 
   - report:
       title: "apex_drawdown_survival_profile"
-      output_filename: "apex_drawdown_survival_profile_1_3.html"
+      output_filename: "apex_drawdown_survival_profile_3_14.html"
       embedded_images: true   # enforced by builder; kept for clarity
       timezone: "America/Denver"
 
@@ -216,27 +189,27 @@ reports:
             MNQ: { tick_size: 0.25, tick_value: 0.5 }
             MES: { tick_size: 0.25, tick_value: 1.25 }
 
-#  - report:
-#      title: "Daily Scoreboard"
-#      output_filename: "Daily_Scoreboard_2_28.html"
-#      embedded_images: true   # enforced by builder; kept for clarity
-#      timezone: "America/Denver"
-#
-#    sections:
-#  - id: comparison_overview
-#    title: "Comparison Overview"
-#
-#  - id: equity_curve_comparison
-#    title: "Equity Curve Comparison"
-#
-#  - id: run_kpi_cards
-#    title: "Run KPI Cards"
+  - report:
+      title: "Daily Scoreboard"
+      output_filename: "Daily_Scoreboard_3_14.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
 
-#  - id: run_snapshot_clipboard
-#    title: "Run Snapshot (Copy/Paste)"
-#    options:
-#      compact: false
-#      show_hint: true
+    sections:
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  - id: run_kpi_cards
+    title: "Run KPI Cards"
+
+  - id: run_snapshot_clipboard
+    title: "Run Snapshot (Copy/Paste)"
+    options:
+      compact: false
+      show_hint: true
 
 
 #  - id: run_snapshot_clipboard
@@ -971,3 +944,91 @@ reports:
 #
 #  Example (prop-safe style):
 
+  - report:
+      title: "Market Regime Discovery 3-14"
+      output_filename: "Market_Regime_Discovery_3_14.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: market_regime_discovery
+        title: "Market Regime Discovery"
+        options:
+          bar_tf: "5m"
+          htf_tf: "15m"
+          ema_period: 50
+          atr_period: 14
+          include_micro: true
+
+          top_n_runs: 100
+          min_trades_run: 15
+          min_trades_bucket: 5
+          hour_min_trades_bucket: 1
+          mae_min_trades_bucket: 1
+          entry_hour_top_n: 24
+          max_rows_per_table: 12
+
+          trend_flat_threshold: 0.0
+          vwap_near_threshold_atr: 0.25
+
+          include_run_id_regex:
+          exclude_run_id_regex:
+
+          show_validation: true
+          show_entry_hour_discovery: true
+
+          show_session_window_optimizer: true
+
+
+          risk_min_trades_bucket: 1
+          danger_top_n: 5
+
+          risk_stop_ticks: 100
+          tick_value_usd: 5.0
+          severe_mae_frac: 0.50
+          tail_loss_frac: 0.50
+          prior_strength_mean: 30.0
+          prior_strength_rate: 20.0
+
+          optimizer_min_hours: 1
+          optimizer_max_hours: 8
+          optimizer_max_stop_breach_rate: 0.15
+          optimizer_max_tail_loss_rate: 0.20
+          optimizer_max_mae_p90_frac_of_stop: 0.75
+
+          show_recommendation_summary: true
+
+          show_strategy_card: true
+          strategy_card_position: top   # top | right | below_summary
+          hide_missing_strategy_card: false
+
+          style_preset: executive_dark    # classic_dark | executive_dark | compact_dark | clean_light
+          style_density: normal           # compact | normal | comfortable
+          style_accent: amber              # blue | green | amber | violet | red
+
+
+  - report:
+      title: "Executive Strategy Profiles"
+      output_filename: "Executive_Strategy_Profiles_3_14.html"
+      embedded_images: true   # enforced by builder; kept for clarity
+      timezone: "America/Denver"
+
+    sections:
+      - id: run_executive_profile_cards
+        title: "Executive Strategy Profiles"
+        options:
+          show_hint: true
+          show_run_image: true
+          background_style: image-dark-overlay   # options below
+          card_width_px: 1180
+          card_padding_px: 24
+          image_width_px: 420
+          wlr_days_back: 30
+          wlr_gap_px: 2
+          show_detail_charts: true
+          detail_chart_layout: stack    # two-up | stack
+          detail_chart_width_px: 1080  #540  | 1080
+          timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+          timeline_cell_h_px: 10
+          timeline_show_hours: true
+          timeline_show_summary: true

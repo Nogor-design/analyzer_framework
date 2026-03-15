@@ -1,6 +1,6 @@
 report:
   title: "Strategy Comparison Report"
-  output_filename: "Analysis-3-7.html"
+  output_filename: "WeeklyComp-3-10.html"
   embedded_images: true   # enforced by builder; kept for clarity
   timezone: "America/Denver"
 
@@ -275,7 +275,7 @@ sections:
 #  - id: daily_leaderboard_cards
 #    title: "Daily Leaders"
 #    options:
-##      target_date: "2026-02-03"         # optional
+#      target_date: "2026-03-09"         # optional
 #      top_n: 400
 #      lookback_days: 10
 #      buffer_chart_top_bots: 8
@@ -291,20 +291,20 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 
-#  - id: weekly_leaderboard_cards
-#    title: "Weekly Prop Dashboard"
-#    options:
-##      week_ending: "2026-03-07"   # optional
-#      top_n: 200
-#      starting_balance: 50000
-#      trailing_dd: 2500
-#      baseline_mode: fresh_week      # fresh_week or: continuous
-#      show_card_image: true          # or: false
-#      show_chart: false
-#      show_debug_table: false
-#      warn_buffer: 500
-#      compact_noimg: true
-#      bot_columns: 1
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+      week_ending: "2026-03-13"   # optional
+      top_n: 200
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week      # fresh_week or: continuous
+      show_card_image: true          # or: false
+      show_chart: false
+      show_debug_table: false
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1
 
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"

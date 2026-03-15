@@ -1,6 +1,6 @@
 report:
   title: "Strategy Comparison Report"
-  output_filename: "Filter_Discovery_report.html"
+  output_filename: "Filter_Discovery_report2.html"
   embedded_images: true   # enforced by builder; kept for clarity
   timezone: "America/Denver"
 

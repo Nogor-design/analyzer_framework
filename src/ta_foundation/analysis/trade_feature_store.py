@@ -25,6 +25,19 @@ def _find_col(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
             return m[k]
     return None
 
+def _parse_nt_money(x):
+    if pd.isna(x):
+        return None
+    s = str(x).strip()
+    if not s:
+        return None
+    s = s.replace("$", "").replace(",", "")
+    if s.startswith("(") and s.endswith(")"):
+        s = "-" + s[1:-1]
+    try:
+        return float(s)
+    except Exception:
+        return None
 
 def infer_instrument_contract_from_trades(trades: pd.DataFrame) -> Optional[tuple[str, str]]:
     """
@@ -156,7 +169,19 @@ def build_trade_feature_frame_for_run(
 
     out = out.reset_index(drop=True)
     out["is_win"] = (pd.to_numeric(out["pnl"], errors="coerce") > 0).astype("Int64")
+    # print(trades)
+    if "Profit" in trades.columns and "pnl" not in out.columns:
+        out["pnl"] = trades["Profit"].map(_parse_nt_money)
 
+    if "mae" in trades.columns:
+        out["mae"] = trades["mae"].map(_parse_nt_money)
+
+    if "mfe" in trades.columns:
+        out["mfe"] = trades["mfe"].map(_parse_nt_money)
+
+    if "etd" in trades.columns:
+        out["etd"] = trades["etd"].map(_parse_nt_money)
+    # print(out["mfe"])
     return out
 
 

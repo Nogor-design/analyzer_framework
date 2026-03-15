@@ -1,6 +1,6 @@
 report:
   title: "Strategy Comparison Report"
-  output_filename: "comparison_report.html"
+  output_filename: "Pattern_report.html"
   embedded_images: true
   timezone: "America/Denver"
 
