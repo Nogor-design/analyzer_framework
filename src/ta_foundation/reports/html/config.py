@@ -204,7 +204,23 @@ def build_report_from_config(
     # MA Anchor interaction engine (analysis phase)
     # --------------------------------------------------------
 
-    ai_opts = (cfg.raw.get("anchor_interaction") or {}) if isinstance(cfg.raw, dict) else {}
+    ai_opts: Dict[str, Any] = {}
+    if isinstance(cfg.raw, dict):
+        top_level = cfg.raw.get("anchor_interaction")
+        if isinstance(top_level, dict):
+            ai_opts = top_level
+
+    if not ai_opts.get("enabled"):
+        for s in cfg.sections or []:
+            if not isinstance(s, dict):
+                continue
+            opts = s.get("options") or {}
+            if not isinstance(opts, dict):
+                continue
+            sec_ai = opts.get("anchor_interaction")
+            if isinstance(sec_ai, dict) and sec_ai.get("enabled"):
+                ai_opts = sec_ai
+                break
 
     if ai_opts.get("enabled"):
 

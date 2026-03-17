@@ -26,9 +26,12 @@ def _find_anchor_interaction_config(cfgs):
     for cfg in cfgs:
 
         # 1️⃣ check report-level config
-        rc = getattr(cfg, "report_config", None)
-        if isinstance(rc, dict):
-            ai = rc.get("anchor_interaction")
+        # rc = getattr(cfg, "report_config", None)
+        # if isinstance(rc, dict):
+        #     ai = rc.get("anchor_interaction")
+        raw = getattr(cfg, "raw", None)
+        if isinstance(raw, dict):
+            ai = raw.get("anchor_interaction")
             if isinstance(ai, dict) and ai.get("enabled"):
                 return ai
 
@@ -109,19 +112,19 @@ def main() -> int:
     # --------------------------------------------------------
     # RUN MA ANCHOR ENGINE
     # --------------------------------------------------------
-
-    anchor_config = None
-
-    for cfg in cfgs:
-
-        rc = getattr(cfg, "report_config", None)
-
-        if isinstance(rc, dict):
-            ai = rc.get("anchor_interaction")
-
-            if isinstance(ai, dict) and ai.get("enabled"):
-                anchor_config = ai
-                break
+    anchor_config = _find_anchor_interaction_config(cfgs)
+    # anchor_config = None
+    #
+    # for cfg in cfgs:
+    #
+    #     rc = getattr(cfg, "report_config", None)
+    #
+    #     if isinstance(rc, dict):
+    #         ai = rc.get("anchor_interaction")
+    #
+    #         if isinstance(ai, dict) and ai.get("enabled"):
+    #             anchor_config = ai
+    #             break
 
     if anchor_config:
 

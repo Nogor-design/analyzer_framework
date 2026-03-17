@@ -12,9 +12,18 @@ def validate_market_bars(df: pd.DataFrame) -> None:
     missing = REQUIRED_PRICE_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(f"Market bars missing required columns: {sorted(missing)}")
-    if "timestamp" not in df.columns and not isinstance(df.index, pd.DatetimeIndex):
-        raise ValueError("Market bars must have a tz-aware DatetimeIndex or a 'timestamp' column")
-    idx = df.index if isinstance(df.index, pd.DatetimeIndex) else pd.DatetimeIndex(df["timestamp"])
+    has_time_col = "timestamp" in df.columns or "dt" in df.columns
+    if not has_time_col and not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("Market bars must have a tz-aware DatetimeIndex or a 'timestamp'/'dt' column")
+    if isinstance(df.index, pd.DatetimeIndex):
+        idx = df.index
+    elif "timestamp" in df.columns:
+        idx = pd.DatetimeIndex(df["timestamp"])
+    else:
+        idx = pd.DatetimeIndex(df["dt"])
+    # if "timestamp" not in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+    #     raise ValueError("Market bars must have a tz-aware DatetimeIndex or a 'timestamp' column")
+    # idx = df.index if isinstance(df.index, pd.DatetimeIndex) else pd.DatetimeIndex(df["timestamp"])
     if idx.tz is None:
         raise ValueError("Naive datetimes are forbidden; market bars must be tz-aware")
 
@@ -22,7 +31,15 @@ def validate_market_bars(df: pd.DataFrame) -> None:
 def ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if not isinstance(out.index, pd.DatetimeIndex):
-        out["timestamp"] = pd.to_datetime(out["timestamp"], utc=False)
+        if "timestamp" in out.columns:
+            time_col = "timestamp"
+        elif "dt" in out.columns:
+            time_col = "dt"
+            out["timestamp"] = out["dt"]
+        else:
+            raise ValueError("Market bars must include 'timestamp' or 'dt' for MA anchor analysis")
+        out["timestamp"] = pd.to_datetime(out[time_col], utc=False)
+        # out["timestamp"] = pd.to_datetime(out["timestamp"], utc=False)
         out = out.set_index("timestamp", drop=False)
     if out.index.tz is None:
         raise ValueError("Naive datetimes are forbidden; market bars must be tz-aware")

@@ -12,7 +12,14 @@ from .segment_detection import detect_segments
 from .tp_sl_engine import score_tp_sl_candidates
 
 
-def _extract_market_bars(market: Any, *, instrument: Optional[str], timeframe: str) -> pd.DataFrame:
+
+def _extract_market_bars(
+    market: Any,
+    *,
+    instrument: Optional[str],
+    contract: Optional[str],
+    timeframe: str,
+) -> pd.DataFrame:
     """
     Duck-typed accessor for existing MarketDataStore variants.
     """
@@ -21,15 +28,32 @@ def _extract_market_bars(market: Any, *, instrument: Optional[str], timeframe: s
 
     candidates = []
 
-    if hasattr(market, "market_minute_bars"):
-        mb = getattr(market, "market_minute_bars")
-        if isinstance(mb, pd.DataFrame):
-            candidates.append(mb)
-        elif isinstance(mb, dict):
-            if instrument and timeframe and (instrument, timeframe) in mb:
-                candidates.append(mb[(instrument, timeframe)])
-            elif instrument and instrument in mb:
-                candidates.append(mb[instrument])
+    # if hasattr(market, "market_minute_bars"):
+    #     mb = getattr(market, "market_minute_bars")
+    #     if isinstance(mb, pd.DataFrame):
+    #         candidates.append(mb)
+    #     elif isinstance(mb, dict):
+    #         if instrument and timeframe and (instrument, timeframe) in mb:
+    #             candidates.append(mb[(instrument, timeframe)])
+    #         elif instrument and instrument in mb:
+    #             candidates.append(mb[instrument])
+    if hasattr(market, "get_bars"):
+        try:
+            df = market.get_bars(
+                instrument_root=instrument,
+                contract=contract,
+                timeframe=timeframe,
+            )
+            if isinstance(df, pd.DataFrame):
+                candidates.append(df)
+        except Exception:
+            pass
+
+    if hasattr(market, "minute_bars"):
+        mb = getattr(market, "minute_bars")
+        if isinstance(mb, dict):
+            if instrument and contract and (instrument, contract) in mb:
+                candidates.append(mb[(instrument, contract)])
 
     if hasattr(market, "get_market_bars"):
         try:
@@ -65,8 +89,14 @@ def run_anchor_interaction_analysis(
         return {"ok": False, "reason": "No anchors configured"}
 
     run_id = getattr(pkg, "run_id", None) or (getattr(pkg, "metadata", {}) or {}).get("run_id") or "run"
-    bars = _extract_market_bars(market, instrument=config.instrument, timeframe=config.timeframe)
+    # bars = _extract_market_bars(market, instrument=config.instrument, timeframe=config.timeframe)
 
+    bars = _extract_market_bars(
+        market,
+        instrument=config.instrument,
+        contract=config.contract,
+        timeframe=config.timeframe,
+    )
     anchors = build_anchors_table(bars, config.anchors)
     segments = detect_segments(bars, anchors, config, run_id=run_id)
     path_stats = compute_path_metrics(bars, anchors, segments)
