@@ -69,17 +69,38 @@ def _score_candidate(df, tp, sl):
     }
 
 
-def _fold_expectancy(df, tp, sl, folds=4):
-    if len(df) < folds * MIN_SAMPLE:
+def _fold_expectancy(
+    df,
+    tp,
+    sl,
+    *,
+    folds=4,
+    fold_mode: str = "blocked_kfold",
+    min_train_segments: int = 120,
+    min_test_segments: int = MIN_SAMPLE,
+):
+    mode = str(fold_mode or "blocked_kfold").lower()
+    if mode in {"off", "none", "disabled"}:
+        return np.nan, np.nan
+
+    if len(df) < max(1, int(min_train_segments)) + max(1, int(min_test_segments)):
         return np.nan, np.nan
 
     df = df.sort_values("entry_ts")
 
-    chunks = np.array_split(df, folds)
+    # chunks = np.array_split(df, folds)
+
+    # Keep fold chunks as DataFrame objects across pandas/numpy versions.
+    # np.array_split(df, folds) may yield ndarray chunks in some environments,
+    # which then breaks _score_candidate(...).iterrows().
+    index_chunks = np.array_split(df.index.to_numpy(), folds)
+    chunks = [df.loc[idx] for idx in index_chunks if len(idx) > 0]
 
     scores = []
 
     for chunk in chunks:
+        if len(chunk) < max(1, int(min_test_segments)):
+            continue
         s = _score_candidate(chunk, tp, sl)
         if not s:
             continue
@@ -97,6 +118,9 @@ def score_tp_sl_candidates(
     *,
     tp_grid: list[float],
     sl_grid: list[float],
+    fold_mode: str = "blocked_kfold",
+    min_train_segments: int = 120,
+    min_test_segments: int = MIN_SAMPLE,
 ) -> pd.DataFrame:
 
     if segments.empty or path_stats.empty:
@@ -116,7 +140,14 @@ def score_tp_sl_candidates(
                 if not score:
                     continue
 
-                fold_mean, fold_std = _fold_expectancy(g, tp, sl)
+                fold_mean, fold_std = _fold_expectancy(
+                    g,
+                    tp,
+                    sl,
+                    fold_mode=fold_mode,
+                    min_train_segments=min_train_segments,
+                    min_test_segments=min_test_segments,
+                )
 
                 n = score["decisive"]
 

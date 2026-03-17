@@ -113,18 +113,6 @@ def main() -> int:
     # RUN MA ANCHOR ENGINE
     # --------------------------------------------------------
     anchor_config = _find_anchor_interaction_config(cfgs)
-    # anchor_config = None
-    #
-    # for cfg in cfgs:
-    #
-    #     rc = getattr(cfg, "report_config", None)
-    #
-    #     if isinstance(rc, dict):
-    #         ai = rc.get("anchor_interaction")
-    #
-    #         if isinstance(ai, dict) and ai.get("enabled"):
-    #             anchor_config = ai
-    #             break
 
     if anchor_config:
 

@@ -105,6 +105,9 @@ def run_anchor_interaction_analysis(
         path_stats,
         tp_grid=config.tp_grid,
         sl_grid=config.sl_grid,
+        fold_mode=config.tp_sl_fold_mode,
+        min_train_segments=config.tp_sl_min_train_segments,
+        min_test_segments=config.tp_sl_min_test_segments,
     ) if config.tp_sl_enabled else pd.DataFrame()
 
     # MVP: recommendations = top row per anchor
@@ -145,6 +148,9 @@ def run_anchor_interaction_analysis(
             "cross_mode": config.cross_mode,
             "exit_mode": config.exit_mode,
             "recross_policy": config.recross_policy,
+            "tp_sl_fold_mode": config.tp_sl_fold_mode,
+            "tp_sl_min_train_segments": config.tp_sl_min_train_segments,
+            "tp_sl_min_test_segments": config.tp_sl_min_test_segments,
         },
         "artifacts": {
             "anchors": _artifact_ref(artifact_paths.get("anchors")),
@@ -169,6 +175,11 @@ def run_anchor_interaction_analysis(
         "timezone": config.timezone,
 
         "warnings": [],
+        "validation": {
+            "fold_mode": config.tp_sl_fold_mode,
+            "min_train_segments": int(config.tp_sl_min_train_segments),
+            "min_test_segments": int(config.tp_sl_min_test_segments),
+        },
         },
     }
 

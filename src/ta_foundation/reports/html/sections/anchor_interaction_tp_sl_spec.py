@@ -84,6 +84,17 @@ def render_anchor_interaction_tp_sl_spec(ctx: Dict[str, Any]) -> str:
 
     tp_sl = cfg.get("tp_sl", {}) or {}
     folds = tp_sl.get("folds", {}) or {}
+    derived_validation: Dict[str, Any] = {}
+    if packages:
+        first_pkg = next(iter(packages.values()))
+        try:
+            md = getattr(first_pkg, "metadata", {}) or {}
+            derived = md.get("derived", {}) or {}
+            ai = derived.get("anchor_interaction", {}) or {}
+            diagnostics = ai.get("diagnostics", {}) or {}
+            derived_validation = diagnostics.get("validation", {}) or {}
+        except Exception:
+            derived_validation = {}
     html_out: List[str] = ["<h3>MA Anchor TP/SL Specification</h3>"]
 
     if not tp_sl:
@@ -99,9 +110,18 @@ def render_anchor_interaction_tp_sl_spec(ctx: Dict[str, Any]) -> str:
     html_out.append(_table(["parameter", "value"], rows))
 
     val_rows = [
-        ["fold_mode", _safe_str(_cfg_get(folds, "mode"))],
-        ["min_train_segments", _safe_int(_cfg_get(folds, "min_train_segments"))],
-        ["min_test_segments", _safe_int(_cfg_get(folds, "min_test_segments"))],
+        [
+            "fold_mode",
+            _safe_str(_cfg_get(derived_validation, "fold_mode", _cfg_get(folds, "mode", "blocked_kfold"))),
+        ],
+        [
+            "min_train_segments",
+            _safe_int(_cfg_get(derived_validation, "min_train_segments", _cfg_get(folds, "min_train_segments", 120))),
+        ],
+        [
+            "min_test_segments",
+            _safe_int(_cfg_get(derived_validation, "min_test_segments", _cfg_get(folds, "min_test_segments", 40))),
+        ],
     ]
     html_out.append("<h4 style='margin-top:16px'>Validation Controls</h4>")
     html_out.append(_table(["parameter", "value"], val_rows))

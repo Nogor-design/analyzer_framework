@@ -38,6 +38,9 @@ class EngineConfig:
     tp_sl_unit: str = "atr"
     tp_grid: List[float] = field(default_factory=lambda: [0.8, 1.0, 1.3, 1.6, 2.0])
     sl_grid: List[float] = field(default_factory=lambda: [0.6, 0.8, 1.0, 1.2])
+    tp_sl_fold_mode: str = "blocked_kfold"
+    tp_sl_min_train_segments: int = 120
+    tp_sl_min_test_segments: int = 40
 
     @classmethod
     def from_options(cls, options: Dict[str, Any]) -> "EngineConfig":
@@ -69,4 +72,7 @@ class EngineConfig:
             tp_sl_unit=str(tp_sl.get("unit", "atr")).lower(),
             tp_grid=[float(x) for x in (tp_sl.get("tp_grid") or [0.8, 1.0, 1.3, 1.6, 2.0])],
             sl_grid=[float(x) for x in (tp_sl.get("sl_grid") or [0.6, 0.8, 1.0, 1.2])],
+            tp_sl_fold_mode=str(folds.get("mode", "blocked_kfold")).lower(),
+            tp_sl_min_train_segments=int(folds.get("min_train_segments", 120) or 120),
+            tp_sl_min_test_segments=int(folds.get("min_test_segments", 40) or 40),
         )
