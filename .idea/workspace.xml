@@ -4,21 +4,30 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Survival fixed">
-      <change afterPath="$PROJECT_DIR$/NewPrompts.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/regime_disc.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/regime_disc2.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/market_regime_store.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/market_regime_discovery.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New reporting on market discovery">
+      <change afterPath="$PROJECT_DIR$/MA_ANCHOR_INTERACTION_DESIGN.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ma_report.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/aggregation.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/anchors.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/path_metrics.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_anchor_matrix.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_config.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_diagnostics.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_overview.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ARCHITECTURE.md" beforeDir="false" afterPath="$PROJECT_DIR$/ARCHITECTURE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/FilterDiscoveryReport.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PatternE.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/PatternE.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/myReports.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/myReports.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EXTENSION_DESIGN_SPEC.md" beforeDir="false" afterPath="$PROJECT_DIR$/EXTENSION_DESIGN_SPEC.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_feature_store.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/trade_feature_store.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -359,7 +368,15 @@
       <option name="project" value="LOCAL" />
       <updated>1772983246446</updated>
     </task>
-    <option name="localTasksCounter" value="33" />
+    <task id="LOCAL-00033" summary="New reporting on market discovery">
+      <option name="closed" value="true" />
+      <created>1773592148040</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1773592148040</updated>
+    </task>
+    <option name="localTasksCounter" value="34" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -386,7 +403,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Fixed Duplicate charts in report." />
     <MESSAGE value="New daily scoreboard" />
     <MESSAGE value="Updated cards" />
     <MESSAGE value="Fixed timeline" />
@@ -411,6 +427,7 @@
     <MESSAGE value="New Pattern Engine" />
     <MESSAGE value="Muilti report functionality added" />
     <MESSAGE value="Survival fixed" />
-    <option name="LAST_COMMIT_MESSAGE" value="Survival fixed" />
+    <MESSAGE value="New reporting on market discovery" />
+    <option name="LAST_COMMIT_MESSAGE" value="New reporting on market discovery" />
   </component>
 </project>

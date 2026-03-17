@@ -175,7 +175,7 @@ sections:
 #      wlr_box_px: 10
 #      wlr_gap_px: 2
 #      wlr_show_legend: false
-
+#####Exec cards ####################################################
 #  - id: run_executive_profile_cards
 #    options:
 #      show_hint: true
@@ -193,7 +193,7 @@ sections:
 #      timeline_cell_h_px: 10
 #      timeline_show_hours: true
 #      timeline_show_summary: true
-
+#####Exec cards ####################################################
 #
 #profit_factor
 #total_net_profit
@@ -290,11 +290,11 @@ sections:
 #      starting_balance: 50000
 #      trailing_dd: 2500
 #      hide_missing_cards: true
-
+#####Weely Leaderboard ####################################################
   - id: weekly_leaderboard_cards
     title: "Weekly Prop Dashboard"
     options:
-      week_ending: "2026-03-13"   # optional
+      week_ending: "2026-03-20"   # optional
       top_n: 200
       starting_balance: 50000
       trailing_dd: 2500
@@ -305,7 +305,7 @@ sections:
       warn_buffer: 500
       compact_noimg: true
       bot_columns: 1
-
+#####Weely Leaderboard ####################################################
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
 #    options:

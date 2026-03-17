@@ -705,3 +705,10 @@ The system has 4 layers:
 Parsers → Pipeline → Analysis → Sections
 
 Sections must never collapse layers 1–3 into themselves.
+
+Sections must never collapse layers 1–3 into themselves.
+
+## 11) Anchor Interaction Engine Design
+For MA/anchor excursion analysis aligned with current architecture and reporting contracts, see:
+
+- `MA_ANCHOR_INTERACTION_DESIGN.md`

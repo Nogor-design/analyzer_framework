@@ -32,6 +32,25 @@ from ta_foundation.reports.html.sections.pattern_engine_diagnostics import rende
 from ta_foundation.reports.html.sections.pattern_market_discovery import render_pattern_market_discovery
 from ta_foundation.reports.html.sections.pattern_engine_mc_regime  import render_pattern_engine_mc_regime
 from ta_foundation.reports.html.sections.market_regime_discovery import render_market_regime_discovery
+from ta_foundation.reports.html.sections.anchor_interaction_overview import (
+    render_anchor_interaction_overview,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_config import (
+    render_anchor_interaction_config,
+)
+
+from ta_foundation.reports.html.sections.anchor_interaction_overview import (
+    render_anchor_interaction_overview,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_anchor_matrix import (
+    render_anchor_interaction_anchor_matrix,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_tp_sl_spec import (
+    render_anchor_interaction_tp_sl_spec,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_diagnostics import (
+    render_anchor_interaction_diagnostics,
+)
 # render_pattern_engine_diagnostics
 # render_pattern_market_discovery
 # NEW
@@ -180,6 +199,36 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="market_regime_discovery",
         default_title="Market Regime Discovery",
         render_fn=render_market_regime_discovery,
+    ),
+    "anchor_interaction_overview": SectionDef(
+        id="anchor_interaction_overview",
+        default_title="Anchor Interaction Overview",
+        render_fn=render_anchor_interaction_overview,
+    ),
+    "anchor_interaction_config": SectionDef(
+        id="anchor_interaction_config",
+        default_title="MA Anchor Configuration",
+        render_fn=render_anchor_interaction_config,
+    ),
+    "anchor_interaction_overview": SectionDef(
+        id="anchor_interaction_overview",
+        default_title="MA Anchor Overview",
+        render_fn=render_anchor_interaction_overview,
+    ),
+    "anchor_interaction_anchor_matrix": SectionDef(
+        id="anchor_interaction_anchor_matrix",
+        default_title="MA Anchor Matrix",
+        render_fn=render_anchor_interaction_anchor_matrix,
+    ),
+    "anchor_interaction_tp_sl_spec": SectionDef(
+        id="anchor_interaction_tp_sl_spec",
+        default_title="MA Anchor TP/SL Specification",
+        render_fn=render_anchor_interaction_tp_sl_spec,
+    ),
+    "anchor_interaction_diagnostics": SectionDef(
+        id="anchor_interaction_diagnostics",
+        default_title="MA Anchor Diagnostics",
+        render_fn=render_anchor_interaction_diagnostics,
     ),
 
 # render_pattern_engine_diagnostics

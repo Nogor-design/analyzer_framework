@@ -5,11 +5,13 @@ src/ta_foundation.egg-info/SOURCES.txt
 src/ta_foundation.egg-info/dependency_links.txt
 src/ta_foundation.egg-info/requires.txt
 src/ta_foundation.egg-info/top_level.txt
+src/ta_foundation/analysis/apex_portfolio_mc.py
 src/ta_foundation/analysis/apex_trailing_model.py
 src/ta_foundation/analysis/combo_selection.py
 src/ta_foundation/analysis/daily_matrix.py
 src/ta_foundation/analysis/drawdown.py
 src/ta_foundation/analysis/leaderboards.py
+src/ta_foundation/analysis/market_regime_store.py
 src/ta_foundation/analysis/prop_trailing.py
 src/ta_foundation/analysis/recommendations.py
 src/ta_foundation/analysis/trade_enrichment.py
@@ -23,6 +25,14 @@ src/ta_foundation/analysis/features/microstructure.py
 src/ta_foundation/analysis/features/regime.py
 src/ta_foundation/analysis/indicators/basic.py
 src/ta_foundation/analysis/indicators/registry.py
+src/ta_foundation/analysis/ma_structure/__init__.py
+src/ta_foundation/analysis/ma_structure/aggregation.py
+src/ta_foundation/analysis/ma_structure/anchors.py
+src/ta_foundation/analysis/ma_structure/models.py
+src/ta_foundation/analysis/ma_structure/orchestrator.py
+src/ta_foundation/analysis/ma_structure/path_metrics.py
+src/ta_foundation/analysis/ma_structure/segment_detection.py
+src/ta_foundation/analysis/ma_structure/tp_sl_engine.py
 src/ta_foundation/analysis/pattern_engine/cluster.py
 src/ta_foundation/analysis/pattern_engine/discovery.py
 src/ta_foundation/analysis/pattern_engine/engine.py
@@ -74,6 +84,8 @@ src/ta_foundation/reports/html/theme.py
 src/ta_foundation/reports/html/sections/__init__.py
 src/ta_foundation/reports/html/sections/_session_timeline.py
 src/ta_foundation/reports/html/sections/_wlr_strip.py
+src/ta_foundation/reports/html/sections/anchor_interaction_config.py
+src/ta_foundation/reports/html/sections/anchor_interaction_overview.py
 src/ta_foundation/reports/html/sections/apex_drawdown_survival_profile.py
 src/ta_foundation/reports/html/sections/comparison_overview.py
 src/ta_foundation/reports/html/sections/daily_leaderboard_cards.py
@@ -84,6 +96,7 @@ src/ta_foundation/reports/html/sections/exit_policy_simulation.py
 src/ta_foundation/reports/html/sections/exit_policy_simulation2.py
 src/ta_foundation/reports/html/sections/exit_policy_trade_debug.py
 src/ta_foundation/reports/html/sections/filter_discovery.py
+src/ta_foundation/reports/html/sections/market_regime_discovery.py
 src/ta_foundation/reports/html/sections/pattern_cluster_drilldown.py
 src/ta_foundation/reports/html/sections/pattern_engine_diagnostics.py
 src/ta_foundation/reports/html/sections/pattern_engine_mc_regime.py

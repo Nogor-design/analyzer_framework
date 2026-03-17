@@ -10,7 +10,7 @@ from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 from ta_foundation.marketdata.store import MarketDataStore
 from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
-
+from ta_foundation.analysis.ma_structure.orchestrator import run_anchor_interaction_analysis
 
 @dataclass
 class ReportConfig:
@@ -200,6 +200,45 @@ def build_report_from_config(
 
     # Pattern engine compute (analysis phase). Never crash report generation.
     pe_opts = (cfg.raw.get("pattern_engine") or {}) if isinstance(cfg.raw, dict) else {}
+    # --------------------------------------------------------
+    # MA Anchor interaction engine (analysis phase)
+    # --------------------------------------------------------
+
+    ai_opts = (cfg.raw.get("anchor_interaction") or {}) if isinstance(cfg.raw, dict) else {}
+
+    if ai_opts.get("enabled"):
+
+        try:
+
+            for run_id, pkg in (packages or {}).items():
+                run_anchor_interaction_analysis(
+                    pkg=pkg,
+                    market=market,
+                    options=ai_opts,
+                )
+
+        except Exception as e:
+
+            reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
+
+            for _, pkg in (packages or {}).items():
+
+                md = getattr(pkg, "metadata", None)
+
+                if md is None:
+                    pkg.metadata = {}
+                    md = pkg.metadata
+
+                if "derived" not in md or md["derived"] is None:
+                    md["derived"] = {}
+
+                md["derived"]["anchor_interaction"] = {
+                    "version": "ai_v1",
+                    "disabled": True,
+                    "reason": reason,
+                    "diagnostics": {"ok": False, "reason": reason},
+                    "artifacts": {},
+                }
     try:
         compute_and_attach_pattern_engine(packages=packages, market=market, options=pe_opts)
     except Exception as e:
