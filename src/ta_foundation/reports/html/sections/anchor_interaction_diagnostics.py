@@ -178,7 +178,12 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
 
         diagnostics = (ai_meta.get("diagnostics") or {}) if isinstance(ai_meta, dict) else {}
         warnings = diagnostics.get("warnings", []) if isinstance(diagnostics, dict) else []
+        reason = ""
+        if isinstance(ai_meta, dict):
+            reason = str(ai_meta.get("reason") or diagnostics.get("reason") or "").strip()
         warnings_s = "; ".join(str(x) for x in warnings) if include_issue_list and warnings else ""
+        if include_issue_list and reason:
+            warnings_s = f"{warnings_s}; {reason}" if warnings_s else reason
 
         expected_assets = [
             "anchors",

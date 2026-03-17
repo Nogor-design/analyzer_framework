@@ -28,15 +28,6 @@ def _extract_market_bars(
 
     candidates = []
 
-    # if hasattr(market, "market_minute_bars"):
-    #     mb = getattr(market, "market_minute_bars")
-    #     if isinstance(mb, pd.DataFrame):
-    #         candidates.append(mb)
-    #     elif isinstance(mb, dict):
-    #         if instrument and timeframe and (instrument, timeframe) in mb:
-    #             candidates.append(mb[(instrument, timeframe)])
-    #         elif instrument and instrument in mb:
-    #             candidates.append(mb[instrument])
     if hasattr(market, "get_bars"):
         try:
             df = market.get_bars(
@@ -89,7 +80,6 @@ def run_anchor_interaction_analysis(
         return {"ok": False, "reason": "No anchors configured"}
 
     run_id = getattr(pkg, "run_id", None) or (getattr(pkg, "metadata", {}) or {}).get("run_id") or "run"
-    # bars = _extract_market_bars(market, instrument=config.instrument, timeframe=config.timeframe)
 
     bars = _extract_market_bars(
         market,

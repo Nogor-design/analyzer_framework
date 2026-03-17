@@ -21,9 +21,6 @@ def validate_market_bars(df: pd.DataFrame) -> None:
         idx = pd.DatetimeIndex(df["timestamp"])
     else:
         idx = pd.DatetimeIndex(df["dt"])
-    # if "timestamp" not in df.columns and not isinstance(df.index, pd.DatetimeIndex):
-    #     raise ValueError("Market bars must have a tz-aware DatetimeIndex or a 'timestamp' column")
-    # idx = df.index if isinstance(df.index, pd.DatetimeIndex) else pd.DatetimeIndex(df["timestamp"])
     if idx.tz is None:
         raise ValueError("Naive datetimes are forbidden; market bars must be tz-aware")
 

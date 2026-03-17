@@ -4,13 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code added">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fix">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/anchors.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/anchors.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -366,7 +365,15 @@
       <option name="project" value="LOCAL" />
       <updated>1773758035043</updated>
     </task>
-    <option name="localTasksCounter" value="35" />
+    <task id="LOCAL-00035" summary="MA Anchor code some fix">
+      <option name="closed" value="true" />
+      <created>1773762411996</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1773762411996</updated>
+    </task>
+    <option name="localTasksCounter" value="36" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -393,7 +400,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Updated cards" />
     <MESSAGE value="Fixed timeline" />
     <MESSAGE value="I added in the MFE ranking" />
     <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
@@ -418,6 +424,7 @@
     <MESSAGE value="Survival fixed" />
     <MESSAGE value="New reporting on market discovery" />
     <MESSAGE value="MA Anchor code added" />
-    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code added" />
+    <MESSAGE value="MA Anchor code some fix" />
+    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fix" />
   </component>
 </project>

@@ -72,7 +72,7 @@ def main() -> int:
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    market_folder = Path(args.market_data) if args.market_data else None
+    market_folder = Path(args.market_data) if args.market_data else in_dir
 
     registry = ParserRegistry(parsers=[
         NinjaTraderTradesCsvParser(),
