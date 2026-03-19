@@ -6,6 +6,7 @@ import pandas as pd
 
 MIN_SAMPLE = 50
 
+
 def build_validation_folds(
     df: pd.DataFrame,
     *,
@@ -51,7 +52,6 @@ def build_validation_folds(
 
         return pd.DataFrame(out_rows)
 
-    # Fallback: blocked k-fold test windows for compatibility
     index_chunks = np.array_split(d.index.to_numpy(), max(1, int(k_folds)))
     for fold_id, idx in enumerate(index_chunks):
         if len(idx) < min_test:
@@ -78,6 +78,7 @@ def build_validation_folds(
         )
     return pd.DataFrame(out_rows)
 
+
 def _compute_outcome(row, tp, sl):
     mfe = row.get("mfe_atr")
     mae = row.get("mae_atr")
@@ -102,6 +103,24 @@ def _compute_outcome(row, tp, sl):
     return None
 
 
+def _clip01(value: float) -> float:
+    if pd.isna(value):
+        return np.nan
+    return float(max(0.0, min(1.0, value)))
+
+
+def _tail_dependency_share(outcomes: list[float]) -> float:
+    gains = sorted(float(x) for x in outcomes if x > 0)
+    if not gains:
+        return np.nan
+    total_gain = float(sum(gains))
+    if total_gain <= 0:
+        return np.nan
+    top_n = max(1, int(np.ceil(len(gains) * 0.10)))
+    tail_gain = float(sum(gains[-top_n:]))
+    return _clip01(tail_gain / total_gain)
+
+
 def _score_candidate(df, tp, sl):
     outcomes = []
     tp_first = 0
@@ -113,7 +132,7 @@ def _score_candidate(df, tp, sl):
         if outcome is None:
             continue
 
-        outcomes.append(outcome)
+        outcomes.append(float(outcome))
 
         if outcome > 0:
             tp_first += 1
@@ -127,7 +146,6 @@ def _score_candidate(df, tp, sl):
 
     tp_prob = tp_first / decisive
     sl_prob = sl_first / decisive
-
     expectancy = tp_prob * tp - sl_prob * sl
 
     return {
@@ -137,61 +155,137 @@ def _score_candidate(df, tp, sl):
         "decisive": decisive,
         "tp_hits": tp_first,
         "sl_hits": sl_first,
+        "tail_dependency_share": _tail_dependency_share(outcomes),
     }
 
 
-def _fold_expectancy(
+def _fold_metrics(
     df,
+    folds_df: pd.DataFrame,
     tp,
     sl,
-    *,
-    folds=4,
-    fold_mode: str = "blocked_kfold",
-    min_train_segments: int = 120,
-    min_test_segments: int = MIN_SAMPLE,
 ):
-    mode = str(fold_mode or "anchored_walk_forward").lower()
-    if mode in {"off", "none", "disabled"}:
-        return np.nan, np.nan
+    if folds_df is None or folds_df.empty:
+        return {
+            "fold_mean_expectancy": np.nan,
+            "fold_std_expectancy": np.nan,
+            "fold_agreement": np.nan,
+            "fold_count": 0,
+        }
 
-    if len(df) < max(1, int(min_train_segments)) + max(1, int(min_test_segments)):
-        return np.nan, np.nan
-
-    folds_df = build_validation_folds(
-        df,
-        fold_mode=mode,
-        min_train_segments=min_train_segments,
-        min_test_segments=min_test_segments,
-        k_folds=folds,
-    )
-    if folds_df.empty:
-        return np.nan, np.nan
-
-    # chunks = np.array_split(df, folds)
-
-    # Keep fold chunks as DataFrame objects across pandas/numpy versions.
-    # np.array_split(df, folds) may yield ndarray chunks in some environments,
-    # which then breaks _score_candidate(...).iterrows().
-    # index_chunks = np.array_split(df.index.to_numpy(), folds)
-    # chunks = [df.loc[idx] for idx in index_chunks if len(idx) > 0]
-
-    df = df.sort_values("entry_ts")
-
+    d = df.sort_values("entry_ts")
     scores = []
 
     for _, fold in folds_df.iterrows():
         test_start = fold.get("test_start_ts")
         test_end = fold.get("test_end_ts")
-        chunk = df[(df["entry_ts"] >= test_start) & (df["entry_ts"] <= test_end)]
+        chunk = d[(d["entry_ts"] >= test_start) & (d["entry_ts"] <= test_end)]
         s = _score_candidate(chunk, tp, sl)
         if not s:
             continue
-        scores.append(s["expectancy"])
+        scores.append(float(s["expectancy"]))
 
     if not scores:
-        return np.nan, np.nan
+        return {
+            "fold_mean_expectancy": np.nan,
+            "fold_std_expectancy": np.nan,
+            "fold_agreement": np.nan,
+            "fold_count": 0,
+        }
 
-    return float(np.mean(scores)), float(np.std(scores))
+    mean_score = float(np.mean(scores))
+    std_score = float(np.std(scores))
+    mean_sign = np.sign(mean_score)
+    if mean_sign == 0:
+        agreement = float(np.mean([1.0 if np.sign(s) == 0 else 0.0 for s in scores]))
+    else:
+        agreement = float(np.mean([1.0 if np.sign(s) == mean_sign else 0.0 for s in scores]))
+
+    return {
+        "fold_mean_expectancy": mean_score,
+        "fold_std_expectancy": std_score,
+        "fold_agreement": agreement,
+        "fold_count": int(len(scores)),
+    }
+
+
+def _sample_quality_flag(n_decisive: int, fold_count: int, min_test_segments: int) -> str:
+    if n_decisive < max(1, int(min_test_segments)):
+        return "thin"
+    if fold_count == 0:
+        return "unvalidated"
+    if n_decisive < max(int(min_test_segments), MIN_SAMPLE):
+        return "thin"
+    return "ok"
+
+
+def _annotate_anchor_stability(anchor_df: pd.DataFrame) -> pd.DataFrame:
+    if anchor_df.empty:
+        return anchor_df
+
+    out = anchor_df.copy().reset_index(drop=True)
+    out["neighbor_consistency"] = np.nan
+    out["sensitivity_penalty"] = np.nan
+    out["stability_score"] = np.nan
+
+    tp_levels = sorted(out["tp_atr"].dropna().unique().tolist())
+    sl_levels = sorted(out["sl_atr"].dropna().unique().tolist())
+    tp_index = {float(v): i for i, v in enumerate(tp_levels)}
+    sl_index = {float(v): i for i, v in enumerate(sl_levels)}
+    lookup = {(float(r.tp_atr), float(r.sl_atr)): r.expectancy_score for r in out.itertuples()}
+
+    for idx, row in out.iterrows():
+        tp = float(row["tp_atr"])
+        sl = float(row["sl_atr"])
+        neighbors = []
+
+        tp_pos = tp_index.get(tp)
+        sl_pos = sl_index.get(sl)
+        if tp_pos is not None:
+            for delta in (-1, 1):
+                pos = tp_pos + delta
+                if 0 <= pos < len(tp_levels):
+                    key = (float(tp_levels[pos]), sl)
+                    if key in lookup:
+                        neighbors.append(float(lookup[key]))
+        if sl_pos is not None:
+            for delta in (-1, 1):
+                pos = sl_pos + delta
+                if 0 <= pos < len(sl_levels):
+                    key = (tp, float(sl_levels[pos]))
+                    if key in lookup:
+                        neighbors.append(float(lookup[key]))
+
+        current_sign = np.sign(float(row["expectancy_score"]))
+        if neighbors:
+            if current_sign == 0:
+                consistency = float(np.mean([1.0 if np.sign(v) == 0 else 0.0 for v in neighbors]))
+            else:
+                consistency = float(np.mean([1.0 if np.sign(v) == current_sign else 0.0 for v in neighbors]))
+            out.at[idx, "neighbor_consistency"] = consistency
+        else:
+            out.at[idx, "neighbor_consistency"] = np.nan
+
+        std = row.get("fold_std_expectancy")
+        if pd.isna(std):
+            penalty = np.nan
+        else:
+            penalty = _clip01(float(std) / (abs(float(row["expectancy_score"])) + 1e-9))
+        out.at[idx, "sensitivity_penalty"] = penalty
+
+    fold_component = out["fold_agreement"].fillna(0.5)
+    neighbor_component = out["neighbor_consistency"].fillna(0.5)
+    tail_component = (1.0 - out["tail_dependency_share"].fillna(1.0)).clip(lower=0.0, upper=1.0)
+    sensitivity_component = (1.0 - out["sensitivity_penalty"].fillna(1.0)).clip(lower=0.0, upper=1.0)
+
+    out["stability_score"] = (
+        0.40 * fold_component
+        + 0.30 * neighbor_component
+        + 0.20 * sensitivity_component
+        + 0.10 * tail_component
+    ).clip(lower=0.0, upper=1.0)
+
+    return out
 
 
 def score_tp_sl_candidates(
@@ -227,40 +321,29 @@ def score_tp_sl_candidates(
 
         for tp in tp_grid:
             for sl in sl_grid:
-
                 score = _score_candidate(g, tp, sl)
-
                 if not score:
                     continue
 
-                fold_mean, fold_std = _fold_expectancy(
-                    g,
-                    tp,
-                    sl,
-                    fold_mode=fold_mode,
-                    min_train_segments=min_train_segments,
-                    min_test_segments=min_test_segments,
-                )
-
-                n = score["decisive"]
+                fold_metrics = _fold_metrics(g, anchor_folds, tp, sl)
+                n = int(score["decisive"])
+                fold_count = int(fold_metrics["fold_count"])
 
                 rows.append(
                     {
                         "anchor_id": anchor_id,
                         "tp_atr": float(tp),
                         "sl_atr": float(sl),
-
-                        "n_decisive": int(n),
+                        "n_decisive": n,
                         "tp_prob": score["tp_prob"],
                         "sl_prob": score["sl_prob"],
-
                         "expectancy_score": score["expectancy"],
-
-                        "fold_mean_expectancy": fold_mean,
-                        "fold_std_expectancy": fold_std,
-
-                        "sample_quality_flag":
-                        "ok" if n >= max(int(min_test_segments), MIN_SAMPLE) else "thin",
+                        "fold_mean_expectancy": fold_metrics["fold_mean_expectancy"],
+                        "fold_std_expectancy": fold_metrics["fold_std_expectancy"],
+                        "fold_agreement": fold_metrics["fold_agreement"],
+                        "fold_count": fold_count,
+                        "tail_dependency_share": score["tail_dependency_share"],
+                        "sample_quality_flag": _sample_quality_flag(n, fold_count, min_test_segments),
                     }
                 )
 
@@ -270,13 +353,15 @@ def score_tp_sl_candidates(
     if out.empty:
         return out, folds_out
 
-    out["robust_score"] = (
-        out["expectancy_score"]
-        * (1 - out["fold_std_expectancy"].fillna(0))
-    )
+    scored_groups = []
+    for _, anchor_df in out.groupby("anchor_id", dropna=False):
+        scored_groups.append(_annotate_anchor_stability(anchor_df))
+    out = pd.concat(scored_groups, ignore_index=True)
+
+    out["robust_score"] = out["expectancy_score"] * out["stability_score"].fillna(0.0)
 
     out = out.sort_values(
-        ["anchor_id", "robust_score", "n_decisive"],
-        ascending=[True, False, False],
+        ["anchor_id", "stability_score", "robust_score", "n_decisive"],
+        ascending=[True, False, False, False],
     ).reset_index(drop=True)
     return out, folds_out

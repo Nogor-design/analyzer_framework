@@ -15,7 +15,7 @@ from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLas
 from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
 from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_manifest
 from ta_foundation.reports.html.config import load_report_configs, build_report_from_config
-from ta_foundation.analysis.ma_structure.orchestrator import run_anchor_interaction_analysis
+from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
 
 
 # --------------------------------------------------------
@@ -122,7 +122,7 @@ def main() -> int:
 
             try:
 
-                res = run_anchor_interaction_analysis(
+                res = anchor_interaction_orchestrator.run_anchor_interaction_analysis(
                     pkg=pkg,
                     market=result.market,
                     options=anchor_config,
@@ -134,6 +134,10 @@ def main() -> int:
                     print(f"[ta_foundation] MA Anchor skipped for {run_id}: {res.get('reason')}")
 
             except Exception as e:
+
+                reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
+                if hasattr(anchor_interaction_orchestrator, "attach_anchor_interaction_failure"):
+                    anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason, options=anchor_config)
 
                 print(
                     f"[ta_foundation] WARNING anchor_interaction failed "

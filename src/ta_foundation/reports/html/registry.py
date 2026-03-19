@@ -51,6 +51,9 @@ from ta_foundation.reports.html.sections.anchor_interaction_tp_sl_spec import (
 from ta_foundation.reports.html.sections.anchor_interaction_diagnostics import (
     render_anchor_interaction_diagnostics,
 )
+from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import (
+    render_anchor_tp_sl_recommendations,
+)
 # render_pattern_engine_diagnostics
 # render_pattern_market_discovery
 # NEW
@@ -229,6 +232,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="anchor_interaction_diagnostics",
         default_title="MA Anchor Diagnostics",
         render_fn=render_anchor_interaction_diagnostics,
+    ),
+    "anchor_tp_sl_recommendations": SectionDef(
+        id="anchor_tp_sl_recommendations",
+        default_title="MA Anchor TP/SL Recommendations",
+        render_fn=render_anchor_tp_sl_recommendations,
     ),
 
 # render_pattern_engine_diagnostics
