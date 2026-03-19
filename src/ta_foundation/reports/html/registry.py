@@ -35,6 +35,8 @@ from ta_foundation.reports.html.sections.market_regime_discovery import render_m
 from ta_foundation.reports.html.sections.anchor_interaction_overview import (
     render_anchor_interaction_overview,
 )
+from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import render_anchor_tp_sl_recommendations
+#render_anchor_tp_sl_recommendations
 from ta_foundation.reports.html.sections.anchor_interaction_config import (
     render_anchor_interaction_config,
 )

@@ -35,6 +35,7 @@ EXPECTED_ARTIFACT_KEYS = (
     "tp_sl_candidates",
     "recommendations",
     "validation_folds",
+    "trade_recommendation_alignment",
 )
 
 
@@ -275,7 +276,6 @@ def run_anchor_interaction_analysis(
         tp_sl_candidates = pd.DataFrame()
         validation_folds = pd.DataFrame()
 
-
     recommendations = (
         tp_sl_candidates.sort_values(
             ["anchor_id", "stability_score", "robust_score", "expectancy_score"],
@@ -355,6 +355,7 @@ def run_anchor_interaction_analysis(
             "tp_sl_candidates": int(len(tp_sl_candidates)),
             "recommendations": int(len(recommendations)),
             "validation_fold_count": int(len(validation_folds)),
+            "trade_alignment_count": int(len(trade_recommendation_alignment)),
             "timezone": config.timezone,
             "warnings": warnings,
             "validation": {

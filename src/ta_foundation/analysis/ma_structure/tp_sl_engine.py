@@ -102,6 +102,23 @@ def _compute_outcome(row, tp, sl):
 
     return None
 
+def _clip01(value: float) -> float:
+    if pd.isna(value):
+        return np.nan
+    return float(max(0.0, min(1.0, value)))
+
+
+def _tail_dependency_share(outcomes: list[float]) -> float:
+    gains = sorted(float(x) for x in outcomes if x > 0)
+    if not gains:
+        return np.nan
+    total_gain = float(sum(gains))
+    if total_gain <= 0:
+        return np.nan
+    top_n = max(1, int(np.ceil(len(gains) * 0.10)))
+    tail_gain = float(sum(gains[-top_n:]))
+    return _clip01(tail_gain / total_gain)
+
 
 def _clip01(value: float) -> float:
     if pd.isna(value):
@@ -287,6 +304,7 @@ def _annotate_anchor_stability(anchor_df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
+    return out
 
 def score_tp_sl_candidates(
     segments: pd.DataFrame,
