@@ -35,6 +35,8 @@ from ta_foundation.reports.html.sections.market_regime_discovery import render_m
 from ta_foundation.reports.html.sections.anchor_interaction_overview import (
     render_anchor_interaction_overview,
 )
+from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import render_anchor_tp_sl_recommendations
+#render_anchor_tp_sl_recommendations
 from ta_foundation.reports.html.sections.anchor_interaction_config import (
     render_anchor_interaction_config,
 )
@@ -229,6 +231,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="anchor_interaction_diagnostics",
         default_title="MA Anchor Diagnostics",
         render_fn=render_anchor_interaction_diagnostics,
+    ),
+    "anchor_tp_sl_recommendations": SectionDef(
+        id="anchor_tp_sl_recommendations",
+        default_title="MA Anchor TP SL Recommendations",
+        render_fn=render_anchor_tp_sl_recommendations,
     ),
 
 # render_pattern_engine_diagnostics

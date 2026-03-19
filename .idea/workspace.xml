@@ -4,13 +4,20 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fix4 still bugs in code">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fixed report for base functionality.">
+      <change afterPath="$PROJECT_DIR$/ma_report2.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_tp_sl_recommendations.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_interaction_tp_sl_spec.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_tp_sl_recommendations.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_tp_sl_engine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_trade_alignment.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ma_report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ma_report.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -27,7 +34,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="CardFeature" />
+        <entry key="$PROJECT_DIR$" value="Simulator" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -479,7 +486,15 @@
       <option name="project" value="LOCAL" />
       <updated>1773928901499</updated>
     </task>
-    <option name="localTasksCounter" value="39" />
+    <task id="LOCAL-00039" summary="MA Anchor code some fixed report for base functionality.">
+      <option name="closed" value="true" />
+      <created>1773933983964</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1773933983964</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -506,7 +521,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added Run Card Catalog based on when they trade." />
     <MESSAGE value="Added Daily and weekly reports" />
     <MESSAGE value="Weekly Report modified" />
     <MESSAGE value="Weekly Report modified for ETD and charts" />
@@ -531,6 +545,7 @@
     <MESSAGE value="MA Anchor code some fix2" />
     <MESSAGE value="MA Anchor code some fix3" />
     <MESSAGE value="MA Anchor code some fix4 still bugs in code" />
-    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fix4 still bugs in code" />
+    <MESSAGE value="MA Anchor code some fixed report for base functionality." />
+    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fixed report for base functionality." />
   </component>
 </project>
