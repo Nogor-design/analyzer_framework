@@ -67,6 +67,7 @@ def detect_segments(
             if active is None:
                 if _crossed(prev_diff, curr_diff):
                     direction = 1 if curr_diff > 0 else -1
+                    entry_gap_cross = abs(prev_diff) > 0 and abs(curr_diff) > 0 and _sign(prev_diff) != _sign(curr_diff)
                     active = {
                         "segment_id": f"{run_id}::{anchor_col}::{seg_n}",
                         "run_id": run_id,
@@ -80,15 +81,16 @@ def detect_segments(
                         "entry_anchor_value": float(a_now),
                         "entry_cross_mode": config.cross_mode,
                         "exit_mode": config.exit_mode,
-                        "gap_cross": False,
+                        "gap_cross":  bool(entry_gap_cross),
                         "re_cross_count": 0,
                         "censored": True,
+                        "anchor_slope_at_entry": float(a_now - a_prev),
                     }
                     seg_n += 1
                 continue
 
             active["re_cross_count"] += int(_crossed(prev_diff, curr_diff))
-            gap_cross = abs(prev_diff) > 0 and abs(curr_diff) > 0 and _sign(prev_diff) != _sign(curr_diff)
+
             min_bars_ok = (i - active["entry_bar_index"]) >= config.min_bars_after_entry
             band = 0.0
             if config.return_band_atr > 0 and not np.isnan(atr14.iloc[i]):
@@ -133,8 +135,8 @@ def detect_segments(
                     "immediate_failure": bool(immediate_failure),
                     "trend_regime_at_entry": None,
                     "vol_regime_at_entry": None,
-                    "anchor_slope_at_entry": float(a_now - a_prev),
-                    "gap_cross": bool(gap_cross),
+                    "anchor_slope_at_entry": float(active.get("anchor_slope_at_entry", np.nan)),
+                    "gap_cross": bool(active.get("gap_cross", False)),
                 })
                 active = None
 
@@ -152,7 +154,7 @@ def detect_segments(
                 "immediate_failure": False,
                 "trend_regime_at_entry": None,
                 "vol_regime_at_entry": None,
-                "anchor_slope_at_entry": np.nan,
+                "anchor_slope_at_entry": float(active.get("anchor_slope_at_entry", np.nan)),
             })
 
     out = pd.DataFrame(rows)

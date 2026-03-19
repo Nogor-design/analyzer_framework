@@ -112,15 +112,15 @@ def render_anchor_interaction_tp_sl_spec(ctx: Dict[str, Any]) -> str:
     val_rows = [
         [
             "fold_mode",
-            _safe_str(_cfg_get(derived_validation, "fold_mode", _cfg_get(folds, "mode", "blocked_kfold"))),
+            _safe_str(_cfg_get(derived_validation, "fold_mode", _cfg_get(folds, "mode", "anchored_walk_forward"))),
         ],
         [
             "min_train_segments",
-            _safe_int(_cfg_get(derived_validation, "min_train_segments", _cfg_get(folds, "min_train_segments", 120))),
+            _safe_int(_cfg_get(derived_validation, "min_train_segments", _cfg_get(folds, "min_train_segments", 150))),
         ],
         [
             "min_test_segments",
-            _safe_int(_cfg_get(derived_validation, "min_test_segments", _cfg_get(folds, "min_test_segments", 40))),
+            _safe_int(_cfg_get(derived_validation, "min_test_segments", _cfg_get(folds, "min_test_segments", 50))),
         ],
     ]
     html_out.append("<h4 style='margin-top:16px'>Validation Controls</h4>")

@@ -67,19 +67,34 @@ def build_summary_by_anchor_regime(
         return pd.DataFrame()
 
     df = segments.merge(path_stats, on="segment_id", how="left")
-    trend = df.get("trend_regime_at_entry")
-    vol = df.get("vol_regime_at_entry")
-    df["trend_regime_at_entry"] = trend.fillna("unknown") if trend is not None else "unknown"
-    df["vol_regime_at_entry"] = vol.fillna("unknown") if vol is not None else "unknown"
+
+    if "trend_regime_at_entry" not in df.columns:
+        df["trend_regime_at_entry"] = "unknown"
+    else:
+        df["trend_regime_at_entry"] = df["trend_regime_at_entry"].fillna("unknown")
+
+    if "vol_regime_at_entry" not in df.columns:
+        df["vol_regime_at_entry"] = "unknown"
+    else:
+        df["vol_regime_at_entry"] = df["vol_regime_at_entry"].fillna("unknown")
+
+    if "slope_bucket_at_entry" not in df.columns:
+        df["slope_bucket_at_entry"] = "unknown"
+    else:
+        df["slope_bucket_at_entry"] = df["slope_bucket_at_entry"].fillna("unknown")
 
     rows = []
-    grouped = df.groupby(["anchor_id", "trend_regime_at_entry", "vol_regime_at_entry"], dropna=False)
-    for (anchor_id, trend_regime, vol_regime), g in grouped:
+    grouped = df.groupby(
+        ["anchor_id", "trend_regime_at_entry", "vol_regime_at_entry", "slope_bucket_at_entry"],
+        dropna=False,
+    )
+    for (anchor_id, trend_regime, vol_regime, slope_bucket), g in grouped:
         n = len(g)
         rows.append({
             "anchor_id": anchor_id,
             "trend_regime_at_entry": trend_regime,
             "vol_regime_at_entry": vol_regime,
+            "slope_bucket_at_entry": slope_bucket,
             "n_segments": int(n),
             "median_mfe_atr": _pct(g["mfe_atr"], 0.50),
             "median_mae_atr": _pct(g["mae_atr"], 0.50),
@@ -88,6 +103,10 @@ def build_summary_by_anchor_regime(
             "meets_sample_floor": bool(n >= regime_sample_floor),
         })
 
-    return pd.DataFrame(rows).sort_values(
-        ["anchor_id", "trend_regime_at_entry", "vol_regime_at_entry"]
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+
+    return out.sort_values(
+        ["anchor_id", "trend_regime_at_entry", "vol_regime_at_entry", "slope_bucket_at_entry"]
     ).reset_index(drop=True)

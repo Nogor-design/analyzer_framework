@@ -61,6 +61,31 @@ def _safe_float(x: Any, digits: int = 3) -> str:
 def _bool_label(x: Any) -> str:
     return "yes" if bool(x) else "no"
 
+def _analysis_status(ai_meta: Optional[Dict[str, Any]], ai_assets: Dict[str, Any]) -> str:
+    if not isinstance(ai_meta, dict):
+        return "not_run"
+
+    reason = str(ai_meta.get("reason") or ((ai_meta.get("diagnostics") or {}).get("reason")) or "").strip()
+    if reason:
+        return "analysis_failed"
+
+    if ai_assets:
+        return "ok"
+
+    return "metadata_only"
+
+
+def _engine_target(ai_meta: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(ai_meta, dict):
+        return "—"
+
+    engine = ai_meta.get("engine") or {}
+    instrument = str(engine.get("instrument") or "").strip()
+    contract = str(engine.get("contract") or "").strip()
+    timeframe = str(engine.get("timeframe") or "").strip()
+
+    parts = [p for p in [instrument, contract, timeframe] if p]
+    return html.escape(" / ".join(parts)) if parts else "—"
 
 def _html_table(df: pd.DataFrame, *, max_rows: int = 200, title: Optional[str] = None) -> str:
     if df is None or len(df) == 0:
@@ -193,6 +218,7 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
             "summary_by_anchor_regime",
             "tp_sl_candidates",
             "recommendations",
+            "validation_folds",
         ]
         missing_assets = [k for k in expected_assets if k not in ai_assets]
 
@@ -205,6 +231,8 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
         rows.append(
             {
                 "run_id": rid,
+                "analysis_status": _analysis_status(ai_meta, ai_assets),
+                "engine_target": _engine_target(ai_meta),
                 "ai_attached": "yes" if (assets_attached and metadata_attached) else "no",
                 "assets_attached": _bool_label(assets_attached),
                 "metadata_attached": _bool_label(metadata_attached),
@@ -231,6 +259,7 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
         diagnostics = (ai_meta.get("diagnostics") or {}) if isinstance(ai_meta, dict) else {}
         warnings = diagnostics.get("warnings", []) if isinstance(diagnostics, dict) else []
 
+
         focus_detail = f"""
         <div class="ai-card">
           <h3>Focus run detail</h3>
@@ -243,7 +272,8 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
             summary_by_anchor={len(_df(ai_assets, 'summary_by_anchor'))},
             summary_by_anchor_regime={len(_df(ai_assets, 'summary_by_anchor_regime'))},
             tp_sl_candidates={len(_df(ai_assets, 'tp_sl_candidates'))},
-            recommendations={len(_df(ai_assets, 'recommendations'))}
+            recommendations={len(_df(ai_assets, 'recommendations'))},
+            validation_folds={len(_df(ai_assets, 'validation_folds'))}
           </div>
           <div class="ai-muted">
             Metadata attached: {"yes" if isinstance(ai_meta, dict) else "no"}
@@ -273,6 +303,15 @@ def render_anchor_interaction_diagnostics(ctx: Dict[str, Any]) -> str:
         {_html_table(df, max_rows=200, title="Run health")}
       </div>
       {focus_detail}
+      <div class="ai-card">
+        <h3>How to read failures</h3>
+        <ul style="margin-left:18px">
+          <li><b>analysis_status=ok</b>: analytics attached successfully and section is reading in-memory results.</li>
+          <li><b>analysis_status=analysis_failed</b>: the analysis helper failed upstream; the <code>warnings</code> cell shows the captured exception.</li>
+          <li><b>analysis_status=metadata_only</b>: metadata exists but no in-memory assets were attached for this run.</li>
+          <li><b>analysis_status=not_run</b>: no anchor interaction metadata was attached to that package.</li>
+        </ul>
+      </div>
       <div class="ai-card">
         <h3>Guardrails</h3>
         <ul style="margin-left:18px">

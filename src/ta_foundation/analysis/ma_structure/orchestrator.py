@@ -9,7 +9,28 @@ from .anchors import build_anchors_table, ensure_datetime_index
 from .models import EngineConfig
 from .path_metrics import compute_path_metrics
 from .segment_detection import detect_segments
+from .regime_context import attach_regime_context
 from .tp_sl_engine import score_tp_sl_candidates
+
+
+def _coerce_bars_candidate(obj: Any) -> Optional[pd.DataFrame]:
+    if isinstance(obj, pd.DataFrame):
+        return obj
+
+    if isinstance(obj, dict):
+        for item in obj.values():
+            candidate = _coerce_bars_candidate(item)
+            if isinstance(candidate, pd.DataFrame):
+                return candidate
+        return None
+
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            candidate = _coerce_bars_candidate(item)
+            if isinstance(candidate, pd.DataFrame):
+                return candidate
+
+    return None
 
 
 
@@ -35,8 +56,9 @@ def _extract_market_bars(
                 contract=contract,
                 timeframe=timeframe,
             )
-            if isinstance(df, pd.DataFrame):
-                candidates.append(df)
+            candidate = _coerce_bars_candidate(df)
+            if isinstance(candidate, pd.DataFrame):
+                candidates.append(candidate)
         except Exception:
             pass
 
@@ -44,11 +66,17 @@ def _extract_market_bars(
         mb = getattr(market, "minute_bars")
         if isinstance(mb, dict):
             if instrument and contract and (instrument, contract) in mb:
-                candidates.append(mb[(instrument, contract)])
+                candidate = _coerce_bars_candidate(mb[(instrument, contract)])
+                if isinstance(candidate, pd.DataFrame):
+                    candidates.append(candidate)
 
     if hasattr(market, "get_market_bars"):
         try:
-            candidates.append(market.get_market_bars(instrument=instrument, timeframe=timeframe))
+            candidate = _coerce_bars_candidate(
+                market.get_market_bars(instrument=instrument, timeframe=timeframe)
+            )
+            if isinstance(candidate, pd.DataFrame):
+                candidates.append(candidate)
         except Exception:
             pass
 
@@ -61,8 +89,10 @@ def _extract_market_bars(
     )
 
 
+
 def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
     return {"type": "parquet", "path": path}
+
 
 
 def run_anchor_interaction_analysis(
@@ -89,6 +119,7 @@ def run_anchor_interaction_analysis(
     )
     anchors = build_anchors_table(bars, config.anchors)
     segments = detect_segments(bars, anchors, config, run_id=run_id)
+    segments = attach_regime_context(segments, bars)
     path_stats = compute_path_metrics(bars, anchors, segments)
     summary_by_anchor = build_summary_by_anchor(
         segments,
@@ -110,6 +141,8 @@ def run_anchor_interaction_analysis(
         min_test_segments=config.tp_sl_min_test_segments,
     ) if config.tp_sl_enabled else pd.DataFrame()
 
+    validation_folds = pd.DataFrame()
+
     # MVP: recommendations = top row per anchor
     recommendations = (
         tp_sl_candidates.sort_values(["anchor_id", "expectancy_score"], ascending=[True, False])
@@ -126,6 +159,7 @@ def run_anchor_interaction_analysis(
         "summary_by_anchor_regime": summary_by_anchor_regime,
         "tp_sl_candidates": tp_sl_candidates,
         "recommendations": recommendations,
+        "validation_folds": validation_folds,
     }
 
     artifact_paths = {}
@@ -160,26 +194,23 @@ def run_anchor_interaction_analysis(
             "summary_by_anchor_regime": _artifact_ref(artifact_paths.get("summary_by_anchor_regime")),
             "tp_sl_candidates": _artifact_ref(artifact_paths.get("tp_sl_candidates")),
             "recommendations": _artifact_ref(artifact_paths.get("recommendations")),
+            "validation_folds": _artifact_ref(artifact_paths.get("validation_folds")),
         },
         "diagnostics": {
-        "n_input_bars": int(len(bars)),
-        "n_segments": int(len(segments)),
-        "n_censored": int(segments["censored"].sum()) if not segments.empty else 0,
-        "pct_censored": float(segments["censored"].mean()) if not segments.empty else 0.0,
-
-        "anchors_tested": len(config.anchors),
-
-        "tp_sl_candidates": int(len(tp_sl_candidates)),
-        "recommendations": int(len(recommendations)),
-
-        "timezone": config.timezone,
-
-        "warnings": [],
-        "validation": {
-            "fold_mode": config.tp_sl_fold_mode,
-            "min_train_segments": int(config.tp_sl_min_train_segments),
-            "min_test_segments": int(config.tp_sl_min_test_segments),
-        },
+            "n_input_bars": int(len(bars)),
+            "n_segments": int(len(segments)),
+            "n_censored": int(segments["censored"].sum()) if not segments.empty else 0,
+            "pct_censored": float(segments["censored"].mean()) if not segments.empty else 0.0,
+            "anchors_tested": len(config.anchors),
+            "tp_sl_candidates": int(len(tp_sl_candidates)),
+            "recommendations": int(len(recommendations)),
+            "timezone": config.timezone,
+            "warnings": [],
+            "validation": {
+                "fold_mode": config.tp_sl_fold_mode,
+                "min_train_segments": int(config.tp_sl_min_train_segments),
+                "min_test_segments": int(config.tp_sl_min_test_segments),
+            },
         },
     }
 

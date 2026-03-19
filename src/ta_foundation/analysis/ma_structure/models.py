@@ -38,9 +38,9 @@ class EngineConfig:
     tp_sl_unit: str = "atr"
     tp_grid: List[float] = field(default_factory=lambda: [0.8, 1.0, 1.3, 1.6, 2.0])
     sl_grid: List[float] = field(default_factory=lambda: [0.6, 0.8, 1.0, 1.2])
-    tp_sl_fold_mode: str = "blocked_kfold"
-    tp_sl_min_train_segments: int = 120
-    tp_sl_min_test_segments: int = 40
+    tp_sl_fold_mode: str = "anchored_walk_forward"
+    tp_sl_min_train_segments: int = 150
+    tp_sl_min_test_segments: int = 50
 
     @classmethod
     def from_options(cls, options: Dict[str, Any]) -> "EngineConfig":
@@ -53,6 +53,17 @@ class EngineConfig:
             for a in (options.get("anchors") or [])
         ]
         tp_sl = options.get("tp_sl") or {}
+        folds = tp_sl.get("folds") or {}
+
+        folds_mode = "anchored_walk_forward"
+        folds_min_train = 150
+        folds_min_test = 50
+        folds_raw = tp_sl.get("folds")
+        if isinstance(folds_raw, dict):
+            folds_mode = str(folds_raw.get("mode", folds_mode) or folds_mode).lower()
+            folds_min_train = int(folds_raw.get("min_train_segments", folds_min_train) or folds_min_train)
+            folds_min_test = int(folds_raw.get("min_test_segments", folds_min_test) or folds_min_test)
+
 
         return cls(
             instrument=options.get("instrument"),
@@ -72,7 +83,7 @@ class EngineConfig:
             tp_sl_unit=str(tp_sl.get("unit", "atr")).lower(),
             tp_grid=[float(x) for x in (tp_sl.get("tp_grid") or [0.8, 1.0, 1.3, 1.6, 2.0])],
             sl_grid=[float(x) for x in (tp_sl.get("sl_grid") or [0.6, 0.8, 1.0, 1.2])],
-            tp_sl_fold_mode=str(folds.get("mode", "blocked_kfold")).lower(),
-            tp_sl_min_train_segments=int(folds.get("min_train_segments", 120) or 120),
-            tp_sl_min_test_segments=int(folds.get("min_test_segments", 40) or 40),
+            tp_sl_fold_mode=folds_mode,
+            tp_sl_min_train_segments=int(folds.get("min_train_segments", 150) or 150),
+            tp_sl_min_test_segments=int(folds.get("min_test_segments", 50) or 50),
         )
