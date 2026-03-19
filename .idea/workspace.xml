@@ -4,21 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fix3">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/regime_context.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_interaction_diagnostics.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fix4 still bugs in code">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/aggregation.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/aggregation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_diagnostics.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_diagnostics.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -479,7 +471,15 @@
       <option name="project" value="LOCAL" />
       <updated>1773780406039</updated>
     </task>
-    <option name="localTasksCounter" value="38" />
+    <task id="LOCAL-00038" summary="MA Anchor code some fix4 still bugs in code">
+      <option name="closed" value="true" />
+      <created>1773928901499</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1773928901499</updated>
+    </task>
+    <option name="localTasksCounter" value="39" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -506,7 +506,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
     <MESSAGE value="Added Run Card Catalog based on when they trade." />
     <MESSAGE value="Added Daily and weekly reports" />
     <MESSAGE value="Weekly Report modified" />
@@ -531,6 +530,7 @@
     <MESSAGE value="MA Anchor code some fix" />
     <MESSAGE value="MA Anchor code some fix2" />
     <MESSAGE value="MA Anchor code some fix3" />
-    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fix3" />
+    <MESSAGE value="MA Anchor code some fix4 still bugs in code" />
+    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fix4 still bugs in code" />
   </component>
 </project>

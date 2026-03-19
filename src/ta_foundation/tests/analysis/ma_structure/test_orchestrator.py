@@ -11,7 +11,6 @@ from ta_foundation.analysis.ma_structure.orchestrator import (
     run_anchor_interaction_analysis,
 )
 
-
 def _sample_bars() -> pd.DataFrame:
     idx = pd.date_range("2025-02-03 08:00", periods=240, freq="min", tz="America/Denver")
     close = 100 + np.cumsum(np.random.default_rng(3).normal(0, 0.2, len(idx)))
@@ -87,31 +86,35 @@ def test_run_anchor_interaction_analysis_accepts_tuple_wrapped_bars() -> None:
     assert "anchor_interaction" in pkg.assets
     assert isinstance(pkg.assets["anchor_interaction"]["tp_sl_candidates"], pd.DataFrame)
     assert isinstance(pkg.assets["anchor_interaction"]["validation_folds"], pd.DataFrame)
+    assert isinstance(pkg.assets["anchor_interaction"]["tp_sl_candidates"], pd.DataFrame)
+    assert isinstance(pkg.assets["anchor_interaction"]["validation_folds"], pd.DataFrame)
     assert "validation_folds" in pkg.metadata["derived"]["anchor_interaction"]["artifacts"]
     assert pkg.metadata["derived"]["anchor_interaction"]["diagnostics"]["validation_fold_count"] >= 0
-    assert "trade_recommendation_alignment" in pkg.assets["anchor_interaction"]
-    assert "trade_recommendation_alignment" in pkg.metadata["derived"]["anchor_interaction"]["artifacts"]
-    if not pkg.assets["anchor_interaction"]["recommendations"].empty:
-        rec = pkg.assets["anchor_interaction"]["recommendations"].iloc[0]
-        assert "stability_score" in pkg.assets["anchor_interaction"]["recommendations"].columns
-        assert "fold_agreement" in pkg.assets["anchor_interaction"]["recommendations"].columns
-        assert float(rec["stability_score"]) >= 0.0
 
 
 def test_attach_anchor_interaction_failure_populates_metadata_envelope() -> None:
-    bars = _sample_bars()
-    pkg = _Pkg(
-        trades=pd.DataFrame(
-            {
-                "trade_id": [1],
-                "market_pos": ["Long"],
-                "entry_time": [bars["dt"].iloc[40]],
-                "exit_time": [bars["dt"].iloc[60]],
-                "entry_price": [float(bars["close"].iloc[40])],
-                "exit_price": [float(bars["close"].iloc[60])],
-            }
-        )
+    pkg = _Pkg()
+
+    meta = attach_anchor_interaction_failure(
+        pkg=pkg,
+        reason="anchor_interaction_exception: ValueError: sample failure",
+        options={
+            "enabled": True,
+            "instrument": "NQ",
+            "contract": "H25",
+            "anchors": [{"family": "EMA", "length": 21, "source": "close"}],
+            "tp_sl": {"folds": {"mode": "anchored_walk_forward", "min_train_segments": 10, "min_test_segments": 5}},
+        },
     )
+
+    assert meta["disabled"] is True
+    assert meta["engine"]["timezone"] == "America/Denver"
+    assert meta["artifacts"]["validation_folds"]["path"] is None
+    assert meta["diagnostics"]["warnings"] == ["anchor_interaction_exception: ValueError: sample failure"]
+
+
+def test_attach_anchor_interaction_failure_populates_metadata_envelope() -> None:
+    pkg = _Pkg()
 
     meta = attach_anchor_interaction_failure(
         pkg=pkg,

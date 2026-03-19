@@ -233,7 +233,8 @@ def build_report_from_config(
             except Exception as e:
                 reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
                 if hasattr(anchor_interaction_orchestrator, "attach_anchor_interaction_failure"):
-                    anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason, options=ai_opts)
+                    anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason,
+                                                                                      options=ai_opts)
     try:
         compute_and_attach_pattern_engine(packages=packages, market=market, options=pe_opts)
     except Exception as e:

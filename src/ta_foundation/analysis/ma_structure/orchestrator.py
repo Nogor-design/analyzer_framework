@@ -26,6 +26,18 @@ EXPECTED_ARTIFACT_KEYS = (
     "trade_recommendation_alignment",
 )
 
+EXPECTED_ARTIFACT_KEYS = (
+    "anchors",
+    "segments",
+    "segment_path_stats",
+    "summary_by_anchor",
+    "summary_by_anchor_regime",
+    "tp_sl_candidates",
+    "recommendations",
+    "validation_folds",
+)
+
+
 
 def _coerce_bars_candidate(obj: Any) -> Optional[pd.DataFrame]:
     if isinstance(obj, pd.DataFrame):
@@ -105,6 +117,58 @@ def _extract_market_bars(
 def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
     return {"type": "parquet", "path": path}
 
+def _empty_artifacts() -> Dict[str, Dict[str, Any]]:
+    return {key: _artifact_ref(None) for key in EXPECTED_ARTIFACT_KEYS}
+
+
+def attach_anchor_interaction_failure(
+    *,
+    pkg: Any,
+    reason: str,
+    options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    config = EngineConfig.from_options(options or {})
+
+    pkg.metadata = getattr(pkg, "metadata", {}) or {}
+    pkg.metadata.setdefault("derived", {})
+    pkg.metadata["derived"]["anchor_interaction"] = {
+        "version": "ai_v1",
+        "disabled": True,
+        "reason": reason,
+        "engine": {
+            "instrument": config.instrument,
+            "contract": config.contract,
+            "timeframe": config.timeframe,
+            "timezone": config.timezone,
+            "cross_mode": config.cross_mode,
+            "exit_mode": config.exit_mode,
+            "recross_policy": config.recross_policy,
+            "tp_sl_fold_mode": config.tp_sl_fold_mode,
+            "tp_sl_min_train_segments": config.tp_sl_min_train_segments,
+            "tp_sl_min_test_segments": config.tp_sl_min_test_segments,
+        },
+        "artifacts": _empty_artifacts(),
+        "diagnostics": {
+            "ok": False,
+            "reason": reason,
+            "n_input_bars": 0,
+            "n_segments": 0,
+            "n_censored": 0,
+            "pct_censored": 0.0,
+            "anchors_tested": len(config.anchors),
+            "tp_sl_candidates": 0,
+            "recommendations": 0,
+            "validation_fold_count": 0,
+            "timezone": config.timezone,
+            "warnings": [reason],
+            "validation": {
+                "fold_mode": config.tp_sl_fold_mode,
+                "min_train_segments": int(config.tp_sl_min_train_segments),
+                "min_test_segments": int(config.tp_sl_min_test_segments),
+            },
+        },
+    }
+    return pkg.metadata["derived"]["anchor_interaction"]
 
 def _empty_artifacts() -> Dict[str, Dict[str, Any]]:
     return {key: _artifact_ref(None) for key in EXPECTED_ARTIFACT_KEYS}
@@ -211,6 +275,7 @@ def run_anchor_interaction_analysis(
         tp_sl_candidates = pd.DataFrame()
         validation_folds = pd.DataFrame()
 
+
     recommendations = (
         tp_sl_candidates.sort_values(
             ["anchor_id", "stability_score", "robust_score", "expectancy_score"],
@@ -290,7 +355,6 @@ def run_anchor_interaction_analysis(
             "tp_sl_candidates": int(len(tp_sl_candidates)),
             "recommendations": int(len(recommendations)),
             "validation_fold_count": int(len(validation_folds)),
-            "trade_alignment_count": int(len(trade_recommendation_alignment)),
             "timezone": config.timezone,
             "warnings": warnings,
             "validation": {

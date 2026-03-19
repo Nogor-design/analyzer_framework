@@ -18,6 +18,7 @@ from ta_foundation.reports.html.config import load_report_configs, build_report_
 from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
 
 
+
 # --------------------------------------------------------
 # Locate MA Anchor configuration
 # --------------------------------------------------------
@@ -134,6 +135,10 @@ def main() -> int:
                     print(f"[ta_foundation] MA Anchor skipped for {run_id}: {res.get('reason')}")
 
             except Exception as e:
+                reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
+                if hasattr(anchor_interaction_orchestrator, "attach_anchor_interaction_failure"):
+                    anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason,
+                                                                                      options=anchor_config)
 
                 reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
                 if hasattr(anchor_interaction_orchestrator, "attach_anchor_interaction_failure"):
