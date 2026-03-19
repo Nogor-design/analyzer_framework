@@ -140,6 +140,10 @@ def main() -> int:
                     anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason,
                                                                                       options=anchor_config)
 
+                reason = f"anchor_interaction_exception: {type(e).__name__}: {e}"
+                if hasattr(anchor_interaction_orchestrator, "attach_anchor_interaction_failure"):
+                    anchor_interaction_orchestrator.attach_anchor_interaction_failure(pkg=pkg, reason=reason, options=anchor_config)
+
                 print(
                     f"[ta_foundation] WARNING anchor_interaction failed "
                     f"for {run_id}: {type(e).__name__}: {e}"

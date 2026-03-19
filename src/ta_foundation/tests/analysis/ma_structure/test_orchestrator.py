@@ -49,11 +49,24 @@ class _Pkg:
     run_id: str = "BronzeApolloGod"
     assets: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
+    trades: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def test_run_anchor_interaction_analysis_accepts_tuple_wrapped_bars() -> None:
-    pkg = _Pkg()
-    market = _TupleMarket(_sample_bars())
+    bars = _sample_bars()
+    pkg = _Pkg(
+        trades=pd.DataFrame(
+            {
+                "trade_id": [1],
+                "market_pos": ["Long"],
+                "entry_time": [bars["dt"].iloc[40]],
+                "exit_time": [bars["dt"].iloc[60]],
+                "entry_price": [float(bars["close"].iloc[40])],
+                "exit_price": [float(bars["close"].iloc[60])],
+            }
+        )
+    )
+    market = _TupleMarket(bars)
     options = {
         "enabled": True,
         "instrument": "NQ",

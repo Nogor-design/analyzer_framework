@@ -18,6 +18,10 @@ def _report_cfg_map(report_config: Any) -> Dict[str, Any]:
     if isinstance(report_config, dict):
         return report_config
 
+    raw = getattr(report_config, "raw", None)
+    if isinstance(raw, dict):
+        return raw
+
     out: Dict[str, Any] = {}
     for k in dir(report_config):
         if k.startswith("_"):

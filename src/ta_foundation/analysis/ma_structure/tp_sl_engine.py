@@ -6,6 +6,7 @@ import pandas as pd
 
 MIN_SAMPLE = 50
 
+
 def build_validation_folds(
     df: pd.DataFrame,
     *,
@@ -51,7 +52,6 @@ def build_validation_folds(
 
         return pd.DataFrame(out_rows)
 
-    # Fallback: blocked k-fold test windows for compatibility
     index_chunks = np.array_split(d.index.to_numpy(), max(1, int(k_folds)))
     for fold_id, idx in enumerate(index_chunks):
         if len(idx) < min_test:
@@ -78,6 +78,7 @@ def build_validation_folds(
         )
     return pd.DataFrame(out_rows)
 
+
 def _compute_outcome(row, tp, sl):
     mfe = row.get("mfe_atr")
     mae = row.get("mae_atr")
@@ -100,6 +101,24 @@ def _compute_outcome(row, tp, sl):
         return -sl
 
     return None
+
+def _clip01(value: float) -> float:
+    if pd.isna(value):
+        return np.nan
+    return float(max(0.0, min(1.0, value)))
+
+
+def _tail_dependency_share(outcomes: list[float]) -> float:
+    gains = sorted(float(x) for x in outcomes if x > 0)
+    if not gains:
+        return np.nan
+    total_gain = float(sum(gains))
+    if total_gain <= 0:
+        return np.nan
+    top_n = max(1, int(np.ceil(len(gains) * 0.10)))
+    tail_gain = float(sum(gains[-top_n:]))
+    return _clip01(tail_gain / total_gain)
+
 
 def _clip01(value: float) -> float:
     if pd.isna(value):
@@ -144,7 +163,6 @@ def _score_candidate(df, tp, sl):
 
     tp_prob = tp_first / decisive
     sl_prob = sl_first / decisive
-
     expectancy = tp_prob * tp - sl_prob * sl
 
     return {
@@ -163,7 +181,6 @@ def _fold_metrics(
     folds_df: pd.DataFrame,
     tp,
     sl,
-
 ):
     if folds_df is None or folds_df.empty:
         return {
@@ -174,7 +191,6 @@ def _fold_metrics(
         }
 
     d = df.sort_values("entry_ts")
-
     scores = []
 
     for _, fold in folds_df.iterrows():
@@ -208,6 +224,7 @@ def _fold_metrics(
         "fold_agreement": agreement,
         "fold_count": int(len(scores)),
     }
+
 
 def _sample_quality_flag(n_decisive: int, fold_count: int, min_test_segments: int) -> str:
     if n_decisive < max(1, int(min_test_segments)):
@@ -287,6 +304,8 @@ def _annotate_anchor_stability(anchor_df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
+    return out
+
 def score_tp_sl_candidates(
     segments: pd.DataFrame,
     path_stats: pd.DataFrame,
@@ -320,9 +339,7 @@ def score_tp_sl_candidates(
 
         for tp in tp_grid:
             for sl in sl_grid:
-
                 score = _score_candidate(g, tp, sl)
-
                 if not score:
                     continue
 
@@ -336,12 +353,9 @@ def score_tp_sl_candidates(
                         "tp_atr": float(tp),
                         "sl_atr": float(sl),
                         "n_decisive": n,
-
                         "tp_prob": score["tp_prob"],
                         "sl_prob": score["sl_prob"],
-
                         "expectancy_score": score["expectancy"],
-
                         "fold_mean_expectancy": fold_metrics["fold_mean_expectancy"],
                         "fold_std_expectancy": fold_metrics["fold_std_expectancy"],
                         "fold_agreement": fold_metrics["fold_agreement"],
@@ -363,8 +377,6 @@ def score_tp_sl_candidates(
     out = pd.concat(scored_groups, ignore_index=True)
 
     out["robust_score"] = out["expectancy_score"] * out["stability_score"].fillna(0.0)
-
-
 
     out = out.sort_values(
         ["anchor_id", "stability_score", "robust_score", "n_decisive"],

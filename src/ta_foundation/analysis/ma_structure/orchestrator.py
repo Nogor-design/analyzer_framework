@@ -13,6 +13,19 @@ from .regime_context import attach_regime_context
 from .tp_sl_engine import score_tp_sl_candidates
 from .trade_alignment import build_trade_recommendation_alignment
 
+
+EXPECTED_ARTIFACT_KEYS = (
+    "anchors",
+    "segments",
+    "segment_path_stats",
+    "summary_by_anchor",
+    "summary_by_anchor_regime",
+    "tp_sl_candidates",
+    "recommendations",
+    "validation_folds",
+    "trade_recommendation_alignment",
+)
+
 EXPECTED_ARTIFACT_KEYS = (
     "anchors",
     "segments",
@@ -45,7 +58,6 @@ def _coerce_bars_candidate(obj: Any) -> Optional[pd.DataFrame]:
                 return candidate
 
     return None
-
 
 
 def _extract_market_bars(
@@ -101,7 +113,6 @@ def _extract_market_bars(
     raise ValueError(
         f"Could not resolve market bars for instrument={instrument!r}, timeframe={timeframe!r}"
     )
-
 
 
 def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
@@ -163,6 +174,7 @@ def attach_anchor_interaction_failure(
 def _empty_artifacts() -> Dict[str, Dict[str, Any]]:
     return {key: _artifact_ref(None) for key in EXPECTED_ARTIFACT_KEYS}
 
+
 def attach_anchor_interaction_failure(
     *,
     pkg: Any,
@@ -211,6 +223,7 @@ def attach_anchor_interaction_failure(
         },
     }
     return pkg.metadata["derived"]["anchor_interaction"]
+
 
 def run_anchor_interaction_analysis(
     *,
