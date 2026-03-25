@@ -4,17 +4,37 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Added recommendations to the analysis">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/simulate.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/exit_policy_simulation.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fixes">
+      <change afterPath="$PROJECT_DIR$/ma_report3.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report55.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/settings_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_time_tp_sl.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/trade_pattern_audit.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_hourly_profile.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/trade_pattern_audit.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonBotV2/PantheonBotV2.cs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonBotV2/templates/sampleTemplate.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/PantheonMasterBotV01TesterV2.cs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/PantheonMasterBotV01TesterV2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/templates/BronzeApolloGod.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/templates/sampleTemplate.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MA_ANCHOR_INTERACTION_DESIGN.md" beforeDir="false" afterPath="$PROJECT_DIR$/MA_ANCHOR_INTERACTION_DESIGN.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ma_report2.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ma_report2.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pattern_engine.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/exits/policies.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/marketdata/tick_cache.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -31,11 +51,23 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="master" />
+        <entry key="$PROJECT_DIR$" value="Simulator" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Nogor-design&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Nogor-design/analyzer_framework.git&quot;,
+    &quot;accountId&quot;: &quot;4b6153b9-a4ed-4655-80ee-5a38b066e1e5&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 3
 }</component>
@@ -48,10 +80,114 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Python.config.executor": "Debug",
+    "Python.test_anchor_interaction_diagnostics.executor": "Run",
+    "Python.test_orchestrator.executor": "Run",
+    "Python.tst.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "CardFeature"
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "Simulator",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation",
+    "settings.editor.selected.configurable": "PyConsoleConfigurable.Python Console"
   }
 }]]></component>
+  <component name="PyConsoleOptionsProvider">
+    <option name="myPythonConsoleState">
+      <console-settings module-name="ta_foundation" is-module-sdk="true" working-directory="$PROJECT_DIR$">
+        <option name="myUseModuleSdk" value="true" />
+        <option name="myModuleName" value="ta_foundation" />
+        <option name="myWorkingDirectory" value="$PROJECT_DIR$" />
+      </console-settings>
+    </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonMasterBotV01TesterV2" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonBotV2\templates" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonBotV2" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonMasterBotV01TesterV2" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\tests\analysis\ma_structure" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.test_anchor_interaction_diagnostics">
+    <configuration name="test_anchor_interaction_diagnostics" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ta_foundation" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/ta_foundation/reports/html/sections" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_interaction_diagnostics.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="test_orchestrator" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ta_foundation" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="tst" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="ta_foundation" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/tst.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.test_anchor_interaction_diagnostics" />
+        <item itemvalue="Python.tst" />
+        <item itemvalue="Python.test_orchestrator" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -236,7 +372,159 @@
       <option name="project" value="LOCAL" />
       <updated>1771010079972</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Fixed simulate.py to read tick data correct">
+      <option name="closed" value="true" />
+      <created>1771077719821</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1771077719821</updated>
+    </task>
+    <task id="LOCAL-00023" summary="Fixed debug report for exit strategies">
+      <option name="closed" value="true" />
+      <created>1771338036270</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1771338036271</updated>
+    </task>
+    <task id="LOCAL-00024" summary="new debug report for exit strategies">
+      <option name="closed" value="true" />
+      <created>1771380045028</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1771380045028</updated>
+    </task>
+    <task id="LOCAL-00025" summary="new exit_policy_simulation.py">
+      <option name="closed" value="true" />
+      <created>1771537269532</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1771537269532</updated>
+    </task>
+    <task id="LOCAL-00026" summary="exit_policy_simulation_debug improved">
+      <option name="closed" value="true" />
+      <created>1771603391406</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1771603391406</updated>
+    </task>
+    <task id="LOCAL-00027" summary=" exit policy sim updated again">
+      <option name="closed" value="true" />
+      <created>1771675862719</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1771675862719</updated>
+    </task>
+    <task id="LOCAL-00028" summary=" New policy sim">
+      <option name="closed" value="true" />
+      <created>1771690706452</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1771690706452</updated>
+    </task>
+    <task id="LOCAL-00029" summary="New filter_discovery.py">
+      <option name="closed" value="true" />
+      <created>1771712669991</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1771712669991</updated>
+    </task>
+    <task id="LOCAL-00030" summary="New Pattern Engine">
+      <option name="closed" value="true" />
+      <created>1771953322030</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1771953322030</updated>
+    </task>
+    <task id="LOCAL-00031" summary="Muilti report functionality added">
+      <option name="closed" value="true" />
+      <created>1772370228557</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1772370228557</updated>
+    </task>
+    <task id="LOCAL-00032" summary="Survival fixed">
+      <option name="closed" value="true" />
+      <created>1772983246446</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1772983246446</updated>
+    </task>
+    <task id="LOCAL-00033" summary="New reporting on market discovery">
+      <option name="closed" value="true" />
+      <created>1773592148040</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1773592148040</updated>
+    </task>
+    <task id="LOCAL-00034" summary="MA Anchor code added">
+      <option name="closed" value="true" />
+      <created>1773758035043</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1773758035043</updated>
+    </task>
+    <task id="LOCAL-00035" summary="MA Anchor code some fix">
+      <option name="closed" value="true" />
+      <created>1773762411996</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1773762411996</updated>
+    </task>
+    <task id="LOCAL-00036" summary="MA Anchor code some fix2">
+      <option name="closed" value="true" />
+      <created>1773763186477</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1773763186477</updated>
+    </task>
+    <task id="LOCAL-00037" summary="MA Anchor code some fix3">
+      <option name="closed" value="true" />
+      <created>1773780406039</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1773780406039</updated>
+    </task>
+    <task id="LOCAL-00038" summary="MA Anchor code some fix4 still bugs in code">
+      <option name="closed" value="true" />
+      <created>1773928901499</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1773928901499</updated>
+    </task>
+    <task id="LOCAL-00039" summary="MA Anchor code some fixed report for base functionality.">
+      <option name="closed" value="true" />
+      <created>1773933983964</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1773933983964</updated>
+    </task>
+    <task id="LOCAL-00040" summary="MA Anchor code some fixes">
+      <option name="closed" value="true" />
+      <created>1773956332521</created>
+      <option name="number" value="00040" />
+      <option name="presentableId" value="LOCAL-00040" />
+      <option name="project" value="LOCAL" />
+      <updated>1773956332521</updated>
+    </task>
+    <option name="localTasksCounter" value="41" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -263,35 +551,31 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Adding missing files" />
-    <MESSAGE value="added settings info chart" />
-    <MESSAGE value="Parse and show images and settings" />
-    <MESSAGE value="New Bot Card" />
-    <MESSAGE value="Refined Card creation" />
-    <MESSAGE value="Fixed Duplicate charts in report." />
-    <MESSAGE value="New daily scoreboard" />
-    <MESSAGE value="Updated cards" />
-    <MESSAGE value="Fixed timeline" />
-    <MESSAGE value="I added in the MFE ranking" />
-    <MESSAGE value="Change maxprofit and stop to use kill profit and stop" />
-    <MESSAGE value="Added Run Card Catalog based on when they trade." />
-    <MESSAGE value="Added Daily and weekly reports" />
     <MESSAGE value="Weekly Report modified" />
     <MESSAGE value="Weekly Report modified for ETD and charts" />
     <MESSAGE value="Weekly Report modified and fix drawdown" />
     <MESSAGE value="Loading candle data" />
     <MESSAGE value="Candle data report" />
     <MESSAGE value="Added recommendations to the analysis" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added recommendations to the analysis" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py</url>
-          <option name="timeStamp" value="4" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
+    <MESSAGE value="Fixed simulate.py to read tick data correct" />
+    <MESSAGE value="Fixed debug report for exit strategies" />
+    <MESSAGE value="new debug report for exit strategies" />
+    <MESSAGE value="new exit_policy_simulation.py" />
+    <MESSAGE value="exit_policy_simulation_debug improved" />
+    <MESSAGE value=" exit policy sim updated again" />
+    <MESSAGE value=" New policy sim" />
+    <MESSAGE value="New filter_discovery.py" />
+    <MESSAGE value="New Pattern Engine" />
+    <MESSAGE value="Muilti report functionality added" />
+    <MESSAGE value="Survival fixed" />
+    <MESSAGE value="New reporting on market discovery" />
+    <MESSAGE value="MA Anchor code added" />
+    <MESSAGE value="MA Anchor code some fix" />
+    <MESSAGE value="MA Anchor code some fix2" />
+    <MESSAGE value="MA Anchor code some fix3" />
+    <MESSAGE value="MA Anchor code some fix4 still bugs in code" />
+    <MESSAGE value="MA Anchor code some fixed report for base functionality." />
+    <MESSAGE value="MA Anchor code some fixes" />
+    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fixes" />
   </component>
 </project>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 import pandas as pd
 
@@ -53,3 +53,12 @@ class IndicatorRegistry:
 
 # Global default registry instance (importable)
 DEFAULT_INDICATORS = IndicatorRegistry()
+
+# Ensure built-in indicators are registered.
+# NOTE: basic.py imports DEFAULT_INDICATORS from this module; importing it here AFTER
+# DEFAULT_INDICATORS is created avoids circular initialization issues.
+try:
+    from ta_foundation.analysis.indicators import basic as _basic  # noqa: F401
+except Exception:
+    # Keep registry importable even in minimal environments/tests where basic isn't present.
+    pass

@@ -1,90 +1,28 @@
 {
-  "generated_at": "2026-02-14T07:00:13",
-  "input_folder": "C:\\Users\\Owner\\Downloads\\BB1",
+  "generated_at": "2026-03-22T19:05:28",
+  "input_folder": "C:\\Users\\Owner\\Downloads\\B99",
   "timestamp_policy": {
     "timezone": "America/Denver",
     "timestamp_source": "ninjatrader_local_pc_time",
     "datetime_policy": "localized_on_ingest"
   },
-  "parsed_files": [
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeZeusGod_Analysis.csv",
-      "sha256": "bed3f21bcb20ad933b0b64629eefb04a882303598138f39b373d12a61d2e7459",
-      "size_bytes": 2124,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "daily",
-      "parser_name": "NinjaTraderDailyAnalysisCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeZeusGod_Settings.csv",
-      "sha256": "5c9c57b66b44c8d2a921608999043137feec5ee2a86a150e56369b34f4f1eb1c",
-      "size_bytes": 1267,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "settings",
-      "parser_name": "NinjaTraderSettingsCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeZeusGod_Summery.csv",
-      "sha256": "ea1e409725f586305f67bc929a4d5e8a014990fbe90c800ceb206c9c97a91b3b",
-      "size_bytes": 1548,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "summary",
-      "parser_name": "NinjaTraderSummaryCsvParser"
-    },
-    {
-      "path": "C:\\Users\\Owner\\Downloads\\BB1\\BronzeZeusGod_Trades.csv",
-      "sha256": "2472fc5c3b05d2e8fae9e34433a15033138832539654a07035e80a55ec7a801e",
-      "size_bytes": 66963,
-      "run_id": "BronzeZeusGod",
-      "parser_kind": "trades",
-      "parser_name": "NinjaTraderTradesCsvParser"
-    }
-  ],
+  "parsed_files": [],
   "unparsed_files": [],
   "warnings_by_run_id": {
-    "BronzeZeusGod": []
-  },
-  "extra": {
-    "run_id_regex": null,
-    "report": {
-      "type": "html",
-      "self_contained": true,
-      "embedded_images": true,
-      "output_filename": "comparison_report.html",
-      "output_path": "outputs\\comparison_report.html",
-      "report_config_path": "report.yaml"
-    },
-    "report_config_resolved": {
-      "title": "Strategy Comparison Report",
-      "output_filename": "comparison_report.html",
-      "sections": [
-        {
-          "id": "tick_data_diagnostics",
-          "title": "Tick Data Diagnostics",
-          "options": {
-            "instrument": "NQ",
-            "contract": "03-26",
-            "show_sample_rows": 20,
-            "compare_to_minute": true,
-            "compare_window_minutes": 240
-          }
-        },
-        {
-          "id": "exit_policy_simulation",
-          "title": "Exit Policy Simulation (Ticks)",
-          "options": {
-            "instrument": "NQ",
-            "contract": "03-26",
-            "min_trades": 5,
-            "top_n_runs": 12,
-            "tick_size": 0.25,
-            "atr_tf": "5m",
-            "atr_period": 14,
-            "bounded_to_original_exit": true,
-            "use_bid_ask_triggers": true
-          }
-        }
-      ]
-    }
+    "BronzeAphroditeMist": [],
+    "BronzeApolloEmber": [],
+    "BronzeApolloMist": [],
+    "BronzeAresBolt": [],
+    "BronzeAresCosmos": [],
+    "BronzeAresEmber": [],
+    "BronzeAresFire": [],
+    "BronzeAresInferno": [],
+    "BronzeAthenaMist": [],
+    "BronzeAtlantaBalance": [],
+    "BronzeAtlantaCosmos": [],
+    "BronzeAtlantaHunter": [],
+    "BronzeAtlantaMist": [],
+    "BronzeAtlantaSerenity": [],
+    "BronzeDionysusMist": []
   }
 }

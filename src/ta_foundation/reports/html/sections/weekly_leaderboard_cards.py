@@ -332,6 +332,7 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             continue
 
         trades_all = getattr(pkg, "trades", None)
+        # print(trades_all)
         if trades_all is None or len(trades_all) == 0:
             continue
 
@@ -369,6 +370,7 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             chart_baseline = float(first.equity_open) if first is not None else start_balance
 
         have_any = any(s is not None for s in snaps_week)
+        print(have_any)
         if not have_any:
             continue
 

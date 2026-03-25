@@ -1,0 +1,10 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "test_report22.html"
+  embedded_images: true   # enforced by builder; kept for clarity
+  timezone: "America/Denver"
+
+sections:
+  - id: comparison_overview
+    title: "Comparison Overview"
+

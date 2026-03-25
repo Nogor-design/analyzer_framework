@@ -1,0 +1,10 @@
+
+#To reset env
+deactivate 2>$null
+.\.venv\Scripts\Activate.ps1
+python -c "import sys; print(sys.executable)"
+python -c "import sys; print(sys.executable); print(sys.version)"
+
+
+python -m ta_foundation.cli.main --input "C:/Users/Owner/Downloads/B99" --output ./outputs --report-config ./exec_profile_cards.yaml --include-run-images --export-exec-cards-png --market-data "D:/MarketData" --recursive
+python -m ta_foundation.cli.main --input "C:/Users/Owner/Downloads/B99" --output ./outputs --report-config ./pattern_engine.yaml --include-run-images --export-exec-cards-png --market-data "D:/MarketData" --recursive

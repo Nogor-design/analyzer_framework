@@ -1,0 +1,826 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "Executive-3-22.html"
+  embedded_images: true   # enforced by builder; kept for clarity
+  timezone: "America/Denver"
+
+sections:
+
+
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard + Combo Selection"
+#    options:
+#      include_all_bot_charts: true
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#      combo_sets:
+#        - name: "Top 5 Pairs (k=2)"
+#          mode: top
+#          k: 2
+#          top_n: 5
+#          max_render: 5
+#
+#        - name: "Top 5 Triples (k=3)"
+#          mode: top
+#          k: 3
+#          top_n: 5
+#          beam_width: 250
+#          max_render: 5
+#
+#        - name: "Top 5 Quads (k=4)"
+#          mode: top
+#          k: 4
+#          top_n: 5
+#          beam_width: 300
+#          max_render: 5
+#
+#        - name: "My Explicit Combos (always render)"
+#          mode: explicit
+#          combos:
+#            - bot_numbers: [ 1, 3 ]
+#            - bot_numbers: [ 1, 3, 4, 8 ]
+#
+#  - id: comparison_overview
+#    title: "Comparison Overview"
+#
+#  - id: equity_curve_comparison
+#    title: "Equity Curve Comparison"
+#
+#  - id: run_kpi_cards
+#    title: "Run KPI Cards"
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Copy/Paste)"
+#    options:
+#      compact: false
+#      show_hint: true
+
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Slides)"
+#    options:
+#      style: slides
+#      density: comfortable
+#      layout: grid
+#      columns: 2
+#      show_hint: true
+#
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Minimal)"
+#    options:
+#      style: minimal
+#      density: compact
+#      layout: stack
+#      columns: 1
+#      show_hint: false
+
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Dark)"
+#    options:
+#      style: contrast
+#      density: compact
+#      layout: grid
+#      columns: 2
+#
+#  - id: run_snapshot_clipboard
+#    title: "Run Snapshot (Dark)"
+#    options:
+#      style: contrast
+#      density: compact
+#      layout: grid
+#      columns: 3
+
+
+#  - id: run_settings_table
+#    title: "Run Settings"
+#    options:
+#      max_rows: 500
+
+
+#  - id: run_settings_table
+#    title: "Run Settings"
+#    options:
+#      max_rows: 500
+#      show_run_image: true
+#      run_image_max_width: 420
+#
+##   Optional: also show in metadata cards
+#  - id: run_metadata_cards
+#    title: "Run Metadata Cards"
+#    options:
+#      show_run_image: true
+#      run_image_max_width: 280
+
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      card_width_px: 1280
+#      card_padding_px: 24
+#      image_width_px: 420
+#
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard (W/L/No-Trade)"
+#    options:
+#      max_runs: null
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#  - id: daily_scoreboard
+#    title: "Daily Scoreboard + Best Non-Co-Losing Combos"
+#    options:
+#      show_individual_equity: true
+#      include_summary_table: true
+#
+#      include_top_combos: true
+#      top_combo_n: 5
+#      beam_width: 250   # bump if you have many bots
+#      include_k2: true
+#      include_k3: true
+#      include_k4: true
+
+
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      background_style: image-soft-overlay   # options below
+#      card_width_px: 1280
+#      card_padding_px: 24
+#      image_width_px: 420
+#  - id: run_executive_profile_cards
+#    title: "Executive Strategy Profiles"
+#    options:
+#      show_run_image: true
+#      background_style: image-dark-overlay
+#      show_detail_charts: true
+#      detail_chart_layout: stack     # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
+#      detail_chart_gap_px: 16
+
+#Supported background_style values
+#Style	Description
+#solid	Current black background
+#image-cover	Full image, no overlay
+#image-soft-overlay	Light dark overlay (best for light images)
+#image-dark-overlay	Strong overlay (best for busy images)
+
+#  - id: run_executive_profile_cards
+#    title: Executive Strategy Profiles
+#    options:
+#      wlr_days_back: 30         # <- configurable N
+#      wlr_box_px: 10
+#      wlr_gap_px: 2
+#      wlr_show_legend: false
+#####Exec cards ####################################################
+#  - id: run_executive_profile_cards
+#    options:
+#      show_hint: true
+#      show_run_image: true
+#      background_style: image-dark-overlay   # options below
+#      card_width_px: 1180
+#      card_padding_px: 24
+#      image_width_px: 420
+#      wlr_days_back: 30
+#      wlr_gap_px: 2
+#      show_detail_charts: true
+#      detail_chart_layout: stack    # two-up | stack
+#      detail_chart_width_px: 1080  #540  | 1080
+#      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+#      timeline_cell_h_px: 10
+#      timeline_show_hours: true
+#      timeline_show_summary: true
+#####Exec cards ####################################################
+#
+#profit_factor
+#total_net_profit
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 200
+#      hide_missing_cards: true
+#      fallback_session_label: "Unclassified"
+#      fallback_market_label: "Unknown"
+#      session_windows:
+#        - { label: "London",        start: "00:00", end: "04:00" }
+#        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+#        - { label: "NY Late",       start: "10:30", end: "16:00" }
+#        - { label: "Asia",          start: "16:00", end: "23:59" }
+#      overrides:
+#          "BrassAtlasFire":
+#            session: "NY Pre→Early"
+#            market: "NQ"
+#          "SomeOtherRun":
+#            session: "NY Pre→Early"
+
+#  - id: run_card_catalog
+#    title: "Cards by Session → Market"
+#    options:
+#      metric: profit_factor
+#      sort_desc: true
+#      max_per_group: 20
+##
+#      overrides:
+#        "BrassAtlasFire":
+#          session: "London"
+#          market: "NQ"
+#        "SomeOtherRun":
+#          session: "NY Late"
+#
+#      regex_overrides:
+#        - pattern: "^LDN_"
+#          session: "London"
+#        - pattern: ".*_GC_.*"
+#          market: "GC"
+
+#
+#
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-03-06"   # optional; omit to auto-pick most recent
+#      top_n: 30
+#      hide_missing_cards: true
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Leaders"
+#    options:
+#      week_ending: "2026-02-03"   # optional; omit to auto-pick most recent
+#      top_n: 12
+#      hide_missing_cards: true
+#
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-02-03"     # optional
+#      top_n: 8
+#      lookback_days: 10
+#      heatmap_top_bots: 30
+#      hide_missing_cards: true
+
+#  - id: daily_leaderboard_cards
+#  title: "Daily Leaders"
+#  options:
+#    target_date: "2026-02-03"     # optional; omit to auto-pick most recent
+#    top_n: 8
+#    lookback_days: 10             # consistency window used for badge + heatmap
+#    heatmap_top_bots: 30          # number of bots shown in the heatmap
+#    hide_missing_cards: true
+
+#  - id: daily_leaderboard_cards
+#    title: "Daily Leaders"
+#    options:
+#      target_date: "2026-03-09"         # optional
+#      top_n: 400
+#      lookback_days: 10
+#      buffer_chart_top_bots: 8
+#      starting_balance: 50000
+#      trailing_dd: 2500
+
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+#      week_ending: "2026-02-13"   # optional
+#      top_n: 100
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      hide_missing_cards: true
+#####Weely Leaderboard ####################################################
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+      week_ending: "2026-03-20"   # optional
+      top_n: 200
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week      # fresh_week or: continuous
+      show_card_image: true          # or: false
+      show_chart: false
+      show_debug_table: false
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1
+#####Weely Leaderboard ####################################################
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL Bars (with MFE)"
+#    options:
+#      max_days_per_run: 8
+#      max_trades_per_day: 200
+#      mfe_alpha: 0.25
+#      show_run_card: true
+#      show_legend_hint: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 30
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+#
+#  - id: trades_intraday_pnl_by_day
+#    title: "Hourly Totals Only"
+#    options:
+#      show_only_totals: true
+#      hourly_totals_mode: "net"
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (MFE + MAE + Cum)"
+#    options:
+#      show_mae_bar: true
+#      mae_alpha: 0.20
+#      mae_width_ratio: 0.55
+#      mae_offset_ratio: 0.80
+#      show_cum_line: true
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades — Intraday PnL by Day (Sessions + Cum Line)"
+#    options:
+#      max_days_per_run: 5
+#      max_trades_per_session: 200
+#      show_cum_line: true
+#      show_trade_charts: true
+#      show_hourly_totals: true
+#      show_mae_bar: true
+#      mae_alpha: 0.80
+#      mae_width_ratio: .55
+#      mae_offset_ratio: 0.80
+#      hourly_totals_mode: "direction_split" #"direction_split"/"net"
+#      weekdays_include: [ "mon", "tue", "wed", "thu", "fri" ]
+#      sessions:
+#        - { name: "London",   start: "00:00", end: "06:00" }
+#        - { name: "NY", start: "06:00", end: "15:00" }
+#        - { name: "ASIA",     start: "16:00", end: "23:00" }
+
+#  - id: trades_intraday_pnl_by_day
+#    title: "Trades (ETD Line + Threshold + Ledger)"
+#    options:
+#      show_mae_bar: true
+#      show_etd_line: true
+#      show_etd_threshold_line: true
+#      etd_threshold: 2500
+#      show_ledger: true
+#      show_explanation: true
+#
+#      show_cum_line: true
+#      weekdays_include: [ "mon","tue","wed","thu","fri" ]
+
+#  - id: run_kpi_cards
+
+#  - id: trade_candle_overlay
+#    title: "Trades on Candles"
+#    options:
+#      window_minutes: 480
+#      padding_minutes: 30
+#      max_trades: 300
+
+#  - id: apex_drawdown_survival_profile
+#    title: "Apex 50K Drawdown Survival"
+#    options:
+#      portfolio_mc:
+#        n_paths: 3000
+#        seed: 123
+#        mode: correlated #iid or correlated
+#      apex:
+#        starting_balance: 50000
+#        trailing_drawdown: 2500
+#        lock_profit: 2600
+#      instruments:
+#        NQ: { tick_size: 0.25, tick_value: 5.0 }
+#        ES: { tick_size: 0.25, tick_value: 12.5 }
+#        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+#        MES: { tick_size: 0.25, tick_value: 1.25 }
+#        YM: { tick_size: 1.00, tick_value: 5.00 }
+#        NG: { tick_size: 0.001, tick_value: 10.0 }
+
+#  - id: tick_data_diagnostics
+#    title: Tick Data Diagnostics
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      show_sample_rows: 20
+#      compare_to_minute: true
+#      compare_window_minutes: 240
+
+
+#  - id: filter_discovery
+#    title: "Filter Discovery (Bars + Ticks)"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 60
+#      min_trades: 10
+#      sort_by: "net_pnl"           # net_pnl | trades | win_rate
+#      include_run_id_regex: null   # e.g. "NQ_.*_EMA50"
+#      exclude_run_id_regex: null
+
+#  - id: filter_discovery
+#    title: "Filter Discovery — per bot"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      ema_period: 50
+#      atr_period: 14
+#      include_micro: true
+#
+#      top_n_runs: 12
+#      min_trades: 10
+#      sort_by: "net_pnl"
+#
+#      write_recommendations_json: true
+#      rec_min_trades_run: 150
+#      rec_min_trades_bucket: 25
+#      rec_max_hour_buckets: 4
+#      rec_max_atr_quartiles: 3
+#      rec_require_better_by: 0.0
+#      out_dir: "./outputs"
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      # Output control
+#      top_n_runs: 12
+#      min_trades: 20
+#      include_run_id_regex: null
+#      exclude_run_id_regex: null
+#
+#      # Tick & ATR config
+#      tick_size: 0.25          # NQ
+#      atr_tf: "5m"
+#      atr_period: 14
+#      use_bid_ask_triggers: true
+#
+#      # Window rules
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      # Policies
+#      fixed_stop_atr_mult: 1.0
+#      fixed_target_atr_mult: 1.5
+#
+#      trail_stop_atr_mult: 1.0
+#      trail_atr_mult: 1.0
+#      trail_profit_target_atr_mult: null
+#
+#      be_enable: true
+#      be_trigger_atr_mult: 1.0
+#      be_offset_ticks: 0
+#      be_trail_atr_mult: 1.0
+#      be_profit_target_atr_mult: null
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      min_trades: 5
+#      top_n_runs: 12
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      use_bid_ask_triggers: false
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
+#
+#      time_stop_enable: true
+#      time_stop_minutes: 68
+#      time_stop_min_mfe_ticks: 6.0
+#
+#      giveback_enable: true
+#      giveback_arm_mfe_ticks: 18.0
+#      giveback_ticks: 10.0
+#
+#      be_enable: true
+#
+#      # Arm after +12 ticks instead of ATR-based threshold
+#      be_trigger_ticks: 10
+#
+#      # Stop goes to +4 ticks profit once armed
+#      be_offset_ticks: 4
+#
+#      # Other BE trail settings
+#      be_trail_atr_mult: 0.25
+
+
+
+
+#  - id: exit_policy_trade_debug
+#    options:
+#      run_id: BronzeAthenaGod
+#      trade_idx: 4
+#      tick_size: 0.25
+#      show_minutes: true
+#      candle_tf: "1m"
+#      pad_seconds: 30
+#      # Optional: keep these aligned with your exit_policy_simulation settings
+#      stop_ticks: 100
+##      target_ticks: 10
+#      start_trail_ticks: 40.0
+#      trail_amount:  20.0
+#      atr_tf: "1m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      use_bid_ask_triggers: true
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#      trade_idx: 3
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      overlay_stops: true
+#      overlay_targets: true
+#      overlay_be_arm: true
+#      show_trace_events: true
+#
+#      show_pnl_chart: true
+#      pnl_lockin_shading: true
+#      pnl_policy: "be_atr_trail"   # optional; defaults to first policy
+#      trace_every_n: 1
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug (All Trades)"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#
+#      run_all_trades: true
+#      start_trade_idx: 0
+#      max_trades: 25         # strongly recommended
+#      trace_every_n: 5       # recommended for speed
+#
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 180
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
+#
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Debug (All Trades + Index)"
+#    options:
+#      run_id: "BronzeAtlasEmber"
+#
+#      run_all_trades: true
+#      start_trade_idx: 0
+#      max_trades: 40
+#      trace_every_n: 8
+#
+#      show_index: true
+#      index_show_actual_pnl: true
+#
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      max_minutes_unbounded: 15
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Debug"
+#    options:
+#      run_id: "BronzeAresHunterV4"
+#      run_all_trades: true
+#      start_trade_idx: 0
+##      trade_idx: 3
+#
+#      policies: [  "be_atr_trail",  "TimeStopNoProgressPolicy", "TrailStopTargetPolicy"]
+#
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#
+#      start_trail_ticks: 30
+#      trail_amount: 20
+#      stop_ticks: 200
+#
+#
+#      # Fixed-then-trail (arm at 40 ticks MFE)
+#      fixed_then_arm_mfe_ticks: 40
+#      fixed_then_stop_atr_mult: 1.0
+#      fixed_then_trail_atr_mult: 1.25
+#
+#      # BE trail tuning
+#      be_trigger_ticks: 40
+#      be_offset_ticks: 4
+#      be_trail_atr_mult: 1.25
+#
+#      overlay_stops: true
+#      show_pnl_chart: true
+#      trace_every_n: 1
+
+#  - id: exit_policy_trade_debug
+#    options:
+#      run_id: BronzeAphroditeMist
+#      run_all_trades: true
+#      start_trade_idx: 0
+##      trade_idx: 3
+#      policies: [ "fixed_atr", "fixed_then_trail", "be_atr_trail", "atr_trail", "time_stop_no_progress", "fixed_then_chandelier" ]
+#      fixed_then_arm_mfe_ticks: 40
+#      time_stop_minutes: 8
+#      time_stop_min_mfe_ticks: 6
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation"
+#    options:
+#      top_n_runs: 12
+#      min_trades: 200
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      use_bid_ask_triggers: true
+#
+#      # NEW: align with trade_debug
+#      policies: [ "fixed_atr", "atr_trail", "be_atr_trail", "fixed_then_trail", "fixed_then_chandelier" ]
+#      fixed_then_arm_mfe_ticks: 40
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAphroditeMist"
+#      trade_idx: 3
+#      policies: [ "be_atr_trail", "TimeStopNoProgressPolicy", "TrailStopTargetPolicy" ]
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAphroditeMist"
+#      trade_idx: 4
+#      policies: [ "fixed_atr" ]
+#      policy_params:
+#        fixed_atr:
+#          stop_ticks: [ 60, 80 ]
+#          target_ticks: [ 120 ]
+#
+
+#  - id: exit_policy_trade_debug
+#    title: "Exit Policy Trade Debug"
+#    options:
+#      run_id: "BronzeAphroditeMist"
+#      trade_idx: 4
+#      policies: [ "TrailStopTargetPolicy", "BreakEvenAtrTrailPolicy" ]
+#      show_trace_events: false
+#      policy_params:
+#        TrailStopTargetPolicy:
+#          start_trail_ticks: [ 40,60 ]
+#          trail_amount: [ 20,10 ]
+#          stop_ticks: 200
+#        BreakEvenAtrTrailPolicy:
+#          be_trigger_ticks: [ 20 , 40 ]
+#          be_offset_ticks: 4
+#          be_trail_atr_mult: [.8, 1.25, 1.5 ]
+
+#  policies: "nt8_dynamic"
+#
+#    # MaxStop baseline (ticks)
+#    nt8_max_stop_ticks: 100
+#
+#    # Lock-in (stop-in-profit)
+#    nt8_use_lockin: true
+#    nt8_lockin_trigger_ticks: 25
+#    nt8_lockin_plus_ticks: 3
+#
+#    # Giveback from best high/low (MFE-based)
+#    nt8_use_giveback: true
+#    nt8_giveback_start_ticks: 70
+#    nt8_giveback_ticks: 25
+#
+#    # Optional classic trailing
+#    nt8_use_trail: false
+#    nt8_trail_start_ticks: 30
+#    nt8_trail_distance_ticks: 12
+
+#  - id: exit_policy_simulation
+#    title: "Exit Policy Simulation (Ticks)"
+#    options:
+#      instrument: NQ
+#      contract: "03-26"
+#      min_trades: 5
+#      top_n_runs: 12
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: false
+#      use_bid_ask_triggers: false
+#      chandelier_enable: true
+#      chandelier_stop_atr_mult: .5
+#      chandelier_trail_atr_mult: 1.0
+#      chandelier_profit_target_atr_mult: null
+#
+#      include_run_id_regex: "BronzeAphroditeMist|BronzeAphroditeSmog|BronzeAphroditeBalance|BronzeAresHunterV4|BronzeAresHunterV2|BronzeAresHunterV3"
+#      policies: [ "fixed_atr", "atr_trail", "be_atr_trail", "fixed_then_trail", "fixed_then_chandelier" ]
+#
+#
+#
+#      start_trail_ticks: [30,40,50]
+#      trail_amount: 20
+#      stop_ticks: 100
+#
+#
+#      # Fixed-then-trail (arm at 40 ticks MFE)
+#      fixed_then_arm_mfe_ticks: 20
+#      fixed_then_stop_atr_mult: 1.0
+#      fixed_then_trail_atr_mult: 1.25
+#
+#      # BE trail tuning
+#      be_trigger_ticks: 60
+#      be_offset_ticks: 4
+#      be_trail_atr_mult: .5
+#      nt8_max_stop_ticks: 100
+#
+#      # Lock-in (stop-in-profit)
+#      nt8_use_lockin: true
+#      nt8_lockin_trigger_ticks: 25
+#      nt8_lockin_plus_ticks: 3
+#
+#      # Giveback from best high/low (MFE-based)
+#      nt8_use_giveback: true
+#      nt8_giveback_start_ticks: 70
+#      nt8_giveback_ticks: 25
+#
+#      # Optional classic trailing
+#      nt8_use_trail: false
+#      nt8_trail_start_ticks: 30
+#      nt8_trail_distance_ticks: 12
+#
+
+#       downside filters (ticks)
+#      dd_limit_ticks: 250
+#      p05_min_ticks: -35
+#      cvar05_min_ticks: -60
+#      worst_trade_min_ticks: -120
+#      max_loss_streak_max: 6
+#      time_stop_enable: true
+#      time_stop_minutes: 68
+#      time_stop_min_mfe_ticks: 6.0
+#
+#      giveback_enable: true
+#      giveback_arm_mfe_ticks: 18.0
+#      giveback_ticks: 10.0
+#
+#      be_enable: true
+#
+#      # Arm after +12 ticks instead of ATR-based threshold
+#      be_trigger_ticks: 10
+#
+#      # Stop goes to +4 ticks profit once armed
+#      be_offset_ticks: 4
+#
+#      # Other BE trail settings
+#      be_trail_atr_mult: 0.25
+#  How to use it (options / config knobs)
+#
+#  Add these to your options (where you already set top_n_runs, min_trades, etc.):
+#
+#  Downside constraints (filter policies before ranking)
+#
+#  dd_limit_ticks
+#
+#  p05_min_ticks
+#
+#  cvar05_min_ticks
+#
+#  worst_trade_min_ticks
+#
+#  max_loss_streak_max
+#
+#  Example (prop-safe style):
+

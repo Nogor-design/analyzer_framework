@@ -1,0 +1,99 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "Pattern_report.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+pattern_engine:
+  prop:
+    tick_value_usd: 5.0
+    trailing_drawdown_usd: 2500
+    daily_loss_limit_usd: 1000
+  monte_carlo:
+    mc_horizon: 20
+    eval_days: 20
+    dd_mode: global_peak   # or session_reset
+    n_paths: 2000
+    seed: 7
+  enabled: true
+  scopes: ["run_attached", "market_discovery"]
+  run_id: "__market_discovery__::NQ::03-26::1m"
+  instrument: NQ
+  contract: "03-26"
+  tick_size: 0.25
+  timeframe: "1m"
+  horizons: [10, 20, 40]
+
+
+
+  sweep:
+    patterns:
+      - family: "ORB"
+        structure: "orb_break_retest"
+        direction_mode: "both"
+        params:
+          orb_minutes: [ 15 ]
+          retest_bars: [ 3,5 ]
+
+  market_discovery:
+    instrument: NQ
+    contract: "03-26"
+    timeframe: "1m"
+    bars_source: "auto"
+    start: null
+    end: null
+    run_id: "__market_discovery__::NQ::03-26::1m"
+
+    discovery:
+      atr_period: 14
+      n_regimes: 4
+    cv:
+      n_folds: 5
+
+sections:
+  - id: pattern_engine_overview
+    title: "Pattern Engine Overview"
+    options:
+      top_n_runs: 12
+      top_n_patterns: 20
+
+  - id: pattern_engine_mc_regime
+    title: "Pattern Engine — Regime-aware MC"
+    options:
+#      run_id: "BronzeAtlasEmber"     # optional
+#      horizon: 20                    # optional
+      top_n: 25
+      show_surface: true
+#      entity_id: ""                  # optional; set to a pattern_id/cluster_id to show surface
+
+  - id: pattern_engine_diagnostics
+    title: "Pattern Engine — Diagnostics"
+    options:
+      top_n_runs: 50
+      run_id: ""               # optional; blank = show across runs
+      show_only_failures: false
+      include_asset_key_list: true
+      include_issue_list: true
+
+
+#pattern_engine:
+#  sweep:
+#    time_windows:
+#      - id: london
+#        tz: Europe/London
+#        start: "02:00"
+#        end: "05:00"
+#
+#      - id: ny_open_5m
+#        tz: America/New_York
+#        start: "09:30"
+#        end: "09:35"
+#
+#    patterns:
+#      - family: ORB
+#        structure: orb_break_retest
+#        direction_mode: both
+#        time_windows: ["ny_open_5m"]     # optional, per-pattern
+#        params:
+#          orb_minutes: [15]
+#          retest_bars: [3, 5]

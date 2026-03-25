@@ -1,0 +1,73 @@
+report:
+  title: "Strategy Comparison Report"
+  output_filename: "Filter_Discovery_report2.html"
+  embedded_images: true   # enforced by builder; kept for clarity
+  timezone: "America/Denver"
+
+sections:
+
+
+#  - id: filter_discovery
+#    title: "Filter + Entry Signal Discovery"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      atr_period: 14
+#      ema_period: 50
+#      top_n_runs: 60
+#      min_trades: 10
+#
+#      # NEW
+#      entry_signal_enable: true
+#      tick_size: 0.25          # NQ
+#      entry_prev_bars: 1
+#      entry_swing_k: 2
+#      entry_near_edges_atr: [ 0.5, 1.0, 2.0 ]
+#      entry_near_labels: [ "<=0.5 ATR", "0.5–1 ATR", "1–2 ATR", ">2 ATR" ]
+#
+#  - id: filter_discovery
+#    title: "Filter + Entry Signal Discovery"
+#    options:
+#      bar_tf: "5m"
+#      htf_tf: "15m"
+#      atr_period: 14
+#      ema_period: 50
+#      min_trades: 10
+#
+#      entry_signal_enable: true
+#      tick_size: 0.25
+#
+#      # NEW session tuning (Denver time)
+#      session_start: "07:30"
+#      opening_range_minutes: 15
+#      overnight_start: "16:00"
+
+  - id: filter_discovery
+    title: "Filter + Entry Signal Discovery"
+    options:
+      bar_tf: "5m"
+      htf_tf: "15m"
+      atr_period: 14
+      ema_period: 50
+      min_trades: 10
+      entry_signal_per_run: true
+      entry_signal_per_run_min_trades: 1
+      entry_signal_per_run_top_n: 20
+      entry_signal_show_run_coverage: true
+
+      entry_signal_enable: true
+
+      # Futures session definition (Denver)
+      session_start: "07:30"
+      globex_start: "16:00"
+      opening_range_minutes: 15
+
+      # Per-run entry signal tables
+#      entry_signal_per_run: true
+#      entry_signal_per_run_top_n: 12
+#      entry_signal_per_run_min_trades: 30
+
+      # Optional: keep pooled view
+      entry_signal_show_pooled: false
+      entry_signal_insight_min_trades: 8
+      entry_signal_insight_top_n: 10

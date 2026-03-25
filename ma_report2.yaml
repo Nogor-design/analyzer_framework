@@ -1,0 +1,56 @@
+report:
+  title: MA Anchor Report
+  output_filename: ma_anchor_report.html
+
+anchor_interaction:
+  enabled: true
+  instrument: NQ
+  contract: "03-26"
+  timeframe: "1m"
+  anchors:
+    - { family: EMA, length: 100, source: close }
+    - { family: SMA, length: 200, source: close }
+  cross_mode: close
+  exit_mode: close
+  recross_policy: first_return
+  return_band_atr: 0.0
+  min_bars_after_entry: 1
+  tp_sl:
+    enabled: true
+    unit: atr
+    tp_grid: [0.8, 1.0, 1.3, 1.6, 2.0]
+    sl_grid: [0.6, 0.8, 1.0, 1.2]
+    folds:
+      mode: anchored_walk_forward
+      min_train_segments: 150
+      min_test_segments: 50
+
+sections:
+  - id: anchor_interaction_tp_sl_spec
+  - id: anchor_tp_sl_recommendations
+    options:
+      run_ids: [ "BronzeApolloGod","BronzeAphroditeSmog" ]
+      show_candidate_grid: true
+      show_trade_alignment: true
+      max_rows_per_run: 20
+      max_candidate_rows_per_run: 40
+      max_trade_alignment_rows: 25
+      conservative_min_stability: 0.75
+      balanced_min_stability: 0.55
+      conservative_max_tail_dependency: 0.50
+  - id: anchor_interaction_diagnostics
+
+
+
+#    options:
+#      run_ids: [ "BronzeApolloGod" ]
+#      show_candidate_grid: true
+#      show_trade_alignment: true
+#      max_rows_per_run: 20
+#      max_candidate_rows_per_run: 40
+#      max_trade_alignment_rows: 25
+#
+#    options:
+#      conservative_min_stability: 0.75
+#      balanced_min_stability: 0.55
+#      conservative_max_tail_dependency: 0.50

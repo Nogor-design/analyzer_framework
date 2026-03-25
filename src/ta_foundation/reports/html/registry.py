@@ -1,3 +1,5 @@
+# src/ta_foundation/reports/html/registry.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,7 +26,51 @@ from ta_foundation.reports.html.sections.apex_drawdown_survival_profile import r
 from ta_foundation.reports.html.sections.tick_data_diagnostics import render_tick_data_diagnostics
 from ta_foundation.reports.html.sections.filter_discovery import render_filter_discovery
 from ta_foundation.reports.html.sections.exit_policy_simulation import render_exit_policy_simulation
+from ta_foundation.reports.html.sections.exit_policy_simulation2 import render_exit_policy_simulation2
+from ta_foundation.reports.html.sections.exit_policy_trade_debug import render_exit_policy_trade_debug
+from ta_foundation.reports.html.sections.pattern_engine_diagnostics import render_pattern_engine_diagnostics
+from ta_foundation.reports.html.sections.pattern_market_discovery import render_pattern_market_discovery
+from ta_foundation.reports.html.sections.pattern_engine_mc_regime  import render_pattern_engine_mc_regime
+from ta_foundation.reports.html.sections.market_regime_discovery import render_market_regime_discovery
+from ta_foundation.reports.html.sections.anchor_interaction_overview import (
+    render_anchor_interaction_overview,
+)
+from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import render_anchor_tp_sl_recommendations
+#render_anchor_tp_sl_recommendations
+from ta_foundation.reports.html.sections.anchor_interaction_config import (
+    render_anchor_interaction_config,
+)
 
+from ta_foundation.reports.html.sections.anchor_interaction_overview import (
+    render_anchor_interaction_overview,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_anchor_matrix import (
+    render_anchor_interaction_anchor_matrix,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_tp_sl_spec import (
+    render_anchor_interaction_tp_sl_spec,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_diagnostics import (
+    render_anchor_interaction_diagnostics,
+)
+from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import (
+    render_anchor_tp_sl_recommendations,
+)
+from ta_foundation.reports.html.sections.anchor_interaction_hourly_profile import (
+    render_anchor_interaction_hourly_profile,
+)
+# render_pattern_engine_diagnostics
+# render_pattern_market_discovery
+# NEW
+from ta_foundation.reports.html.sections.pattern_engine_overview import (
+    render_pattern_engine_overview,
+)
+from ta_foundation.reports.html.sections.pattern_cluster_drilldown import (
+    render_pattern_cluster_drilldown,
+)
+from ta_foundation.reports.html.sections.trade_pattern_audit import (
+    render_trade_pattern_audit,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -37,6 +83,7 @@ class SectionDef:
 
 
 SECTION_REGISTRY: dict[str, SectionDef] = {
+    # --- existing sections ---
     "comparison_overview": SectionDef(
         id="comparison_overview",
         default_title="Comparison Overview",
@@ -62,7 +109,6 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Run Settings",
         render_fn=render_run_settings_table,
     ),
-
     "run_metadata_cards": SectionDef(
         id="run_metadata_cards",
         default_title="Run Metadata Cards",
@@ -105,7 +151,7 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
     ),
     "apex_drawdown_survival_profile": SectionDef(
         id="apex_drawdown_survival_profile",
-        default_title="apex drawdown",
+        default_title="Apex Drawdown Survival",
         render_fn=render_apex_drawdown_survival_profile,
     ),
     "tick_data_diagnostics": SectionDef(
@@ -123,6 +169,94 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Exit Policy Simulation",
         render_fn=render_exit_policy_simulation,
     ),
+    "exit_policy_trade_debug": SectionDef(
+        id="exit_policy_trade_debug",
+        default_title="Exit Policy Debug",
+        render_fn=render_exit_policy_trade_debug,
+    ),
+    "exit_policy_simulation2": SectionDef(
+        id="exit_policy_simulation2",
+        default_title="Exit Policy Simulation 2",
+        render_fn=render_exit_policy_simulation2,
+    ),
 
+    # --- NEW: Pattern Engine ---
+    "pattern_engine_overview": SectionDef(
+        id="pattern_engine_overview",
+        default_title="Pattern Engine Overview",
+        render_fn=render_pattern_engine_overview,
+    ),
+    "pattern_cluster_drilldown": SectionDef(
+        id="pattern_cluster_drilldown",
+        default_title="Pattern Cluster Drilldown",
+        render_fn=render_pattern_cluster_drilldown,
+    ),
+    "pattern_engine_diagnostics": SectionDef(
+        id="pattern_engine_diagnostics",
+        default_title="Pattern Diagnostic",
+        render_fn=render_pattern_engine_diagnostics,
+    ),
+    "pattern_market_discovery": SectionDef(
+        id="pattern_market_discovery",
+        default_title="Pattern Discovery",
+        render_fn=render_pattern_market_discovery,
+    ),
+    "pattern_engine_mc_regime": SectionDef(
+        id="pattern_engine_mc_regime",
+        default_title="Pattern Engine MC",
+        render_fn=render_pattern_engine_mc_regime,
+    ),
+    "market_regime_discovery": SectionDef(
+        id="market_regime_discovery",
+        default_title="Market Regime Discovery",
+        render_fn=render_market_regime_discovery,
+    ),
+    "anchor_interaction_overview": SectionDef(
+        id="anchor_interaction_overview",
+        default_title="Anchor Interaction Overview",
+        render_fn=render_anchor_interaction_overview,
+    ),
+    "anchor_interaction_config": SectionDef(
+        id="anchor_interaction_config",
+        default_title="MA Anchor Configuration",
+        render_fn=render_anchor_interaction_config,
+    ),
+    "anchor_interaction_overview": SectionDef(
+        id="anchor_interaction_overview",
+        default_title="MA Anchor Overview",
+        render_fn=render_anchor_interaction_overview,
+    ),
+    "anchor_interaction_anchor_matrix": SectionDef(
+        id="anchor_interaction_anchor_matrix",
+        default_title="MA Anchor Matrix",
+        render_fn=render_anchor_interaction_anchor_matrix,
+    ),
+    "anchor_interaction_tp_sl_spec": SectionDef(
+        id="anchor_interaction_tp_sl_spec",
+        default_title="MA Anchor TP/SL Specification",
+        render_fn=render_anchor_interaction_tp_sl_spec,
+    ),
+    "anchor_interaction_diagnostics": SectionDef(
+        id="anchor_interaction_diagnostics",
+        default_title="MA Anchor Diagnostics",
+        render_fn=render_anchor_interaction_diagnostics,
+    ),
+    "anchor_tp_sl_recommendations": SectionDef(
+        id="anchor_tp_sl_recommendations",
+        default_title="MA Anchor TP/SL Recommendations",
+        render_fn=render_anchor_tp_sl_recommendations,
+    ),
+    "anchor_interaction_hourly_profile": SectionDef(
+        id="anchor_interaction_hourly_profile",
+        default_title="TP/SL by Hour of Day",
+        render_fn=render_anchor_interaction_hourly_profile,
+    ),
+
+    # --- Trade Pattern Audit ---
+    "trade_pattern_audit": SectionDef(
+        id="trade_pattern_audit",
+        default_title="Trade Pattern Audit",
+        render_fn=render_trade_pattern_audit,
+    ),
+# render_pattern_engine_diagnostics
 }
-

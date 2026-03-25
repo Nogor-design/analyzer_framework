@@ -1,374 +1,159 @@
-ta_foundation — Architecture
-Overview
+# 🏛️ TA Foundation --- Architecture
 
-ta_foundation is a reusable analytics and reporting framework designed to:
+A production-grade analytics and reporting framework for **NinjaTrader
+strategy exports**.
 
-Ingest NinjaTrader exports from a folder containing multiple runs.
+------------------------------------------------------------------------
 
-Normalize data into a stable internal model (AnalysisPackage).
+# 📦 Overview
 
-Support shared market reference data (minute candles).
+`ta_foundation` ingests multiple NinjaTrader runs simultaneously,
+normalizes datasets into structured packages, computes reusable
+analytics, and generates **fully self-contained HTML reports**.
 
-Generate fully self-contained HTML reports (base64 embedded).
+The architecture emphasizes:
 
-Emit a reproducible manifest with file hashes and parser mappings.
+-   **Strict data contracts**
+-   **Extensibility**
+-   **Deterministic analytics**
+-   **Clean separation of responsibilities**
 
-The system is designed for safe extensibility via:
+Core workflow:
 
-New parsers
+    Raw NinjaTrader Exports
+            │
+            ▼
+        Parsers
+            │
+            ▼
+       Ingestion Pipeline
+            │
+            ▼
+     Analysis + Derived Metrics
+            │
+            ▼
+      HTML Report Generation
 
-New analysis helpers
+------------------------------------------------------------------------
 
-New report sections
+# ⚖️ Core Non-Negotiable Contracts
 
-Without rewriting the pipeline.
+## 🕒 1. Time Handling (Authoritative)
 
-Core Non-Negotiable Contracts
-1. Time Handling
-Trades / Daily / Summary
+All canonical timestamps follow strict rules.
 
-Source timestamps are NinjaTrader local PC time
+  Rule              Description
+  ----------------- -------------------------
+  Timezone          `America/Denver`
+  Datetime type     **Timezone-aware only**
+  Naive datetimes   ❌ Forbidden
 
-All datetimes are localized on ingest to:
+### Ingest Behavior
 
-America/Denver
+  Source                       Handling
+  ---------------------------- -------------------------------
+  NinjaTrader run timestamps   Localized to `America/Denver`
+  Shared market exports        Converted from UTC
+  Canonical models             Always timezone-aware
 
+------------------------------------------------------------------------
 
-Internal dataframes must use timezone-aware datetimes only.
+## 📊 2. Data Ownership
 
-Naive datetimes are forbidden in canonical models.
+The system distinguishes **run-scoped data** and **shared market data**.
 
-Minute Market Data (*.Last.txt)
+### 📁 Run-Scoped Data
 
-Typically UTC timestamps
+Each run produces **one `AnalysisPackage`** keyed by:
 
-Converted to America/Denver during ingest
+    run_id
 
-All canonical bars must be tz-aware America/Denver
+Fields stored:
 
-This rule applies globally.
+    AnalysisPackage
+    ├── trades
+    ├── daily
+    ├── summary
+    ├── settings
+    ├── metadata
+    ├── assets
+    └── warnings
 
-2. Multi-Run Ingest Model
+------------------------------------------------------------------------
 
-A folder may contain many independent strategy runs.
+### 🌎 Shared Market Data
 
-run_id Derivation
+Stored once inside **`MarketDataStore`**.
 
-Default:
+    MarketDataStore
+    ├── market_minute_bars
+    ├── market_ticks
+    └── derived/resampled cache
 
-Strip known suffixes:
+Rule:
 
-_Trades.csv
+    run_id = None
 
-_Analysis.csv
+Shared data **must never be duplicated into packages**.
 
-_Summery.csv
+------------------------------------------------------------------------
 
-_Summary.csv
+# 🧱 Layering Contract
 
-_Settings.csv
+The system is divided into **four strict layers**.
 
-Optional override:
+    1️⃣ Parsers
+    2️⃣ Pipeline
+    3️⃣ Analysis Helpers
+    4️⃣ Report Sections
 
---run-id-regex
+------------------------------------------------------------------------
 
+# 📂 Project Structure
 
-First capture group becomes run_id.
-
-3. Shared vs Run-Scoped Data
-
-This is critical.
-
-Run-Scoped Artifacts
-
-Attached to:
-
-AnalysisPackage
-
-
-Examples:
-
-Trades CSV
-
-Daily Analysis CSV
-
-Summary CSV
-
-Settings CSV
-
-These always have:
-
-run_id != None
-
-Shared / Global Artifacts
-
-Attached to:
-
-MarketDataStore
-
-
-Examples:
-
-Minute bar files (NQ 03-26.Last.txt)
-
-These return:
-
-ParsedArtifact(run_id=None)
-
-
-Shared artifacts must NEVER be duplicated inside AnalysisPackage.
-
-4. KPI Normalization
-
-Summary KPIs use normalized keys:
-
-Case-insensitive
-
-Punctuation-insensitive
-
-Spacing-insensitive
-
-Consumers must use tolerant lookup patterns.
-
-5. HTML Reporting Rules
-
-Reports must be fully self-contained.
-
-All images embedded as base64 PNG data URIs.
-
-No external CSS/JS/assets.
-
-Sections are independent and composable.
-
-report.yaml controls:
-
-Section ordering
-
-Section titles
-
-Section options
-
-Repository Layout (src-based packaging)
-ta_foundation/
-│
-├── ARCHITECTURE.md
-├── PROJECT_CONTEXT.md
-├── REPORT_SECTIONS.md
-├── report.yaml
-│
-└── src/ta_foundation/
-    ├── core/
-    │   ├── model.py              # AnalysisPackage, SummaryBlock
-    │   ├── registry.py           # ParserRegistry
-    │   ├── pipeline.py           # ingest_folder
-    │   ├── manifest.py
-    │
-    ├── parsers/
-    │   ├── base.py               # ParsedArtifact + Parser protocol
-    │   └── ninjatrader/
-    │       ├── trades_csv.py
-    │       ├── analysis_by_day_csv.py
-    │       ├── summary_csv.py
-    │       └── minute_bars_last_txt.py
-    │
-    ├── marketdata/
-    │   └── store.py              # MarketDataStore
+    src/ta_foundation
     │
     ├── analysis/
-    │   └── apex_trailing_model.py
-    │
-    ├── reports/html/
-    │   ├── builder.py            # HtmlReportBuilder
-    │   ├── registry.py           # SECTION_REGISTRY
-    │   ├── config.py             # build_report_from_config
-    │   ├── theme.py
-    │   ├── embed.py
-    │   └── sections/
-    │
-    └── cli/
-        └── main.py
+    ├── cli/
+    ├── core/
+    ├── marketdata/
+    ├── parsers/
+    └── reports/html/
 
-Runtime Data Flow
-1. Ingest Layer
-ingest_folder(...)
+------------------------------------------------------------------------
 
+# 💻 CLI & Outputs
 
-Enumerates CSV files
+Primary CLI:
 
-Selects parser via ParserRegistry
+    ta_foundation.cli.main
 
-Produces ParsedArtifact
+Capabilities:
 
-Groups into:
+-   ingest CSV exports
+-   recursive scanning
+-   run-id regex override
+-   shared market ingest
+-   HTML report generation
+-   manifest generation
 
-dict[str, AnalysisPackage]
+Output artifacts:
 
+    report.html
+    manifest.json
+    unparsed_files.txt
 
-Shared artifacts (run_id=None) attach to:
+------------------------------------------------------------------------
 
-MarketDataStore
+# 🏁 Design Philosophy
 
+The framework prioritizes:
 
-Pipeline returns:
+-   Deterministic analytics
+-   Strict contracts
+-   Reproducibility
+-   Composable reporting
+-   Safe extensibility
 
-IngestResult(
-    packages: dict[str, AnalysisPackage],
-    market: Optional[MarketDataStore],
-    unparsed_files: list[Path]
-)
-
-2. Report Construction
-
-Flow:
-
-report.yaml
-    ↓
-load_report_config(...)
-    ↓
-build_report_from_config(packages, cfg, market)
-    ↓
-HtmlReportBuilder.build(context)
-    ↓
-section.render_fn(section_ctx)
-
-HTML Section Architecture (Authoritative Contract)
-Section Registry
-
-Defined in:
-
-reports/html/registry.py
-
-
-Each section entry must use:
-
-@dataclass(frozen=True)
-class SectionDef:
-    id: str
-    default_title: str
-    render_fn: Callable[[dict], str]
-
-
-Rules:
-
-id must match report.yaml
-
-render_fn(ctx) must return HTML string
-
-Sections are pure renderers
-
-Sections must not read files directly
-
-Sections must not call ingest
-
-Section Context Contract
-
-Injected by HtmlReportBuilder:
-
-Each section receives:
-
-ctx["packages"]
-ctx["market"]
-ctx["options"]
-ctx["section_id"]
-ctx["section"]
-ctx["report_config"]
-
-
-All sections must follow this pattern:
-
-def render_x(ctx: Dict[str, Any]) -> str:
-    packages = ctx.get("packages", {}) or {}
-    options = ctx.get("options") or {}
-    market = ctx.get("market")
-    report_config = ctx.get("report_config")
-
-
-Never assume keys exist.
-
-Always guard.
-
-ctx["options"] is canonical.
-section_options is legacy.
-
-AnalysisPackage Contract
-
-Sections operate only on:
-
-pkg.trades
-pkg.daily
-pkg.summary
-pkg.settings
-pkg.metadata
-pkg.assets
-pkg.warnings
-
-
-Derived metrics must attach under:
-
-pkg.metadata["derived"][...]
-
-
-Never attach arbitrary new top-level attributes dynamically.
-
-Safe Extension Rules
-Adding a Parser
-
-Implement can_parse(path, header)
-
-Implement parse(path, run_id)
-
-Return ParsedArtifact
-
-If shared → run_id=None
-
-Register parser in CLI registry
-
-Adding a Report Section
-
-Create sections/<name>.py
-
-Implement render_<name>(ctx)
-
-Register in SECTION_REGISTRY
-
-Enable in report.yaml
-
-Use ctx["options"] only
-
-Adding Analysis Logic
-
-Add module under analysis/
-
-Do not embed heavy logic inside sections
-
-Store results under:
-
-pkg.metadata["derived"]
-
-Operational Conventions
-
-Never mix naive and tz-aware datetimes
-
-Never duplicate shared data into run packages
-
-Never bypass registry
-
-Never bypass builder
-
-Never parse YAML inside a section
-
-Never access disk inside a section
-
-Final Architectural Principle
-
-The system has 4 layers:
-
-Parsers → produce normalized artifacts
-
-Pipeline → assemble run packages + shared store
-
-Analysis → derive reusable metrics
-
-Sections → render pure HTML from ctx
-
-Sections must never collapse layers 1–3 into themselves.
+> Analytics pipelines should be predictable, inspectable, and
+> composable.
