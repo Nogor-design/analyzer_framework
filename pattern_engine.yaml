@@ -4,6 +4,28 @@ report:
   embedded_images: true
   timezone: "America/Denver"
 
+pattern_engine:
+    enabled: false           # true if you also want the full sweep
+    trade_pattern_audit:
+      enabled: true
+      instrument: "NQ"
+      contract:   "H25"
+      timeframe:  "5m"
+      signal_window_bars: 3  # 0 = exact entry bar only
+      verdict_threshold: 2.0
+      patterns:
+        - family: "MA_TREND"
+          structure: "ma_alignment"
+          weight: 2.0
+          params: { fast_period: 8, slow_period: 21 }
+        # ... etc
+
+sections:
+  - id: trade_pattern_audit
+    title: "Trade Pattern Audit"
+    options:
+      show_per_trade: true
+      min_trades: 5
 #pattern_engine:
 #  prop:
 #    trailing_drawdown_usd: 2500
@@ -61,20 +83,20 @@ report:
 #    cv:
 #      n_folds: 5
 
-sections:
-  - id: pattern_engine_overview
-    title: "Pattern Engine Overview"
-    options:
-      top_n_runs: 12
-      top_n_patterns: 20
-
-  - id: pattern_engine_mc_regime
-    title: "Pattern Engine — Regime-aware MC"
-    options:
-      run_id: "BronzeAtlasEmber"     # optional
-      horizon: 20                    # optional
-      top_n: 25
-      show_surface: true
+#sections:
+#  - id: pattern_engine_overview
+#    title: "Pattern Engine Overview"
+#    options:
+#      top_n_runs: 12
+#      top_n_patterns: 20
+#
+#  - id: pattern_engine_mc_regime
+#    title: "Pattern Engine — Regime-aware MC"
+#    options:
+#      run_id: "BronzeAtlasEmber"     # optional
+#      horizon: 20                    # optional
+#      top_n: 25
+#      show_surface: true
 #      entity_id: ""                  # optional; set to a pattern_id/cluster_id to show surface
 #  sweep:
 #    patterns:
@@ -160,14 +182,14 @@ sections:
 #      run_id: ""           # optional; if blank renderer will use the first package
 #      top_n_patterns: 20
 #
-  - id: pattern_engine_diagnostics
-    title: "Pattern Engine — Diagnostics"
-    options:
-      top_n_runs: 50
-      run_id: ""               # optional; blank = show across runs
-      show_only_failures: false
-      include_asset_key_list: true
-      include_issue_list: true
+#  - id: pattern_engine_diagnostics
+#    title: "Pattern Engine — Diagnostics"
+#    options:
+#      top_n_runs: 50
+#      run_id: ""               # optional; blank = show across runs
+#      show_only_failures: false
+#      include_asset_key_list: true
+#      include_issue_list: true
 #
 #  - id: pattern_cluster_drilldown
 #    title: "Pattern Engine — Cluster Drilldown"

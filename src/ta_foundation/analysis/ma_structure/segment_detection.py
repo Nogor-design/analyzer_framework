@@ -161,6 +161,13 @@ def detect_segments(
     if out.empty:
         return out
 
-    out["entry_ts"] = pd.to_datetime(out["entry_ts"])
-    out["exit_ts"] = pd.to_datetime(out["exit_ts"])
+    # Convert to DatetimeTZDtype preserving timezone.
+    # utc=True converts all tz-aware objects to UTC first (consistent dtype),
+    # then tz_convert restores America/Denver.  This avoids older-pandas
+    # behaviour where pd.to_datetime() on an object column silently strips tz.
+    for col in ("entry_ts", "exit_ts"):
+        try:
+            out[col] = pd.to_datetime(out[col], utc=True).dt.tz_convert("America/Denver")
+        except Exception:
+            out[col] = pd.to_datetime(out[col], errors="coerce")
     return out

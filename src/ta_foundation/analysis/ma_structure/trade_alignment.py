@@ -78,6 +78,15 @@ def build_trade_recommendation_alignment(
         if entry_ts.tzinfo is None or exit_ts.tzinfo is None:
             continue
 
+        # Normalise to bars timezone before comparison
+        bars_tz = getattr(bars_local.index, "tz", None)
+        if bars_tz is not None:
+            try:
+                entry_ts = entry_ts.tz_convert(bars_tz)
+                exit_ts = exit_ts.tz_convert(bars_tz)
+            except Exception:
+                continue
+
         window = bars_local[(bars_local["timestamp"] >= entry_ts) & (bars_local["timestamp"] <= exit_ts)]
         if window.empty:
             continue

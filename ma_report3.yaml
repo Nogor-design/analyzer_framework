@@ -1,0 +1,263 @@
+# =============================================================================
+# MA Anchor Interaction Report
+# =============================================================================
+# Run with:
+#   python -m ta_foundation.cli.main \
+#     --input  "C:/path/to/exports" \
+#     --output ./outputs \
+#     --report-config ma_report3.yaml \
+#     [--market-data "C:/path/to/market"] \
+#     [--recursive]
+#
+# This report runs the MA Anchor interaction engine and renders the results.
+# The engine has two modes:
+#
+#   discovery      — anchors specified manually in the 'anchors:' list below.
+#                    No dependency on trades or settings files.
+#
+#   strategy_aware — anchors extracted per-run from each run's _Settings.csv.
+#                    Falls back to the 'anchors:' list if extraction fails.
+#                    Trade-entry simulation runs automatically when trades exist.
+# =============================================================================
+
+report:
+  title: "MA Anchor Interaction Report"
+  output_filename: "ma_anchor_report.html"
+
+# =============================================================================
+# ANCHOR INTERACTION ENGINE — top-level config block
+# =============================================================================
+anchor_interaction:
+  enabled: true
+
+  # --------------------------------------------------------------------------
+  # Mode: "discovery" | "strategy_aware"
+  # --------------------------------------------------------------------------
+  mode: strategy_aware
+
+  # --------------------------------------------------------------------------
+  # Anchor source: "yaml" | "settings" | "auto"
+  #   yaml     — always use the anchors: list below
+  #   settings — extract from each run's _Settings.csv; fallback to yaml
+  #   auto     — same as settings, no warning on fallback
+  # --------------------------------------------------------------------------
+  anchor_source: settings
+
+  # --------------------------------------------------------------------------
+  # strategy_family: optional — selects a specific settings extractor.
+  # Leave blank (default) to use the Pantheon default extractor, which reads
+  # averageFast / averageSlow / averageTrend from any Pantheon template's
+  # _Settings.csv regardless of the template name.
+  # --------------------------------------------------------------------------
+  strategy_family: ""
+
+  # --------------------------------------------------------------------------
+  # Market data — must match a loaded market file in the input/market folder.
+  # contract: null means auto-select latest available contract.
+  # --------------------------------------------------------------------------
+  instrument: NQ
+  contract: "03-26"        # e.g. "03-26" to pin a specific contract; null = auto
+  timeframe: "1m"         # timeframe of the market bars to use for analysis
+
+  # --------------------------------------------------------------------------
+  # Fallback anchors — used when anchor_source: yaml, or when settings
+  # extraction fails.  These are the Pantheon strategy defaults.
+  # Add/remove entries to sweep different MA lengths.
+  # --------------------------------------------------------------------------
+  anchors:
+    - { family: SMA, length: 50,  source: close }
+    - { family: SMA, length: 200, source: close }
+    - { family: SMA, length: 300, source: close }
+  #   - { family: EMA, length: 21,  source: close }
+  #   - { family: SMA, length: 20,  source: close }
+  #   - { family: SMA, length: 100, source: close }
+
+  # --------------------------------------------------------------------------
+  # Segment detection behaviour
+  # --------------------------------------------------------------------------
+  cross_mode: close         # close | touch | hybrid
+  exit_mode: close          # close | touch
+  recross_policy: first_return
+  return_band_atr: 0.0      # hysteresis band around anchor (in ATR units)
+  return_band_ticks: 0.0    # hysteresis band in ticks (alternative to ATR)
+  min_bars_after_entry: 1   # ignore segments shorter than this
+
+  # --------------------------------------------------------------------------
+  # Sample floors (suppress low-sample summaries)
+  # --------------------------------------------------------------------------
+  descriptive_sample_floor: 100   # minimum segments for per-anchor summary
+  regime_sample_floor: 75         # minimum segments per anchor×regime cell
+
+  # --------------------------------------------------------------------------
+  # Structural TP/SL — scores (tp, sl) grid against MA cross-segment paths
+  # --------------------------------------------------------------------------
+  tp_sl:
+    enabled: true
+    unit: atr                               # atr (only supported unit currently)
+    tp_grid: [0.8, 1.0, 1.3, 1.6, 2.0]    # TP distances in ATR multiples
+    sl_grid: [0.6, 0.8, 1.0, 1.2]          # SL distances in ATR multiples
+    folds:
+      mode: anchored_walk_forward           # anchored_walk_forward | blocked_kfold
+      min_train_segments: 150
+      min_test_segments: 50
+
+  # --------------------------------------------------------------------------
+  # Trade-Entry Simulation — simulates TP/SL hits starting from each actual
+  # trade's entry bar.  Answers: "what TP/SL worked on these specific entries?"
+  # Enabled automatically when mode: strategy_aware and trades are loaded.
+  # --------------------------------------------------------------------------
+  trade_time_tp_sl:
+    enabled: true
+    atr_period: 14              # rolling ATR period used at each entry bar
+    max_bars_forward: 120       # bars to look ahead from entry (1m bars → 2 hrs)
+    tp_grid: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+    sl_grid: [0.3, 0.5, 0.75, 1.0, 1.25]
+
+
+# =============================================================================
+# SECTIONS
+# Omit run_ids to loop through ALL strategies in the folder (recommended).
+# Set run_ids to focus the display on specific runs.
+# =============================================================================
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Engine configuration + trade-time simulation results
+  # ---------------------------------------------------------------------------
+  - id: anchor_interaction_tp_sl_spec
+    title: "MA Anchor TP/SL Analysis"
+    options:
+      # run_ids: null means show ALL runs found in the input folder.
+      # Uncomment and list specific run IDs to filter:
+      # run_ids: [ "BronzeApolloGod", "BronzeAphroditeSmog" ]
+
+      max_candidate_rows_per_run: 40    # max rows shown per group per run
+
+  # ---------------------------------------------------------------------------
+  # Overview KPI cards (n segments, censoring rate, median MFE/MAE ATR, ETD)
+  # ---------------------------------------------------------------------------
+  - id: anchor_interaction_overview
+    title: "Anchor Interaction Overview"
+
+  # ---------------------------------------------------------------------------
+  # Anchor-length heatmaps: median MFE, MAE, ETD, efficiency, failure rate
+  # ---------------------------------------------------------------------------
+  - id: anchor_interaction_anchor_matrix
+    title: "Anchor Interaction Matrix"
+
+  # ---------------------------------------------------------------------------
+  # Structural TP/SL recommendations (Conservative / Balanced / Aggressive)
+  # with stability scores and OOS validation fields
+  # ---------------------------------------------------------------------------
+  - id: anchor_tp_sl_recommendations
+    title: "Structural TP/SL Recommendations"
+    options:
+      # run_ids: null          # filter to specific runs, or omit for all
+      max_rows_per_run: 20
+      show_trade_alignment: true
+      max_trade_alignment_rows: 25
+      conservative_min_stability: 0.75
+      balanced_min_stability: 0.55
+      conservative_max_tail_dependency: 0.50
+
+  # ---------------------------------------------------------------------------
+  # TP/SL expectancy heatmap by hour of day (structural segments)
+  # ---------------------------------------------------------------------------
+  - id: anchor_interaction_hourly_profile
+    title: "TP/SL by Hour of Day"
+    options:
+      min_decisive: 5          # minimum decisive outcomes per (hour, tp, sl) cell
+
+  # ---------------------------------------------------------------------------
+  # Diagnostics — anchor source used, fold counts, warnings
+  # ---------------------------------------------------------------------------
+  - id: anchor_interaction_diagnostics
+    title: "Anchor Engine Diagnostics"
+
+
+# =============================================================================
+# REFERENCE — All available anchor_interaction options
+# =============================================================================
+#
+# anchor_interaction:
+#   enabled: true | false
+#
+#   mode: discovery | strategy_aware
+#     discovery      → anchors from YAML only; no trades/settings needed
+#     strategy_aware → anchors from _Settings.csv per run; falls back to YAML
+#
+#   anchor_source: yaml | settings | auto
+#     yaml     → always use anchors: list
+#     settings → extract from pkg.settings; fallback to yaml on failure
+#     auto     → same as settings but silent fallback
+#
+#   strategy_family: string (optional)
+#     ""  (blank, default) → Pantheon default extractor: reads averageFast,
+#                            averageSlow, averageTrend from any Pantheon _Settings.csv
+#     PantheonMasterBotV01TesterV2 | PantheonBotV2 → same as blank
+#     (any unknown value)  → generic keyword scan (looks for "fast"/"slow"/"trend")
+#
+#   instrument: string (e.g. NQ, ES, MNQ)
+#   contract: string | null  (e.g. "03-26"; null = auto-select)
+#   timeframe: string (e.g. 1m, 5m, 15m)
+#
+#   anchors:                    # fallback / discovery sweep
+#     - { family: SMA|EMA, length: int, source: close|open|high|low }
+#
+#   cross_mode: close | touch | hybrid
+#   exit_mode:  close | touch
+#   recross_policy: first_return
+#   return_band_atr: float    (0.0 = no hysteresis)
+#   return_band_ticks: float  (0.0 = no hysteresis; alternative to ATR)
+#   min_bars_after_entry: int (1 = allow single-bar segments)
+#
+#   descriptive_sample_floor: int  (default 100)
+#   regime_sample_floor: int       (default 75)
+#
+#   tp_sl:
+#     enabled: true | false
+#     unit: atr
+#     tp_grid: [float, ...]   ATR multiples to test as TP
+#     sl_grid: [float, ...]   ATR multiples to test as SL
+#     folds:
+#       mode: anchored_walk_forward | blocked_kfold
+#       min_train_segments: int   (default 150)
+#       min_test_segments: int    (default 50)
+#
+#   trade_time_tp_sl:
+#     enabled: true | false
+#     atr_period: int             (default 14)
+#     atr_tf: string              (default: same as timeframe)
+#     max_bars_forward: int       (default 120; at 1m bars = 2 hours)
+#     tp_grid: [float, ...]       ATR multiples to test as TP
+#     sl_grid: [float, ...]       ATR multiples to test as SL
+#
+# -----------------------------------------------------------------------------
+# SECTION OPTIONS (under sections[].options)
+# -----------------------------------------------------------------------------
+#
+# anchor_interaction_tp_sl_spec:
+#   run_ids: [string, ...]       # filter runs to display; omit for all
+#   max_candidate_rows_per_run: int  (default 40)
+#
+# anchor_tp_sl_recommendations:
+#   run_ids: [string, ...]
+#   max_rows_per_run: int        (default 20)
+#   show_trade_alignment: bool   (default true)
+#   max_trade_alignment_rows: int (default 25)
+#   conservative_min_stability: float  (default 0.75)
+#   balanced_min_stability: float      (default 0.55)
+#   conservative_max_tail_dependency: float (default 0.50)
+#
+# anchor_interaction_overview:
+#   run_ids: [string, ...]
+#
+# anchor_interaction_anchor_matrix:
+#   run_ids: [string, ...]
+#
+# anchor_interaction_hourly_profile:
+#   min_decisive: int     (default 5; cells below this threshold shown as blank)
+#   run_ids: [string, ...]
+#
+# anchor_interaction_diagnostics:
+#   (no section-local options)

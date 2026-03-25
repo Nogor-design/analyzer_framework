@@ -4,20 +4,37 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fixed report for base functionality.">
-      <change afterPath="$PROJECT_DIR$/ma_report2.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_tp_sl_recommendations.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_interaction_tp_sl_spec.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/test_anchor_tp_sl_recommendations.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_tp_sl_engine.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/test_trade_alignment.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="MA Anchor code some fixes">
+      <change afterPath="$PROJECT_DIR$/ma_report3.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report55.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/settings_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_time_tp_sl.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/trade_pattern_audit.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_hourly_profile.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/trade_pattern_audit.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonBotV2/PantheonBotV2.cs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonBotV2/templates/sampleTemplate.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/PantheonMasterBotV01TesterV2.cs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/PantheonMasterBotV01TesterV2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/templates/BronzeApolloGod.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/templates/sampleTemplate.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ma_report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ma_report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MA_ANCHOR_INTERACTION_DESIGN.md" beforeDir="false" afterPath="$PROJECT_DIR$/MA_ANCHOR_INTERACTION_DESIGN.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ma_report2.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ma_report2.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/outputs/comparison_report.html" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/comparison_report.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/outputs/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/outputs/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pattern_engine.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pattern_engine.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/orchestrator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/tp_sl_engine.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/segment_detection.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/ma_structure/trade_alignment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/orchestrator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/pattern_engine/templates/builtins.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/anchor_interaction_tp_sl_spec.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -86,8 +103,13 @@
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\Backup\projects\PythonProject\ta_foundation" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonMasterBotV01TesterV2" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonBotV2\templates" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonBotV2" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies\PantheonMasterBotV01TesterV2" />
+      <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\strategies" />
       <recent name="D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\tests\analysis\ma_structure" />
     </key>
   </component>
@@ -494,7 +516,15 @@
       <option name="project" value="LOCAL" />
       <updated>1773933983964</updated>
     </task>
-    <option name="localTasksCounter" value="40" />
+    <task id="LOCAL-00040" summary="MA Anchor code some fixes">
+      <option name="closed" value="true" />
+      <created>1773956332521</created>
+      <option name="number" value="00040" />
+      <option name="presentableId" value="LOCAL-00040" />
+      <option name="project" value="LOCAL" />
+      <updated>1773956332521</updated>
+    </task>
+    <option name="localTasksCounter" value="41" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -521,7 +551,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added Daily and weekly reports" />
     <MESSAGE value="Weekly Report modified" />
     <MESSAGE value="Weekly Report modified for ETD and charts" />
     <MESSAGE value="Weekly Report modified and fix drawdown" />
@@ -546,6 +575,7 @@
     <MESSAGE value="MA Anchor code some fix3" />
     <MESSAGE value="MA Anchor code some fix4 still bugs in code" />
     <MESSAGE value="MA Anchor code some fixed report for base functionality." />
-    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fixed report for base functionality." />
+    <MESSAGE value="MA Anchor code some fixes" />
+    <option name="LAST_COMMIT_MESSAGE" value="MA Anchor code some fixes" />
   </component>
 </project>

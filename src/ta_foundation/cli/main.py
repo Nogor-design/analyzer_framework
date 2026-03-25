@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import traceback
 from pathlib import Path
 from typing import Any, Optional
 
@@ -148,6 +149,7 @@ def main() -> int:
                     f"[ta_foundation] WARNING anchor_interaction failed "
                     f"for {run_id}: {type(e).__name__}: {e}"
                 )
+                traceback.print_exc()
 
     else:
 

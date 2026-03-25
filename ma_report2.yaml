@@ -8,8 +8,8 @@ anchor_interaction:
   contract: "03-26"
   timeframe: "1m"
   anchors:
-    - { family: EMA, length: 21, source: close }
-    - { family: SMA, length: 50, source: close }
+    - { family: EMA, length: 100, source: close }
+    - { family: SMA, length: 200, source: close }
   cross_mode: close
   exit_mode: close
   recross_policy: first_return
@@ -29,6 +29,7 @@ sections:
   - id: anchor_interaction_tp_sl_spec
   - id: anchor_tp_sl_recommendations
     options:
+      run_ids: [ "BronzeApolloGod","BronzeAphroditeSmog" ]
       show_candidate_grid: true
       show_trade_alignment: true
       max_rows_per_run: 20

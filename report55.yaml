@@ -4,7 +4,7 @@ report:
   embedded_images: true   # enforced by builder; kept for clarity
   timezone: "America/Denver"
 
-#sections:
+sections:
 
 
 #  - id: daily_scoreboard
@@ -291,20 +291,20 @@ report:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 #####Weely Leaderboard ####################################################
-#  - id: weekly_leaderboard_cards
-#    title: "Weekly Prop Dashboard"
-#    options:
-#      week_ending: "2026-03-20"   # optional
-#      top_n: 200
-#      starting_balance: 50000
-#      trailing_dd: 2500
-#      baseline_mode: fresh_week      # fresh_week or: continuous
-#      show_card_image: true          # or: false
-#      show_chart: false
-#      show_debug_table: false
-#      warn_buffer: 500
-#      compact_noimg: true
-#      bot_columns: 1
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+      week_ending: "2026-03-20"   # optional
+      top_n: 200
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week      # fresh_week or: continuous
+      show_card_image: true          # or: false
+      show_chart: false
+      show_debug_table: false
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1
 #####Weely Leaderboard ####################################################
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
@@ -824,216 +824,3 @@ report:
 #
 #  Example (prop-safe style):
 
-
-######### Trade Pattern Audit ###############################################
-#
-# Evaluates every trade in each backtest's _trades.csv against market
-# patterns active at the time of entry.  Each trade receives a verdict:
-#   CONFIRMED  – weighted pattern score >= verdict_threshold
-#   PARTIAL    – some patterns fired but below threshold
-#   REJECTED   – no patterns confirmed the entry direction
-#
-# The report section renders:
-#   • Per-run summary cards (counts + avg P&L / win rate by verdict)
-#   • Collapsible pattern correlation table (win rate fired vs not fired)
-#   • Collapsible color-coded trade-by-trade table
-#
-# To activate: uncomment the pattern_engine block below (or add
-# trade_pattern_audit under your existing pattern_engine: block),
-# then add the section id to your sections list.
-
-pattern_engine:
-  enabled: false            # true = also run the full PE sweep
-
-  trade_pattern_audit:
-    enabled: true
-    instrument: "NQ"
-    contract:   "03-26"
-    timeframe:  "5m"          # bar resolution for pattern evaluation
-    lookback_bars: 200        # bars of history passed to detect_fn
-                              # needs to cover the session open for VWAP/open_drive
-    signal_window_bars: 3     # 0 = entry bar only; N = fired within N bars before entry
-    verdict_threshold: 2.0    # weighted confirming score needed for CONFIRMED
-    patterns:
-      - family: "MA_TREND"
-        structure: "ma_alignment"
-        enabled: true
-        weight: 2.0           # higher = more influence on verdict score
-        params:
-          fast_period: 8
-          slow_period: 21
-      - family: "VWAP"
-        structure: "vwap_reclaim"
-        enabled: true
-        weight: 1.5
-        params:
-          hold_bars: 3        # price must hold above/below VWAP for N consecutive bars
-      - family: "ORB"
-        structure: "orb_direction"
-        enabled: true
-        weight: 1.0
-        params:
-          orb_minutes: 15     # opening range duration in bars (1m bars ≈ 15 min)
-      - family: "MOMENTUM"
-        structure: "rsi_regime"
-        enabled: true
-        weight: 1.0
-        params:
-          period: 14          # RSI > 50 confirms long; RSI < 50 confirms short
-      - family: "VOLUME"
-        structure: "volume_surge"
-        enabled: true
-        weight: 1.0
-        params:
-          multiplier: 1.5     # fires when volume > multiplier × rolling average
-          lookback: 20
-      - family: "SESSION"
-        structure: "open_drive"
-        enabled: true
-        weight: 1.5
-        params:
-          drive_minutes: 30   # first N bars of session used to measure drive
-          min_atr_multiple: 0.5  # move must exceed N × ATR(14) to count as drive
-
-      # --- Tier 1 additions ---
-
-      - family: "HTF"
-        structure: "htf_trend_alignment"
-        enabled: true
-        weight: 2.0           # strong filter — trade with the higher-TF trend
-        params:
-          htf_minutes: 15     # resample input bars to this TF (e.g. 15m when entry is on 5m)
-          fast_period: 8      # fast EMA period on HTF close
-          slow_period: 21     # slow EMA period on HTF close
-
-      - family: "TIME"
-        structure: "high_prob_window"
-        enabled: true
-        weight: 1.5           # direction-neutral; confirms time-of-day alignment
-        params:
-          windows:
-            - {start: "08:30", end: "10:30"}   # NY open drive window (Mountain Time)
-            - {start: "13:00", end: "14:30"}   # afternoon momentum window (Mountain Time)
-
-      - family: "PREV_SESSION"
-        structure: "prev_level_break"
-        enabled: true
-        weight: 1.5           # confirms trade broke above/below prior session range
-        params:
-          lookback_session: 1 # 1 = prior calendar day; 2 = two days back
-
-      - family: "CANDLE"
-        structure: "higher_high_lower_low"
-        enabled: true
-        weight: 1.5           # pure price-structure trend confirmation (no indicator lag)
-        params:
-          lookback: 5         # compare most recent N bars vs prior N bars for HH/HL or LL/LH
-
-      # --- Tier 2 additions ---
-
-      - family: "MOMENTUM"
-        structure: "macd_signal"
-        enabled: true
-        weight: 1.5           # MACD line crossed signal line in trade direction
-        params:
-          fast_period: 12     # EMA period for fast MACD line
-          slow_period: 26     # EMA period for slow MACD line
-          signal_period: 9    # EMA period for signal smoothing
-          cross_window: 3     # fires if cross happened within last N bars
-
-      - family: "CANDLE"
-        structure: "consecutive_closes"
-        enabled: true
-        weight: 1.0           # N consecutive bars closing in trade direction
-        params:
-          n_bars: 3           # number of consecutive directional closes required
-
-      - family: "CANDLE"
-        structure: "engulfing"
-        enabled: true
-        weight: 1.5           # full-body engulfing candle in trade direction
-        params: {}            # no params — pure price-action pattern
-
-      - family: "GAP"
-        structure: "gap_direction"
-        enabled: true
-        weight: 1.0           # today's open gapped in trade direction vs prior close
-        params:
-          min_gap_points: 0.0 # minimum gap size in points (0 = any gap qualifies)
-
-      - family: "VOLATILITY"
-        structure: "bb_squeeze_break"
-        enabled: true
-        weight: 1.5           # Bollinger Band squeeze followed by directional breakout
-        params:
-          period: 20          # BB lookback and rolling-max period
-          num_std: 2.0        # number of std deviations for band width
-          squeeze_pct: 0.5    # band is squeezed when width <= this fraction of rolling max
-
-      - family: "RANGE"
-        structure: "new_session_extreme"
-        enabled: true
-        weight: 1.0           # bar close is near the current session high (long) / low (short)
-        params:
-          pct_of_range: 0.1   # within 10% of session range from the extreme
-
-      # --- Entry Candle quality (ENTRY_CANDLE family) ---
-      # All 5 share resample_minutes (2, 5, 15) and lookback (# candles back for averages)
-
-      - family: "ENTRY_CANDLE"
-        structure: "volume"
-        enabled: true
-        weight: 1.5           # high volume = conviction; fires when volume >= avg * ratio
-        params:
-          resample_minutes: 5  # analyze the entry at this TF (2, 5, or 15 typical)
-          lookback: 20         # number of prior candles used to compute avg volume
-          min_volume_ratio: 1.2 # entry candle volume must exceed avg * 1.2
-
-      - family: "ENTRY_CANDLE"
-        structure: "body_strength"
-        enabled: true
-        weight: 2.0           # directional body dominance: body fills ≥ min_body_pct of range
-        params:
-          resample_minutes: 5
-          lookback: 20         # unused currently (reserved for future avg-body comparison)
-          min_body_pct: 0.50   # body must be ≥ 50% of total candle range (filters doji)
-
-      - family: "ENTRY_CANDLE"
-        structure: "wick_rejection"
-        enabled: true
-        weight: 1.5           # wick quality: long=small upper wick + demand tail; short=supply wick + no support
-        params:
-          resample_minutes: 5
-          lookback: 20         # unused currently (reserved)
-          max_upper_wick_pct: 0.20  # long: upper wick ≤ 20% of range (no overhead rejection)
-          min_lower_wick_pct: 0.10  # long: lower tail ≥ 10% of range (demand stepped in)
-          # For short trades these flip: upper wick ≥ min_lower_wick_pct, lower tail ≤ max_upper_wick_pct
-
-      - family: "ENTRY_CANDLE"
-        structure: "size_vs_avg"
-        enabled: true
-        weight: 1.0           # above-average range candle = outsized move / commitment
-        params:
-          resample_minutes: 5
-          lookback: 20         # number of prior candles used to compute avg range
-          min_size_ratio: 1.1  # range must exceed avg * 1.1
-
-      - family: "ENTRY_CANDLE"
-        structure: "body_vs_avg"
-        enabled: true
-        weight: 1.5           # directional body must exceed prior avg body size
-        params:
-          resample_minutes: 5
-          lookback: 20         # number of prior candles used to compute avg body
-          min_body_ratio: 1.1  # body must exceed avg_body * 1.1
-
-sections:
-  - id: trade_pattern_audit
-    title: "Trade Pattern Audit"
-    options:
-      run_id: null         # null = all runs; "MyRunName" = focus on one
-      top_n_runs: 100
-      show_per_trade: true    # include collapsible trade-by-trade table
-      min_trades: 5           # skip runs with fewer audited trades
-
-######### Trade Pattern Audit ###############################################

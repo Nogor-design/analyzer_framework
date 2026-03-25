@@ -56,6 +56,9 @@ from ta_foundation.reports.html.sections.anchor_interaction_diagnostics import (
 from ta_foundation.reports.html.sections.anchor_tp_sl_recommendations import (
     render_anchor_tp_sl_recommendations,
 )
+from ta_foundation.reports.html.sections.anchor_interaction_hourly_profile import (
+    render_anchor_interaction_hourly_profile,
+)
 # render_pattern_engine_diagnostics
 # render_pattern_market_discovery
 # NEW
@@ -64,6 +67,9 @@ from ta_foundation.reports.html.sections.pattern_engine_overview import (
 )
 from ta_foundation.reports.html.sections.pattern_cluster_drilldown import (
     render_pattern_cluster_drilldown,
+)
+from ta_foundation.reports.html.sections.trade_pattern_audit import (
+    render_trade_pattern_audit,
 )
 
 SectionRenderer = Callable[[dict], str]
@@ -240,6 +246,17 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="MA Anchor TP/SL Recommendations",
         render_fn=render_anchor_tp_sl_recommendations,
     ),
+    "anchor_interaction_hourly_profile": SectionDef(
+        id="anchor_interaction_hourly_profile",
+        default_title="TP/SL by Hour of Day",
+        render_fn=render_anchor_interaction_hourly_profile,
+    ),
 
+    # --- Trade Pattern Audit ---
+    "trade_pattern_audit": SectionDef(
+        id="trade_pattern_audit",
+        default_title="Trade Pattern Audit",
+        render_fn=render_trade_pattern_audit,
+    ),
 # render_pattern_engine_diagnostics
 }

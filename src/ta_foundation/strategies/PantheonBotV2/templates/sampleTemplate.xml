@@ -1,0 +1,694 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<StrategyTemplate>
+  <StrategyType>NinjaTrader.NinjaScript.Strategies.PantheonBotV2</StrategyType>
+  <OptimizerType>NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer</OptimizerType>
+  <OptimizerParameters>
+    <ArrayOfParameterWrapper xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <ParameterWrapper>
+        <DisplayName>IsStrategyGenerator</DisplayName>
+        <Name>IsStrategyGenerator</Name>
+        <Value xsi:type="xsd:boolean">false</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Keep best # results</DisplayName>
+        <Name>KeepBestResults</Name>
+        <Value xsi:type="xsd:int">10</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>LogTypeName</DisplayName>
+        <Name>LogTypeName</Name>
+        <Value xsi:type="xsd:string">Optimizer</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Visible</DisplayName>
+        <Name>IsVisible</Name>
+        <Value xsi:type="xsd:boolean">true</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Name</DisplayName>
+        <Name>Name</Name>
+        <Value xsi:type="xsd:string">Default</Value>
+      </ParameterWrapper>
+    </ArrayOfParameterWrapper>
+  </OptimizerParameters>
+  <OptimizationFitness>NinjaTrader.NinjaScript.OptimizationFitnesses.MaxProfitFactor</OptimizationFitness>
+  <OptimizationParameters>
+    <ArrayOfParameter xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">15</Max>
+        <Min xsi:type="xsd:int">15</Min>
+        <Name>TrendHigherTimeFrameMinutes</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>15</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">34</Max>
+        <Min xsi:type="xsd:int">34</Min>
+        <Name>TrendEmaPeriod</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>34</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">3</Max>
+        <Min xsi:type="xsd:int">3</Min>
+        <Name>TrendSlopeLookbackBars</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>3</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">14</Max>
+        <Min xsi:type="xsd:int">14</Min>
+        <Name>TrendAtrPeriod</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>14</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">0.03</Max>
+        <Min xsi:type="xsd:double">0.03</Min>
+        <Name>TrendFlatThreshold</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0.03</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">1</Max>
+        <Min xsi:type="xsd:int">1</Min>
+        <Name>TrendSlopeModeInt</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>1</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">14</Max>
+        <Min xsi:type="xsd:int">14</Min>
+        <Name>VwapAtrPeriod</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>14</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">0.2</Max>
+        <Min xsi:type="xsd:double">0.2</Min>
+        <Name>VwapNearThresholdAtr</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0.2</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseCloseForVwapPrice</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">14</Max>
+        <Min xsi:type="xsd:int">14</Min>
+        <Name>VolatilityAtrPeriod</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>14</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">100</Max>
+        <Min xsi:type="xsd:int">100</Min>
+        <Name>VolatilityLookbackWindow</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>100</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">0.33</Max>
+        <Min xsi:type="xsd:double">0.33</Min>
+        <Name>VolatilityLowPercentile</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0.33</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">0.67</Max>
+        <Min xsi:type="xsd:double">0.67</Min>
+        <Name>VolatilityHighPercentile</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0.67</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable>
+          <string>Up</string>
+        </EnumValuesSerializable>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>RequiredTrendRegimeFilter</Name>
+        <ParameterTypeSerializable>NinjaTrader.NinjaScript.Strategies.TrendRegimeFilter, 261b4b4062574da2ac23d883f2058f5a, Version=8.1.7.0, Culture=neutral, PublicKeyToken=null</ParameterTypeSerializable>
+        <ValueSerializable>Up</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable>
+          <string>Near</string>
+        </EnumValuesSerializable>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>RequiredVwapRegimeFilter</Name>
+        <ParameterTypeSerializable>NinjaTrader.NinjaScript.Strategies.VwapRegimeFilter, 261b4b4062574da2ac23d883f2058f5a, Version=8.1.7.0, Culture=neutral, PublicKeyToken=null</ParameterTypeSerializable>
+        <ValueSerializable>Near</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable>
+          <string>Any</string>
+        </EnumValuesSerializable>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>RequiredVolatilityRegimeFilter</Name>
+        <ParameterTypeSerializable>NinjaTrader.NinjaScript.Strategies.VolatilityRegimeFilter, 261b4b4062574da2ac23d883f2058f5a, Version=8.1.7.0, Culture=neutral, PublicKeyToken=null</ParameterTypeSerializable>
+        <ValueSerializable>Any</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable>
+          <string>High</string>
+        </EnumValuesSerializable>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>BlockedVolatilityRegimeFilter</Name>
+        <ParameterTypeSerializable>NinjaTrader.NinjaScript.Strategies.VolatilityRegimeFilter, 261b4b4062574da2ac23d883f2058f5a, Version=8.1.7.0, Culture=neutral, PublicKeyToken=null</ParameterTypeSerializable>
+        <ValueSerializable>High</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>EnableDebugPrint</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>EnableTradeMarkers</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseDynamicStop</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseLockIn</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">30</Max>
+        <Min xsi:type="xsd:int">30</Min>
+        <Name>LockInTriggerTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>30</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">6</Max>
+        <Min xsi:type="xsd:int">6</Min>
+        <Name>LockInPlusTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>6</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseGiveback</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">100</Max>
+        <Min xsi:type="xsd:int">100</Min>
+        <Name>GivebackStartTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>100</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">30</Max>
+        <Min xsi:type="xsd:int">30</Min>
+        <Name>GivebackTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>30</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>UseTrail</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">30</Max>
+        <Min xsi:type="xsd:int">30</Min>
+        <Name>TrailStartTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>30</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">12</Max>
+        <Min xsi:type="xsd:int">12</Min>
+        <Name>TrailDistanceTicks</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>12</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseTimeFilter</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>StartTimeH</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name>StartTimeM</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">1</Max>
+        <Min xsi:type="xsd:int">1</Min>
+        <Name>DurationTimeH</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>1</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">30</Max>
+        <Min xsi:type="xsd:int">30</Min>
+        <Name>DurationTimeM</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>30</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">50</Max>
+        <Min xsi:type="xsd:int">50</Min>
+        <Name>averageFast</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>50</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">200</Max>
+        <Min xsi:type="xsd:int">200</Min>
+        <Name>averageSlow</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>200</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">300</Max>
+        <Min xsi:type="xsd:int">300</Min>
+        <Name>averageTrend</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>300</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseTrend</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>UseTrendReverse</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">10000</Max>
+        <Min xsi:type="xsd:double">10000</Min>
+        <Name>ProfitStop</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>10000</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">10000</Max>
+        <Min xsi:type="xsd:double">10000</Min>
+        <Name>LossStop</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>10000</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">500</Max>
+        <Min xsi:type="xsd:double">500</Min>
+        <Name>MaxTrades</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>500</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">1</Max>
+        <Min xsi:type="xsd:int">1</Min>
+        <Name>Contracts</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>1</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">200</Max>
+        <Min xsi:type="xsd:int">200</Min>
+        <Name>MaxStop</Name>
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>200</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseMaxStop</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">0.5</Max>
+        <Min xsi:type="xsd:double">0.5</Min>
+        <Name>MaxTPRatio</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0.5</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>UseMaxTP</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>Long</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">true</Max>
+        <Min xsi:type="xsd:boolean">true</Min>
+        <Name>Short</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>True</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>Reverse</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:boolean">false</Max>
+        <Min xsi:type="xsd:boolean">false</Min>
+        <Name>UseKill</Name>
+        <ParameterTypeSerializable>System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>False</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">800</Max>
+        <Min xsi:type="xsd:double">800</Min>
+        <Name>KillProfitStop</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>800</ValueSerializable>
+      </Parameter>
+      <Parameter>
+        <EnumValuesSerializable />
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:double">400</Max>
+        <Min xsi:type="xsd:double">400</Min>
+        <Name>KillLossStop</Name>
+        <ParameterTypeSerializable>System.Double, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>400</ValueSerializable>
+      </Parameter>
+    </ArrayOfParameter>
+  </OptimizationParameters>
+  <Strategy>
+    <PantheonBotV2 xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <IsVisible>true</IsVisible>
+      <calculate2>OnBarClose</calculate2>
+      <AreLinesConfigurable>true</AreLinesConfigurable>
+      <ArePlotsConfigurable>true</ArePlotsConfigurable>
+      <BarsPeriodSerializable>
+        <BarsPeriodTypeSerialize>4</BarsPeriodTypeSerialize>
+        <BaseBarsPeriodType>Minute</BaseBarsPeriodType>
+        <BaseBarsPeriodValue>1</BaseBarsPeriodValue>
+        <VolumetricDeltaType>BidAsk</VolumetricDeltaType>
+        <MarketDataType>Last</MarketDataType>
+        <PointAndFigurePriceType>Close</PointAndFigurePriceType>
+        <ReversalType>Tick</ReversalType>
+        <Value>1</Value>
+        <Value2>1</Value2>
+      </BarsPeriodSerializable>
+      <BarsToLoad>0</BarsToLoad>
+      <Calculate>OnBarClose</Calculate>
+      <Displacement>0</Displacement>
+      <DisplayInDataBox>true</DisplayInDataBox>
+      <From>2099-12-01T00:00:00</From>
+      <IsAutoScale>true</IsAutoScale>
+      <Lines />
+      <MaximumBarsLookBack>TwoHundredFiftySix</MaximumBarsLookBack>
+      <Name>PantheonBotV2</Name>
+      <Panel>-1</Panel>
+      <Plots>
+        <Plot>
+          <IsOpacityVisible>false</IsOpacityVisible>
+          <BrushSerialize>&lt;SolidColorBrush xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"&gt;#FFFF0000&lt;/SolidColorBrush&gt;</BrushSerialize>
+          <DashStyleHelper>Solid</DashStyleHelper>
+          <Opacity>100</Opacity>
+          <Width>1</Width>
+          <AutoWidth>false</AutoWidth>
+          <Max>1.7976931348623157E+308</Max>
+          <Min>-1.7976931348623157E+308</Min>
+          <Name>FAST</Name>
+          <PlotStyle>Line</PlotStyle>
+        </Plot>
+        <Plot>
+          <IsOpacityVisible>false</IsOpacityVisible>
+          <BrushSerialize>&lt;SolidColorBrush xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"&gt;#FF008000&lt;/SolidColorBrush&gt;</BrushSerialize>
+          <DashStyleHelper>Solid</DashStyleHelper>
+          <Opacity>100</Opacity>
+          <Width>1</Width>
+          <AutoWidth>false</AutoWidth>
+          <Max>1.7976931348623157E+308</Max>
+          <Min>-1.7976931348623157E+308</Min>
+          <Name>SLOW</Name>
+          <PlotStyle>Line</PlotStyle>
+        </Plot>
+        <Plot>
+          <IsOpacityVisible>false</IsOpacityVisible>
+          <BrushSerialize>&lt;SolidColorBrush xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"&gt;#FFFFFFFF&lt;/SolidColorBrush&gt;</BrushSerialize>
+          <DashStyleHelper>Solid</DashStyleHelper>
+          <Opacity>100</Opacity>
+          <Width>1</Width>
+          <AutoWidth>false</AutoWidth>
+          <Max>1.7976931348623157E+308</Max>
+          <Min>-1.7976931348623157E+308</Min>
+          <Name>TREND</Name>
+          <PlotStyle>Line</PlotStyle>
+        </Plot>
+      </Plots>
+      <ScaleJustification>Right</ScaleJustification>
+      <ShowTransparentPlotsInDataBox>false</ShowTransparentPlotsInDataBox>
+      <To>1800-01-01T00:00:00</To>
+      <IsDataSeriesRequired>true</IsDataSeriesRequired>
+      <IsOverlay>true</IsOverlay>
+      <SelectedValueSeries>0</SelectedValueSeries>
+      <Gtd>1800-01-01T00:00:00</Gtd>
+      <Template />
+      <TimeInForce>Gtc</TimeInForce>
+      <BarsPeriodParameter>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name />
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0</ValueSerializable>
+      </BarsPeriodParameter>
+      <BarsRequiredToTrade>20</BarsRequiredToTrade>
+      <Category>NinjaScript</Category>
+      <ConnectionLossHandling>Recalculate</ConnectionLossHandling>
+      <DaysToLoad>5</DaysToLoad>
+      <DefaultQuantity>1</DefaultQuantity>
+      <DisconnectDelaySeconds>10</DisconnectDelaySeconds>
+      <EntriesPerDirection>1</EntriesPerDirection>
+      <EntryHandling>AllEntries</EntryHandling>
+      <ExitOnSessionCloseSeconds>30</ExitOnSessionCloseSeconds>
+      <IncludeCommission>false</IncludeCommission>
+      <IsAggregated>false</IsAggregated>
+      <IsExitOnSessionCloseStrategy>true</IsExitOnSessionCloseStrategy>
+      <IsFillLimitOnTouch>false</IsFillLimitOnTouch>
+      <IsOptimizeDataSeries>false</IsOptimizeDataSeries>
+      <IsStableSession>true</IsStableSession>
+      <IsTickReplay>false</IsTickReplay>
+      <IsTradingHoursBreakLineVisible>true</IsTradingHoursBreakLineVisible>
+      <IsWaitUntilFlat>false</IsWaitUntilFlat>
+      <NumberRestartAttempts>4</NumberRestartAttempts>
+      <OptimizationPeriod>10</OptimizationPeriod>
+      <OrderFillResolution>Standard</OrderFillResolution>
+      <OrderFillResolutionType>Minute</OrderFillResolutionType>
+      <OrderFillResolutionValue>1</OrderFillResolutionValue>
+      <RestartsWithinMinutes>5</RestartsWithinMinutes>
+      <SetOrderQuantity>Strategy</SetOrderQuantity>
+      <Slippage>0</Slippage>
+      <StartBehavior>WaitUntilFlat</StartBehavior>
+      <StopTargetHandling>PerEntryExecution</StopTargetHandling>
+      <SupportsOptimizationGraph>true</SupportsOptimizationGraph>
+      <TestPeriod>28</TestPeriod>
+      <TradingHoursSerializable />
+      <DrawOnPricePanel>false</DrawOnPricePanel>
+      <ZOrder>-2147483648</ZOrder>
+      <TrendHigherTimeFrameMinutes>15</TrendHigherTimeFrameMinutes>
+      <TrendEmaPeriod>34</TrendEmaPeriod>
+      <TrendSlopeLookbackBars>3</TrendSlopeLookbackBars>
+      <TrendAtrPeriod>14</TrendAtrPeriod>
+      <TrendFlatThreshold>0.03</TrendFlatThreshold>
+      <TrendSlopeModeInt>1</TrendSlopeModeInt>
+      <VwapAtrPeriod>14</VwapAtrPeriod>
+      <VwapNearThresholdAtr>0.2</VwapNearThresholdAtr>
+      <UseCloseForVwapPrice>true</UseCloseForVwapPrice>
+      <VolatilityAtrPeriod>14</VolatilityAtrPeriod>
+      <VolatilityLookbackWindow>100</VolatilityLookbackWindow>
+      <VolatilityLowPercentile>0.33</VolatilityLowPercentile>
+      <VolatilityHighPercentile>0.67</VolatilityHighPercentile>
+      <RequiredTrendRegimeFilter>Up</RequiredTrendRegimeFilter>
+      <RequiredVwapRegimeFilter>Near</RequiredVwapRegimeFilter>
+      <RequiredVolatilityRegimeFilter>Any</RequiredVolatilityRegimeFilter>
+      <BlockedVolatilityRegimeFilter>High</BlockedVolatilityRegimeFilter>
+      <EnableDebugPrint>false</EnableDebugPrint>
+      <EnableTradeMarkers>false</EnableTradeMarkers>
+      <UseDynamicStop>true</UseDynamicStop>
+      <UseLockIn>true</UseLockIn>
+      <LockInTriggerTicks>30</LockInTriggerTicks>
+      <LockInPlusTicks>6</LockInPlusTicks>
+      <UseGiveback>true</UseGiveback>
+      <GivebackStartTicks>100</GivebackStartTicks>
+      <GivebackTicks>30</GivebackTicks>
+      <UseTrail>false</UseTrail>
+      <TrailStartTicks>30</TrailStartTicks>
+      <TrailDistanceTicks>12</TrailDistanceTicks>
+      <UseTimeFilter>true</UseTimeFilter>
+      <StartTimeH>0</StartTimeH>
+      <StartTimeM>0</StartTimeM>
+      <DurationTimeH>1</DurationTimeH>
+      <DurationTimeM>30</DurationTimeM>
+      <averageFast>50</averageFast>
+      <averageSlow>200</averageSlow>
+      <averageTrend>300</averageTrend>
+      <UseTrend>true</UseTrend>
+      <UseTrendReverse>false</UseTrendReverse>
+      <ProfitStop>10000</ProfitStop>
+      <LossStop>10000</LossStop>
+      <MaxTrades>500</MaxTrades>
+      <Contracts>1</Contracts>
+      <MaxStop>200</MaxStop>
+      <UseMaxStop>true</UseMaxStop>
+      <MaxTPRatio>0.5</MaxTPRatio>
+      <UseMaxTP>true</UseMaxTP>
+      <Long>true</Long>
+      <Short>true</Short>
+      <Reverse>false</Reverse>
+      <UseKill>false</UseKill>
+      <KillProfitStop>800</KillProfitStop>
+      <KillLossStop>400</KillLossStop>
+    </PantheonBotV2>
+  </Strategy>
+</StrategyTemplate>

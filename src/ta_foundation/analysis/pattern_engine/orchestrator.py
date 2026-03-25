@@ -13,6 +13,7 @@ from .engine import run_pattern_sweep
 from .io import attach_artifact_ref, deep_copy_json_safe, df_to_parquet, pattern_engine_run_dir
 from .monte_carlo import run_prop_monte_carlo, run_prop_monte_carlo_regime
 from .robustness_cv import compute_purged_walkforward_cv
+from .trade_pattern_audit import compute_trade_pattern_audit
 
 
 # ======================================================================================
@@ -94,6 +95,48 @@ def _write_and_cache_df(
 
 
 # ======================================================================================
+# Trade Pattern Audit pass
+# ======================================================================================
+
+def _run_trade_pattern_audit_pass(
+    *,
+    packages: Dict[str, Any],
+    market: Any,
+    options: Dict[str, Any],
+) -> None:
+    """Run compute_trade_pattern_audit for every real (non-synthetic) package."""
+    for run_id, pkg in (packages or {}).items():
+        # Skip synthetic market-discovery packages
+        if str(run_id).startswith("__"):
+            continue
+        try:
+            result = compute_trade_pattern_audit(pkg=pkg, market=market, options=options)
+
+            # Attach metadata (JSON-safe)
+            _ensure_pkg_has_metadata(pkg)
+            pkg.metadata["derived"]["trade_pattern_audit"] = {
+                "summary":     deep_copy_json_safe(result.get("summary", {})),
+                "diagnostics": deep_copy_json_safe(result.get("diagnostics", {})),
+            }
+
+            # Attach in-memory DataFrame to assets (separate key from "pattern_engine")
+            if not hasattr(pkg, "assets") or pkg.assets is None:
+                pkg.assets = {}
+            if "trade_pattern_audit" not in pkg.assets:
+                pkg.assets["trade_pattern_audit"] = {}
+            pkg.assets["trade_pattern_audit"]["audit_df"] = result.get("audit_df", pd.DataFrame())
+
+        except Exception as e:
+            _ensure_pkg_has_metadata(pkg)
+            pkg.metadata["derived"]["trade_pattern_audit"] = {
+                "diagnostics": {
+                    "ok": False,
+                    "issues": [f"trade_pattern_audit error: {type(e).__name__}: {e}"],
+                }
+            }
+
+
+# ======================================================================================
 # Public entry point
 # ======================================================================================
 
@@ -103,7 +146,15 @@ def compute_and_attach_pattern_engine(
     market: Any,
     options: Dict[str, Any],
 ) -> None:
-    if not options.get("enabled", False):
+    pe_enabled = bool(options.get("enabled", False))
+    audit_enabled = bool((options.get("trade_pattern_audit") or {}).get("enabled", False))
+
+    if not pe_enabled and not audit_enabled:
+        return
+
+    # When only the audit is requested (main sweep disabled), run audit and return early.
+    if not pe_enabled:
+        _run_trade_pattern_audit_pass(packages=packages, market=market, options=options)
         return
 
     scopes = options.get("scopes") or ["run_attached"]
@@ -399,3 +450,9 @@ def compute_and_attach_pattern_engine(
             reason = f"pattern_engine_exception: {type(e).__name__}: {e}"
             _attach_disabled_block(synth_pkg, engine_info=engine_info, options=options, reason=reason)
             synth_assets["__error__"] = reason
+
+    # ----------------------------------------------------------------------------------
+    # Trade Pattern Audit (runs after all sweep scopes when audit is enabled)
+    # ----------------------------------------------------------------------------------
+    if audit_enabled:
+        _run_trade_pattern_audit_pass(packages=packages, market=market, options=options)
