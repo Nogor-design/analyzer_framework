@@ -99,6 +99,10 @@ from ta_foundation.analysis.strategy_discovery.parameter_sensitivity import (
 from ta_foundation.analysis.strategy_discovery.filter_discovery import (
     run_filter_discovery,
 )
+from ta_foundation.analysis.strategy_discovery.pure_discovery import (
+    run_pure_discovery,
+)
+
 
 
 # ---------------------------------------------------------------------------
@@ -3803,3 +3807,40 @@ class TestParameterSensitivitySection:
         html = _render_sweep(sweep_info)
         assert "Sensitivity Score" in html
         assert "35" in html
+
+
+class TestPureDiscovery:
+    def test_run_pure_discovery_disabled(self):
+        pkg = _MockPkg()
+        out = run_pure_discovery(
+            pkg=pkg,
+            bars_with_regime=_make_bars(),
+            options={"enabled": False},
+            wf_config=DEFAULT_WF_CONFIG,
+            cost_model=DEFAULT_COST_MODEL,
+            tick_size=0.25,
+        )
+        assert out.get("enabled") is False
+
+    def test_run_pure_discovery_returns_structured_payload(self):
+        pkg = _MockPkg()
+        bars = compute_bar_regime(_make_bars(n=800))
+        out = run_pure_discovery(
+            pkg=pkg,
+            bars_with_regime=bars,
+            options={
+                "enabled": True,
+                "min_trades": 20,
+                "max_final_strategies": 3,
+                "sessions": ["London", "NY_open", "All"],
+                "require_walk_forward_pass": False,
+                "require_robust_or_moderate_sensitivity": False,
+            },
+            wf_config={**DEFAULT_WF_CONFIG, "min_is_trades": 10, "min_oos_trades": 5},
+            cost_model=DEFAULT_COST_MODEL,
+            tick_size=0.25,
+        )
+        assert out.get("enabled") is True
+        assert "leaderboard" in out
+        assert "rejections" in out
+        assert "ninja_export" in out

@@ -445,6 +445,22 @@ def run_strategy_discovery(
         except Exception as exc:
             discovery_block["risk_metrics"] = {"error": str(exc)}
 
+        # Pure Discovery (market-data-first candidate generation)
+        try:
+            from .pure_discovery import run_pure_discovery
+            pd_options = dict(options.get("pure_discovery") or {})
+            pd_options.setdefault("enabled", False)
+            discovery_block["pure_discovery"] = run_pure_discovery(
+                pkg=pkg,
+                bars_with_regime=bars_with_regime,
+                options=pd_options,
+                wf_config=wf_config,
+                cost_model=cost_model,
+                tick_size=tick_size,
+            )
+        except Exception as exc:
+            discovery_block["pure_discovery"] = {"error": str(exc), "enabled": False}
+
         # Parameter Sensitivity
         try:
             from .parameter_sensitivity import run_parameter_sensitivity
