@@ -17,6 +17,7 @@ from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
 from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_manifest
 from ta_foundation.reports.html.config import load_report_configs, build_report_from_config
 from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
+from ta_foundation.analysis.strategy_discovery import orchestrator as strategy_discovery_orchestrator
 
 
 
@@ -51,6 +52,16 @@ def _find_anchor_interaction_config(cfgs):
             if isinstance(ai, dict) and ai.get("enabled"):
                 return ai
 
+    return None
+
+
+def _find_strategy_discovery_config(cfgs):
+    for cfg in cfgs:
+        raw = getattr(cfg, "raw", None)
+        if isinstance(raw, dict):
+            sd = raw.get("strategy_discovery")
+            if isinstance(sd, dict) and sd.get("enabled"):
+                return sd
     return None
 
 
@@ -156,6 +167,29 @@ def main() -> int:
         print("[ta_foundation] No MA Anchor configuration detected.")
 
     # --------------------------------------------------------
+    # RUN STRATEGY DISCOVERY ENGINE
+    # --------------------------------------------------------
+    sd_config = _find_strategy_discovery_config(cfgs)
+
+    if sd_config:
+        print("[ta_foundation] Running Strategy Discovery analysis...")
+        try:
+            strategy_discovery_orchestrator.run_strategy_discovery(
+                packages=result.packages,
+                market=result.market,
+                options=sd_config,
+            )
+            print("[ta_foundation] Strategy Discovery complete.")
+        except Exception as e:
+            print(
+                f"[ta_foundation] WARNING strategy_discovery failed: "
+                f"{type(e).__name__}: {e}"
+            )
+            traceback.print_exc()
+    else:
+        print("[ta_foundation] No Strategy Discovery configuration detected.")
+
+    # --------------------------------------------------------
     # BUILD REPORTS
     # --------------------------------------------------------
 
@@ -197,7 +231,6 @@ def main() -> int:
             })
 
         except Exception as e:
-
             print(
                 f"[ta_foundation] ERROR rendering Report[{i}] "
                 f"({cfg.title!r} -> {cfg.output_filename!r}): "
