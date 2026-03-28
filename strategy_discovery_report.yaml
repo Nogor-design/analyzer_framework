@@ -172,6 +172,29 @@ strategy_discovery:
     min_step_trades: 10          # skip sweep points with fewer than N trades
 
   # --------------------------------------------------------------------------
+  # Pure Discovery Mode (market-data-first entry discovery)
+  # Generates a constrained set of interpretable candidates from bars,
+  # simulates baseline trades, prunes weak ideas, then reuses validation.
+  # --------------------------------------------------------------------------
+  pure_discovery:
+    enabled: false
+    objective: "high_quality"
+    max_final_strategies: 5
+    max_archetypes_per_run: 6
+    max_candidates_per_archetype: 40
+    max_rule_depth: 3
+    min_trades: 60
+    require_walk_forward_pass: true
+    require_robust_or_moderate_sensitivity: true
+    require_distinct_cluster_representatives: true
+    sessions: ["London", "NY_open", "Midday", "Power_hour", "Asian", "All"]
+    direction_mode: "both"
+    baseline_exit:
+      stop_ticks: 80
+      target_ticks: 120
+      max_holding_bars: 36
+
+  # --------------------------------------------------------------------------
   # Clustering
   # Groups behaviorally similar strategies to prevent parameter-variants from
   # dominating the top of the ranked list.
@@ -206,6 +229,12 @@ sections:
   # Cross-run ranked table: final scores, grades, validation pass/fail,
   # cluster badges, weight-sensitivity badge, per-run component accordion
   # ---------------------------------------------------------------------------
+  - id: strategy_discovery_pure_discovery
+    title: "Pure Discovery Leaderboard"
+    options:
+      max_rows: 50
+      max_rejections_per_run: 20
+
   - id: strategy_discovery_ranked_table
     title: "Strategy Ranking"
     options:

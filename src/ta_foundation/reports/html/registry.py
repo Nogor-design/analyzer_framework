@@ -122,6 +122,9 @@ from ta_foundation.reports.html.sections.strategy_discovery_regime import (
 from ta_foundation.reports.html.sections.strategy_discovery_parameter_sensitivity import (
     render_strategy_discovery_parameter_sensitivity,
 )
+from ta_foundation.reports.html.sections.strategy_discovery_pure_discovery import (
+    render_strategy_discovery_pure_discovery,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -395,6 +398,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="strategy_discovery_parameter_sensitivity",
         default_title="Strategy Discovery — Parameter Sensitivity",
         render_fn=render_strategy_discovery_parameter_sensitivity,
+    ),
+    "strategy_discovery_pure_discovery": SectionDef(
+        id="strategy_discovery_pure_discovery",
+        default_title="Pure Discovery Leaderboard",
+        render_fn=render_strategy_discovery_pure_discovery,
     ),
 # render_pattern_engine_diagnostics
 }

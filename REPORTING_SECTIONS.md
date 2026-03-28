@@ -188,3 +188,15 @@ If a section needs parameters (e.g., top N trades), prefer YAML-driven options:
 - Section is a pure renderer (no disk IO, no heavy compute).
 - All behavior is configured via `report.yaml` section `options`.
 
+
+### strategy_discovery_pure_discovery
+**Default title:** Pure Discovery Leaderboard  
+**File:** `reports/html/sections/strategy_discovery_pure_discovery.py`  
+**Purpose:** Shows the Pure Discovery leaderboard (ranked discovered strategies) and a rejection audit trail.  
+**Data sources:**
+- `pkg.metadata["derived"]["strategy_discovery"]["pure_discovery"]["leaderboard"]`
+- `pkg.metadata["derived"]["strategy_discovery"]["pure_discovery"]["rejections"]`
+
+**Options:**
+- `max_rows` (default 100)
+- `max_rejections_per_run` (default 20)
