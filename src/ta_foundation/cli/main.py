@@ -18,6 +18,17 @@ from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_ma
 from ta_foundation.reports.html.config import load_report_configs, build_report_from_config
 from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
 from ta_foundation.analysis.strategy_discovery import orchestrator as strategy_discovery_orchestrator
+from ta_foundation.analysis.strategy_discovery.nt_template_generator import (
+    generate_nt_template,
+    generate_per_rule_templates,
+)
+from ta_foundation.analysis.strategy_discovery.pantheon_bot_v2_template import (
+    generate_pantheon_v2_template,
+)
+from ta_foundation.analysis.strategy_discovery.pantheon_master_template import (
+    generate_pantheon_master_template,
+)
+from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
 
 
 
@@ -62,6 +73,16 @@ def _find_strategy_discovery_config(cfgs):
             sd = raw.get("strategy_discovery")
             if isinstance(sd, dict) and sd.get("enabled"):
                 return sd
+    return None
+
+
+def _find_pattern_engine_config(cfgs):
+    for cfg in cfgs:
+        raw = getattr(cfg, "raw", None)
+        if isinstance(raw, dict):
+            pe = raw.get("pattern_engine")
+            if isinstance(pe, dict) and (pe.get("enabled") or (pe.get("trade_pattern_audit") or {}).get("enabled")):
+                return pe
     return None
 
 
@@ -167,6 +188,32 @@ def main() -> int:
         print("[ta_foundation] No MA Anchor configuration detected.")
 
     # --------------------------------------------------------
+    # RUN PATTERN ENGINE
+    # Must run before Strategy Discovery so that pkg.assets["pattern_engine"]
+    # (signals, outcomes, pattern_stats, patterns) is available when the
+    # strategy discovery orchestrator builds the signal feature matrix.
+    # --------------------------------------------------------
+    pe_config = _find_pattern_engine_config(cfgs)
+
+    if pe_config:
+        print("[ta_foundation] Running Pattern Engine...")
+        try:
+            compute_and_attach_pattern_engine(
+                packages=result.packages,
+                market=result.market,
+                options=pe_config,
+            )
+            print("[ta_foundation] Pattern Engine complete.")
+        except Exception as e:
+            print(
+                f"[ta_foundation] WARNING pattern_engine failed: "
+                f"{type(e).__name__}: {e}"
+            )
+            traceback.print_exc()
+    else:
+        print("[ta_foundation] No Pattern Engine configuration detected.")
+
+    # --------------------------------------------------------
     # RUN STRATEGY DISCOVERY ENGINE
     # --------------------------------------------------------
     sd_config = _find_strategy_discovery_config(cfgs)
@@ -186,6 +233,100 @@ def main() -> int:
                 f"{type(e).__name__}: {e}"
             )
             traceback.print_exc()
+
+        # Write NinjaTrader template XML files for each run
+        try:
+            cost_model = sd_config.get("cost_model") or {}
+            tick_value = float(cost_model.get("tick_value") or 5.0)
+            tick_size = float(sd_config.get("tick_size") or 0.25)
+            for run_id, pkg in result.packages.items():
+                sd = (getattr(pkg, "metadata", {}) or {}).get("derived", {}).get("strategy_discovery", {})
+                if not sd:
+                    continue
+                tmpl = generate_nt_template(
+                    sd,
+                    run_id=run_id,
+                    options={"tick_value": tick_value, "tick_size": tick_size},
+                )
+                safe_id = "".join(c if c.isalnum() or c in "-_." else "_" for c in str(run_id))
+                xml_path = out_dir / f"nt_template_{safe_id}.xml"
+                xml_path.write_text(tmpl.xml_str, encoding="utf-8")
+                print(f"Wrote NT template: {xml_path}")
+                if tmpl.warnings:
+                    for w in tmpl.warnings:
+                        print(f"  [NT template warning] {w}")
+
+                # PantheonBotV2 companion template
+                try:
+                    v2_tmpl = generate_pantheon_v2_template(
+                        sd,
+                        run_id=str(run_id),
+                        options={"tick_value": tick_value, "tick_size": tick_size},
+                    )
+                    v2_path = out_dir / f"nt_v2_{safe_id}.xml"
+                    v2_path.write_text(v2_tmpl.xml_str, encoding="utf-8")
+                    print(f"Wrote PantheonBotV2 template: {v2_path}")
+                    if v2_tmpl.warnings:
+                        for w in v2_tmpl.warnings:
+                            print(f"  [PantheonBotV2 warning] {w}")
+                except Exception as v2_exc:
+                    print(
+                        f"  [PantheonBotV2 template] failed: "
+                        f"{type(v2_exc).__name__}: {v2_exc}"
+                    )
+
+                # PantheonMaster template
+                try:
+                    pm_tmpl = generate_pantheon_master_template(
+                        sd,
+                        run_id=str(run_id),
+                        options={"tick_value": tick_value, "tick_size": tick_size},
+                    )
+                    pm_path = out_dir / f"nt_pantheon_master_{safe_id}.xml"
+                    pm_path.write_text(pm_tmpl.xml_str, encoding="utf-8")
+                    print(f"Wrote PantheonMaster template: {pm_path}")
+                    if pm_tmpl.warnings:
+                        for w in pm_tmpl.warnings:
+                            print(f"  [PantheonMaster warning] {w}")
+                except Exception as pm_exc:
+                    print(
+                        f"  [PantheonMaster template] failed: "
+                        f"{type(pm_exc).__name__}: {pm_exc}"
+                    )
+
+                # Per-rule templates for market_discovery packages
+                if str(run_id).startswith("__market_discovery__"):
+                    try:
+                        per_rule = generate_per_rule_templates(
+                            sd,
+                            run_id=run_id,
+                            options={"tick_value": tick_value, "tick_size": tick_size},
+                            max_rules=8,
+                        )
+                        rules_dir = out_dir / f"nt_rules_{safe_id}"
+                        if per_rule:
+                            rules_dir.mkdir(parents=True, exist_ok=True)
+                        for pr in per_rule:
+                            # Build a filename-safe label from the rule string
+                            rule_slug = "".join(
+                                c if c.isalnum() or c in "-_" else "_"
+                                for c in pr.rule_str[:50]
+                            ).strip("_")
+                            rule_path = rules_dir / f"rule{pr.rule_rank:02d}_{rule_slug}.xml"
+                            rule_path.write_text(pr.template.xml_str, encoding="utf-8")
+                            print(
+                                f"  Wrote per-rule template: rule{pr.rule_rank} "
+                                f"S={pr.best_stop}/T={pr.best_target} -> {rule_path.name}"
+                            )
+                    except Exception as pr_exc:
+                        print(
+                            f"  [NT template] per-rule generation failed: "
+                            f"{type(pr_exc).__name__}: {pr_exc}"
+                        )
+        except Exception as e:
+            print(f"[ta_foundation] WARNING NT template generation failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
+
     else:
         print("[ta_foundation] No Strategy Discovery configuration detected.")
 

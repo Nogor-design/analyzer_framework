@@ -74,6 +74,15 @@ _NUM_COLS = ["adx", "pattern_score"]
 # Direction values
 _DIRECTION_VALUES = [1.0, -1.0]
 
+# Corpus columns (present when signal_feature_df was provided to build_feature_matrix)
+_CORPUS_NUM_COLS = ["corpus_win_rate", "corpus_avg_ticks"]
+_CORPUS_THRESHOLDS: Dict[str, List[float]] = {
+    "corpus_win_rate": [0.50, 0.55, 0.60, 0.65],
+    "corpus_avg_ticks": [0.0, 5.0, 10.0, 15.0],
+}
+# Categorical signal columns (present when trade was matched to a pattern signal)
+_PATTERN_CAT_COLS = ["signal_family", "signal_structure", "signal_match_quality"]
+
 
 # ---------------------------------------------------------------------------
 # Condition dataclass
@@ -167,6 +176,24 @@ def _generate_atoms(
         fired_rate = float(feature_df[col].astype(bool).mean())
         if fired_rate >= 0.05:
             atoms.append(Condition(col, "bool_true", True))
+
+    # Corpus numeric columns (present when build_feature_matrix received signal_feature_df)
+    for col in _CORPUS_NUM_COLS:
+        if col not in feature_df.columns:
+            continue
+        thresholds = _CORPUS_THRESHOLDS.get(col, [])
+        for thresh in thresholds:
+            atoms.append(Condition(col, "gte", float(thresh)))
+
+    # Categorical signal columns (signal_family, signal_structure, signal_match_quality)
+    for col in _PATTERN_CAT_COLS:
+        if col not in feature_df.columns:
+            continue
+        unique_vals = feature_df[col].dropna().astype(str).unique()
+        for v in sorted(unique_vals):
+            if v in ("", "nan", "None", "UNKNOWN"):
+                continue
+            atoms.append(Condition(col, "eq", v))
 
     return atoms
 

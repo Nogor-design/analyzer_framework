@@ -280,16 +280,65 @@ def run_strategy_discovery(
             audit_assets = pkg_assets.get("trade_pattern_audit") or {}
             if isinstance(audit_assets, dict):
                 audit_df = audit_assets.get("audit_df")
+
+            # Phase 2b: build signal_feature_df from pattern engine artifacts
+            signal_feature_df: Optional[pd.DataFrame] = None
+            bridge_options = dict(options.get("entry_pattern_bridge") or {})
+            bridge_options.setdefault("enabled", True)
+            if bridge_options.get("enabled"):
+                try:
+                    from .entry_pattern_bridge import build_signal_feature_matrix
+                    pe_store = pkg_assets.get("pattern_engine") or {}
+                    if isinstance(pe_store, dict):
+                        pe_signals = pe_store.get("signals")
+                        pe_outcomes = pe_store.get("outcomes")
+                        pe_stats = pe_store.get("pattern_stats")
+                        pe_patterns = pe_store.get("patterns")
+                        if (
+                            isinstance(pe_signals, pd.DataFrame)
+                            and len(pe_signals) > 0
+                        ):
+                            signal_feature_df = build_signal_feature_matrix(
+                                signals_df=pe_signals,
+                                outcomes_df=pe_outcomes if isinstance(pe_outcomes, pd.DataFrame) else pd.DataFrame(),
+                                pattern_stats_df=pe_stats if isinstance(pe_stats, pd.DataFrame) else pd.DataFrame(),
+                                bars_with_regime=bars_with_regime,
+                                options=bridge_options,
+                                patterns_df=pe_patterns if isinstance(pe_patterns, pd.DataFrame) else None,
+                            )
+                            discovery_block["n_signal_corpus"] = int(len(pe_signals))
+                except Exception as exc:
+                    discovery_block["entry_pattern_bridge"] = {"error": str(exc)}
+
             feature_df = build_feature_matrix(
                 trades if trades is not None else pd.DataFrame(),
                 bars_with_regime=bars_with_regime,
                 audit_df=audit_df if isinstance(audit_df, pd.DataFrame) else None,
+                signal_feature_df=signal_feature_df,
             )
             if isinstance(pkg_assets, dict):
                 pkg_assets.setdefault("strategy_discovery", {})
                 pkg_assets["strategy_discovery"]["feature_matrix"] = feature_df
+                if signal_feature_df is not None:
+                    pkg_assets["strategy_discovery"]["signal_feature_matrix"] = signal_feature_df
         except Exception:
             pass  # feature matrix is optional — don't fail the whole pipeline
+
+        # Signal Entry Discovery (pure corpus-based, no executed trades required)
+        try:
+            pkg_assets_sed = getattr(pkg, "assets", {}) or {}
+            sd_assets_sed = pkg_assets_sed.get("strategy_discovery") or {}
+            sfdf = sd_assets_sed.get("signal_feature_matrix") if isinstance(sd_assets_sed, dict) else None
+            if sfdf is not None and isinstance(sfdf, pd.DataFrame) and len(sfdf) > 0:
+                from .signal_entry_discovery import run_signal_entry_discovery
+                sed_options = dict(options.get("signal_entry_discovery") or {})
+                sed_options.setdefault("enabled", True)
+                discovery_block["signal_entry_discovery"] = run_signal_entry_discovery(
+                    signal_feature_df=sfdf,
+                    options=sed_options,
+                )
+        except Exception as exc:
+            discovery_block["signal_entry_discovery"] = {"error": str(exc)}
 
         # Feature importance (reads feature_matrix from assets)
         try:
@@ -481,3 +530,113 @@ def run_strategy_discovery(
         import traceback as _tb
         print(f"[ta_foundation] WARNING clustering failed: {exc}")
         _tb.print_exc()
+
+    # -----------------------------------------------------------------------
+    # Market Corpus Signal Entry Discovery
+    # Processes synthetic __market_discovery__ packages from the pattern engine.
+    # These packages have no trade data — the entire point is to find NEW entry
+    # signals from the raw market signal corpus, completely independent of any
+    # existing strategy's executed trades.
+    # -----------------------------------------------------------------------
+    sed_options = dict(options.get("signal_entry_discovery") or {})
+    sed_options.setdefault("enabled", True)
+    bridge_options = dict(options.get("entry_pattern_bridge") or {})
+    bridge_options.setdefault("enabled", True)
+
+    for run_id, pkg in (packages or {}).items():
+        if not str(run_id).startswith("__market_discovery__"):
+            continue
+        if not isinstance(getattr(pkg, "metadata", None), dict):
+            continue
+
+        try:
+            derived = pkg.metadata.setdefault("derived", {})
+            corpus_block = derived.setdefault("strategy_discovery", {})
+
+            pe_store = (getattr(pkg, "assets", {}) or {}).get("pattern_engine") or {}
+            pe_signals = pe_store.get("signals")
+            pe_outcomes = pe_store.get("outcomes")
+            pe_stats = pe_store.get("pattern_stats")
+            pe_patterns = pe_store.get("patterns")
+
+            if not (isinstance(pe_signals, pd.DataFrame) and len(pe_signals) > 0):
+                corpus_block["signal_entry_discovery"] = {
+                    "skipped": True, "reason": "no signal corpus in market_discovery package",
+                }
+                continue
+
+            from .entry_pattern_bridge import build_signal_feature_matrix
+            from .signal_entry_discovery import run_signal_entry_discovery
+
+            signal_feature_df = build_signal_feature_matrix(
+                signals_df=pe_signals,
+                outcomes_df=pe_outcomes if isinstance(pe_outcomes, pd.DataFrame) else pd.DataFrame(),
+                pattern_stats_df=pe_stats if isinstance(pe_stats, pd.DataFrame) else pd.DataFrame(),
+                bars_with_regime=bars_with_regime,
+                options=bridge_options,
+                patterns_df=pe_patterns if isinstance(pe_patterns, pd.DataFrame) else None,
+            )
+
+            corpus_block["signal_entry_discovery"] = run_signal_entry_discovery(
+                signal_feature_df=signal_feature_df,
+                options=sed_options,
+            )
+
+            # Signal rule walk-forward validation
+            sv_options = dict(options.get("signal_validation") or {})
+            sv_options.setdefault("enabled", True)
+            sv_options.setdefault("profit_col", "ret_ticks")
+            try:
+                from .signal_validation import run_signal_validation
+                corpus_block["signal_validation"] = run_signal_validation(
+                    signal_feature_df=signal_feature_df,
+                    options=sv_options,
+                )
+            except Exception as sv_exc:
+                corpus_block["signal_validation"] = {"error": str(sv_exc)}
+
+            # Signal corpus exit sweep — find best stop/target for each signal rule
+            ses_options = dict(options.get("signal_exit_sweep") or {})
+            ses_options.setdefault("enabled", True)
+            exit_sweep_result: Dict[str, Any] = {}
+            try:
+                from .signal_exit_sweep import run_signal_exit_sweep
+                sed_result = corpus_block.get("signal_entry_discovery") or {}
+                signal_rules = sed_result.get("top_signal_rules") or []
+                exit_sweep_result = run_signal_exit_sweep(
+                    signal_feature_df=signal_feature_df,
+                    signal_rules=signal_rules,
+                    options=ses_options,
+                )
+                corpus_block["signal_exit_sweep"] = exit_sweep_result
+            except Exception as ses_exc:
+                corpus_block["signal_exit_sweep"] = {"error": str(ses_exc)}
+
+            # Signal corpus simulation — equity curve per rule using optimised exits
+            scs_options = dict(options.get("signal_corpus_simulation") or {})
+            scs_options.setdefault("enabled", True)
+            try:
+                from .signal_corpus_simulation import run_signal_corpus_simulation
+                sed_result2 = corpus_block.get("signal_entry_discovery") or {}
+                sim_rules = sed_result2.get("top_signal_rules") or []
+                corpus_block["signal_corpus_simulation"] = run_signal_corpus_simulation(
+                    signal_feature_df=signal_feature_df,
+                    signal_rules=sim_rules,
+                    exit_sweep=exit_sweep_result,
+                    options=scs_options,
+                )
+            except Exception as scs_exc:
+                corpus_block["signal_corpus_simulation"] = {"error": str(scs_exc)}
+
+            # Cache feature matrix for downstream use (NT template, etc.)
+            if not hasattr(pkg, "assets") or pkg.assets is None:
+                pkg.assets = {}
+            pkg.assets.setdefault("strategy_discovery", {})
+            pkg.assets["strategy_discovery"]["signal_feature_matrix"] = signal_feature_df
+
+        except Exception as exc:
+            import traceback as _tb
+            pkg.metadata.setdefault("derived", {}).setdefault("strategy_discovery", {})[
+                "signal_entry_discovery"
+            ] = {"error": str(exc)}
+            _tb.print_exc()

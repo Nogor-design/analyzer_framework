@@ -122,6 +122,24 @@ from ta_foundation.reports.html.sections.strategy_discovery_regime import (
 from ta_foundation.reports.html.sections.strategy_discovery_parameter_sensitivity import (
     render_strategy_discovery_parameter_sensitivity,
 )
+from ta_foundation.reports.html.sections.strategy_discovery_nt_template import (
+    render_strategy_discovery_nt_template,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_entries import (
+    render_strategy_discovery_signal_entries,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_validation import (
+    render_strategy_discovery_signal_validation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_exit_sweep import (
+    render_strategy_discovery_signal_exit_sweep,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_simulation import (
+    render_strategy_discovery_signal_simulation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_anchor_confluence import (
+    render_strategy_discovery_anchor_confluence,
+)
 
 SectionRenderer = Callable[[dict], str]
 
@@ -395,6 +413,36 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="strategy_discovery_parameter_sensitivity",
         default_title="Strategy Discovery — Parameter Sensitivity",
         render_fn=render_strategy_discovery_parameter_sensitivity,
+    ),
+    "strategy_discovery_nt_template": SectionDef(
+        id="strategy_discovery_nt_template",
+        default_title="Strategy Discovery — NinjaTrader Template",
+        render_fn=render_strategy_discovery_nt_template,
+    ),
+    "strategy_discovery_signal_entries": SectionDef(
+        id="strategy_discovery_signal_entries",
+        default_title="Strategy Discovery — Signal Entry Discovery",
+        render_fn=render_strategy_discovery_signal_entries,
+    ),
+    "strategy_discovery_signal_validation": SectionDef(
+        id="strategy_discovery_signal_validation",
+        default_title="Strategy Discovery — Signal Rule Walk-Forward Validation",
+        render_fn=render_strategy_discovery_signal_validation,
+    ),
+    "strategy_discovery_signal_exit_sweep": SectionDef(
+        id="strategy_discovery_signal_exit_sweep",
+        default_title="Strategy Discovery — Signal Corpus Exit Parameter Sweep",
+        render_fn=render_strategy_discovery_signal_exit_sweep,
+    ),
+    "strategy_discovery_signal_simulation": SectionDef(
+        id="strategy_discovery_signal_simulation",
+        default_title="Strategy Discovery — Signal Corpus P&L Simulation",
+        render_fn=render_strategy_discovery_signal_simulation,
+    ),
+    "strategy_discovery_anchor_confluence": SectionDef(
+        id="strategy_discovery_anchor_confluence",
+        default_title="Strategy Discovery × Anchor Confluence",
+        render_fn=render_strategy_discovery_anchor_confluence,
     ),
 # render_pattern_engine_diagnostics
 }

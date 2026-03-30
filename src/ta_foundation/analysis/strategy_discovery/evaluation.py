@@ -34,18 +34,14 @@ def _safe_float(v: Any) -> Optional[float]:
 
 
 def _session_label(hour: int) -> str:
-    """Map an entry hour (local) to a named session bucket."""
-    if hour == 7:
-        return "pre_open"
-    if hour == 8:
-        return "us_open"
-    if hour in (9, 10, 11):
-        return "us_morning"
-    if hour in (12, 13):
-        return "us_midday"
-    if hour in (14, 15):
-        return "us_afternoon"
-    return "other"
+    """Map an entry hour (America/Denver local) to a PantheonMaster session bucket."""
+    if 0 <= hour <= 5:   return "London"    # 00:00-05:59
+    if hour == 6:        return "NyPre"     # 06:00-07:29 (approximated at hour boundary)
+    if hour in (7, 8):   return "NyOpen"    # 07:30-09:00
+    if 9 <= hour <= 12:  return "NyMid"     # 09:01-13:00
+    if hour == 13:       return "PowerHr"   # 13:01-14:00
+    if 18 <= hour <= 23: return "Asia"      # 18:00-23:59
+    return "other"  # 14-17: not in any named session
 
 
 def _tz_to_naive_utc(s: pd.Series) -> pd.Series:

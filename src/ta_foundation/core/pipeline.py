@@ -300,6 +300,11 @@ def ingest_folder(
     # -----------------------------------------
     # 3) Post-processing (once per ingest call)
     # -----------------------------------------
+
+    # Merge all per-contract market data into instrument-wide datasets so that
+    # reports can run across all NQ contracts (03-26, 06-26, …) transparently.
+    market.finalize()
+
     compute_and_attach_derived_metrics(packages)
 
     if include_run_images:

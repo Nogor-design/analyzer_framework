@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from .models import AnchorSpec
@@ -55,8 +56,14 @@ def compute_anchor_series(df: pd.DataFrame, spec: AnchorSpec) -> pd.Series:
         return s.rolling(spec.length, min_periods=spec.length).mean()
     if family == "EMA":
         return s.ewm(span=spec.length, adjust=False, min_periods=spec.length).mean()
+    if family == "WMA":
+        weights = np.arange(1, spec.length + 1, dtype=float)
+        weights /= weights.sum()
+        return s.rolling(spec.length, min_periods=spec.length).apply(
+            lambda x: float(np.dot(x, weights)), raw=True
+        )
 
-    raise ValueError(f"Unsupported anchor family for MVP: {family}")
+    raise ValueError(f"Unsupported anchor family: {family!r}. Supported: SMA, EMA, WMA.")
 
 
 def build_anchors_table(df: pd.DataFrame, specs: list[AnchorSpec]) -> pd.DataFrame:

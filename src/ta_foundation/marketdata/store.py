@@ -16,6 +16,21 @@ Key = Tuple[str, str]  # (instrument_root, contract)
 BarsKey = Tuple[str, str, str, str]  # (instrument_root, contract, timeframe, source_policy)
 
 
+def _merge_frames(frames: list[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """
+    Concatenate a list of DataFrames on the 'dt' column, sort chronologically,
+    and drop exact duplicate timestamps (keeping first occurrence).
+    Returns None if the resulting frame is empty.
+    """
+    valid = [f for f in frames if f is not None and not f.empty]
+    if not valid:
+        return None
+    merged = pd.concat(valid, ignore_index=True)
+    if "dt" in merged.columns:
+        merged = merged.sort_values("dt").drop_duplicates(subset=["dt"], keep="first").reset_index(drop=True)
+    return merged
+
+
 BarsSource = Literal["auto", "minute", "ticks"]
 
 
@@ -51,14 +66,57 @@ class MarketDataStore:
             self.bars_cache.pop(k, None)
 
     def get_minute_bars(self, instrument_root: str, contract: str) -> Optional[pd.DataFrame]:
-        return self.minute_bars.get((instrument_root, contract))
+        df = self.minute_bars.get((instrument_root, contract))
+        if df is None and contract:
+            # Fall back to the instrument-wide merged dataset (contract="")
+            df = self.minute_bars.get((instrument_root, ""))
+        return df
 
     def get_ticks(self, instrument_root: str, contract: str) -> Optional[pd.DataFrame]:
-        return self.ticks.get((instrument_root, contract))
+        df = self.ticks.get((instrument_root, contract))
+        if df is None and contract:
+            # Fall back to the instrument-wide merged dataset (contract="")
+            df = self.ticks.get((instrument_root, ""))
+        return df
 
     # Back-compat: existing callers may use .get(...) for minute bars
     def get(self, instrument_root: str, contract: str) -> Optional[pd.DataFrame]:
         return self.get_minute_bars(instrument_root, contract)
+
+    def finalize(self) -> None:
+        """
+        Merge all per-contract data for each instrument root into a single
+        chronological dataset stored under contract="" (the merged key).
+
+        Call this once after all market data files have been ingested.
+        Consumers that request a specific contract that isn't loaded will
+        automatically fall back to the merged key via get_minute_bars / get_ticks.
+        """
+        # ---- minute bars ----
+        roots_bars: dict[str, list[pd.DataFrame]] = {}
+        for (root, contract), df in self.minute_bars.items():
+            if contract == "":
+                continue  # skip any previously merged entry
+            roots_bars.setdefault(root, []).append(df)
+
+        for root, frames in roots_bars.items():
+            merged = _merge_frames(frames)
+            if merged is not None and not merged.empty:
+                self.minute_bars[(root, "")] = merged
+                self._invalidate(root, "")
+
+        # ---- ticks ----
+        roots_ticks: dict[str, list[pd.DataFrame]] = {}
+        for (root, contract), df in self.ticks.items():
+            if contract == "":
+                continue
+            roots_ticks.setdefault(root, []).append(df)
+
+        for root, frames in roots_ticks.items():
+            merged = _merge_frames(frames)
+            if merged is not None and not merged.empty:
+                self.ticks[(root, "")] = merged
+                self._invalidate(root, "")
 
     def ingest_artifact(self, art: ParsedArtifact) -> bool:
         """
