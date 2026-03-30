@@ -11,6 +11,7 @@ from ta_foundation.reports.html.registry import SECTION_REGISTRY
 from ta_foundation.marketdata.store import MarketDataStore
 from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
 from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
+from ta_foundation.analysis.regime_recommender.orchestrator import compute_and_attach_regime_recommendation
 
 @dataclass
 class ReportConfig:
@@ -200,6 +201,23 @@ def build_report_from_config(
 
     # Pattern engine compute (analysis phase). Never crash report generation.
     pe_opts = (cfg.raw.get("pattern_engine") or {}) if isinstance(cfg.raw, dict) else {}
+
+    # Regime recommender compute (analysis phase). Never crash report generation.
+    rr_opts = (cfg.raw.get("regime_recommender") or {}) if isinstance(cfg.raw, dict) else {}
+    if rr_opts.get("enabled"):
+        for _, pkg in (packages or {}).items():
+            try:
+                compute_and_attach_regime_recommendation(pkg=pkg, market=market, options=rr_opts)
+            except Exception as e:
+                md = getattr(pkg, "metadata", None) or {}
+                if "derived" not in md or md.get("derived") is None:
+                    md["derived"] = {}
+                md["derived"]["regime_recommender"] = {
+                    "version": "rr_v1",
+                    "enabled": False,
+                    "warnings": [f"regime_recommender_exception:{type(e).__name__}:{e}"],
+                }
+                pkg.metadata = md
     # --------------------------------------------------------
     # MA Anchor interaction engine (analysis phase)
     # --------------------------------------------------------
