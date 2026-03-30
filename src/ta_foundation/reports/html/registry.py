@@ -125,6 +125,7 @@ from ta_foundation.reports.html.sections.strategy_discovery_parameter_sensitivit
 from ta_foundation.reports.html.sections.strategy_discovery_pure_discovery import (
     render_strategy_discovery_pure_discovery,
 )
+from ta_foundation.reports.html.sections.regime_parameter_recommendation import render_regime_parameter_recommendation
 
 SectionRenderer = Callable[[dict], str]
 
@@ -314,6 +315,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
     ),
 
     # --- Strategy Discovery ---
+    "regime_parameter_recommendation": SectionDef(
+        id="regime_parameter_recommendation",
+        default_title="Regime Parameter Recommendation",
+        render_fn=render_regime_parameter_recommendation,
+    ),
     "strategy_discovery_overview": SectionDef(
         id="strategy_discovery_overview",
         default_title="Strategy Discovery Overview",
