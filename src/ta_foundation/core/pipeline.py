@@ -135,6 +135,7 @@ def ingest_folder(
     include_run_images: bool = False,
     market_data_folder: Path | None = None,
     tick_cache_enabled: bool = True,
+    load_tick_data: bool = True,
 ) -> IngestResult:
     if not folder.exists():
         raise FileNotFoundError(folder)
@@ -214,32 +215,34 @@ def ingest_folder(
                 "path": str(market_data_folder),
             })
         # 2a) Ingest tick cache parquet files directly (so cache works even if the source .txt was removed)
-        cache_dir = market_data_folder / ".ta_cache"
-        if cache_dir.exists() and cache_dir.is_dir():
-            for p in sorted(cache_dir.glob("*.parquet")):
-                if not is_tick_cache_parquet(p):
-                    continue
-                df = load_tick_cache_parquet(p, cfg=tick_cache_cfg)
-                if df is None or df.empty:
-                    continue
-                ic = parse_instrument_contract_from_tick_filename(p)
-                if ic is None:
-                    market_warnings.append({
-                        "code": "TICK_CACHE_PARSE_FAILED",
-                        "message": f"Could not parse instrument/contract from cache filename: {p.name}",
-                        "path": str(p),
-                    })
-                    continue
-                instrument, contract = ic
-                art = ParsedArtifact(
-                    kind="market_ticks",
-                    run_id=None,
-                    source_path=p,
-                    df=df,
-                    summary={"instrument": instrument, "contract": contract, "cache": "parquet_only"},
-                    warnings=[],
-                )
-                _attach_market_artifact(market, art, warnings_sink=market_warnings)
+        # Skipped entirely when load_tick_data=False (e.g. --no-tick-data flag).
+        if load_tick_data:
+            cache_dir = market_data_folder / ".ta_cache"
+            if cache_dir.exists() and cache_dir.is_dir():
+                for p in sorted(cache_dir.glob("*.parquet")):
+                    if not is_tick_cache_parquet(p):
+                        continue
+                    df = load_tick_cache_parquet(p, cfg=tick_cache_cfg)
+                    if df is None or df.empty:
+                        continue
+                    ic = parse_instrument_contract_from_tick_filename(p)
+                    if ic is None:
+                        market_warnings.append({
+                            "code": "TICK_CACHE_PARSE_FAILED",
+                            "message": f"Could not parse instrument/contract from cache filename: {p.name}",
+                            "path": str(p),
+                        })
+                        continue
+                    instrument, contract = ic
+                    art = ParsedArtifact(
+                        kind="market_ticks",
+                        run_id=None,
+                        source_path=p,
+                        df=df,
+                        summary={"instrument": instrument, "contract": contract, "cache": "parquet_only"},
+                        warnings=[],
+                    )
+                    _attach_market_artifact(market, art, warnings_sink=market_warnings)
 
         # IMPORTANT:
         # Your original glob '**/*.Last.txt' misses common NinjaTrader duplicate exports like:
@@ -249,6 +252,10 @@ def ingest_folder(
         lastish = [p for p in txt_candidates if "last" in p.name.lower()]
 
         for path in lastish:
+            # Skip tick files entirely when load_tick_data=False
+            if not load_tick_data and is_tick_last_txt(path):
+                continue
+
             header = read_header_sample(path)
             parser = registry.find_parser(path, header=header)
             if parser is None:

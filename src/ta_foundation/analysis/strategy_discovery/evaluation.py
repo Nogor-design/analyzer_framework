@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from ta_foundation.analysis.session_constants import session_label_from_hour as _session_label
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -31,17 +33,6 @@ def _safe_float(v: Any) -> Optional[float]:
         return None if not np.isfinite(f) else f
     except Exception:
         return None
-
-
-def _session_label(hour: int) -> str:
-    """Map an entry hour (America/Denver local) to a PantheonMaster session bucket."""
-    if 0 <= hour <= 5:   return "London"    # 00:00-05:59
-    if hour == 6:        return "NyPre"     # 06:00-07:29 (approximated at hour boundary)
-    if hour in (7, 8):   return "NyOpen"    # 07:30-09:00
-    if 9 <= hour <= 12:  return "NyMid"     # 09:01-13:00
-    if hour == 13:       return "PowerHr"   # 13:01-14:00
-    if 18 <= hour <= 23: return "Asia"      # 18:00-23:59
-    return "other"  # 14-17: not in any named session
 
 
 def _tz_to_naive_utc(s: pd.Series) -> pd.Series:

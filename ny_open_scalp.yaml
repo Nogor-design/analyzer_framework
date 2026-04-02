@@ -1,0 +1,436 @@
+# ============================================================
+# NY OPEN SCALP STRATEGY DISCOVERY
+# ============================================================
+#
+# WHAT THIS FILE DOES
+# -------------------
+# 1. Discovers every candle pattern that fires in the final premarket
+#    hour (NyPre, 06:00–06:59 Denver / 08:00–08:59 ET) and measures
+#    whether trading in the same direction immediately after the NY
+#    open (07:30 Denver / 09:30 ET) is profitable.
+#
+# 2. Specifically targets the LAST CANDLE BEFORE THE OPEN:
+#    The bar that closes at 07:29 Denver is the final premarket print.
+#    Its body direction, wick profile, and ATR size are the raw inputs
+#    the engine will test as predictive signals for scalping the open.
+#
+# 3. Runs a short Opening-Range Breakout sweep (5 min and 10 min ORB)
+#    to capture what happens in the very first minutes of NY trading.
+#    A 5-minute ORB (07:30–07:35 Denver) is effectively the "first
+#    candle" signal — the engine discovers whether breaking its high
+#    or low is consistently profitable.
+#
+# 4. Runs an MA sweep to show what the prevailing trend was heading
+#    into the open and whether trading with/against it at the bell
+#    is the right call.
+#
+# SESSION TIMING (America/Denver = Mountain Time)
+# -----------------------------------------------
+#   Asia / Globex overnight  : 18:00–05:59
+#   London                   : 00:00–05:59
+#   NyPre (final pre-market) : 06:00–06:59   (08:00–08:59 ET)
+#   NY Open bell             : 07:30          (09:30 ET)
+#   NyOpen session           : 07:00–08:59   (09:00–10:59 ET)
+#   NyMid                    : 09:00–12:59   (11:00–14:59 ET)
+#   PowerHour                : 13:00–13:59   (15:00–15:59 ET)
+#
+# SCALP TARGETS (NQ futures, 0.25 tick = $5.00)
+#   10 ticks = $50   ~small scalp, survives most spread + slippage
+#   15 ticks = $75   ~typical scalp
+#   20 ticks = $100  ~larger scalp, needs more room
+#   30 ticks = $150  ~mini-swing, only for strong momentum bars
+#
+# HOW TO READ THE OUTPUT
+# ----------------------
+#   candle_discovery_ranking  → "Most Robust" tier = patterns that
+#     survived IS/OOS validation; those are the ones to trade
+#   candle_discovery_overview → regime/session heatmaps; look for
+#     green cells in the "NyPre" and "NyOpen" rows
+#   orb_discovery_overview    → if the 5-minute ORB has PF > 1.3,
+#     the first 5 minutes of price action is predictive
+#   filter_discovery          → each filter condition shows what
+#     secondary context (ATR size, trend, session) improves PF most
+#   strategy_discovery_unified → cross-module top-25; if an ORB or
+#     candle pattern dominates this table, that is your edge
+# ============================================================
+
+report:
+  title: "NY Open Scalp — Pattern Discovery"
+  output_filename: "ny_open_scalp_discovery.html"
+  timezone: "America/Denver"
+
+
+# ============================================================
+# CANDLE PATTERN DISCOVERY
+# Detects patterns on the PREMARKET bars (06:00–07:29 Denver).
+# The key signal: what does the last bar before 07:30 look like,
+# and does trading in its direction at the open make money?
+# ============================================================
+candle_discovery:
+  enabled: true
+
+  # 1-minute bars give the most granular premarket signal.
+  # 5-minute bars smooth noise and give cleaner pattern shapes.
+  timeframes: [1, 5]
+
+  # Keep this low — premarket has fewer bars so combos produce
+  # fewer trades. 15 is the floor; raise it if data is abundant.
+  min_trades: 15
+
+  candle_features:
+    size_lookbacks: [5, 10, 20]   # compare each bar to recent premarket average
+    atr_period: 14                 # 14-bar ATR (premarket ATR is narrower than RTH)
+    tick_size: 0.25
+    min_body_ticks: 1              # bodies smaller than 1 tick = noise, skip
+
+  patterns:
+
+    # ---- MOMENTUM / DIRECTION PATTERNS ----
+    # These fire when a premarket bar shows strong directional intent.
+    # High body_multiplier = only the cleanest momentum bars qualify.
+    # Trading WITH a large premarket momentum bar into the NY open is
+    # the simplest and most intuitive form of this strategy.
+
+    large_body:
+      enabled: true
+      body_multiplier: [1.5, 2.0, 2.5]   # body must be N × 5-bar rolling avg body
+      wick_to_body_max: [0.3, 0.5]        # 0.3 = clean bar with minimal wick
+      lookback: [5, 10]                    # compare to recent 5 or 10 bar average
+      min_size_ticks: 4                    # bar must be at least 1 point (4 ticks)
+      max_size_ticks: 100                  # filter out news spikes (> 25 points)
+      # Signal: a large directional premarket bar = open momentum likely continues
+
+    clean_breakout_bar:
+      enabled: true
+      atr_mult: [1.5, 2.0]               # bar size >= N × ATR (strong impulse)
+      body_to_range_min: [0.60, 0.70]    # body fills >= 60% of range (no reversal wick)
+      # Signal: the premarket made a strong one-sided move — fade or follow at open?
+      # The engine will discover which direction wins at the specific time.
+
+    # ---- REVERSAL / EXHAUSTION PATTERNS ----
+    # These fire when a premarket move looks exhausted BEFORE the open.
+    # The thesis: if the final premarket bar is a pin bar or doji, the
+    # premarket trend is fading and the NY open will reverse it.
+
+    pin_bar_bullish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]       # lower wick >= 1.5 × body = hammer
+      body_to_range_max: [0.30, 0.35]    # small body = indecision after selling
+      # Signal: selling was rejected in premarket → buyers stepping in → long at open
+
+    pin_bar_bearish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]       # upper wick >= 1.5 × body = shooting star
+      body_to_range_max: [0.30, 0.35]
+      # Signal: buying was rejected in premarket → sellers stepping in → short at open
+
+    engulfing_bullish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]           # body engulfs prior bar's body
+      # Signal: a premarket bullish engulf near the open = bullish momentum loaded
+
+    engulfing_bearish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+      # Signal: bearish engulf before the open = selling pressure going into RTH
+
+    # ---- CONSOLIDATION / COIL PATTERNS ----
+    # When the last premarket bar is inside the prior bar (inside bar),
+    # price has compressed. The NY open often triggers the expansion.
+    # The engine discovers which direction the expansion favors.
+
+    inside_bar:
+      enabled: true
+      # Signal: premarket compressed → NY open expands → direction follows is_bullish
+
+    outside_bar:
+      enabled: true
+      # Signal: premarket volatility erupted → NY open either continues or reverses
+
+    doji:
+      enabled: true
+      body_to_range_max: [0.10, 0.15]    # near-zero body = maximum indecision
+      # Signal: last premarket bar was a doji → NY open picks a direction from scratch
+
+  # Trade BOTH long and short setups for unbiased discovery.
+  # The results will show which direction works for each pattern.
+  direction: both
+
+  # Entry timing — how to enter after the pattern fires
+  entry_timing:
+    # next_open: enter at the open of the bar after the signal bar.
+    # For a signal on the 07:29 bar, this is the 07:30 bar — the EXACT
+    # NY open bell. This is the core of the strategy.
+    next_open:
+      enabled: true
+
+    # break_extreme: place a stop-limit 1 tick beyond the signal bar's
+    # high (long) or low (short). If the first NY bar breaks out in
+    # your direction, you get filled. If not, you miss. Cleaner fills,
+    # lower fill rate.
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1
+      fill_timeout_bars: 3              # cancel if not filled within 3 bars (3 minutes on 1m)
+
+    # body_midpoint: enter at a 50% retracement of the signal bar.
+    # Models a "better price" entry if the open dips back to the
+    # midpoint of the premarket signal bar before moving.
+    body_midpoint:
+      enabled: true
+      fill_timeout_bars: 5
+
+  # Scalping outcome targets (NQ / ES context)
+  outcome:
+    # ATR-based: dynamic targets that adapt to volatility.
+    # In a high-vol premarket, ATR is larger so targets are wider.
+    # In a quiet premarket, targets are tighter.
+    atr:
+      enabled: true
+      target_mult: 1.5                  # target = 1.5 × ATR
+      stop_mult: 1.0                    # stop   = 1.0 × ATR
+
+    # Fixed-tick targets: tests the exact tick counts in a grid.
+    # 10/8, 10/10, 15/10, 15/12, 20/12, 20/15, 30/20, 30/25 combos
+    # are swept below. Each outcome_mode appears as a separate result
+    # row so you can see exactly which TP/SL combination works best.
+    ticks:
+      enabled: true
+      take_profit: [10, 15, 20, 30]     # ticks: $50, $75, $100, $150 per contract
+      stop:        [8,  10, 12, 15]     # ticks: $40, $50, $60,  $75  per contract
+
+    # Scalping = fast exits. A 1m bar = 1 minute; 10 bars = 10 minutes.
+    # If the trade hasn't hit target or stop in 10 minutes, it dies.
+    max_bars_timeout: 10                # 10 minutes max hold on 1m; 50 min on 5m
+    timeout_result: loss                # count timeouts as losses (conservative)
+
+    tick_size: 0.25                     # NQ = 0.25  |  ES = 0.25
+    tick_value: 5.00                    # NQ = $5.00 |  ES = $12.50
+    commission_per_side: 2.09
+    slippage_ticks: 1                   # 1-tick slippage on entry and exit
+
+  # MTF: use 5m context to filter 1m signals.
+  # If the 5m trend into the open aligns with the 1m signal, keep it.
+  # Hierarchical mode: 5m sets the bias, 1m provides the precise entry.
+  mtf:
+    confluence:
+      enabled: true
+      min_agreement: 2                  # both 1m and 5m must show same direction
+
+    hierarchical:
+      enabled: true
+      context_tf: 5                     # 5m bar sets directional bias
+      entry_tf: 1                       # 1m bar provides the entry
+      context_strength_min: 0.0
+
+  # Filter discovery: finds conditions that improve PF.
+  # E.g. "only trade large_body when premarket ATR > 8 ticks" or
+  # "only trade pin_bar when the prior 5 bars were all in one direction".
+  filter_discovery:
+    enabled: true
+    top_n: 10
+
+
+# ============================================================
+# OPENING RANGE BREAKOUT — FIRST CANDLE / FIRST 5 MINUTES
+# ============================================================
+# The ORB here is used to answer a specific question:
+#   "Is the breakout of the first 5-minute OR first 10-minute
+#    NY opening range consistently profitable?"
+#
+# A 5-minute ORB starting at 07:30 Denver builds a range from
+# 07:30–07:34, then trades the breakout at 07:35.
+# This is as close as the framework gets to "trade the first candle."
+#
+# If this ORB has PF > 1.3 in the results, the first few minutes
+# of NY price action have directional follow-through worth trading.
+# ============================================================
+orb_discovery:
+  enabled: true
+  min_trades: 15
+
+  orb:
+    # 5-minute ORB  = first 5 minutes of NY (07:30–07:34 Denver)
+    # 10-minute ORB = first 10 minutes     (07:30–07:39 Denver)
+    # 15-minute ORB = first 15 minutes     (07:30–07:44 Denver) — classic
+    # 30-minute ORB = first half hour       (07:30–07:59 Denver)
+    orb_minutes: [5, 10, 15, 30]
+
+    # NY open in Denver (Mountain) time
+    # MDT (summer, Apr–Oct): 07:30 Denver = 09:30 ET ✓
+    # MST (winter, Nov–Mar): 08:30 Denver = 09:30 ET
+    # Adjust to 8 in winter if your data is in standard time.
+    session_open_hour: 7
+    session_open_minute: 30
+
+    session_close_hour: 14              # stop looking for new ORBs after 2 PM Denver
+
+    direction: [0]                      # discover both long and short breakouts
+    min_range_ticks: [4, 8]             # skip ORBs narrower than 1–2 points (noise)
+    tick_size: 0.25
+    atr_period: 14
+
+    # require_close_beyond: true = the ORB bar must CLOSE outside the range
+    # (filters wick-only fakes). false = a wick breach is enough to signal.
+    # The engine tests both and shows you which has better PF.
+    require_close_beyond: [true, false]
+
+    one_signal_per_side: true           # only first breakout per direction per day
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+    body_midpoint: {enabled: false}     # not typical for ORB
+
+  outcome:
+    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+    ticks: {enabled: true, take_profit: [10, 15, 20, 30], stop: [8, 10, 12, 15]}
+    max_bars_timeout: 10
+    timeout_result: loss
+    tick_size: 0.25
+    tick_value: 5.00
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: true, top_n: 10}
+
+
+# ============================================================
+# MA CROSS / PULLBACK DISCOVERY — PREMARKET TREND CONTEXT
+# ============================================================
+# Answers: "What was the trend INTO the open, and does trading
+# WITH or AGAINST it at the NY bell produce better results?"
+#
+# Use 9-EMA and 20-EMA:
+#   - If close > 9-EMA > 20-EMA into the open: uptrend going in
+#   - MA cross on the final premarket bar = momentum shift signal
+#   - MA pullback in premarket = trend continuation setup at open
+# ============================================================
+ma_discovery:
+  enabled: true
+  timeframes: [1, 5]
+  min_trades: 15
+
+  ma_features:
+    atr_period: 14
+    tick_size: 0.25
+
+  signals:
+
+    ma_cross:
+      enabled: true
+      # Fast MAs capture the final premarket momentum shift.
+      # Slow MAs (50) show the bigger overnight trend context.
+      period: [9, 20, 50]
+      ma_type: [ema, sma]
+      direction: [0]
+      min_slope: [0.0, 0.05]            # slope filter removes chop crossings
+      min_atr_dist_before: [0.0]
+
+    ma_pullback:
+      enabled: true
+      period: [9, 20]                   # 9-EMA pullbacks are common pre-open
+      ma_type: [ema]
+      direction: [0]
+      trend_lookback: [5, 10]           # short lookback — premarket is brief
+      trend_bars_min: [4]               # only 4 bars needed to confirm premarket trend
+      touch_atr_mult: [0.5, 1.0]
+      require_slope: [true]
+      close_back_required: [true]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+
+  outcome:
+    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+    ticks: {enabled: true, take_profit: [10, 15, 20, 30], stop: [8, 10, 12, 15]}
+    max_bars_timeout: 10
+    timeout_result: loss
+    tick_size: 0.25
+    tick_value: 5.00
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: true, top_n: 10}
+
+
+# ============================================================
+# REPORT SECTIONS — ORDERED FOR MAXIMUM CLARITY
+# ============================================================
+sections:
+
+  # ---- FIRST: The combined cross-strategy top-25 ----
+  # This is your answer to "what is the single best signal to trade?"
+  # If candle patterns dominate: trade patterns.
+  # If ORB dominates: trade the opening range.
+  # If MA cross dominates: trade the premarket trend continuation.
+  - id: strategy_discovery_unified
+
+  # ---- CANDLE PATTERN DEEP-DIVE ----
+
+  # Pattern × timeframe × regime × session heatmaps.
+  # KEY: look for green (PF >= 1.5) cells in the "NyPre" session row.
+  # Those are patterns that fire in premarket and produce profitable
+  # NY open trades. The "NyOpen" row = patterns firing at 07:00–08:59.
+  - id: candle_discovery_overview
+
+  # 5-tier ranking: Best Raw, Best Filtered, Most Robust,
+  # Likely Overfit, Most Useful Filters.
+  # "Most Robust" = survived IS/OOS walk-forward validation.
+  # Only trade patterns from this tier — the others may be data-mined.
+  - id: candle_discovery_ranking
+
+  # ---- ORB (FIRST-CANDLE) ANALYSIS ----
+
+  # Signal × timeframe heatmap for the ORB sweep.
+  # The 5-minute ORB row is your "first candle" prediction:
+  #   - PF > 1.3 = the first 5-minute range tends to break and follow through
+  #   - PF < 1.0 = it fades back = fade the opening spike instead
+  - id: orb_discovery_overview
+
+  # ---- MA TREND CONTEXT ----
+
+  # Shows which MA cross/pullback signals — detected in premarket —
+  # produce profitable entries at the NY open.
+  # If 9-EMA cross has PF > 1.3: the last premarket momentum shift
+  # is predictive of early NY direction.
+  - id: ma_discovery_overview
+
+  # ---- FILTER DISCOVERY ----
+  # Finds the secondary conditions that refine ANY signal.
+  # Common high-value filters for this strategy:
+  #   - "session == NyPre"            (only trade premarket signals)
+  #   - "atr_14 > X"                  (only trade when volatility is present)
+  #   - "body_to_range > 0.6"         (only clean directional bars)
+  #   - "size_vs_roll_5 > 1.5"        (bar must be larger than recent average)
+  - id: filter_discovery
+    options:
+      bar_tf: "1m"
+      htf_tf: "5m"
+      ema_period: 9                    # 9-EMA = short-term premarket trend
+      atr_period: 14
+      top_n_runs: 12
+      min_trades: 15
+      sort_by: net_pnl
+      session_start: "06:00"           # NyPre starts at 06:00 Denver
+      opening_range_minutes: 5         # 5-minute opening range
+      entry_signal_enable: false
+      tick_size: 0.25
+
+  # ---- REGIME ANALYSIS ----
+  # Shows performance per market regime (trending / ranging / volatile).
+  # The open candle strategy works best when the overnight session was
+  # trending — confirm here.
+  - id: market_regime_discovery
+
+  # ---- DAILY SCOREBOARD ----
+  # Day-by-day P&L for each discovered strategy.
+  # Look for patterns in which days produce the best results —
+  # Monday open vs Friday open are often very different.
+  - id: daily_scoreboard
+    options:
+      show_individual_equity: true
+      include_summary_table: true
+      include_all_bot_charts: true

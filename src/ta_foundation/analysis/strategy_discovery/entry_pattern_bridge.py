@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from ta_foundation.analysis.session_constants import session_label_from_hour
+
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -50,15 +52,7 @@ DEFAULT_BRIDGE_OPTIONS: Dict[str, Any] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _session_label_from_hour(hour: int) -> str:
-    """Map an hour (America/Denver local) to a PantheonMaster session bucket."""
-    if 0 <= hour <= 5:   return "London"
-    if hour == 6:        return "NyPre"
-    if hour in (7, 8):   return "NyOpen"
-    if 9 <= hour <= 12:  return "NyMid"
-    if hour == 13:       return "PowerHr"
-    if 18 <= hour <= 23: return "Asia"
-    return "other"
+# session_label_from_hour imported from session_constants
 
 
 def _tz_to_naive_utc(s: pd.Series) -> pd.Series:
@@ -278,7 +272,7 @@ def build_signal_feature_matrix(
                 local_dt = dt_series.dt.tz_convert("America/Denver")
             else:
                 local_dt = dt_series
-            result["session_label"] = local_dt.dt.hour.apply(_session_label_from_hour)
+            result["session_label"] = local_dt.dt.hour.apply(session_label_from_hour)
         except Exception:
             result["session_label"] = "other"
 
@@ -297,6 +291,189 @@ def build_signal_feature_matrix(
         result["trade_profit"] = np.nan
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# build_candidate_scorecard
+# ---------------------------------------------------------------------------
+
+def build_candidate_scorecard(
+    pkg,
+    session_risk_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """
+    Join all pattern-engine evidence into one candidate row per
+    (pattern_id, horizon).
+
+    Sources consumed from ``pkg.assets["pattern_engine"]``:
+      pattern_stats       base metrics (n_signals, win_rate, avg_ticks, …)
+      discovery_stability fold stability (stability_score, sign_consistency, …)
+      oos_stats           cross-validation OOS stability
+      mc_summary          Monte Carlo summary (survival_rate, pass_rate, …)
+      mc_regime_summary   regime-sliced MC results
+      trade_pattern_audit per-pattern audit confirmation rates
+
+    Optional ``session_risk_df`` (from market_regime_store.summarize_entry_hour_risk)
+    adds session-level edge and danger scores as penalty/bonus columns.
+
+    Returns a DataFrame with one row per (pattern_id, horizon).
+    Returns an empty DataFrame if no pattern_stats are available.
+    """
+    pkg_assets = getattr(pkg, "assets", {}) or {}
+    pe_store = pkg_assets.get("pattern_engine") or {}
+
+    # ---- Base: pattern_stats ----
+    pattern_stats = pe_store.get("pattern_stats")
+    if not isinstance(pattern_stats, pd.DataFrame) or len(pattern_stats) == 0:
+        return pd.DataFrame()
+
+    scorecard = pattern_stats.copy()
+
+    # Ensure we have the key join columns
+    if "pattern_id" not in scorecard.columns:
+        return pd.DataFrame()
+
+    # ---- discovery_stability: fold sign-consistency ----
+    discovery_stability = pe_store.get("discovery_stability")
+    if isinstance(discovery_stability, pd.DataFrame) and len(discovery_stability) > 0:
+        try:
+            stab_cols = ["pattern_id"] + [
+                c for c in discovery_stability.columns
+                if c not in ("pattern_id",) and c not in scorecard.columns
+            ]
+            stab_cols = [c for c in stab_cols if c in discovery_stability.columns]
+            if len(stab_cols) > 1:
+                stab_sub = discovery_stability[stab_cols].drop_duplicates("pattern_id")
+                scorecard = scorecard.merge(stab_sub, on="pattern_id", how="left")
+        except Exception:
+            pass
+
+    # ---- oos_stats: OOS cross-validation metrics ----
+    oos_stats = pe_store.get("oos_stats")
+    if isinstance(oos_stats, pd.DataFrame) and len(oos_stats) > 0:
+        try:
+            oos_cols = ["pattern_id"] + [
+                c for c in oos_stats.columns
+                if c != "pattern_id" and c not in scorecard.columns
+            ]
+            oos_cols = [c for c in oos_cols if c in oos_stats.columns]
+            if len(oos_cols) > 1:
+                oos_sub = oos_stats[oos_cols].drop_duplicates("pattern_id")
+                scorecard = scorecard.merge(oos_sub, on="pattern_id", how="left")
+        except Exception:
+            pass
+    elif isinstance(oos_stats, dict) and oos_stats:
+        # Scalar summary — broadcast to all rows
+        for k, v in oos_stats.items():
+            col = f"oos_{k}"
+            if col not in scorecard.columns:
+                try:
+                    scorecard[col] = v
+                except Exception:
+                    pass
+
+    # ---- mc_summary: baseline MC survival rate ----
+    mc_summary = pe_store.get("mc_summary")
+    if isinstance(mc_summary, pd.DataFrame) and len(mc_summary) > 0:
+        try:
+            mc_cols = ["pattern_id"] + [
+                c for c in mc_summary.columns
+                if c != "pattern_id" and c not in scorecard.columns
+            ]
+            mc_cols = [c for c in mc_cols if c in mc_summary.columns]
+            if len(mc_cols) > 1:
+                mc_sub = mc_summary[mc_cols].drop_duplicates("pattern_id")
+                scorecard = scorecard.merge(mc_sub, on="pattern_id", how="left")
+        except Exception:
+            pass
+    elif isinstance(mc_summary, dict) and mc_summary:
+        for k, v in mc_summary.items():
+            col = f"mc_{k}"
+            if col not in scorecard.columns:
+                try:
+                    scorecard[col] = v
+                except Exception:
+                    pass
+
+    # ---- mc_regime_summary: regime-sliced MC ----
+    mc_regime = pe_store.get("mc_regime_summary")
+    if isinstance(mc_regime, pd.DataFrame) and len(mc_regime) > 0:
+        try:
+            regime_cols = ["pattern_id"] + [
+                c for c in mc_regime.columns
+                if c != "pattern_id" and c not in scorecard.columns
+            ]
+            regime_cols = [c for c in regime_cols if c in mc_regime.columns]
+            if len(regime_cols) > 1:
+                # Aggregate by pattern_id (mean across regimes)
+                mc_r_agg = mc_regime[regime_cols].groupby("pattern_id").mean().reset_index()
+                mc_r_agg.columns = [
+                    f"mc_regime_{c}" if c != "pattern_id" else c
+                    for c in mc_r_agg.columns
+                ]
+                scorecard = scorecard.merge(mc_r_agg, on="pattern_id", how="left")
+        except Exception:
+            pass
+
+    # ---- trade_pattern_audit: per-pattern confirmation rate ----
+    audit_store = pkg_assets.get("trade_pattern_audit") or {}
+    audit_df = audit_store.get("audit_df") if isinstance(audit_store, dict) else None
+    if isinstance(audit_df, pd.DataFrame) and len(audit_df) > 0:
+        try:
+            if "pattern_id" in audit_df.columns:
+                agg_cols: Dict[str, Any] = {}
+                if "confirmed" in audit_df.columns:
+                    agg_cols["audit_confirmation_rate"] = pd.NamedAgg(
+                        column="confirmed", aggfunc=lambda x: pd.to_numeric(x, errors="coerce").mean()
+                    )
+                if "confirming_score" in audit_df.columns:
+                    agg_cols["audit_avg_score"] = pd.NamedAgg(
+                        column="confirming_score", aggfunc=lambda x: pd.to_numeric(x, errors="coerce").mean()
+                    )
+                if "n_signals" in audit_df.columns:
+                    agg_cols["audit_n_signals"] = pd.NamedAgg(
+                        column="n_signals", aggfunc="sum"
+                    )
+                if agg_cols:
+                    audit_agg = audit_df.groupby("pattern_id").agg(**agg_cols).reset_index()
+                    scorecard = scorecard.merge(audit_agg, on="pattern_id", how="left")
+        except Exception:
+            pass
+
+    # ---- session_risk_df: session edge/danger scores ----
+    if isinstance(session_risk_df, pd.DataFrame) and len(session_risk_df) > 0:
+        try:
+            # Compute a single session edge score and concentration metric
+            # from the hour-level risk summary
+            if "entry_hour" in session_risk_df.columns:
+                pnl_col = next(
+                    (c for c in ["shrunk_avg_pnl", "avg_pnl", "pnl"] if c in session_risk_df.columns),
+                    None,
+                )
+                if pnl_col:
+                    positive_hours = (
+                        pd.to_numeric(session_risk_df[pnl_col], errors="coerce") > 0
+                    ).sum()
+                    total_hours = len(session_risk_df)
+                    edge_score = float(positive_hours / total_hours) if total_hours > 0 else np.nan
+                    scorecard["session_edge_score"] = edge_score
+
+                n_col = next(
+                    (c for c in ["n_trades", "n"] if c in session_risk_df.columns),
+                    None,
+                )
+                if n_col:
+                    counts = pd.to_numeric(session_risk_df[n_col], errors="coerce").fillna(0)
+                    total = counts.sum()
+                    if total > 0:
+                        session_concentration = float(counts.max() / total)
+                        scorecard["session_concentration"] = session_concentration
+        except Exception:
+            pass
+
+    # Guarantee a clean index
+    scorecard = scorecard.reset_index(drop=True)
+    return scorecard
 
 
 # ---------------------------------------------------------------------------

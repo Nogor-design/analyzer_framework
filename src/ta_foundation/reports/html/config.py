@@ -272,6 +272,32 @@ def build_report_from_config(
                 "artifacts": {},
             }
 
+    # -----------------------------------------------------------------------
+    # Pipeline diagnostics — injected into context before any section renders.
+    # Sections check ctx["pipeline_diagnostics"] instead of catching KeyErrors.
+    # -----------------------------------------------------------------------
+    engines_run: list[str] = []
+    if rr_opts.get("enabled"):
+        engines_run.append("regime_recommender")
+    if ai_opts.get("enabled"):
+        engines_run.append("anchor_interaction")
+    if pe_opts.get("enabled", True):  # pattern engine runs by default
+        engines_run.append("pattern_engine")
+
+    asset_keys: dict[str, list[str]] = {}
+    all_warnings: list[str] = []
+    for run_id, pkg in (packages or {}).items():
+        pkg_assets = getattr(pkg, "assets", None) or {}
+        asset_keys[str(run_id)] = list(pkg_assets.keys())
+        pkg_warnings = getattr(pkg, "warnings", None) or []
+        all_warnings.extend(str(w) for w in pkg_warnings)
+
+    base_ctx["pipeline_diagnostics"] = {
+        "engines_run": engines_run,
+        "asset_keys": asset_keys,
+        "warnings": all_warnings,
+    }
+
     # Deduplicate section ids preserving order
     seen: set[str] = set()
     sections_cfg: list[dict[str, Any]] = []

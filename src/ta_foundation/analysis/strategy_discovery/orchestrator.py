@@ -213,21 +213,15 @@ def run_strategy_discovery(
             discovery_block["mae_mfe_profile"] = {"error": str(exc)}
 
         # Validation
-        validation_result: Dict[str, Any] = {}
+        validation_result = None
         try:
             validation_result = run_validation(
                 trades if trades is not None else pd.DataFrame(),
                 wf_config=wf_config,
                 cost_model=cost_model,
             )
-            # Strip the cost_normalized DataFrame before storing to metadata
-            # (DataFrames must not live in metadata — store only JSON-safe summary)
-            validation_safe = {
-                k: _make_json_safe(v)
-                for k, v in validation_result.items()
-                if k != "cost_normalized"
-            }
-            validation_safe["passed"] = bool(validation_result.get("passed", False))
+            # Store JSON-safe summary in metadata; keep DataFrame in assets
+            validation_safe = _make_json_safe(validation_result.to_dict())
             discovery_block["validation"] = validation_safe
         except Exception as exc:
             discovery_block["validation"] = {"error": str(exc), "passed": False}
@@ -242,7 +236,7 @@ def run_strategy_discovery(
         # Evaluation
         try:
             from .evaluation import compute_evaluation_metrics, compute_regime_breakdown
-            cost_norm_trades = validation_result.get("cost_normalized")
+            cost_norm_trades = validation_result.cost_normalized if validation_result is not None else None
             if cost_norm_trades is not None and len(cost_norm_trades) > 0:
                 eval_metrics = compute_evaluation_metrics(cost_norm_trades)
                 # regime breakdown requires bars_with_regime
@@ -324,6 +318,37 @@ def run_strategy_discovery(
         except Exception:
             pass  # feature matrix is optional — don't fail the whole pipeline
 
+        # Session risk summary — hour-level edge/danger scores from market_regime_store
+        session_risk_df: Optional[pd.DataFrame] = None
+        try:
+            from ta_foundation.analysis.market_regime_store import (
+                summarize_entry_hour_risk,
+                optimize_entry_hour_window,
+            )
+            if trades is not None and len(trades) > 0:
+                session_risk_df = summarize_entry_hour_risk(trades)
+                if isinstance(session_risk_df, pd.DataFrame) and len(session_risk_df) > 0:
+                    session_window_df = optimize_entry_hour_window(session_risk_df)
+                    pkg_assets_sr = getattr(pkg, "assets", {}) or {}
+                    pkg_assets_sr.setdefault("strategy_discovery", {})
+                    pkg_assets_sr["strategy_discovery"]["session_risk"] = session_risk_df
+                    pkg_assets_sr["strategy_discovery"]["session_window"] = session_window_df
+                    discovery_block["session_risk_hours"] = int(len(session_risk_df))
+        except Exception as exc:
+            discovery_block["session_risk"] = {"error": str(exc)}
+
+        # Candidate scorecard — join all pattern-engine evidence + session risk into one table
+        try:
+            from .entry_pattern_bridge import build_candidate_scorecard
+            scorecard_df = build_candidate_scorecard(pkg, session_risk_df=session_risk_df)
+            if isinstance(scorecard_df, pd.DataFrame) and len(scorecard_df) > 0:
+                pkg_assets_sc = getattr(pkg, "assets", {}) or {}
+                pkg_assets_sc.setdefault("strategy_discovery", {})
+                pkg_assets_sc["strategy_discovery"]["candidate_scorecard"] = scorecard_df
+                discovery_block["n_candidates"] = int(len(scorecard_df))
+        except Exception as exc:
+            discovery_block["candidate_scorecard"] = {"error": str(exc)}
+
         # Signal Entry Discovery (pure corpus-based, no executed trades required)
         try:
             pkg_assets_sed = getattr(pkg, "assets", {}) or {}
@@ -349,7 +374,7 @@ def run_strategy_discovery(
             if isinstance(sd_assets, dict):
                 feature_df = sd_assets.get("feature_matrix")
 
-            cost_norm = validation_result.get("cost_normalized") if isinstance(validation_result, dict) else None
+            cost_norm = validation_result.cost_normalized if validation_result is not None else None
             source_df = (
                 cost_norm if cost_norm is not None and len(cost_norm) > 0
                 else (trades if trades is not None else pd.DataFrame())
@@ -378,15 +403,12 @@ def run_strategy_discovery(
             from .entry_discovery import run_entry_discovery
             entry_options = dict(options.get("entry_discovery") or {})
             entry_options.setdefault("enabled", True)
-            entry_options.setdefault("profit_col", "profit_net" if "profit_net" in (
-                (validation_result.get("cost_normalized").columns
-                 if isinstance(validation_result, dict)
-                 and validation_result.get("cost_normalized") is not None
-                 and hasattr(validation_result.get("cost_normalized"), "columns")
-                 else [])
+            _cn = validation_result.cost_normalized if validation_result is not None else None
+            entry_options.setdefault("profit_col", "profit_net" if (
+                _cn is not None and hasattr(_cn, "columns") and "profit_net" in _cn.columns
             ) else "profit")
             # Use cost-normalized feature_df if available (has profit_net column)
-            cost_norm = validation_result.get("cost_normalized") if isinstance(validation_result, dict) else None
+            cost_norm = _cn
             pkg_assets_ed = getattr(pkg, "assets", {}) or {}
             sd_assets_ed = pkg_assets_ed.get("strategy_discovery") or {}
             feat_df_ed = sd_assets_ed.get("feature_matrix") if isinstance(sd_assets_ed, dict) else None
@@ -546,6 +568,62 @@ def run_strategy_discovery(
         import traceback as _tb
         print(f"[ta_foundation] WARNING clustering failed: {exc}")
         _tb.print_exc()
+
+    # -----------------------------------------------------------------------
+    # Portfolio combo selection — find low co-loss strategy baskets
+    # Only runs when there are 2+ non-system packages.
+    # -----------------------------------------------------------------------
+    real_packages = {k: v for k, v in (packages or {}).items() if not str(k).startswith("__")}
+    if len(real_packages) >= 2:
+        try:
+            from ta_foundation.analysis.daily_matrix import build_daily_matrix
+            from ta_foundation.analysis.combo_selection import top_combos
+
+            matrix = build_daily_matrix(real_packages)
+            run_id_list = list(matrix.pnl.columns)
+
+            basket_k2 = top_combos(matrix.pnl, matrix.traded, run_id_list, k=2, top_n=5)
+            basket_k3 = (
+                top_combos(matrix.pnl, matrix.traded, run_id_list, k=3, top_n=3)
+                if len(run_id_list) >= 3
+                else []
+            )
+
+            def _combo_score_to_dict(cs) -> Dict[str, Any]:
+                return {
+                    "run_ids": list(cs.run_ids),
+                    "k": cs.k,
+                    "any_coloss_rate": cs.any_coloss_rate,
+                    "all_loss_rate": cs.all_loss_rate,
+                    "traded_days": cs.traded_days,
+                    "combo_cum_end": cs.combo_cum_end,
+                }
+
+            basket_summary = {
+                "k2": [_combo_score_to_dict(c) for c in basket_k2],
+                "k3": [_combo_score_to_dict(c) for c in basket_k3],
+            }
+
+            # Store in each real package: JSON-safe summary in metadata, full objects in assets
+            for run_id, pkg in real_packages.items():
+                derived = (getattr(pkg, "metadata", None) or {}).get("derived", {})
+                sd_block = derived.get("strategy_discovery")
+                if isinstance(sd_block, dict):
+                    sd_block["combo_basket"] = basket_summary
+
+                pkg_assets = getattr(pkg, "assets", None) or {}
+                if isinstance(pkg_assets, dict):
+                    pkg_assets.setdefault("strategy_discovery", {})
+                    pkg_assets["strategy_discovery"]["combo_basket"] = {
+                        "k2": basket_k2,
+                        "k3": basket_k3,
+                        "matrix": matrix,
+                        "summary": basket_summary,
+                    }
+        except Exception as exc:
+            import traceback as _tb
+            print(f"[ta_foundation] WARNING combo_selection failed: {exc}")
+            _tb.print_exc()
 
     # -----------------------------------------------------------------------
     # Market Corpus Signal Entry Discovery

@@ -1,0 +1,174 @@
+# ============================================================
+# ta_foundation — Full Discovery Report Config
+# All strategy modules + all report sections
+# ============================================================
+
+report:
+  title: "Full Strategy Discovery Report"
+  output_filename: "discovery_report.html"
+  timezone: "America/Denver"
+
+
+# ============================================================
+# CANDLE PATTERN DISCOVERY
+# Sweeps 9 candle pattern types across timeframes,
+# directions, entry timings, and outcome configs.
+# ============================================================
+candle_discovery:
+  enabled: true
+
+  # Timeframes to sweep (resampled from 1m bars)
+  timeframes: [1, 2, 5]
+
+  # Minimum trades per combo to include in results
+  min_trades: 20
+
+  # Candle feature computation settings
+  candle_features:
+    size_lookbacks: [5, 10, 20]   # rolling N-bar average windows for size comparison
+    atr_period: 14                 # ATR period for normalization
+    tick_size: 0.25                # instrument tick size
+    min_body_ticks: 5              # bodies smaller than this = doji territory
+
+  # Pattern definitions — each can have list-valued params (grid-expanded)
+  patterns:
+
+    large_body:
+      enabled: true
+      body_multiplier: [1.5, 2.0, 2.5]   # body must be > N × rolling avg body
+      wick_to_body_max: [0.1, 0.3]        # max wick-to-body ratio (filters wicky bars)
+      lookback: [10, 20]                   # which rolling window to compare against
+      # comparison_mode: rolling_avg       # rolling_avg | session_avg | atr_normalized
+      comparison_mode: rolling_avg
+      min_size_ticks: 60                    # bar must be at least N ticks tall
+      max_size_ticks: 200                  # bar must be at most N ticks tall (filters spikes)
+
+    pin_bar_bullish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]        # lower wick must be >= N × body
+      body_to_range_max: [0.30, 0.35]     # body must be <= N% of total range
+      # always direction=1 (long), no override
+
+    pin_bar_bearish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]        # upper wick must be >= N × body
+      body_to_range_max: [0.30, 0.35]
+      # always direction=-1 (short)
+
+    inside_bar:
+      enabled: true
+      # range of bar must be within prior bar's range
+      # direction follows is_bullish of the inside bar
+
+    outside_bar:
+      enabled: true
+      # range exceeds prior bar on both sides
+      # direction follows close vs prior close
+
+#    engulfing_bullish:
+#      enabled: true
+#      engulf_ratio: [1.0, 1.2]            # current body must be >= N × prior body
+#      # always direction=1
+#
+#    engulfing_bearish:
+#      enabled: true
+#      engulf_ratio: [1.0, 1.2]
+#      # always direction=-1
+#
+#    doji:
+#      enabled: true
+#      body_to_range_max: [0.10, 0.15]     # body <= N% of range = doji
+#      # emits both long and short signals
+#
+#    clean_breakout_bar:
+#      enabled: true
+#      atr_mult: [1.5, 2.0]               # bar must be >= N × ATR in size
+#      body_to_range_min: [0.60, 0.70]    # body must be >= N% of range (clean bar)
+      # direction follows close side of bar
+
+  # Entry direction sweep
+  # "both" = run long and short separately | "long_only" | "short_only"
+  direction: both
+
+  # Entry timing modes — how to get into the trade after signal
+  entry_timing:
+    next_open:
+      enabled: true
+      # enter at open of the bar AFTER the signal bar (guaranteed fill, slippage assumed)
+
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1              # stop-limit placed 1 tick beyond signal bar's extreme
+      fill_timeout_bars: 3         # if not filled within N bars, cancel
+
+    body_midpoint:
+      enabled: true
+      fill_timeout_bars: 5         # limit order at 50% of signal bar body
+      # if not filled within N bars, cancel
+
+  # Outcome / forward simulation settings
+  outcome:
+    atr:
+      enabled: true
+      target_mult: 1.5             # take-profit = entry ± 1.5 × ATR
+      stop_mult: 1.0               # stop-loss   = entry ∓ 1.0 × ATR
+
+    ticks:
+      enabled: true
+      take_profit: [30, 60, 100]   # TP in ticks (grid-expanded with stop)
+      stop: [30, 40, 50]           # SL in ticks
+
+    max_bars_timeout: 20           # exit trade after N bars regardless
+    timeout_result: loss           # "loss" | "scratch" — how to record timeout exits
+    tick_size: 0.25                # NQ = 0.25 | ES = 0.25 | CL = 0.01
+    tick_value: 5.00               # dollar value per tick (NQ=5, ES=12.50)
+    commission_per_side: 2.09      # dollars per side
+    slippage_ticks: 1              # assumed slippage on entry and exit
+
+  # Multi-timeframe combination modes
+  mtf:
+    confluence:
+      enabled: true
+      min_agreement: 2             # N-of-M timeframes must show same-direction signal
+
+    hierarchical:
+      enabled: true
+      context_tf: 5                # higher TF sets directional bias (must be in timeframes)
+      entry_tf: 1                  # lower TF provides precise entry (must be in timeframes)
+      context_strength_min: 0.0    # min strength_score of context bar (0.0 = all bars)
+
+  # Filter discovery — test which conditions improve PF post-hoc
+  filter_discovery:
+    enabled: true
+    top_n: 10                      # keep top N filter conditions per combo
+
+
+
+# ============================================================
+# REPORT SECTIONS
+# Order controls display order in the HTML output.
+# Comment out sections you don't want rendered.
+# All sections listed; options shown as comments when available.
+# ============================================================
+sections:
+
+  # ----------------------------------------------------------
+  # STRATEGY DISCOVERY — UNIFIED CROSS-STRATEGY VIEWS
+  # ----------------------------------------------------------
+
+  # Aggregate top-25 across ALL strategy modules; family comparison + regime/session breakdown
+  - id: strategy_discovery_unified
+    # No options — reads all *_discovery results automatically
+
+  # ----------------------------------------------------------
+  # CANDLE PATTERN DISCOVERY SECTIONS
+  # ----------------------------------------------------------
+
+  # Heatmaps: pattern × TF, pattern × regime, MTF comparison
+  - id: candle_discovery_overview
+    # No section-level options — driven by top-level candle_discovery: block above
+
+  # 5-tier ranking (best_raw, best_filtered, most_robust, likely_overfit, most_useful_filters)
+  # + TP×SL payoff matrix
+  - id: candle_discovery_ranking
+    # No section-level options — driven by top-level candle_discovery: block above
