@@ -1,0 +1,883 @@
+# ============================================================
+# ta_foundation — Full Discovery Report Config
+# All strategy modules + all report sections
+# ============================================================
+
+report:
+  title: "Full Strategy Discovery Report"
+  output_filename: "discovery_report.html"
+  timezone: "America/Denver"
+
+
+# ============================================================
+# CANDLE PATTERN DISCOVERY
+# Sweeps 9 candle pattern types across timeframes,
+# directions, entry timings, and outcome configs.
+# ============================================================
+candle_discovery:
+  enabled: true
+
+  # Timeframes to sweep (resampled from 1m bars)
+  timeframes: [1, 2, 5]
+
+  # Minimum trades per combo to include in results
+  min_trades: 20
+
+  # Candle feature computation settings
+  candle_features:
+    size_lookbacks: [5, 10, 20]   # rolling N-bar average windows for size comparison
+    atr_period: 14                 # ATR period for normalization
+    tick_size: 0.25                # instrument tick size
+    min_body_ticks: 1              # bodies smaller than this = doji territory
+
+  # Pattern definitions — each can have list-valued params (grid-expanded)
+  patterns:
+
+    large_body:
+      enabled: true
+      body_multiplier: [1.5, 2.0, 2.5]   # body must be > N × rolling avg body
+      wick_to_body_max: [0.3, 0.5]        # max wick-to-body ratio (filters wicky bars)
+      lookback: [10, 20]                   # which rolling window to compare against
+      # comparison_mode: rolling_avg       # rolling_avg | session_avg | atr_normalized
+      comparison_mode: rolling_avg
+      min_size_ticks: 4                    # bar must be at least N ticks tall
+      max_size_ticks: 200                  # bar must be at most N ticks tall (filters spikes)
+
+#    pin_bar_bullish:
+#      enabled: true
+#      wick_to_body_min: [1.5, 2.0]        # lower wick must be >= N × body
+#      body_to_range_max: [0.30, 0.35]     # body must be <= N% of total range
+#      # always direction=1 (long), no override
+#
+#    pin_bar_bearish:
+#      enabled: true
+#      wick_to_body_min: [1.5, 2.0]        # upper wick must be >= N × body
+#      body_to_range_max: [0.30, 0.35]
+#      # always direction=-1 (short)
+
+    inside_bar:
+      enabled: true
+      # range of bar must be within prior bar's range
+      # direction follows is_bullish of the inside bar
+
+    outside_bar:
+      enabled: true
+      # range exceeds prior bar on both sides
+      # direction follows close vs prior close
+
+    engulfing_bullish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]            # current body must be >= N × prior body
+      # always direction=1
+
+    engulfing_bearish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+      # always direction=-1
+
+    doji:
+      enabled: true
+      body_to_range_max: [0.10, 0.15]     # body <= N% of range = doji
+      # emits both long and short signals
+
+    clean_breakout_bar:
+      enabled: true
+      atr_mult: [1.5, 2.0]               # bar must be >= N × ATR in size
+      body_to_range_min: [0.60, 0.70]    # body must be >= N% of range (clean bar)
+      # direction follows close side of bar
+
+  # Entry direction sweep
+  # "both" = run long and short separately | "long_only" | "short_only"
+  direction: both
+
+  # Entry timing modes — how to get into the trade after signal
+  entry_timing:
+    next_open:
+      enabled: true
+      # enter at open of the bar AFTER the signal bar (guaranteed fill, slippage assumed)
+
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1              # stop-limit placed 1 tick beyond signal bar's extreme
+      fill_timeout_bars: 3         # if not filled within N bars, cancel
+
+    body_midpoint:
+      enabled: true
+      fill_timeout_bars: 5         # limit order at 50% of signal bar body
+      # if not filled within N bars, cancel
+
+  # Outcome / forward simulation settings
+  outcome:
+    atr:
+      enabled: true
+      target_mult: 1.5             # take-profit = entry ± 1.5 × ATR
+      stop_mult: 1.0               # stop-loss   = entry ∓ 1.0 × ATR
+
+    ticks:
+      enabled: true
+      take_profit: [30, 60, 100]   # TP in ticks (grid-expanded with stop)
+      stop: [30, 40, 50]           # SL in ticks
+
+    max_bars_timeout: 20           # exit trade after N bars regardless
+    timeout_result: loss           # "loss" | "scratch" — how to record timeout exits
+    tick_size: 0.25                # NQ = 0.25 | ES = 0.25 | CL = 0.01
+    tick_value: 5.00               # dollar value per tick (NQ=5, ES=12.50)
+    commission_per_side: 2.09      # dollars per side
+    slippage_ticks: 1              # assumed slippage on entry and exit
+
+  # Multi-timeframe combination modes
+  mtf:
+    confluence:
+      enabled: true
+      min_agreement: 2             # N-of-M timeframes must show same-direction signal
+
+    hierarchical:
+      enabled: true
+      context_tf: 5                # higher TF sets directional bias (must be in timeframes)
+      entry_tf: 1                  # lower TF provides precise entry (must be in timeframes)
+      context_strength_min: 0.0    # min strength_score of context bar (0.0 = all bars)
+
+  # Filter discovery — test which conditions improve PF post-hoc
+  filter_discovery:
+    enabled: true
+    top_n: 10                      # keep top N filter conditions per combo
+
+
+# ============================================================
+# MA CROSS / PULLBACK DISCOVERY
+# ============================================================
+#ma_discovery:
+#  enabled: true
+#  timeframes: [1, 5]
+#  min_trades: 20
+#
+#  ma_features:
+#    atr_period: 14
+#    tick_size: 0.25
+#
+#  signals:
+#
+#    ma_cross:
+#      enabled: true
+#      period: [9, 20, 50]          # MA period
+#      ma_type: [ema, sma]          # ema | sma
+#      direction: [0]               # 0=both, 1=long only, -1=short only
+#      min_slope: [0.0, 0.05]       # min abs(MA slope / ATR) to confirm trend momentum
+#      min_atr_dist_before: [0.0]   # require price was >= N ATR from MA before crossing
+#
+#    ma_pullback:
+#      enabled: true
+#      period: [20, 50]
+#      ma_type: [ema]
+#      direction: [0]
+#      trend_lookback: [10, 20]     # look back N bars to confirm trend context
+#      trend_bars_min: [6]          # at least N of those bars must be on trend side of MA
+#      touch_atr_mult: [0.5, 1.0]  # |dist to MA| <= N × ATR = "touching" the MA
+#      require_slope: [true]        # MA slope must confirm direction
+#      close_back_required: [true]  # bar must close back on trend side after touch
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## OPENING RANGE BREAKOUT (ORB) DISCOVERY
+## ============================================================
+#orb_discovery:
+#  enabled: true
+#  min_trades: 15
+#
+#  orb:
+#    orb_minutes: [15, 30, 60]        # minutes after open to build the range
+#    session_open_hour: 9             # Denver time hour of session open
+#    session_open_minute: 30          # Denver time minute (9:30 = NY open)
+#    session_close_hour: 16           # ignore signals at or after this hour
+#    direction: [0]                   # 0=both, 1=long breaks only, -1=short breaks only
+#    min_range_ticks: [4, 8]          # skip days where opening range is too narrow
+#    tick_size: 0.25
+#    atr_period: 14                   # for range width normalization in output
+#    require_close_beyond: [true, false]   # true=close must breach; false=wick sufficient
+#    one_signal_per_side: true        # only first breakout per direction per day
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: false}  # not typical for ORB
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## BOLLINGER BAND DISCOVERY
+## ============================================================
+#bb_discovery:
+#  enabled: true
+#  timeframes: [1, 5]
+#  min_trades: 20
+#
+#  bb_features:
+#    atr_period: 14
+#    squeeze_threshold: 0.04   # bandwidth < 4% of mid = squeeze state
+#    tick_size: 0.25
+#
+#  signals:
+#
+#    bb_mean_reversion:
+#      enabled: true
+#      period: [20]
+#      n_std: [2.0, 2.5]              # band width in standard deviations
+#      direction: [0]
+#      pct_b_touch_max: [0.0, -0.1]   # prior bar %B <= this (%B=0 = at lower band)
+#      pct_b_return_min: [0.1]         # current bar %B must be > this (closed back inside)
+#      min_z_extreme: [1.5, 2.0]       # min abs(z-score) at touch bar
+#
+#    bb_continuation:
+#      enabled: true
+#      period: [20]
+#      n_std: [2.0]
+#      direction: [0]
+#      require_prior_squeeze: [false, true]   # true = squeeze must have preceded breakout
+#      squeeze_lookback: [5]                   # N bars to look back for squeeze
+#      min_pct_b_bull: [1.0]                   # %B >= this for bull breakout (1.0 = outside upper)
+#      max_pct_b_bear: [0.0]                   # %B <= this for bear breakout
+#
+#    bb_squeeze_breakout:
+#      enabled: true
+#      period: [20]
+#      n_std: [2.0]
+#      direction: [0]
+#      min_squeeze_bars: [3, 5]       # minimum consecutive bars of squeeze before breakout
+#      breakout_z_min: [1.8, 2.0]    # min abs(z-score) on the breakout bar
+#      require_close_out: [false]     # true = close must be outside band
+#
+#    bb_walk:
+#      enabled: true
+#      period: [20]
+#      n_std: [2.0]
+#      direction: [0]
+#      consecutive_bars: [3, 5]       # N bars must all be touching/above upper (or lower) band
+#      pct_b_walk_min: [0.8]          # %B >= this = "touching upper band" for bull walk
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## PRICE BREAKOUT DISCOVERY
+## N-bar Donchian channel breakouts + single-bar volatility explosions
+## ============================================================
+#breakout_discovery:
+#  enabled: true
+#  timeframes: [1, 5]
+#  min_trades: 20
+#  atr_period: 14
+#
+#  signals:
+#
+#    n_bar_breakout:
+#      enabled: true
+#      lookback: [10, 20, 50]           # N-bar high/low channel to break
+#      direction: [0]
+#      require_close_beyond: [true]     # true = close must exceed; false = wick sufficient
+#      min_breach_ticks: [1.0, 2.0]    # minimum breach distance in ticks
+#      squeeze_atr_pct: [0.0]          # skip if ATR < N% of rolling ATR mean; 0.0 = disabled
+#      squeeze_atr_lookback: [20]       # rolling window for ATR mean above
+#
+#    volatility_breakout:
+#      enabled: true
+#      atr_mult: [1.5, 2.0, 2.5]       # single-bar move must exceed N × ATR
+#      direction: [0]
+#      body_zone_pct: [0.0, 0.3]       # close must be in top/bottom N% of bar range; 0.0 = disabled
+#      min_atr_ticks: [4.0]             # skip bars where ATR < N ticks (low volatility days)
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: false}
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## PULLBACK / CONTINUATION DISCOVERY
+## Three patterns: trend pullback re-entry, inside bar continuation,
+## and failed breakout reversal
+## ============================================================
+#pullback_discovery:
+#  enabled: true
+#  timeframes: [1, 5]
+#  min_trades: 20
+#  atr_period: 14
+#
+#  signals:
+#
+#    trend_pullback:
+#      enabled: true
+#      trend_bars: [8, 12]             # bars to look back to measure trend move
+#      min_trend_atr: [1.0, 1.5]      # trend move must be >= N × ATR to qualify
+#      retrace_min: [0.25, 0.38]       # pullback must retrace at least N of trend move
+#      retrace_max: [0.65]              # pullback deeper than this = reversal not pullback
+#      direction: [0]
+#      confirm_close: [true]            # current bar must close in trend direction vs prior
+#
+#    inside_bar_continuation:
+#      enabled: true
+#      trend_bars: [8]                  # trend context window
+#      min_trend_atr: [0.8]             # trend strength threshold
+#      direction: [0]
+#      inside_bar_lookback: [3]         # look for an inside bar within the last N bars
+#
+#    failed_breakout:
+#      enabled: true
+#      lookback: [20]                   # N-bar channel used to define the broken level
+#      direction: [0]                   # 1 = failed bear break (→ long); -1 = failed bull break
+#      min_breach_ticks: [1.0]          # prior bar must have breached by at least N ticks
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## LEVEL-BASED ENTRY DISCOVERY
+## Three detectors: swing level tests, consolidation breakouts,
+## and round-number bounces
+## ============================================================
+#level_discovery:
+#  enabled: true
+#  timeframes: [1, 5]
+#  min_trades: 15
+#  atr_period: 14
+#
+#  signals:
+#
+#    swing_level_test:
+#      enabled: true
+#      pivot_lookback: [5, 8]          # N bars each side required to confirm a swing pivot
+#      touch_atr_mult: [0.5, 1.0]     # bar must come within N × ATR of the level
+#      max_pivots: [5]                  # track the most recent N pivots
+#      direction: [0]                   # 1 = test swing lows (support); -1 = test swing highs
+#      require_close_away: [true]       # bar must close away from level (confirms bounce)
+#      min_close_atr: [0.2]             # close must be >= N × ATR away from level
+#
+#    consolidation_breakout:
+#      enabled: true
+#      consol_bars: [8, 12]             # window to measure consolidation range
+#      max_range_atr: [0.8, 1.2]       # range must be < N × ATR to count as consolidation
+#      direction: [0]
+#      require_close_beyond: [true]
+#      min_breach_atr: [0.3]            # breach must be >= N × ATR beyond the range edge
+#
+#    round_number_bounce:
+#      enabled: true
+#      level_step: [50.0, 100.0]       # round number interval (e.g. every 50 NQ points)
+#      touch_ticks: [4.0, 8.0]         # how close = "touching" the round number
+#      direction: [0]                   # 1 = bounce off support; -1 = reject from resistance
+#      require_close_away: [true]
+#      min_close_ticks: [2.0]           # close must be >= N ticks away from level
+#
+#  entry_timing:
+#    next_open:     {enabled: true}
+#    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+#    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+#
+#  outcome:
+#    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+#    ticks: {enabled: true, take_profit: [30, 60, 100], stop: [30, 40, 50]}
+#    max_bars_timeout: 20
+#    timeout_result: loss
+#    tick_size: 0.25
+#    tick_value: 5.00
+#    commission_per_side: 2.09
+#    slippage_ticks: 1
+#
+#  filter_discovery: {enabled: true, top_n: 10}
+#
+#
+## ============================================================
+## REPORT SECTIONS
+## Order controls display order in the HTML output.
+## Comment out sections you don't want rendered.
+## All sections listed; options shown as comments when available.
+## ============================================================
+#sections:
+#
+#  # ----------------------------------------------------------
+#  # STRATEGY DISCOVERY — UNIFIED CROSS-STRATEGY VIEWS
+#  # ----------------------------------------------------------
+#
+#  # Aggregate top-25 across ALL strategy modules; family comparison + regime/session breakdown
+#  - id: strategy_discovery_unified
+#    # No options — reads all *_discovery results automatically
+#
+#  # ----------------------------------------------------------
+#  # CANDLE PATTERN DISCOVERY SECTIONS
+#  # ----------------------------------------------------------
+#
+#  # Heatmaps: pattern × TF, pattern × regime, MTF comparison
+#  - id: candle_discovery_overview
+#    # No section-level options — driven by top-level candle_discovery: block above
+#
+#  # 5-tier ranking (best_raw, best_filtered, most_robust, likely_overfit, most_useful_filters)
+#  # + TP×SL payoff matrix
+#  - id: candle_discovery_ranking
+#    # No section-level options — driven by top-level candle_discovery: block above
+#
+#  # ----------------------------------------------------------
+#  # INDIVIDUAL STRATEGY FAMILY OVERVIEWS
+#  # Signal × TF heatmap, direction comparison, avg PF summary
+#  # ----------------------------------------------------------
+#
+#  - id: ma_discovery_overview
+#    # No section-level options — driven by ma_discovery: block above
+#
+#  - id: orb_discovery_overview
+#    # No section-level options — driven by orb_discovery: block above
+#
+#  - id: bb_discovery_overview
+#    # No section-level options — driven by bb_discovery: block above
+#
+#  - id: breakout_discovery_overview
+#    # No section-level options — driven by breakout_discovery: block above
+#
+#  - id: pullback_discovery_overview
+#    # No section-level options — driven by pullback_discovery: block above
+#
+#  - id: level_discovery_overview
+#    # No section-level options — driven by level_discovery: block above
+#
+#  # ----------------------------------------------------------
+#  # RUN OVERVIEW / COMPARISON SECTIONS
+#  # These sections compare all loaded NinjaTrader run exports.
+#  # ----------------------------------------------------------
+#
+#  # Side-by-side KPI comparison table across all runs
+#  - id: comparison_overview
+#
+#  # Stacked equity curves for all runs on one chart
+#  - id: equity_curve_comparison
+#
+#  # KPI summary cards per run (net profit, PF, WR, etc.)
+#  - id: run_kpi_cards
+#
+#  # Paste-ready performance snapshot for clipboard
+#  - id: run_snapshot_clipboard
+#
+#  # Full settings/parameters table from NinjaTrader export
+#  - id: run_settings_table
+#
+#  # Compact metadata cards (dates, trade counts, run IDs)
+#  - id: run_metadata_cards
+#
+#  # Executive strategy profile cards with embedded run images
+#  - id: run_executive_profile_cards
+#    options:
+#      show_hint: true              # show usage hint panel
+#      card_width_px: 1280          # overall card width
+#      card_padding_px: 24          # inner padding
+#      image_width_px: 520          # embedded run image width
+#      show_run_image: true         # include run card PNG (requires --include-run-images)
+#      background_style: solid      # "solid" | "gradient"
+#      show_detail_charts: false    # show supplemental mini-charts below main card
+#      detail_chart_width_px: 540
+#      detail_chart_gap_px: 16
+#      detail_chart_layout: two-up  # "two-up" | "stacked"
+#      wlr_days_back: 20            # W/L ratio sparkline lookback days
+#      wlr_box_px: 10               # W/L ratio box pixel size
+#      wlr_gap_px: 2
+#      wlr_show_legend: false
+#      timeline_cell_px: 8          # trade timeline pixel cell size
+#      timeline_gap_px: 1
+#      timeline_show_hours: true
+#      timeline_show_summary: true
+#
+#  # ----------------------------------------------------------
+#  # DAILY / WEEKLY PERFORMANCE SECTIONS
+#  # ----------------------------------------------------------
+#
+#  # Per-day P&L scoreboard — all runs side by side
+#  - id: daily_scoreboard
+#    options:
+#      max_runs: ~                  # null = show all runs
+#      show_individual_equity: true
+#      include_summary_table: true
+#      include_all_bot_charts: true
+#      # combo_sets:                # optional portfolio combo analysis
+#      #   - name: "Top 3 by PF"
+#      #     mode: top_n            # top_n | beam_search | explicit
+#      #     k: 3                   # number of runs to combine
+#      #     top_n: 3               # for top_n mode
+#      #     beam_width: 50         # for beam_search mode
+#      #     max_render: 5          # max combos to render (beam_search)
+#      #     combos: []             # for explicit mode: list of [run_id, ...] lists
+#      #     combo_run_ids: []      # alternative to combos
+#
+#  # Daily leaderboard — best runs per session, top-N winners highlighted
+#  - id: daily_leaderboard_cards
+#    options:
+#      top_n: 8                     # top N runs to highlight per session
+#      hide_missing_cards: true
+#      lookback_days: 10            # how many recent days to show
+#      heatmap_top_bots: 30         # runs shown in the day heatmap
+#      buffer_chart_top_bots: 8     # runs shown in drawdown buffer chart
+#      # target_date: "2024-03-15"  # optional: show a specific date (default = most recent)
+#      # session_windows:           # custom session definitions
+#      #   - label: "Premarket"
+#      #     start: "07:30"
+#      #     end: "09:30"
+#      #   - label: "Morning"
+#      #     start: "09:30"
+#      #     end: "12:00"
+#      #   - label: "Afternoon"
+#      #     start: "12:00"
+#      #     end: "16:00"
+#
+#  # Weekly performance leaderboard cards
+#  - id: weekly_leaderboard_cards
+#    options:
+#      week_ending: ""              # "" = most recent week; or "2024-03-15"
+#      starting_balance: 50000      # account starting balance for drawdown %
+#      trailing_dd: 2500            # trailing drawdown limit for Apex/TopStep context
+#
+#  # Intraday cumulative P&L curves by calendar day (MFE overlay)
+#  - id: trades_intraday_pnl_by_day
+#
+#  # Trades plotted on 1-minute candle charts (requires market data + --market-data flag)
+#  - id: trade_candle_overlay
+#    options:
+#      window_minutes: 480          # bars to show around each trade (default 8 × 60)
+#      padding_minutes: 30          # extra bars before/after trade
+#      max_trades: 250              # cap for performance (very large sets are slow)
+#      prefer_contract: ~           # null = auto-select; or explicit e.g. "NQH4"
+#
+#  # ----------------------------------------------------------
+#  # RUN CARD CATALOG
+#  # ----------------------------------------------------------
+#
+#  # Full grid of run cards sorted by a metric
+#  - id: run_card_catalog
+#    options:
+#      metric: profit_factor        # sort metric: profit_factor | net_profit | win_rate | ...
+#      sort_desc: true              # true = best first
+#      max_per_group: 12            # max cards per session/regime group
+#      hide_missing_cards: true     # hide runs with no embedded card image
+#
+#  # ----------------------------------------------------------
+#  # APEX / FUNDED-ACCOUNT RISK SECTIONS
+#  # ----------------------------------------------------------
+#
+#  # Drawdown survival probability profile for Apex/TopStep rules
+#  - id: apex_drawdown_survival_profile
+#    options:
+#      apex:
+#        starting_balance: 50000    # account size
+#        trailing_drawdown: 2500    # trailing drawdown limit
+#        lock_profit: 0             # lock-in profit amount (0 = disabled)
+#      instruments:
+#        NQ:
+#          tick_size: 0.25
+#          tick_value: 5.00
+#        ES:
+#          tick_size: 0.25
+#          tick_value: 12.50
+#      portfolio_mc:
+#        n_paths: 2000              # Monte Carlo simulation paths
+#        seed: 42
+#        mode: daily                # "daily" | "trade"
+#
+#  # ----------------------------------------------------------
+#  # FILTER & EXIT POLICY DISCOVERY SECTIONS
+#  # ----------------------------------------------------------
+#
+#  # Post-hoc filter discovery — which entry conditions improve PF
+#  - id: filter_discovery
+#    options:
+#      bar_tf: "5m"                 # bar timeframe for feature computation
+#      htf_tf: "15m"                # higher timeframe for context features
+#      ema_period: 50               # EMA period for trend context
+#      atr_period: 14
+#      top_n_runs: 12               # max runs to include
+#      min_trades: 50               # min trades per run to qualify
+#      sort_by: net_pnl             # net_pnl | profit_factor | win_rate
+#      # include_run_id_regex: ~    # optional regex to whitelist run IDs
+#      # exclude_run_id_regex: ~    # optional regex to blacklist run IDs
+#      write_recommendations_json: true  # write outputs/recommendations.json
+#      session_start: "07:30"       # Denver time session start
+#      globex_start: "16:00"        # overnight globex session start
+#      opening_range_minutes: 15    # size of opening range window
+#      entry_signal_enable: false   # enable entry signal analysis sub-section
+#      tick_size: 0.25
+#      entry_prev_bars: 1
+#      entry_swing_k: 2
+#      entry_near_edges_atr: [0.5, 1.0, 2.0]
+#
+#  # Exit policy simulation — test alternative stop/trail/target policies on real trade entries
+#  - id: exit_policy_simulation
+#    options:
+#      top_n_runs: 12
+#      min_trades: 50
+#      tick_size: 0.25
+#      atr_tf: "5m"                 # timeframe for ATR computation
+#      atr_period: 14
+#      bounded_to_original_exit: true   # true = simulate cannot exceed original exit time
+#      max_minutes_unbounded: 180       # max trade duration when unbounded
+#      use_bid_ask_triggers: true
+#      policies: [trail, fixed_atr, atr_trail, be_atr_trail, chandelier_atr_trail]
+#      # --- fixed ATR policy ---
+#      fixed_stop_atr_mult: ~         # null = use stop_ticks; or e.g. 1.0
+#      fixed_target_atr_mult: ~       # null = use target_ticks; or e.g. 2.0
+#      stop_ticks: 200
+#      target_ticks: 400
+#      # --- trailing stop ---
+#      start_trail_ticks: 50          # MFE required before trail activates
+#      trail_amount: 20               # trail distance in ticks
+#      # --- ATR trail ---
+#      trail_stop_atr_mult: 1.0       # initial ATR stop
+#      trail_atr_mult: 1.25           # trail distance as ATR multiple
+#      # --- breakeven + trail ---
+#      be_trigger_atr_mult: 0.8       # MFE (as ATR mult) to trigger breakeven move
+#      be_trigger_ticks: ~            # alternative: MFE in ticks to trigger BE
+#      be_offset_ticks: 4.0           # stop moved to entry + this many ticks
+#      be_trail_atr_mult: 1.25        # trail after BE is set
+#      # --- chandelier exit ---
+#      chandelier_stop_atr_mult: 1.0
+#      chandelier_trail_atr_mult: 1.75
+#      # --- time stop ---
+#      time_stop_minutes: 8           # exit after N minutes if MFE below threshold
+#      time_stop_min_mfe_ticks: 6.0
+#      # --- giveback stop ---
+#      giveback_arm_mfe_ticks: 18.0   # MFE required to arm giveback
+#      giveback_ticks: 10.0           # exit if profit gives back N ticks from peak
+#      # instrument: ~                # null = auto-detect from run data
+#
+#  # Extended exit policy simulation with drawdown analysis
+#  - id: exit_policy_simulation2
+#    options:
+#      top_n_runs: 12
+#      min_trades: 50
+#      tick_size: 0.25
+#      atr_tf: "5m"
+#      atr_period: 14
+#      bounded_to_original_exit: true
+#      policies: [trail, fixed_atr, atr_trail, be_atr_trail, chandelier_atr_trail]
+#      stop_ticks: 200
+#      target_ticks: 400
+#      trail_atr_mult: 1.25
+#      be_trigger_atr_mult: 0.8
+#      chandelier_trail_atr_mult: 1.75
+#
+#  # Detailed per-trade exit policy debug table (use sparingly — large output)
+#  - id: exit_policy_trade_debug
+#
+#  # ----------------------------------------------------------
+#  # TICK DATA DIAGNOSTICS
+#  # Requires --market-data with tick files loaded
+#  # ----------------------------------------------------------
+#  - id: tick_data_diagnostics
+#
+#  # ----------------------------------------------------------
+#  # PATTERN ENGINE SECTIONS
+#  # Requires pattern_engine: block in YAML and pre-run analysis
+#  # ----------------------------------------------------------
+#
+#  # High-level pattern family summary — top templates by PF, win rate, Monte Carlo
+#  - id: pattern_engine_overview
+#
+#  # Per-cluster signal drilldown — parameter heatmaps and regime breakdown
+#  - id: pattern_cluster_drilldown
+#
+#  # Raw engine diagnostics — sweep coverage, artifact counts, timing
+#  - id: pattern_engine_diagnostics
+#
+#  # Market-condition pattern discovery — which patterns work in which regimes
+#  - id: pattern_market_discovery
+#
+#  # Monte Carlo × regime analysis — regime-conditioned MC path distributions
+#  - id: pattern_engine_mc_regime
+#
+#  # ----------------------------------------------------------
+#  # MARKET REGIME DISCOVERY
+#  # ADX / volatility / trend classification across the full dataset
+#  # ----------------------------------------------------------
+#  - id: market_regime_discovery
+#
+#  # ----------------------------------------------------------
+#  # MA ANCHOR INTERACTION SECTIONS
+#  # Requires anchor_interaction: block and pre-run analysis
+#  # ----------------------------------------------------------
+#
+#  # Summary overview of MA anchor interaction results
+#  - id: anchor_interaction_overview
+#
+#  # Full YAML config used for the anchor interaction run
+#  - id: anchor_interaction_config
+#
+#  # Trade × anchor state matrix (which anchor state produced which outcome)
+#  - id: anchor_interaction_anchor_matrix
+#
+#  # TP/SL specification derived from anchor analysis
+#  - id: anchor_interaction_tp_sl_spec
+#
+#  # Diagnostic charts — signal distribution, regime mix, fill analysis
+#  - id: anchor_interaction_diagnostics
+#
+#  # Recommended TP/SL settings per regime from anchor analysis
+#  - id: anchor_tp_sl_recommendations
+#
+#  # TP/SL effectiveness by hour of day
+#  - id: anchor_interaction_hourly_profile
+#
+#  # ----------------------------------------------------------
+#  # TRADE PATTERN AUDIT
+#  # Cross-references trades with pattern engine detections
+#  # ----------------------------------------------------------
+#  - id: trade_pattern_audit
+#
+#  # ----------------------------------------------------------
+#  # REGIME-AWARE PARAMETER RECOMMENDATION
+#  # ----------------------------------------------------------
+#
+#  # Recommends TP/SL/filter parameters per market regime using trade history
+#  - id: regime_parameter_recommendation
+#
+#  # ----------------------------------------------------------
+#  # STRATEGY DISCOVERY DEEP-DIVE SECTIONS
+#  # These consume strategy_discovery: analysis output.
+#  # All are driven by the strategy_discovery: top-level block.
+#  # ----------------------------------------------------------
+#
+#  # Entry rule summary — best conditions discovered via rule search
+  - id: strategy_discovery_overview
+#
+#  # Full ranked table of all discovered entry rules
+#  - id: strategy_discovery_ranked_table
+#
+#  # Detailed entry rule cards (signal conditions + performance breakdown)
+#  - id: strategy_discovery_entry_rules
+#
+#  # Cross-run comparison of strategy discovery results
+#  - id: strategy_discovery_comparison
+#
+#  # Discovered filter rules that improve PF when applied
+#  - id: strategy_discovery_filter_rules
+#
+#  # Exit policy simulation on discovered signals
+#  - id: strategy_discovery_exit_policies
+#
+#  # Feature importance for predicting trade outcomes
+#  - id: strategy_discovery_feature_importance
+#
+#  # Walk-forward IS/OOS validation results
+#  - id: strategy_discovery_validation
+#
+#  # MAE/MFE profile — adverse/favorable excursion distribution
+#  - id: strategy_discovery_mae_mfe
+#
+#  # Position sizing curves (fixed fractional, Kelly, ATR-scaled)
+#  - id: strategy_discovery_position_sizing
+#
+#  # Risk-adjusted metrics (Sharpe, Sortino, Calmar per discovered rule)
+#  - id: strategy_discovery_risk_metrics
+#
+#  # Drawdown analysis per discovered entry rule
+#  - id: strategy_discovery_drawdown
+#
+#  # Cohort analysis — performance drift / decay over time
+#  - id: strategy_discovery_cohort
+#
+#  # Automation classification (which rules are mechanical enough to automate)
+#  - id: strategy_discovery_classification
+#
+#  # Trade-level evaluation breakdown (session, regime, direction splits)
+#  - id: strategy_discovery_evaluation
+#
+#  # Market regime performance breakdown for discovered rules
+#  - id: strategy_discovery_regime
+#
+#  # Parameter sensitivity — how robust is each param combo to small changes
+#  - id: strategy_discovery_parameter_sensitivity
+#
+#  # NinjaTrader strategy template generated from top discovered rules
+#  - id: strategy_discovery_nt_template
+#
+#  # Signal entry discovery — entry signal sweep results
+#  - id: strategy_discovery_signal_entries
+#
+#  # Signal rule walk-forward validation
+#  - id: strategy_discovery_signal_validation
+#
+#  # Signal corpus exit parameter sweep
+#  - id: strategy_discovery_signal_exit_sweep
+#
+#  # Signal corpus P&L simulation
+#  - id: strategy_discovery_signal_simulation
+#
+#  # Strategy discovery × MA anchor confluence cross-analysis
+#  - id: strategy_discovery_anchor_confluence
+#
+#  # Decision ledger — which signals to trade, with rationale
+#  - id: strategy_discovery_decision_ledger
+#
+#  # Combo basket — portfolio of complementary discovered signals
+#  - id: strategy_discovery_combo_basket

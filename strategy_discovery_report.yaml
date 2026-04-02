@@ -27,6 +27,126 @@ report:
   timezone: "America/Denver"
 
 # =============================================================================
+# PATTERN ENGINE — runs before strategy discovery to populate signal corpus
+# =============================================================================
+#
+# Requires --market-data pointing to a folder with 5m minute bars for NQ 03-26.
+# The engine sweeps each pattern in sweep.patterns across all available bars,
+# then attaches signals/outcomes/pattern_stats to pkg.assets["pattern_engine"]
+# so the strategy_discovery entry_pattern_bridge can build signal_feature_df.
+#
+pattern_engine:
+  enabled: false
+  instrument: "NQ"
+  contract: "03-26"
+  timeframe: "5m"
+  tick_size: 0.25
+  horizons: [10, 20, 40]      # outcome windows (bars) for win/MAE/MFE computation
+  scopes: [run_attached, market_discovery]  # market_discovery = full-history sweep, no trade bias
+
+  # market_discovery sweeps the FULL bar history independent of any uploaded strategy.
+  # The resulting signal corpus feeds Signal Entry Discovery with zero execution bias.
+  market_discovery:
+    instrument: "NQ"
+    contract: "03-26"
+    timeframe: "5m"
+    # start: "2025-01-01"   # optional date filter
+    # end:   "2026-03-28"
+
+  trade_pattern_audit:
+    enabled: true              # match executed trades to signal firings
+
+  sweep:
+    patterns:
+      # -----------------------------------------------------------------------
+      # ORB — Opening Range Breakout
+      # -----------------------------------------------------------------------
+      - family: ORB
+        structure: orb_break_retest
+        direction_mode: both
+        params:
+          orb_minutes: [15, 30]
+          retest_bars: [3, 5]
+
+      - family: ORB
+        structure: orb_direction
+        direction_mode: both
+        params:
+          orb_minutes: [15, 30]
+
+      # -----------------------------------------------------------------------
+      # MA Trend
+      # -----------------------------------------------------------------------
+      - family: MA_TREND
+        structure: ma_alignment
+        direction_mode: both
+        params:
+          fast_period: [9, 20]
+          slow_period: [50]
+
+      # -----------------------------------------------------------------------
+      # VWAP
+      # -----------------------------------------------------------------------
+      - family: VWAP
+        structure: vwap_reclaim
+        direction_mode: both
+        params:
+          lookback: [3, 5]
+
+      # -----------------------------------------------------------------------
+      # Momentum
+      # -----------------------------------------------------------------------
+      - family: MOMENTUM
+        structure: rsi_regime
+        direction_mode: both
+        params:
+          period: [14]
+          oversold: [35]
+          overbought: [65]
+
+      # -----------------------------------------------------------------------
+      # Session
+      # -----------------------------------------------------------------------
+      - family: SESSION
+        structure: open_drive
+        direction_mode: both
+        params:
+          drive_bars: [3, 5]
+
+      # -----------------------------------------------------------------------
+      # Entry Candle quality
+      # -----------------------------------------------------------------------
+      - family: ENTRY_CANDLE
+        structure: volume
+        direction_mode: both
+        params:
+          resample_minutes: [5]
+          lookback: [20]
+          min_volume_ratio: [1.2, 1.5]
+
+      - family: ENTRY_CANDLE
+        structure: body_strength
+        direction_mode: both
+        params:
+          resample_minutes: [5]
+          min_body_pct: [0.50, 0.65]
+
+      # -----------------------------------------------------------------------
+      # Candle structure
+      # -----------------------------------------------------------------------
+      - family: CANDLE
+        structure: engulfing
+        direction_mode: both
+        params: {}
+
+      - family: CANDLE
+        structure: consecutive_closes
+        direction_mode: both
+        params:
+          n_bars: [2, 3]
+
+
+# =============================================================================
 # STRATEGY DISCOVERY — top-level analysis config
 # =============================================================================
 strategy_discovery:
@@ -172,27 +292,82 @@ strategy_discovery:
     min_step_trades: 10          # skip sweep points with fewer than N trades
 
   # --------------------------------------------------------------------------
-  # Pure Discovery Mode (market-data-first entry discovery)
-  # Generates a constrained set of interpretable candidates from bars,
-  # simulates baseline trades, prunes weak ideas, then reuses validation.
+  # Entry Pattern Bridge
+  # Integrates pattern engine signal corpus into entry discovery.
+  # Requires pattern_engine: enabled: true to have run first.
   # --------------------------------------------------------------------------
-  pure_discovery:
-    enabled: false
-    objective: "high_quality"
-    max_final_strategies: 5
-    max_archetypes_per_run: 6
-    max_candidates_per_archetype: 40
-    max_rule_depth: 3
-    min_trades: 60
-    require_walk_forward_pass: true
-    require_robust_or_moderate_sensitivity: true
-    require_distinct_cluster_representatives: true
-    sessions: ["London", "NY_open", "Midday", "Power_hour", "Asian", "All"]
-    direction_mode: "both"
-    baseline_exit:
-      stop_ticks: 80
-      target_ticks: 120
-      max_holding_bars: 36
+  entry_pattern_bridge:
+    enabled: true
+    primary_horizon: 20          # outcome horizon bars to use as primary target
+    match_window_bars: 3         # trade matched to signal if within N bars
+    mode: hybrid                 # trade_anchored | corpus | hybrid
+    hybrid_weights:
+      corpus_win_rate: 0.45
+      execution_agreement: 0.35
+      selectivity: 0.20
+    min_signals: 20
+
+  # --------------------------------------------------------------------------
+  # Signal Entry Discovery
+  # Pure corpus-based rule discovery (all signal firings, no executed trades needed)
+  # --------------------------------------------------------------------------
+  signal_entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_signals: 15
+    max_candidates: 300
+    top_n: 20
+    adx_thresholds: [20, 25, 30]
+    corpus_win_rate_thresholds: [0.50, 0.55, 0.60, 0.65]
+
+  # --------------------------------------------------------------------------
+  # Signal Corpus P&L Simulation
+  # Simulates equity curves per rule using optimised stop/target from exit sweep.
+  # Uses the same MAE/MFE simulation model: stop hit if |mae|>=S, target if mfe>=T.
+  # Also shows a combined (deduped) curve across all rules.
+  # --------------------------------------------------------------------------
+  signal_corpus_simulation:
+    enabled: true
+    max_rules: 6              # max signal rules to simulate
+    min_signals: 20           # min signals per rule to include
+    equity_start: 0.0         # starting equity (ticks)
+
+  # --------------------------------------------------------------------------
+  # Signal Corpus Exit Sweep
+  # Sweeps fixed stop / target parameter combinations against the signal corpus.
+  # Uses MFE/MAE simulation: stop hit if |mae| >= S; target hit if mfe >= T.
+  # Result feeds into NT template generator as highest-priority stop/target source.
+  # --------------------------------------------------------------------------
+  signal_exit_sweep:
+    enabled: true
+    stop_grid:   [8, 12, 16, 20, 24, 32, 48, 64]     # stop values to test (ticks)
+    target_grid: [8, 12, 16, 20, 24, 32, 48, 64, 80, 96]  # target values to test
+    min_signals: 20           # min signals per (rule, stop, target) cell
+    top_n_per_rule: 5         # top combos stored per rule
+    min_rr: 1.0               # minimum R:R ratio (target / stop) to test
+    max_rules: 10             # max signal rules to sweep (limits runtime)
+    weight_pf:  0.45          # profit-factor weight in scoring
+    weight_wr:  0.35          # win-rate weight in scoring
+    weight_avg: 0.20          # avg-ticks weight in scoring
+
+  # --------------------------------------------------------------------------
+  # Signal Rule Walk-Forward Validation
+  # IS/OOS time splits on signal corpus (no trades required).
+  # Re-discovers entry rules on each IS window, scores on OOS.
+  # Verdicts: stable (≤5% WR degradation) / moderate / fragile
+  # Overall:  PASS (≥2 stable rules) / WARN / FAIL / SKIP
+  # --------------------------------------------------------------------------
+  signal_validation:
+    enabled: true
+    wf_type: rolling             # rolling | anchored
+    is_pct: 0.70                 # in-sample fraction per fold
+    n_folds: 5                   # number of IS/OOS fold splits
+    min_is_signals: 50           # skip fold if fewer IS signals
+    min_oos_signals: 20          # skip fold if fewer OOS signals
+    stable_threshold: 0.05       # WR degradation ≤5% → stable
+    moderate_threshold: 0.20     # WR degradation ≤20% → moderate (else fragile)
+    min_folds_consistent: 3      # must be consistent in this many folds → stable
+    pass_min_stable: 2           # overall PASS if ≥N stable rules
 
   # --------------------------------------------------------------------------
   # Clustering
@@ -229,12 +404,6 @@ sections:
   # Cross-run ranked table: final scores, grades, validation pass/fail,
   # cluster badges, weight-sensitivity badge, per-run component accordion
   # ---------------------------------------------------------------------------
-  - id: strategy_discovery_pure_discovery
-    title: "Pure Discovery Leaderboard"
-    options:
-      max_rows: 50
-      max_rejections_per_run: 20
-
   - id: strategy_discovery_ranked_table
     title: "Strategy Ranking"
     options:
@@ -409,6 +578,65 @@ sections:
       show_cross_run: true       # cross-run robust/moderate/fragile summary table
       show_per_run: true         # per-run rule sweep charts
       max_rules_shown: 10        # maximum rule cards rendered per run
+
+  # ---------------------------------------------------------------------------
+  # Signal corpus entry discovery: rules found from ALL pattern signal firings
+  # (includes unexecuted signals — larger, less biased than trade-anchored rules)
+  # Requires pattern_engine: enabled: true AND strategy_discovery: enabled: true
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_signal_entries
+    title: "Signal Corpus Entry Discovery"
+    options:
+      max_runs: 5
+      show_all_runs: false
+      top_n_rules: 20            # max rules displayed per run
+
+  # ---------------------------------------------------------------------------
+  # Signal corpus P&L simulation: equity curves per rule + combined curve,
+  # using optimised stop/target from the exit sweep
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_signal_simulation
+    title: "Signal Corpus P&L Simulation"
+    options:
+      show_combined: true       # combined all-rules equity curve
+      show_per_rule: true       # per-rule accordion curves
+
+  # ---------------------------------------------------------------------------
+  # Signal corpus exit sweep: sweeps stop/target combos against corpus signals,
+  # finds parameters that maximise win-rate and PF; feeds NT template generator
+  # Requires market_discovery scope + signal_entry_discovery enabled
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_signal_exit_sweep
+    title: "Signal Corpus Exit Parameter Sweep"
+    options:
+      show_per_rule: true       # per-rule best combo + top grid accordion
+      show_baseline: true       # percentile-derived reference
+
+  # ---------------------------------------------------------------------------
+  # Signal rule walk-forward validation: IS/OOS splits on signal corpus,
+  # cross-fold rule consistency, stable/moderate/fragile verdicts, PASS/WARN/FAIL
+  # Requires market_discovery scope + signal_entry_discovery enabled
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_signal_validation
+    title: "Signal Rule Walk-Forward Validation"
+    options:
+      show_rule_consistency: true   # cross-fold rule consistency table
+      show_fold_detail: true        # per-fold IS/OOS accordion
+
+  # ---------------------------------------------------------------------------
+  # NinjaTrader template generator: auto-fills StrategyDiscoveryFilter.xml
+  # from MAE/MFE, entry rules, session/direction evaluation, exit policy ranking
+  # Phase 4: also reads signal_entry_discovery for ADX, stop/target refinement
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_nt_template
+    title: "NinjaTrader Template (Auto-Generated)"
+    options:
+      tick_value: 5.00           # USD per tick (NQ=5.00, MNQ=0.50, ES=12.50)
+      tick_size: 0.25            # price increment per tick
+      show_reasoning: true       # show parameter reasoning table below each XML
+      show_per_run: true         # one template card per run
+      show_best_run_only: false  # if true, only generate template for best-ranked run
+      max_per_rule_templates: 6  # per-rule templates for __market_discovery__ packages
 
 
 # =============================================================================

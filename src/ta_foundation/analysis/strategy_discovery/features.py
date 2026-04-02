@@ -29,24 +29,7 @@ import json
 import numpy as np
 import pandas as pd
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _session_label(hour: int) -> str:
-    """Map an entry hour (local) to a named session bucket."""
-    if hour == 7:
-        return "pre_open"
-    if hour == 8:
-        return "us_open"
-    if hour in (9, 10, 11):
-        return "us_morning"
-    if hour in (12, 13):
-        return "us_midday"
-    if hour in (14, 15):
-        return "us_afternoon"
-    return "other"
+from ta_foundation.analysis.session_constants import session_label_from_hour as _session_label
 
 
 def _tz_to_naive_utc(s: pd.Series) -> pd.Series:
@@ -107,6 +90,7 @@ def build_feature_matrix(
     *,
     bars_with_regime: Optional[pd.DataFrame] = None,
     audit_df: Optional[pd.DataFrame] = None,
+    signal_feature_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
     Build a feature matrix by augmenting trades with market context columns.
@@ -118,6 +102,10 @@ def build_feature_matrix(
                        joined to trades by entry_time via backward merge_asof
     audit_df         : optional trade_pattern_audit DataFrame with trade_id,
                        confirming_score, verdict, n_patterns_fired, pattern_detail
+    signal_feature_df : optional enriched signal corpus from entry_pattern_bridge;
+                        when provided, trades are matched to the nearest signal and
+                        corpus stats (corpus_win_rate, corpus_avg_ticks, signal_family,
+                        signal_structure, signal_match_quality) are added to each row.
 
     Returns
     -------
@@ -280,5 +268,36 @@ def build_feature_matrix(
 
         except Exception:
             pass  # Audit bridge is best-effort
+
+    # ------------------------------------------------------------------
+    # Step 7: bridge signal corpus stats from entry_pattern_bridge
+    # ------------------------------------------------------------------
+    if (
+        signal_feature_df is not None
+        and isinstance(signal_feature_df, pd.DataFrame)
+        and len(signal_feature_df) > 0
+        and "dt" in signal_feature_df.columns
+        and "entry_time" in result.columns
+    ):
+        try:
+            from .entry_pattern_bridge import match_trades_to_signals
+            matched = match_trades_to_signals(
+                trades=result,
+                signals_df=signal_feature_df,
+                options={},
+            )
+            # Rename corpus columns to signal_ prefix for the trade feature matrix
+            rename_map: Dict[str, str] = {
+                "matched_family": "signal_family",
+                "matched_structure": "signal_structure",
+                "signal_corpus_win_rate": "corpus_win_rate",
+                "signal_corpus_avg_ticks": "corpus_avg_ticks",
+                "match_quality": "signal_match_quality",
+            }
+            for old_c, new_c in rename_map.items():
+                if old_c in matched.columns:
+                    result[new_c] = matched[old_c].values
+        except Exception:
+            pass  # Signal corpus bridge is best-effort
 
     return result

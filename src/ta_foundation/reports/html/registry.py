@@ -122,10 +122,156 @@ from ta_foundation.reports.html.sections.strategy_discovery_regime import (
 from ta_foundation.reports.html.sections.strategy_discovery_parameter_sensitivity import (
     render_strategy_discovery_parameter_sensitivity,
 )
-from ta_foundation.reports.html.sections.strategy_discovery_pure_discovery import (
-    render_strategy_discovery_pure_discovery,
+from ta_foundation.reports.html.sections.strategy_discovery_nt_template import (
+    render_strategy_discovery_nt_template,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_entries import (
+    render_strategy_discovery_signal_entries,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_validation import (
+    render_strategy_discovery_signal_validation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_exit_sweep import (
+    render_strategy_discovery_signal_exit_sweep,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_signal_simulation import (
+    render_strategy_discovery_signal_simulation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_anchor_confluence import (
+    render_strategy_discovery_anchor_confluence,
 )
 from ta_foundation.reports.html.sections.regime_parameter_recommendation import render_regime_parameter_recommendation
+from ta_foundation.reports.html.sections.strategy_discovery_decision_ledger import (
+    render_strategy_discovery_decision_ledger,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_combo_basket import (
+    render_strategy_discovery_combo_basket,
+)
+from ta_foundation.reports.html.sections.candle_discovery_overview import (
+    render_candle_discovery_overview,
+)
+from ta_foundation.reports.html.sections.candle_discovery_ranking import (
+    render_candle_discovery_ranking,
+)
+from ta_foundation.reports.html.sections.ma_discovery_overview import (
+    render_ma_discovery_overview,
+)
+from ta_foundation.reports.html.sections.orb_discovery_overview import (
+    render_orb_discovery_overview,
+)
+from ta_foundation.reports.html.sections.bb_discovery_overview import (
+    render_bb_discovery_overview,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_unified import (
+    render_strategy_discovery_unified,
+)
+from ta_foundation.reports.html.sections.lcr_discovery_overview import (
+    render_lcr_discovery_overview,
+)
+
+# Shared overview renderer reused for breakout, pullback, level
+def _make_generic_overview(discovery_key: str, title_label: str, accent: str):
+    """Factory: returns a render function for a simple discovery overview."""
+    def _render(ctx: dict) -> str:
+        data = None
+        if discovery_key in ctx:
+            data = ctx[discovery_key]
+        elif ctx.get("all_options", {}).get(discovery_key):
+            data = ctx["all_options"][discovery_key]
+        else:
+            for pkg in (ctx.get("packages") or {}).values():
+                derived = getattr(pkg, "metadata", {}).get("derived", {})
+                if discovery_key in derived:
+                    data = derived[discovery_key]
+                    break
+
+        if not data:
+            return (f'<div style="padding:20px;background:#fff3cd;border:1px solid #ffc107;'
+                    f'border-radius:4px"><strong>{title_label}:</strong> No results found. '
+                    f'Enable <code>{discovery_key}.enabled: true</code> in YAML.</div>')
+
+        results = data.get("sweep_results", [])
+        n_run   = data.get("n_combinations_run", 0)
+        n_res   = data.get("n_results", len(results))
+        pfs     = [float(r["metrics"]["profit_factor"]) for r in results
+                   if r.get("metrics", {}).get("profit_factor") is not None]
+        top_pf  = round(max(pfs), 2) if pfs else 0.0
+        avg_pf  = round(sum(pfs) / len(pfs), 2) if pfs else 0.0
+
+        def _pf_color(pf):
+            if pf is None: return "#f5f5f5"
+            if pf >= 1.5:  return "#c6efce"
+            if pf >= 1.2:  return "#e2efda"
+            if pf >= 1.0:  return "#ffeb9c"
+            return "#ffc7ce"
+
+        def _stat(label, value):
+            return (f'<div style="background:#fff;border-left:4px solid {accent};'
+                    f'padding:10px 16px;border-radius:4px;min-width:100px">'
+                    f'<div style="font-size:11px;color:#888">{label}</div>'
+                    f'<div style="font-size:20px;font-weight:700;color:{accent}">{value}</div></div>')
+
+        def _cell(v, bg):
+            return (f'<td style="background:{bg};text-align:center;padding:6px 10px;'
+                    f'border:1px solid #ddd">{v}</td>')
+
+        def _hdr(t):
+            return (f'<th style="background:#2c3e50;color:#fff;padding:8px 12px;'
+                    f'text-align:center;border:1px solid #ddd">{t}</th>')
+
+        # Signal × TF heatmap
+        pivot: dict = {}
+        for r in results:
+            sid = str(r.get("signal_id", "?"))
+            tf  = int(r.get("tf", 0))
+            pf  = r.get("metrics", {}).get("profit_factor")
+            if pf is None: continue
+            pivot.setdefault(sid, {}).setdefault(tf, []).append(float(pf))
+
+        html  = f'<div style="font-family:Arial,sans-serif">'
+        html += f'<p style="color:#666;font-size:13px">{n_run:,} combos — {n_res:,} results</p>'
+        html += '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px">'
+        html += _stat("Results",  str(n_res))
+        html += _stat("Best PF",  str(top_pf))
+        html += _stat("Avg PF",   str(avg_pf))
+        html += _stat("PF ≥ 1.0", str(sum(1 for p in pfs if p >= 1.0)))
+        html += _stat("PF ≥ 1.3", str(sum(1 for p in pfs if p >= 1.3)))
+        html += '</div>'
+
+        if pivot:
+            all_tfs = sorted({tf for vals in pivot.values() for tf in vals})
+            hdr_row = _hdr("Signal") + "".join(_hdr(f"{tf}m") for tf in all_tfs)
+            body    = []
+            for sid in sorted(pivot):
+                row = f'<td style="font-weight:600;padding:6px 10px;border:1px solid #ddd">{sid}</td>'
+                for tf in all_tfs:
+                    vs = pivot[sid].get(tf)
+                    if vs:
+                        avg = round(sum(vs) / len(vs), 2)
+                        row += _cell(str(avg), _pf_color(avg))
+                    else:
+                        row += _cell("—", "#f5f5f5")
+                body.append(f"<tr>{row}</tr>")
+
+            html += (f'<h3 style="color:#2c3e50;border-bottom:2px solid {accent};padding-bottom:5px">'
+                     f'Signal × Timeframe — Average PF</h3>')
+            html += ('<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:13px">'
+                     f'<thead><tr>{hdr_row}</tr></thead>'
+                     f'<tbody>{"".join(body)}</tbody></table></div>')
+
+        html += '</div>'
+        return html
+
+    _render.__name__ = f"render_{discovery_key}_overview"
+    return _render
+
+
+render_breakout_discovery_overview = _make_generic_overview(
+    "breakout_discovery", "Breakout Discovery", "#e74c3c")
+render_pullback_discovery_overview = _make_generic_overview(
+    "pullback_discovery", "Pullback Discovery", "#1abc9c")
+render_level_discovery_overview = _make_generic_overview(
+    "level_discovery", "Level Discovery", "#f39c12")
 
 SectionRenderer = Callable[[dict], str]
 
@@ -405,10 +551,95 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Strategy Discovery — Parameter Sensitivity",
         render_fn=render_strategy_discovery_parameter_sensitivity,
     ),
-    "strategy_discovery_pure_discovery": SectionDef(
-        id="strategy_discovery_pure_discovery",
-        default_title="Pure Discovery Leaderboard",
-        render_fn=render_strategy_discovery_pure_discovery,
+    "strategy_discovery_nt_template": SectionDef(
+        id="strategy_discovery_nt_template",
+        default_title="Strategy Discovery — NinjaTrader Template",
+        render_fn=render_strategy_discovery_nt_template,
+    ),
+    "strategy_discovery_signal_entries": SectionDef(
+        id="strategy_discovery_signal_entries",
+        default_title="Strategy Discovery — Signal Entry Discovery",
+        render_fn=render_strategy_discovery_signal_entries,
+    ),
+    "strategy_discovery_signal_validation": SectionDef(
+        id="strategy_discovery_signal_validation",
+        default_title="Strategy Discovery — Signal Rule Walk-Forward Validation",
+        render_fn=render_strategy_discovery_signal_validation,
+    ),
+    "strategy_discovery_signal_exit_sweep": SectionDef(
+        id="strategy_discovery_signal_exit_sweep",
+        default_title="Strategy Discovery — Signal Corpus Exit Parameter Sweep",
+        render_fn=render_strategy_discovery_signal_exit_sweep,
+    ),
+    "strategy_discovery_signal_simulation": SectionDef(
+        id="strategy_discovery_signal_simulation",
+        default_title="Strategy Discovery — Signal Corpus P&L Simulation",
+        render_fn=render_strategy_discovery_signal_simulation,
+    ),
+    "strategy_discovery_anchor_confluence": SectionDef(
+        id="strategy_discovery_anchor_confluence",
+        default_title="Strategy Discovery × Anchor Confluence",
+        render_fn=render_strategy_discovery_anchor_confluence,
+    ),
+    "strategy_discovery_decision_ledger": SectionDef(
+        id="strategy_discovery_decision_ledger",
+        default_title="Strategy Discovery — Decision Ledger",
+        render_fn=render_strategy_discovery_decision_ledger,
+    ),
+    "strategy_discovery_combo_basket": SectionDef(
+        id="strategy_discovery_combo_basket",
+        default_title="Strategy Discovery — Combo Basket",
+        render_fn=render_strategy_discovery_combo_basket,
+    ),
+    "candle_discovery_overview": SectionDef(
+        id="candle_discovery_overview",
+        default_title="Candle Discovery — Pattern × TF × Regime Overview",
+        render_fn=render_candle_discovery_overview,
+    ),
+    "candle_discovery_ranking": SectionDef(
+        id="candle_discovery_ranking",
+        default_title="Candle Discovery — 5-Tier Ranking",
+        render_fn=render_candle_discovery_ranking,
+    ),
+    "ma_discovery_overview": SectionDef(
+        id="ma_discovery_overview",
+        default_title="MA Discovery — Cross & Pullback Overview",
+        render_fn=render_ma_discovery_overview,
+    ),
+    "orb_discovery_overview": SectionDef(
+        id="orb_discovery_overview",
+        default_title="ORB Discovery — Opening Range Breakout Overview",
+        render_fn=render_orb_discovery_overview,
+    ),
+    "bb_discovery_overview": SectionDef(
+        id="bb_discovery_overview",
+        default_title="BB Discovery — Bollinger Band Strategies Overview",
+        render_fn=render_bb_discovery_overview,
+    ),
+    "strategy_discovery_unified": SectionDef(
+        id="strategy_discovery_unified",
+        default_title="Unified Strategy Discovery — Cross-Strategy Ranking",
+        render_fn=render_strategy_discovery_unified,
+    ),
+    "breakout_discovery_overview": SectionDef(
+        id="breakout_discovery_overview",
+        default_title="Breakout Discovery — N-Bar & Volatility Breakouts",
+        render_fn=render_breakout_discovery_overview,
+    ),
+    "pullback_discovery_overview": SectionDef(
+        id="pullback_discovery_overview",
+        default_title="Pullback Discovery — Trend Pullback & Continuation",
+        render_fn=render_pullback_discovery_overview,
+    ),
+    "level_discovery_overview": SectionDef(
+        id="level_discovery_overview",
+        default_title="Level Discovery — Swing Levels, Consolidation & Round Numbers",
+        render_fn=render_level_discovery_overview,
+    ),
+    "lcr_discovery_overview": SectionDef(
+        id="lcr_discovery_overview",
+        default_title="LCR Discovery — Large Candle Region Analysis",
+        render_fn=render_lcr_discovery_overview,
     ),
 # render_pattern_engine_diagnostics
 }

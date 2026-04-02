@@ -1,0 +1,112 @@
+# ============================================================
+# LCR Discovery — Large Candle Region (FVG-style) Analysis
+# ============================================================
+#
+# Discover whether large candles create tradeable horizontal regions.
+# Each region is a horizontal zone defined by the candle body or range.
+# The scanner tracks:
+#   fresh   — the region just formed (trade with the candle direction)
+#   touch   — intact zone is re-entered and closes back outside (bounce)
+#   break   — price closes through the far side of the zone (continuation)
+#   retrace — price re-enters the zone within N bars after a break
+#              (test of broken support/resistance)
+#
+# Non-entry analytics also produced:
+#   Region-to-region stats: after a break, does price reach the next region?
+#   Retrace stats: what % of breaks retrace back into the zone?
+#
+# ============================================================
+
+report:
+  title: "LCR Discovery — Large Candle Region Analysis"
+  output_filename: "lcr_discovery_report.html"
+  timezone: "America/Denver"
+
+# ============================================================
+# LCR Discovery configuration
+# ============================================================
+lcr_discovery:
+  enabled: true
+
+  # ---- Region formation ----
+
+  # Body size multiplier: a candle must be >= size_multiplier × rolling mean body
+  # to create a region.  1.5 = 150% of average body size.
+  size_multipliers: [1.5, 2.0, 2.5]
+
+  # Rolling window (bars) used to compute the mean body size
+  lookbacks: [10, 20]
+
+  # Zone boundary type:
+  #   "body"  — zone spans min(open,close) → max(open,close)  [tighter, like FVG body]
+  #   "range" — zone spans low → high  [wider, includes wicks]
+  zone_types: ["body", "range"]
+
+  # ---- Exit simulation ----
+
+  # Take-profit in ticks (swept across all combinations)
+  tp_ticks: [10, 15, 20, 30]
+
+  # Stop-loss in ticks (swept across all combinations)
+  sl_ticks: [8, 10, 15]
+
+  # Instrument tick size in points
+  tick_size: 0.25         # NQ/MNQ = 0.25 pts, ES/MES = 0.25 pts
+
+  # Dollar value per tick
+  tick_value: 12.50       # MNQ = $0.50, NQ = $5.00, MES = $1.25, ES = $12.50
+
+  # Maximum bars to hold a trade before flat exit (timeout)
+  max_bars_timeout: 20
+
+  # ---- Region scanner settings ----
+
+  # Number of bars after a break to watch for a retrace back into the zone
+  retrace_window: 20
+
+  # ATR period (used to normalise region sizes in results)
+  atr_period: 14
+
+  # Minimum region size in ticks to count (filters micro-zones from floating-point noise)
+  min_region_size_ticks: 2.0
+
+  # Signal types to include in the trade simulation sweep
+  # Options: "fresh", "touch", "break", "retrace"
+  signal_types:
+    - fresh       # Trade with the large candle direction the moment it forms
+    - touch       # Trade the bounce when price retests the intact zone
+    - break       # Trade the continuation when price closes through the zone
+    - retrace     # Trade the test of broken level (like a broken S/R retest)
+
+  # Minimum number of trades a parameter combination must produce to be included
+  min_trades: 15
+
+  # ---- Performance tuning ----
+  # Cap on simultaneously tracked active regions (keeps the bar-loop O(constant)).
+  # Oldest regions are evicted first when this limit is exceeded.
+  # Increase for thoroughness, decrease for speed on very long datasets.
+  max_active_regions: 100
+
+  # Evict regions older than this many bars regardless of max_active_regions.
+  # A 500-bar region on 1m data = ~8 hours old — likely irrelevant to current price.
+  max_region_age: 500
+
+# ============================================================
+# Report sections
+# ============================================================
+sections:
+  # LCR-specific sections
+  - id: lcr_discovery_overview
+    options:
+      top_n: 25                  # number of ranked combinations to show
+      show_r2r_stats: true       # show region-to-region continuation table
+      show_retrace_stats: true   # show retrace rate table
+
+  # General market context
+  - id: daily_scoreboard
+    options:
+      top_n: 10
+
+  # If you also have trade data loaded, these add context:
+  # - id: comparison_overview
+  # - id: run_kpi_cards

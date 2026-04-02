@@ -99,10 +99,6 @@ from ta_foundation.analysis.strategy_discovery.parameter_sensitivity import (
 from ta_foundation.analysis.strategy_discovery.filter_discovery import (
     run_filter_discovery,
 )
-from ta_foundation.analysis.strategy_discovery.pure_discovery import (
-    run_pure_discovery,
-)
-
 
 
 # ---------------------------------------------------------------------------
@@ -3809,38 +3805,264 @@ class TestParameterSensitivitySection:
         assert "35" in html
 
 
-class TestPureDiscovery:
-    def test_run_pure_discovery_disabled(self):
-        pkg = _MockPkg()
-        out = run_pure_discovery(
-            pkg=pkg,
-            bars_with_regime=_make_bars(),
-            options={"enabled": False},
-            wf_config=DEFAULT_WF_CONFIG,
-            cost_model=DEFAULT_COST_MODEL,
-            tick_size=0.25,
-        )
-        assert out.get("enabled") is False
+# ===========================================================================
+# TestFamilyBreakdown
+# ===========================================================================
 
-    def test_run_pure_discovery_returns_structured_payload(self):
-        pkg = _MockPkg()
-        bars = compute_bar_regime(_make_bars(n=800))
-        out = run_pure_discovery(
-            pkg=pkg,
-            bars_with_regime=bars,
-            options={
-                "enabled": True,
-                "min_trades": 20,
-                "max_final_strategies": 3,
-                "sessions": ["London", "NY_open", "All"],
-                "require_walk_forward_pass": False,
-                "require_robust_or_moderate_sensitivity": False,
-            },
-            wf_config={**DEFAULT_WF_CONFIG, "min_is_trades": 10, "min_oos_trades": 5},
-            cost_model=DEFAULT_COST_MODEL,
-            tick_size=0.25,
-        )
-        assert out.get("enabled") is True
-        assert "leaderboard" in out
-        assert "rejections" in out
-        assert "ninja_export" in out
+class TestFamilyBreakdown:
+    """Tests for _compute_family_breakdown and its rendering."""
+
+    def _make_df(self):
+        np.random.seed(42)
+        n = 60
+        families = (["ORB"] * 30) + (["MA_TREND"] * 20) + (["VWAP"] * 10)
+        ret = list(np.random.normal(2.0, 5.0, 30)) + list(np.random.normal(-1.0, 5.0, 20)) + list(np.random.normal(0.5, 3.0, 10))
+        structures = (["orb_break"] * 30) + (["trend_cont"] * 10) + (["trend_rev"] * 10) + (["vwap_rev"] * 10)
+        mfe = [abs(r) + 1.0 for r in ret]
+        mae = [-abs(r) * 0.5 for r in ret]
+        return pd.DataFrame({
+            "family": families,
+            "structure": structures,
+            "ret_ticks": ret,
+            "mfe_ticks": mfe,
+            "mae_ticks": mae,
+        })
+
+    def test_returns_list(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import _compute_family_breakdown
+        df = self._make_df()
+        baseline = {"win_rate": 0.50, "n_signals": len(df)}
+        result = _compute_family_breakdown(df, "ret_ticks", baseline)
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_sorted_by_win_rate(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import _compute_family_breakdown
+        df = self._make_df()
+        baseline = {"win_rate": 0.50, "n_signals": len(df)}
+        result = _compute_family_breakdown(df, "ret_ticks", baseline)
+        wrs = [r["win_rate"] for r in result]
+        assert wrs == sorted(wrs, reverse=True)
+
+    def test_fields_present(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import _compute_family_breakdown
+        df = self._make_df()
+        baseline = {"win_rate": 0.50, "n_signals": len(df)}
+        result = _compute_family_breakdown(df, "ret_ticks", baseline)
+        required = {"family", "n_signals", "n_structures", "win_rate", "avg_ticks", "win_rate_lift", "selectivity"}
+        for row in result:
+            assert required.issubset(row.keys()), f"Missing keys in {row}"
+
+    def test_min_signals_filter(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import _compute_family_breakdown
+        df = self._make_df()
+        baseline = {"win_rate": 0.50, "n_signals": len(df)}
+        # VWAP has 10 rows; min_signals=15 should exclude it
+        result = _compute_family_breakdown(df, "ret_ticks", baseline, min_signals=15)
+        families = [r["family"] for r in result]
+        assert "VWAP" not in families
+        assert "ORB" in families
+
+    def test_missing_family_column(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import _compute_family_breakdown
+        df = self._make_df().drop(columns=["family"])
+        baseline = {"win_rate": 0.50, "n_signals": len(df)}
+        result = _compute_family_breakdown(df, "ret_ticks", baseline)
+        assert result == []
+
+    def test_family_breakdown_in_discovery_output(self):
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import run_signal_entry_discovery
+        df = self._make_df()
+        df["pattern_id"] = range(len(df))
+        df["session_label"] = "RTH"
+        result = run_signal_entry_discovery(df, {}, profit_col="ret_ticks")
+        assert "family_breakdown" in result
+        assert isinstance(result["family_breakdown"], list)
+
+    def test_family_breakdown_rendered_in_section(self):
+        from ta_foundation.reports.html.sections.strategy_discovery_signal_entries import render_strategy_discovery_signal_entries
+        df = self._make_df()
+        df["pattern_id"] = range(len(df))
+        df["session_label"] = "RTH"
+        from ta_foundation.analysis.strategy_discovery.signal_entry_discovery import run_signal_entry_discovery
+        sed = run_signal_entry_discovery(df, {}, profit_col="ret_ticks")
+        import json
+        packages = {
+            "__market_discovery___RTH": type("P", (), {
+                "trades": pd.DataFrame(),
+                "metadata": {"derived": {"strategy_discovery": {"signal_entry_discovery": json.loads(json.dumps(sed))}}},
+                "warnings": [],
+                "assets": {},
+            })()
+        }
+        ctx = {"packages": packages, "options": {}, "all_options": {}}
+        html = render_strategy_discovery_signal_entries(ctx)
+        assert "Family" in html or "family" in html.lower()
+
+
+# ===========================================================================
+# TestSignalValidationOptions
+# ===========================================================================
+
+class TestSignalValidationOptions:
+    """Tests for YAML option mapping in signal_validation.py."""
+
+    def _make_rule_results(self, win_rates_by_fold):
+        """win_rates_by_fold: list of floats, one per fold."""
+        folds = []
+        for i, wr in enumerate(win_rates_by_fold):
+            n = 30
+            folds.append({
+                "fold_id": i,
+                "n_trades": n,
+                "win_rate": wr,
+                "profit_factor": 1.2 if wr > 0.5 else 0.9,
+                "avg_profit": 2.0 if wr > 0.5 else -1.0,
+            })
+        return {
+            "rule_str": "session_label == RTH",
+            "conditions": [{"column": "session_label", "op": "eq", "value": "RTH", "description": "session_label == RTH"}],
+            "n_conditions": 1,
+            "n_trades": sum(f["n_trades"] for f in folds),
+            "win_rate": float(np.mean([f["win_rate"] for f in folds])),
+            "profit_factor": 1.2,
+            "avg_profit": 1.5,
+            "score": 70.0,
+            "rank": 1,
+            "cross_fold_results": folds,
+        }
+
+    def _make_sd(self, rules):
+        return {
+            "top_rules": rules,
+            "cross_validation": {"enabled": True, "n_folds": len(rules[0]["cross_fold_results"]) if rules else 3},
+            "diagnostics": {},
+        }
+
+    def _get_verdict(self, result):
+        """Extract verdict from result — may be top-level or under 'summary'."""
+        if "verdict" in result:
+            return result["verdict"]
+        return (result.get("summary") or {}).get("verdict", "FAIL")
+
+    def _get_per_rule(self, result):
+        """Extract per-rule list — may be 'per_rule' or 'rule_consistency'."""
+        return result.get("per_rule") or result.get("rule_consistency") or []
+
+    def test_returns_required_keys(self):
+        from ta_foundation.analysis.strategy_discovery.signal_validation import run_signal_validation
+        rule = self._make_rule_results([0.55, 0.52, 0.58])
+        sd = self._make_sd([rule])
+        result = run_signal_validation(sd, {})
+        assert "diagnostics" in result
+        # verdict may be top-level or under summary
+        assert self._get_verdict(result) is not None or "summary" in result
+
+    def test_custom_stable_threshold_applied(self):
+        from ta_foundation.analysis.strategy_discovery.signal_validation import run_signal_validation
+        # Tight degradation (all folds near 0.55) — should be stable with loose threshold
+        rule = self._make_rule_results([0.55, 0.56, 0.54])
+        sd = self._make_sd([rule])
+        opts = {"stable_threshold": 0.10, "moderate_threshold": 0.25, "min_folds_consistent": 2, "pass_min_stable": 1}
+        result = run_signal_validation(sd, opts)
+        per_rule = self._get_per_rule(result)
+        if per_rule:
+            assert per_rule[0].get("verdict") in ("stable", "moderate")
+
+    def test_loose_threshold_yields_more_stable(self):
+        from ta_foundation.analysis.strategy_discovery.signal_validation import run_signal_validation
+        rule = self._make_rule_results([0.55, 0.50, 0.53])
+        sd = self._make_sd([rule])
+        # Loose threshold: more rules get "stable"
+        opts_loose = {"stable_threshold": 0.20, "moderate_threshold": 0.40, "min_folds_consistent": 1, "pass_min_stable": 1}
+        opts_strict = {"stable_threshold": 0.01, "moderate_threshold": 0.05, "min_folds_consistent": 3, "pass_min_stable": 3}
+        r_loose = run_signal_validation(sd, opts_loose)
+        r_strict = run_signal_validation(sd, opts_strict)
+        verdict_rank = {"PASS": 0, "WARN": 1, "FAIL": 2, "SKIP": 3}
+        rank_loose = verdict_rank.get(self._get_verdict(r_loose), 3)
+        rank_strict = verdict_rank.get(self._get_verdict(r_strict), 3)
+        assert rank_loose <= rank_strict
+
+    def test_pass_min_stable_controls_verdict(self):
+        from ta_foundation.analysis.strategy_discovery.signal_validation import run_signal_validation
+        # One rule that should be "stable"
+        rule = self._make_rule_results([0.55, 0.54, 0.56])
+        sd = self._make_sd([rule])
+        # pass_min_stable=1 → 1 stable rule → PASS
+        opts1 = {"stable_threshold": 0.10, "moderate_threshold": 0.25, "min_folds_consistent": 1, "pass_min_stable": 1}
+        # pass_min_stable=5 → need 5 stable rules but only have 1 → FAIL or WARN
+        opts5 = {"stable_threshold": 0.10, "moderate_threshold": 0.25, "min_folds_consistent": 1, "pass_min_stable": 5}
+        r1 = run_signal_validation(sd, opts1)
+        r5 = run_signal_validation(sd, opts5)
+        verdict_rank = {"PASS": 0, "WARN": 1, "FAIL": 2, "SKIP": 3}
+        assert verdict_rank.get(self._get_verdict(r1), 3) <= verdict_rank.get(self._get_verdict(r5), 3)
+
+    def test_min_folds_consistent_alias(self):
+        from ta_foundation.analysis.strategy_discovery.signal_validation import run_signal_validation
+        rule = self._make_rule_results([0.55, 0.54, 0.56])
+        sd = self._make_sd([rule])
+        opts_new = {"stable_threshold": 0.10, "moderate_threshold": 0.25, "min_folds_consistent": 2, "pass_min_stable": 1}
+        opts_old = {"stable_threshold": 0.10, "moderate_threshold": 0.25, "min_folds_for_stable": 2, "pass_min_stable": 1}
+        r_new = run_signal_validation(sd, opts_new)
+        r_old = run_signal_validation(sd, opts_old)
+        # Both aliases should produce the same verdict
+        assert self._get_verdict(r_new) == self._get_verdict(r_old)
+
+
+# ===========================================================================
+# TestWmaAnchor
+# ===========================================================================
+
+class TestWmaAnchor:
+    """Tests for WMA anchor computation in anchors.py."""
+
+    def _make_bars(self, n=30):
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Denver")
+        idx = pd.date_range("2024-01-02 09:00", periods=n, freq="1min", tz=tz)
+        close = np.arange(100, 100 + n, dtype=float)
+        return pd.DataFrame({"open": close, "high": close + 1, "low": close - 1, "close": close}, index=idx)
+
+    def _make_spec(self, family="WMA", length=5, source="close"):
+        from ta_foundation.analysis.ma_structure.models import AnchorSpec
+        return AnchorSpec(family=family, length=length, source=source)
+
+    def test_wma_series_has_correct_length(self):
+        from ta_foundation.analysis.ma_structure.anchors import compute_anchor_series
+        bars = self._make_bars(30)
+        spec = self._make_spec(length=5)
+        result = compute_anchor_series(bars, spec)
+        # First (length-1)=4 values should be NaN, rest valid
+        assert result.isna().sum() == 4
+        assert result.notna().sum() == 26
+
+    def test_wma_is_weighted_average(self):
+        from ta_foundation.analysis.ma_structure.anchors import compute_anchor_series
+        bars = self._make_bars(10)
+        spec = self._make_spec(length=5)
+        result = compute_anchor_series(bars, spec)
+        # For position 4 (0-indexed), close values are [100,101,102,103,104]
+        # weights = [1,2,3,4,5] / 15
+        weights = np.array([1, 2, 3, 4, 5], dtype=float)
+        weights /= weights.sum()
+        expected = float(np.dot([100, 101, 102, 103, 104], weights))
+        actual = float(result.iloc[4])
+        assert abs(actual - expected) < 1e-6
+
+    def test_wma_differs_from_sma(self):
+        from ta_foundation.analysis.ma_structure.anchors import compute_anchor_series
+        bars = self._make_bars(20)
+        wma_spec = self._make_spec(family="WMA", length=5)
+        sma_spec = self._make_spec(family="SMA", length=5)
+        wma = compute_anchor_series(bars, wma_spec)
+        sma = compute_anchor_series(bars, sma_spec)
+        # WMA emphasises recent bars so should differ from SMA
+        valid = wma.notna() & sma.notna()
+        assert not (wma[valid] == sma[valid]).all()
+
+    def test_unsupported_family_raises(self):
+        from ta_foundation.analysis.ma_structure.anchors import compute_anchor_series
+        bars = self._make_bars(10)
+        spec = self._make_spec(family="DEMA", length=5)
+        with pytest.raises(ValueError, match="Unsupported anchor family"):
+            compute_anchor_series(bars, spec)

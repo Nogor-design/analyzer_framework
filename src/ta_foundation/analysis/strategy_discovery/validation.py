@@ -14,11 +14,102 @@ Checks performed:
   5. Transaction cost normalization
 """
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
+
+
+# ---------------------------------------------------------------------------
+# Structured validation result
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GateResult:
+    """Result for a single validation gate."""
+    name: str
+    passed: bool
+    value: Any        # measured value (float, int, str, or None)
+    threshold: Any    # threshold that was applied
+    reason: str       # human-readable explanation
+
+
+@dataclass
+class ValidationResult:
+    """
+    Structured result returned by run_validation.
+
+    gates        : list of GateResult, one per check applied
+    passed       : True only if ALL applied gates passed
+    issues       : list of failure strings (gates that failed + any errors)
+    summary      : human-readable multi-line status string
+    cost_normalized : trades DataFrame with profit_net column (excluded from metadata)
+    wf_results   : raw output of compute_walk_forward
+    t_test       : raw output of run_t_test
+    monte_carlo  : raw output of run_monte_carlo
+    gate_results : dict[gate_name, bool] for backwards compatibility
+    """
+    gates: List[GateResult] = field(default_factory=list)
+    passed: bool = False
+    issues: List[str] = field(default_factory=list)
+    summary: str = ""
+    cost_normalized: pd.DataFrame = field(default_factory=pd.DataFrame)
+    wf_results: Dict[str, Any] = field(default_factory=dict)
+    t_test: Dict[str, Any] = field(default_factory=dict)
+    monte_carlo: Dict[str, Any] = field(default_factory=dict)
+    gate_results: Dict[str, bool] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a JSON-safe dict (excluding cost_normalized DataFrame)."""
+        return {
+            "passed": self.passed,
+            "gates": [
+                {
+                    "name": g.name,
+                    "passed": g.passed,
+                    "value": g.value,
+                    "threshold": g.threshold,
+                    "reason": g.reason,
+                }
+                for g in self.gates
+            ],
+            "gate_results": self.gate_results,
+            "wf_results": self.wf_results,
+            "t_test": self.t_test,
+            "monte_carlo": self.monte_carlo,
+            "issues": self.issues,
+            "summary": self.summary,
+        }
+
+    # ------------------------------------------------------------------
+    # Dict-like access for backwards compatibility with code that treated
+    # run_validation() as returning a plain dict.
+    # ------------------------------------------------------------------
+
+    def _as_full_dict(self) -> Dict[str, Any]:
+        d = self.to_dict()
+        d["cost_normalized"] = self.cost_normalized
+        return d
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._as_full_dict().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._as_full_dict()[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._as_full_dict()
+
+    def items(self):
+        return self._as_full_dict().items()
+
+    def keys(self):
+        return self._as_full_dict().keys()
+
+    def values(self):
+        return self._as_full_dict().values()
 
 
 DEFAULT_WF_CONFIG: Dict[str, Any] = {
@@ -331,47 +422,88 @@ def run_monte_carlo(
     return result
 
 
+_SENSITIVITY_CLASS_ORDER = {"fragile": 0, "moderate": 1, "robust": 2}
+
+
 def run_validation(
     trades: pd.DataFrame,
     *,
     wf_config: Optional[Dict[str, Any]] = None,
     cost_model: Optional[Dict[str, Any]] = None,
     n_mc_simulations: int = 1000,
-) -> Dict[str, Any]:
+    # --- optional extended gate inputs ---
+    fold_sign_consistency: Optional[float] = None,
+    fold_sign_consistency_min: float = 0.6,
+    session_concentration_cap: Optional[float] = None,
+    session_concentration_max: float = 0.70,
+    regime_dispersion_min: Optional[int] = None,
+    regime_dispersion_count: Optional[int] = None,
+    sensitivity_class_min: Optional[str] = None,
+    sensitivity_class_observed: Optional[str] = None,
+) -> ValidationResult:
     """
-    Run all validation checks. Returns comprehensive result dict.
+    Run all validation checks and return a structured ``ValidationResult``.
+
+    Core gates (always applied):
+      min_counts         IS/OOS minimum trade count check
+      degradation        IS→OOS profit factor degradation ≤ threshold
+      t_test             one-sample t-test on net returns vs zero
+      monte_carlo        actual max-DD below 95th pct of shuffled DDs
+
+    Optional extended gates (applied only when their input value is provided):
+      fold_sign_consistency   fraction of CV folds with same-sign mean return;
+                              pass if value ≥ fold_sign_consistency_min (default 0.6)
+      session_concentration   fraction of trades in the single busiest session;
+                              pass if value ≤ session_concentration_max (default 0.70)
+      regime_dispersion       number of distinct regimes represented in trades;
+                              pass if value ≥ regime_dispersion_min (default 2)
+      sensitivity_class       parameter sensitivity classification (fragile/moderate/robust);
+                              pass if observed class ≥ sensitivity_class_min rank
+
+    Parameters
+    ----------
+    trades                       : trade DataFrame (requires profit column)
+    wf_config                    : walk-forward config overrides
+    cost_model                   : cost model overrides
+    n_mc_simulations             : Monte Carlo simulation count
+    fold_sign_consistency        : measured value (0-1) from oos_stats
+    fold_sign_consistency_min    : minimum passing value (default 0.6)
+    session_concentration_cap    : measured max-session fraction (0-1)
+    session_concentration_max    : maximum allowed (default 0.70)
+    regime_dispersion_min        : minimum distinct regimes required (default 2)
+    regime_dispersion_count      : measured count of distinct regimes
+    sensitivity_class_min        : minimum class required (``"moderate"`` or ``"robust"``)
+    sensitivity_class_observed   : observed class string (``"fragile"``/``"moderate"``/``"robust"``)
 
     Returns
     -------
-    dict with:
-      passed              : bool — True only if ALL hard gates pass
-      cost_normalized     : DataFrame with profit_net column
-      wf_results          : from compute_walk_forward
-      t_test              : from run_t_test
-      monte_carlo         : from run_monte_carlo
-      issues              : list of failure reason strings
-      summary             : human-readable pass/fail summary
+    ValidationResult — use ``.to_dict()`` for JSON-safe metadata storage
     """
     resolved_wf_config = {**DEFAULT_WF_CONFIG, **(wf_config or {})}
     resolved_cost_model = {**DEFAULT_COST_MODEL, **(cost_model or {})}
 
     all_issues: List[str] = []
+    gates: List[GateResult] = []
 
-    # Step 1: Apply cost model
+    # -----------------------------------------------------------------------
+    # Guard: empty trades
+    # -----------------------------------------------------------------------
     if trades is None or not isinstance(trades, pd.DataFrame) or len(trades) == 0:
-        return {
-            "passed": False,
-            "cost_normalized": pd.DataFrame(),
-            "wf_results": {},
-            "t_test": {},
-            "monte_carlo": {},
-            "issues": ["no trades provided"],
-            "summary": "FAILED — no trades provided",
-        }
+        result = ValidationResult(
+            passed=False,
+            issues=["no trades provided"],
+            summary="FAILED — no trades provided",
+        )
+        return result
 
+    # -----------------------------------------------------------------------
+    # Step 1: Apply cost model
+    # -----------------------------------------------------------------------
     cost_normalized = apply_cost_model(trades, resolved_cost_model)
 
+    # -----------------------------------------------------------------------
     # Step 2: Walk-forward
+    # -----------------------------------------------------------------------
     wf_results = compute_walk_forward(
         cost_normalized,
         profit_col="profit_net",
@@ -380,12 +512,16 @@ def run_validation(
     if wf_results.get("issues"):
         all_issues.extend(wf_results["issues"])
 
+    # -----------------------------------------------------------------------
     # Step 3: T-test
+    # -----------------------------------------------------------------------
     t_test = run_t_test(cost_normalized, profit_col="profit_net")
     if t_test.get("issues"):
         all_issues.extend(t_test["issues"])
 
+    # -----------------------------------------------------------------------
     # Step 4: Monte Carlo
+    # -----------------------------------------------------------------------
     monte_carlo = run_monte_carlo(
         cost_normalized,
         profit_col="profit_net",
@@ -394,42 +530,141 @@ def run_validation(
     if monte_carlo.get("issues"):
         all_issues.extend(monte_carlo["issues"])
 
-    # Hard gate evaluation
-    gate_results: Dict[str, bool] = {
-        "min_counts": bool(wf_results.get("passed_min_counts", False)),
-        "degradation": bool(wf_results.get("passed_degradation", False)),
-        "t_test": bool(t_test.get("passed", False)),
-        "monte_carlo": bool(monte_carlo.get("passed", False)),
-    }
+    # -----------------------------------------------------------------------
+    # Core gates
+    # -----------------------------------------------------------------------
+    n_is = wf_results.get("is_trades", 0)
+    n_oos = wf_results.get("oos_trades", 0)
+    min_is = int(resolved_wf_config.get("min_is_trades", 50))
+    min_oos = int(resolved_wf_config.get("min_oos_trades", 20))
+    gates.append(GateResult(
+        name="min_counts",
+        passed=bool(wf_results.get("passed_min_counts", False)),
+        value={"is": n_is, "oos": n_oos},
+        threshold={"min_is": min_is, "min_oos": min_oos},
+        reason=f"IS={n_is}/{min_is}, OOS={n_oos}/{min_oos}",
+    ))
 
-    passed = all(gate_results.values())
+    deg = wf_results.get("oos_degradation")
+    deg_thresh = float(resolved_wf_config.get("degradation_threshold", 0.20))
+    gates.append(GateResult(
+        name="degradation",
+        passed=bool(wf_results.get("passed_degradation", False)),
+        value=deg,
+        threshold=deg_thresh,
+        reason=f"oos_degradation={deg} vs max={deg_thresh}",
+    ))
+
+    t_stat = t_test.get("t_stat")
+    p_val = t_test.get("p_value")
+    gates.append(GateResult(
+        name="t_test",
+        passed=bool(t_test.get("passed", False)),
+        value={"t_stat": t_stat, "p_value": p_val},
+        threshold={"p_max": 0.05, "t_min": 0.0},
+        reason=f"t={t_stat}, p={p_val}",
+    ))
+
+    actual_dd = monte_carlo.get("actual_max_dd")
+    mc_p95 = monte_carlo.get("mc_dd_p95")
+    gates.append(GateResult(
+        name="monte_carlo",
+        passed=bool(monte_carlo.get("passed", False)),
+        value={"actual_max_dd": actual_dd, "mc_dd_p95": mc_p95},
+        threshold={"percentile": 95},
+        reason=f"actual_dd={actual_dd} vs p95={mc_p95}",
+    ))
+
+    # -----------------------------------------------------------------------
+    # Optional extended gates
+    # -----------------------------------------------------------------------
+
+    # Gate: fold sign consistency
+    if fold_sign_consistency is not None:
+        fsc_val = float(fold_sign_consistency)
+        fsc_passed = fsc_val >= fold_sign_consistency_min
+        gates.append(GateResult(
+            name="fold_sign_consistency",
+            passed=fsc_passed,
+            value=fsc_val,
+            threshold=fold_sign_consistency_min,
+            reason=f"sign_consistency={fsc_val:.3f} vs min={fold_sign_consistency_min:.3f}",
+        ))
+        if not fsc_passed:
+            all_issues.append(f"hard gate failed: fold_sign_consistency ({fsc_val:.3f} < {fold_sign_consistency_min:.3f})")
+
+    # Gate: session concentration
+    if session_concentration_cap is not None:
+        sc_val = float(session_concentration_cap)
+        sc_passed = sc_val <= session_concentration_max
+        gates.append(GateResult(
+            name="session_concentration",
+            passed=sc_passed,
+            value=sc_val,
+            threshold=session_concentration_max,
+            reason=f"max_session_frac={sc_val:.3f} vs cap={session_concentration_max:.3f}",
+        ))
+        if not sc_passed:
+            all_issues.append(f"hard gate failed: session_concentration ({sc_val:.3f} > {session_concentration_max:.3f})")
+
+    # Gate: regime dispersion
+    if regime_dispersion_count is not None:
+        disp_min = int(regime_dispersion_min) if regime_dispersion_min is not None else 2
+        disp_val = int(regime_dispersion_count)
+        disp_passed = disp_val >= disp_min
+        gates.append(GateResult(
+            name="regime_dispersion",
+            passed=disp_passed,
+            value=disp_val,
+            threshold=disp_min,
+            reason=f"distinct_regimes={disp_val} vs min={disp_min}",
+        ))
+        if not disp_passed:
+            all_issues.append(f"hard gate failed: regime_dispersion ({disp_val} < {disp_min})")
+
+    # Gate: parameter sensitivity class
+    if sensitivity_class_observed is not None and sensitivity_class_min is not None:
+        obs_rank = _SENSITIVITY_CLASS_ORDER.get(str(sensitivity_class_observed).lower(), -1)
+        min_rank = _SENSITIVITY_CLASS_ORDER.get(str(sensitivity_class_min).lower(), 0)
+        sens_passed = obs_rank >= min_rank
+        gates.append(GateResult(
+            name="sensitivity_class",
+            passed=sens_passed,
+            value=sensitivity_class_observed,
+            threshold=sensitivity_class_min,
+            reason=f"sensitivity={sensitivity_class_observed} vs min={sensitivity_class_min}",
+        ))
+        if not sens_passed:
+            all_issues.append(f"hard gate failed: sensitivity_class ({sensitivity_class_observed} < {sensitivity_class_min})")
+
+    # -----------------------------------------------------------------------
+    # Composite pass/fail
+    # -----------------------------------------------------------------------
+    gate_results: Dict[str, bool] = {g.name: g.passed for g in gates}
+    passed = all(g.passed for g in gates)
+
+    # Collect core gate failures
+    core_gates = {"min_counts", "degradation", "t_test", "monte_carlo"}
+    for g in gates:
+        if g.name in core_gates and not g.passed:
+            all_issues.append(f"hard gate failed: {g.name}")
 
     # Human-readable summary
     gate_lines = [
-        f"  min_counts:  {'PASS' if gate_results['min_counts'] else 'FAIL'}"
-        f"  (IS={wf_results.get('is_trades', 0)}, OOS={wf_results.get('oos_trades', 0)})",
-        f"  degradation: {'PASS' if gate_results['degradation'] else 'FAIL'}"
-        f"  (oos_degradation={wf_results.get('oos_degradation')})",
-        f"  t_test:      {'PASS' if gate_results['t_test'] else 'FAIL'}"
-        f"  (p={t_test.get('p_value')}, t={t_test.get('t_stat')})",
-        f"  monte_carlo: {'PASS' if gate_results['monte_carlo'] else 'FAIL'}"
-        f"  (actual_dd={monte_carlo.get('actual_max_dd')}, p95={monte_carlo.get('mc_dd_p95')})",
+        f"  {g.name:<28} {'PASS' if g.passed else 'FAIL'}  ({g.reason})"
+        for g in gates
     ]
     status = "PASSED" if passed else "FAILED"
-    summary = f"{status} — all hard gates\n" + "\n".join(gate_lines)
+    summary = f"{status} — {len(gates)} gates\n" + "\n".join(gate_lines)
 
-    # Collect failures as issues
-    for gate, result in gate_results.items():
-        if not result:
-            all_issues.append(f"hard gate failed: {gate}")
-
-    return {
-        "passed": passed,
-        "cost_normalized": cost_normalized,
-        "wf_results": wf_results,
-        "t_test": t_test,
-        "monte_carlo": monte_carlo,
-        "issues": all_issues,
-        "summary": summary,
-        "gate_results": gate_results,
-    }
+    return ValidationResult(
+        gates=gates,
+        passed=passed,
+        issues=all_issues,
+        summary=summary,
+        cost_normalized=cost_normalized,
+        wf_results=wf_results,
+        t_test=t_test,
+        monte_carlo=monte_carlo,
+        gate_results=gate_results,
+    )
