@@ -71,6 +71,61 @@ from ta_foundation.reports.html.sections.pattern_cluster_drilldown import (
 from ta_foundation.reports.html.sections.trade_pattern_audit import (
     render_trade_pattern_audit,
 )
+from ta_foundation.reports.html.sections.strategy_discovery_overview import (
+    render_strategy_discovery_overview,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_ranked_table import (
+    render_strategy_discovery_ranked_table,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_entry_rules import (
+    render_strategy_discovery_entry_rules,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_comparison import (
+    render_strategy_discovery_comparison,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_filter_rules import (
+    render_strategy_discovery_filter_rules,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_exit_policies import (
+    render_strategy_discovery_exit_policies,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_feature_importance import (
+    render_strategy_discovery_feature_importance,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_validation import (
+    render_strategy_discovery_validation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_mae_mfe import (
+    render_strategy_discovery_mae_mfe,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_position_sizing import (
+    render_strategy_discovery_position_sizing,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_risk_metrics import (
+    render_strategy_discovery_risk_metrics,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_drawdown import (
+    render_strategy_discovery_drawdown,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_cohort import (
+    render_strategy_discovery_cohort,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_classification import (
+    render_strategy_discovery_classification,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_evaluation import (
+    render_strategy_discovery_evaluation,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_regime import (
+    render_strategy_discovery_regime,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_parameter_sensitivity import (
+    render_strategy_discovery_parameter_sensitivity,
+)
+from ta_foundation.reports.html.sections.strategy_discovery_pure_discovery import (
+    render_strategy_discovery_pure_discovery,
+)
+from ta_foundation.reports.html.sections.regime_parameter_recommendation import render_regime_parameter_recommendation
 
 SectionRenderer = Callable[[dict], str]
 
@@ -257,6 +312,103 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="trade_pattern_audit",
         default_title="Trade Pattern Audit",
         render_fn=render_trade_pattern_audit,
+    ),
+
+    # --- Strategy Discovery ---
+    "regime_parameter_recommendation": SectionDef(
+        id="regime_parameter_recommendation",
+        default_title="Regime Parameter Recommendation",
+        render_fn=render_regime_parameter_recommendation,
+    ),
+    "strategy_discovery_overview": SectionDef(
+        id="strategy_discovery_overview",
+        default_title="Strategy Discovery Overview",
+        render_fn=render_strategy_discovery_overview,
+    ),
+    "strategy_discovery_ranked_table": SectionDef(
+        id="strategy_discovery_ranked_table",
+        default_title="Strategy Discovery — Ranked Table",
+        render_fn=render_strategy_discovery_ranked_table,
+    ),
+    "strategy_discovery_entry_rules": SectionDef(
+        id="strategy_discovery_entry_rules",
+        default_title="Strategy Discovery — Entry Rules",
+        render_fn=render_strategy_discovery_entry_rules,
+    ),
+    "strategy_discovery_comparison": SectionDef(
+        id="strategy_discovery_comparison",
+        default_title="Strategy Discovery — Cross-Run Comparison",
+        render_fn=render_strategy_discovery_comparison,
+    ),
+    "strategy_discovery_filter_rules": SectionDef(
+        id="strategy_discovery_filter_rules",
+        default_title="Strategy Discovery — Filter Rules",
+        render_fn=render_strategy_discovery_filter_rules,
+    ),
+    "strategy_discovery_exit_policies": SectionDef(
+        id="strategy_discovery_exit_policies",
+        default_title="Strategy Discovery — Exit Policies",
+        render_fn=render_strategy_discovery_exit_policies,
+    ),
+    "strategy_discovery_feature_importance": SectionDef(
+        id="strategy_discovery_feature_importance",
+        default_title="Strategy Discovery — Feature Importance",
+        render_fn=render_strategy_discovery_feature_importance,
+    ),
+    "strategy_discovery_validation": SectionDef(
+        id="strategy_discovery_validation",
+        default_title="Strategy Discovery — Walk-Forward Validation",
+        render_fn=render_strategy_discovery_validation,
+    ),
+    "strategy_discovery_mae_mfe": SectionDef(
+        id="strategy_discovery_mae_mfe",
+        default_title="Strategy Discovery — MAE/MFE Profile",
+        render_fn=render_strategy_discovery_mae_mfe,
+    ),
+    "strategy_discovery_position_sizing": SectionDef(
+        id="strategy_discovery_position_sizing",
+        default_title="Strategy Discovery — Position Sizing",
+        render_fn=render_strategy_discovery_position_sizing,
+    ),
+    "strategy_discovery_risk_metrics": SectionDef(
+        id="strategy_discovery_risk_metrics",
+        default_title="Strategy Discovery — Risk-Adjusted Metrics",
+        render_fn=render_strategy_discovery_risk_metrics,
+    ),
+    "strategy_discovery_drawdown": SectionDef(
+        id="strategy_discovery_drawdown",
+        default_title="Strategy Discovery — Drawdown Analysis",
+        render_fn=render_strategy_discovery_drawdown,
+    ),
+    "strategy_discovery_cohort": SectionDef(
+        id="strategy_discovery_cohort",
+        default_title="Strategy Discovery — Cohort Analysis (Drift / Decay)",
+        render_fn=render_strategy_discovery_cohort,
+    ),
+    "strategy_discovery_classification": SectionDef(
+        id="strategy_discovery_classification",
+        default_title="Strategy Discovery — Automation Classification",
+        render_fn=render_strategy_discovery_classification,
+    ),
+    "strategy_discovery_evaluation": SectionDef(
+        id="strategy_discovery_evaluation",
+        default_title="Strategy Discovery — Trade Evaluation",
+        render_fn=render_strategy_discovery_evaluation,
+    ),
+    "strategy_discovery_regime": SectionDef(
+        id="strategy_discovery_regime",
+        default_title="Strategy Discovery — Market Regime",
+        render_fn=render_strategy_discovery_regime,
+    ),
+    "strategy_discovery_parameter_sensitivity": SectionDef(
+        id="strategy_discovery_parameter_sensitivity",
+        default_title="Strategy Discovery — Parameter Sensitivity",
+        render_fn=render_strategy_discovery_parameter_sensitivity,
+    ),
+    "strategy_discovery_pure_discovery": SectionDef(
+        id="strategy_discovery_pure_discovery",
+        default_title="Pure Discovery Leaderboard",
+        render_fn=render_strategy_discovery_pure_discovery,
     ),
 # render_pattern_engine_diagnostics
 }

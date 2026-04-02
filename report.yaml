@@ -1027,7 +1027,49 @@ pattern_engine:
           lookback: 20         # number of prior candles used to compute avg body
           min_body_ratio: 1.1  # body must exceed avg_body * 1.1
 
+# =============================================================================
+# Strategy Discovery Engine
+# =============================================================================
+# Runs Phase 0 (regime labeling) + MAE/MFE analysis + validation on all runs.
+# Entry/exit discovery phases will be added in subsequent implementation passes.
+
+strategy_discovery:
+ enabled: true
+ instrument: "NQ"
+ contract:   "03-26"         # update to current front month
+ timeframe:  "5m"
+
+ cost_model:
+   commission_per_side: 2.09   # per contract per side (NQ futures)
+   slippage_ticks: 1           # conservative 1-tick slippage entry + exit
+   tick_value: 5.00            # NQ = $5/tick
+
+ walk_forward:
+   wf_type: rolling            # rolling | anchored
+   is_pct: 0.70               # 70% in-sample, 30% OOS
+   min_is_trades: 50           # hard reject below this
+   min_oos_trades: 20          # hard reject below this
+   n_folds: 5
+   degradation_threshold: 0.20 # OOS PF must be >= IS PF * 0.80
+
+ regime:
+   adx_period: 14
+   atr_period: 14
+   atr_lookback: 100           # bars for ATR percentile rank window
+   adx_trend_threshold: 25.0   # ADX >= 25 = trending
+   atr_high_pct: 0.75          # ATR pct rank >= 0.75 = high_vol
+   atr_low_pct: 0.25           # ATR pct rank <= 0.25 = low_vol
+
 sections:
+  - id: strategy_discovery_overview
+    title: "Strategy Discovery Overview"
+    options:
+      show_validation: true
+      show_mae_mfe: true
+      show_evaluation: true
+      show_regime: true
+      min_trades: 5
+
   - id: trade_pattern_audit
     title: "Trade Pattern Audit"
     options:
@@ -1035,5 +1077,12 @@ sections:
       top_n_runs: 100
       show_per_trade: true    # include collapsible trade-by-trade table
       min_trades: 5           # skip runs with fewer audited trades
+
+  - id: strategy_discovery_ranked_table
+    title: "Ranked Table"
+    options:
+      show_sensitivity: true
+      show_components: true
+
 
 ######### Trade Pattern Audit ###############################################

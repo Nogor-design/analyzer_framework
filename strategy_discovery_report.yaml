@@ -1,0 +1,576 @@
+# =============================================================================
+# Strategy Discovery Report
+# =============================================================================
+# Run with:
+#   python -m ta_foundation.cli.main \
+#     --input  "C:/path/to/ninjatrader/exports" \
+#     --output ./outputs \
+#     --report-config strategy_discovery_report.yaml \
+#     --market-data "C:/path/to/market/data" \
+#     [--recursive]
+#
+# This report runs the full Strategy Discovery engine:
+#   Phase 0  — Market regime labeling (ADX + ATR)
+#   Phase 1  — MAE/MFE profile + walk-forward validation + evaluation
+#   Phase 1b — Feature importance (pattern coverage, regime, session, ADX)
+#   Phase 2  — Entry rule discovery (what conditions predict winning trades)
+#   Phase 2b — Filter discovery (what conditions to EXCLUDE)
+#   Phase 3  — Exit policy sweep (FixedRR, ATR trail, Chandelier, Giveback)
+#   Phase 4  — Strategy classification (automated / hybrid / semi-discretionary)
+#   Phase 5  — Ranking with weight sensitivity check
+#   Phase 6  — Behaviour clustering (de-duplicate parameter neighbours)
+# =============================================================================
+
+report:
+  title: "Strategy Discovery Report"
+  output_filename: "strategy_discovery_report.html"
+  timezone: "America/Denver"
+
+# =============================================================================
+# STRATEGY DISCOVERY — top-level analysis config
+# =============================================================================
+strategy_discovery:
+  enabled: true
+
+  # --------------------------------------------------------------------------
+  # Market data — must match a loaded file in --market-data folder.
+  # contract: null = auto-select the latest available contract.
+  # --------------------------------------------------------------------------
+  instrument: "NQ"
+  contract: "03-26"       # pin to a specific contract, e.g. "03-26"; null = auto
+  timeframe: "5m"         # timeframe for regime + exit-policy ATR computation
+  tick_size: 0.25         # NQ tick size (MNQ = 0.25, ES = 0.25, CL = 0.01)
+
+  # --------------------------------------------------------------------------
+  # Cost model — applied to every trade before validation
+  # --------------------------------------------------------------------------
+  cost_model:
+    commission_per_side: 2.09    # USD per side
+    slippage_ticks: 1            # slippage ticks per side
+    tick_value: 5.00             # USD per tick (NQ full = 5.00, MNQ = 0.50)
+
+  # --------------------------------------------------------------------------
+  # Walk-forward validation
+  # --------------------------------------------------------------------------
+  walk_forward:
+    wf_type: rolling             # rolling | anchored
+    is_pct: 0.70                 # in-sample fraction per fold
+    min_is_trades: 50            # reject fold if fewer IS trades
+    min_oos_trades: 20           # reject fold if fewer OOS trades
+    n_folds: 5                   # number of WF folds
+    degradation_threshold: 0.20  # OOS PF may degrade ≤20% vs IS PF
+
+  # --------------------------------------------------------------------------
+  # Regime labeling
+  # --------------------------------------------------------------------------
+  regime:
+    adx_period: 14
+    atr_period: 14
+    atr_lookback: 100
+    adx_trend_threshold: 25.0
+    atr_high_pct: 0.75           # ATR ≥ 75th pct → high-vol regime
+    atr_low_pct: 0.25            # ATR ≤ 25th pct → low-vol regime
+
+  # --------------------------------------------------------------------------
+  # Entry rule discovery
+  # Finds conjunction conditions on the feature matrix that select subsets
+  # of trades with better PF / WR than the overall baseline.
+  # --------------------------------------------------------------------------
+  entry_discovery:
+    enabled: true
+    max_depth: 2                 # max conditions per rule (1 = single, 2 = AND pairs)
+    min_trades: 20               # skip rules with fewer matching trades
+    max_candidates: 300          # cap on total candidate conjunctions evaluated
+    top_n: 25                    # top-N rules to keep in results
+    adx_thresholds: [20, 25, 30]
+    pattern_score_thresholds: [1.0, 2.0, 3.0]
+
+  # --------------------------------------------------------------------------
+  # Filter discovery
+  # Finds EXCLUSION conditions: removing trades that match them improves metrics.
+  # --------------------------------------------------------------------------
+  filter_discovery:
+    enabled: true
+    min_trades: 20
+    min_remaining_trades: 15     # must have at least this many trades left after filter
+    max_filters: 200
+    top_n: 20
+    weight_pf_lift: 0.45         # weight given to profit-factor improvement
+    weight_wr_lift: 0.35         # weight given to win-rate improvement
+    weight_avg_profit_lift: 0.20
+
+  # --------------------------------------------------------------------------
+  # Exit policy sweep
+  # Tests fixed R:R, ATR trail, break-even trail, Chandelier, and giveback
+  # policies across the MAE/MFE-derived parameter grid.
+  # --------------------------------------------------------------------------
+  exit_discovery:
+    enabled: true
+    max_combos: 80               # total policy instances to test across all families
+    # per-family budget is max_combos // n_families (= 16 each for 5 families)
+
+  # --------------------------------------------------------------------------
+  # Position sizing
+  # Kelly criterion + Monte Carlo ruin-risk analysis per run.
+  # --------------------------------------------------------------------------
+  position_sizing:
+    enabled: true
+    n_sim: 500                   # Monte Carlo simulation paths
+    n_trades_sim: 200            # trades per simulated path
+    ruin_threshold: 0.20         # equity drop fraction = "ruin"
+    dd_warn_threshold: 0.20      # drawdown fraction for warning
+    kelly_fractions: [0.25, 0.50, 0.75, 1.00]
+    min_trades: 20
+    initial_equity: 10000.0
+    random_seed: 42
+
+  # --------------------------------------------------------------------------
+  # Risk metrics
+  # Sharpe, Sortino, Calmar, Omega ratios; annualized return; downside deviation.
+  # Results also feed into the RiskAdj component of the ranking score.
+  # --------------------------------------------------------------------------
+  risk_metrics:
+    enabled: true
+    initial_equity: 10000.0     # equity base for return calculation
+    risk_free_rate: 0.05        # annual risk-free rate (e.g. 5%)
+    mar_rate: 0.0               # Sortino minimum acceptable per-trade return
+    min_trades: 10
+
+  # --------------------------------------------------------------------------
+  # Drawdown analysis
+  # Peak-to-trough equity curve analysis: max DD, streaks, Ulcer Index,
+  # recovery factor, rolling window worst-case, regime breakdown.
+  # --------------------------------------------------------------------------
+  drawdown_analysis:
+    enabled: true
+    initial_equity: 10000.0     # starting equity for equity curve construction
+    rolling_window: 20          # trades per rolling worst-case window
+    rolling_step: 10            # stride between windows
+    min_trades: 10
+
+  # --------------------------------------------------------------------------
+  # Cohort analysis
+  # Detects strategy drift and decay by splitting the trade history into
+  # rolling time windows and tracking how PF/WR trend over time.
+  # --------------------------------------------------------------------------
+  cohort_analysis:
+    enabled: true
+    cohort_by: count            # count | week | month
+    cohort_size: 20             # trades per cohort when cohort_by=count
+    min_cohorts: 3
+    min_trades: 30
+
+  # --------------------------------------------------------------------------
+  # Parameter sensitivity
+  # For each numeric threshold in the top entry rules, sweeps ±n_steps and
+  # classifies whether the edge is robust (flat) or fragile (peaked).
+  # --------------------------------------------------------------------------
+  parameter_sensitivity:
+    enabled: true
+    top_n_rules: 5               # number of top entry rules to analyse
+    n_steps: 4                   # sweep ±4 steps from original threshold
+    min_step_trades: 10          # skip sweep points with fewer than N trades
+
+  # --------------------------------------------------------------------------
+  # Pure Discovery Mode (market-data-first entry discovery)
+  # Generates a constrained set of interpretable candidates from bars,
+  # simulates baseline trades, prunes weak ideas, then reuses validation.
+  # --------------------------------------------------------------------------
+  pure_discovery:
+    enabled: false
+    objective: "high_quality"
+    max_final_strategies: 5
+    max_archetypes_per_run: 6
+    max_candidates_per_archetype: 40
+    max_rule_depth: 3
+    min_trades: 60
+    require_walk_forward_pass: true
+    require_robust_or_moderate_sensitivity: true
+    require_distinct_cluster_representatives: true
+    sessions: ["London", "NY_open", "Midday", "Power_hour", "Asian", "All"]
+    direction_mode: "both"
+    baseline_exit:
+      stop_ticks: 80
+      target_ticks: 120
+      max_holding_bars: 36
+
+  # --------------------------------------------------------------------------
+  # Clustering
+  # Groups behaviorally similar strategies to prevent parameter-variants from
+  # dominating the top of the ranked list.
+  # threshold: max normalised Euclidean distance to merge two runs (1.5 default)
+  # --------------------------------------------------------------------------
+  cluster_distance_threshold: 1.5
+
+
+# =============================================================================
+# SECTIONS
+# =============================================================================
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Cross-run comparison table: ALL runs side-by-side across every metric
+  # (performance, risk-adjusted, drawdown, sizing, stability, classification)
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_comparison
+    title: "Cross-Run Comparison"
+    options:
+      group_columns:       true   # show column group headers
+      max_runs:            0      # 0 = show all
+      highlight_best:      true   # bold best value in each column
+      show_risk_adj:       true
+      show_drawdown:       true
+      show_sizing:         true
+      show_stability:      true
+      show_classification: true
+
+  # ---------------------------------------------------------------------------
+  # Cross-run ranked table: final scores, grades, validation pass/fail,
+  # cluster badges, weight-sensitivity badge, per-run component accordion
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_pure_discovery
+    title: "Pure Discovery Leaderboard"
+    options:
+      max_rows: 50
+      max_rejections_per_run: 20
+
+  - id: strategy_discovery_ranked_table
+    title: "Strategy Ranking"
+    options:
+      show_sensitivity: true
+      show_components:  true
+      show_clusters:    true
+
+  # ---------------------------------------------------------------------------
+  # Per-run deep-dive cards: validation, MAE/MFE, regime breakdown,
+  # feature importance, entry rules, filter rules, exit policies, classification
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_overview
+    title: "Strategy Discovery — Per-Run Overview"
+    options:
+      max_runs: 10               # number of runs to show (sorted by rank)
+      show_validation:      true
+      show_mae_mfe:         true
+      show_regime:          true
+      show_importance:      true
+      show_entry_discovery:  true
+      show_filter_discovery: true
+      show_exit_disc:        true
+      show_classification:   true
+      show_position_sizing:  true
+      show_cohort_analysis:        true
+      show_drawdown_analysis:      true
+      show_risk_metrics:           true
+      show_parameter_sensitivity:  true
+
+  # ---------------------------------------------------------------------------
+  # Dedicated entry rule table: conditions + PF/WR/lift per run
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_entry_rules
+    title: "Entry Rule Discovery"
+    options:
+      max_runs: 5
+      show_all_runs: false
+
+  # ---------------------------------------------------------------------------
+  # Dedicated filter rule table: exclusion conditions + PF/WR lift per run
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_filter_rules
+    title: "Filter Rule Discovery"
+    options:
+      max_runs: 5
+      show_all_runs: false
+
+  # ---------------------------------------------------------------------------
+  # Dedicated exit policy section: top policies + by-family + by-regime
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_exit_policies
+    title: "Exit Policy Sweep"
+    options:
+      max_runs: 5
+      show_all_runs: false
+      top_n_policies: 10      # number of ranked policies to show per run
+
+  # ---------------------------------------------------------------------------
+  # Feature importance: cross-run frequency + per-run correlations + RF
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_feature_importance
+    title: "Feature Importance"
+    options:
+      max_runs: 5
+      show_all_runs: false
+      top_n_features: 12      # rows in per-run numeric/categorical tables
+      show_cross_run: true    # cross-run top_features frequency table
+      show_rf: true           # include Random Forest importance if available
+
+  # ---------------------------------------------------------------------------
+  # Walk-forward validation: cross-run gate table + per-run detail
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_validation
+    title: "Walk-Forward Validation"
+    options:
+      max_runs: 10
+      show_all_runs: false
+      show_cross_run: true    # cross-run PASS/FAIL gate summary table
+      show_per_run: true      # per-run WF/t-test/MC detail accordions
+
+  # ---------------------------------------------------------------------------
+  # MAE/MFE profile: cross-run exit bounds + per-run percentile distributions
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_mae_mfe
+    title: "MAE/MFE Profile"
+    options:
+      max_runs: 5
+      show_all_runs: false
+      show_cross_run: true    # cross-run stop/target bounds comparison table
+      show_per_run: true      # per-run percentile distribution tables
+      show_direction: true    # long vs short breakdown
+
+  # ---------------------------------------------------------------------------
+  # Position sizing: Kelly criterion + Monte Carlo ruin-risk comparison
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_position_sizing
+    title: "Position Sizing (Kelly / Monte Carlo)"
+    options:
+      show_cross_run: true          # cross-run Kelly comparison table
+      show_per_run: true            # per-run fraction tables + recommendation
+      show_regime_conditional: true # regime-conditional Kelly breakdown
+
+  # ---------------------------------------------------------------------------
+  # Risk-adjusted metrics: Sharpe, Sortino, Calmar, Omega + annualized return
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_risk_metrics
+    title: "Risk-Adjusted Performance Metrics"
+    options:
+      show_cross_run: true   # cross-run comparison table with best-column highlights
+      show_per_run: true     # per-run KPI cards + ratio pills
+
+  # ---------------------------------------------------------------------------
+  # Drawdown analysis: max DD, streaks, Ulcer Index, rolling windows, by regime
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_drawdown
+    title: "Drawdown Analysis"
+    options:
+      show_cross_run: true   # cross-run DD comparison table
+      show_per_run: true     # per-run overall + streaks + rolling + regime
+      show_rolling: true     # rolling max-DD bar chart
+      show_regime: true      # regime-conditional DD breakdown
+      top_n_rolling: 10      # number of rolling windows to display
+
+  # ---------------------------------------------------------------------------
+  # Cohort analysis: strategy drift / performance decay over time
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_cohort
+    title: "Cohort Analysis (Strategy Drift / Decay)"
+    options:
+      show_cross_run: true         # cross-run trend + decay score comparison
+      show_per_run: true           # per-run cohort table + early vs late comparison
+      show_early_vs_late: true     # early/late cohort comparison cards
+
+  # ---------------------------------------------------------------------------
+  # Automation classification: automated / hybrid / semi-discretionary verdict
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_classification
+    title: "Automation Classification"
+    options:
+      show_cross_run: true   # cross-run score comparison table
+      show_per_run: true     # per-run verdict card + signal bars + reasoning
+
+  # ---------------------------------------------------------------------------
+  # Trade evaluation: core P&L KPIs, direction, session, equity sparkline
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_evaluation
+    title: "Trade Evaluation"
+    options:
+      show_cross_run: true       # cross-run PF / WR / net profit comparison
+      show_per_run: true         # per-run KPI grid + breakdowns
+      show_equity_curve: true    # inline SVG equity sparkline
+      show_direction: true       # Long vs Short breakdown table
+      show_session: true         # session (RTH / ONH / ETH) breakdown table
+
+  # ---------------------------------------------------------------------------
+  # Market regime: daily ADX/ATR regime distribution and trend composition
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_regime
+    title: "Market Regime Distribution"
+    options:
+      show_cross_run: true       # cross-run regime comparison table
+      show_per_run: true         # per-run distribution bars + regime pills + recent-days table
+      show_recent_days: true     # recent-days spotlight table
+      max_recent_days: 20        # how many recent day rows to display
+
+  # ---------------------------------------------------------------------------
+  # Parameter sensitivity: threshold robustness for top entry rule conditions
+  # ---------------------------------------------------------------------------
+  - id: strategy_discovery_parameter_sensitivity
+    title: "Parameter Sensitivity (Threshold Robustness)"
+    options:
+      show_cross_run: true       # cross-run robust/moderate/fragile summary table
+      show_per_run: true         # per-run rule sweep charts
+      max_rules_shown: 10        # maximum rule cards rendered per run
+
+
+# =============================================================================
+# REFERENCE — All strategy_discovery config options
+# =============================================================================
+#
+# strategy_discovery:
+#   enabled: true | false
+#
+#   instrument: string           NQ | ES | MNQ | CL | GC ...
+#   contract: string | null      "03-26" | null (auto)
+#   timeframe: string            1m | 5m | 15m | 1h ...
+#   tick_size: float             0.25 for NQ/ES/MNQ, 0.01 for CL, etc.
+#
+#   cost_model:
+#     commission_per_side: float  USD per side
+#     slippage_ticks: int         slippage ticks per side
+#     tick_value: float           USD per tick
+#
+#   walk_forward:
+#     wf_type: rolling | anchored
+#     is_pct: float              in-sample fraction (0.5–0.8)
+#     min_is_trades: int
+#     min_oos_trades: int
+#     n_folds: int
+#     degradation_threshold: float  (0.20 = allow up to 20% OOS PF drop)
+#
+#   regime:
+#     adx_period: int
+#     atr_period: int
+#     atr_lookback: int
+#     adx_trend_threshold: float
+#     atr_high_pct: float
+#     atr_low_pct: float
+#
+#   entry_discovery:
+#     enabled: true | false
+#     max_depth: 1 | 2 | 3
+#     min_trades: int
+#     max_candidates: int
+#     top_n: int
+#     adx_thresholds: [float, ...]
+#     pattern_score_thresholds: [float, ...]
+#
+#   filter_discovery:
+#     enabled: true | false
+#     min_trades: int
+#     min_remaining_trades: int
+#     max_filters: int
+#     top_n: int
+#     weight_pf_lift: float
+#     weight_wr_lift: float
+#     weight_avg_profit_lift: float
+#
+#   exit_discovery:
+#     enabled: true | false
+#     max_combos: int            (default 80; 16 per family)
+#
+#   position_sizing:
+#     enabled: true | false
+#     n_sim: int                 (default 500)
+#     n_trades_sim: int          (default 200)
+#     ruin_threshold: float      equity drop fraction = ruin (default 0.20)
+#     dd_warn_threshold: float   drawdown warning threshold (default 0.20)
+#     kelly_fractions: [float]   fractions of full Kelly to evaluate (default [0.25,0.50,0.75,1.00])
+#     min_trades: int            (default 20)
+#     initial_equity: float      starting equity for simulation (default 10000)
+#     random_seed: int           (default 42)
+#
+#   risk_metrics:
+#     enabled: true | false
+#     initial_equity: float      (default 10000)
+#     risk_free_rate: float      annual rate (default 0.05)
+#     mar_rate: float            Sortino MAR annual rate (default 0.0)
+#     min_trades: int            (default 10)
+#
+#   drawdown_analysis:
+#     enabled: true | false
+#     initial_equity: float      (default 10000)
+#     rolling_window: int        trades per rolling window (default 20)
+#     rolling_step: int          stride between windows (default 10)
+#     min_trades: int            (default 10)
+#
+#   cohort_analysis:
+#     enabled: true | false
+#     cohort_by: count | week | month  (default count)
+#     cohort_size: int           trades per cohort when cohort_by=count (default 20)
+#     min_cohorts: int           skip analysis if fewer cohorts (default 3)
+#     min_trades: int            skip if fewer total trades (default 30)
+#
+#   parameter_sensitivity:
+#     enabled: true | false
+#     top_n_rules: int           top entry rules to analyse (default 5)
+#     n_steps: int               sweep ±n_steps from original threshold (default 4)
+#     min_step_trades: int       skip sweep points with fewer trades (default 10)
+#
+#   cluster_distance_threshold: float  (default 1.5)
+#
+# -----------------------------------------------------------------------------
+# SECTION OPTIONS
+# -----------------------------------------------------------------------------
+#
+# strategy_discovery_ranked_table:
+#   show_sensitivity: bool       (default true)
+#   show_components:  bool       (default true)
+#   show_clusters:    bool       (default true)
+#
+# strategy_discovery_overview:
+#   max_runs: int                (default 10)
+#   show_validation:       bool  (default true)
+#   show_mae_mfe:          bool  (default true)
+#   show_regime:           bool  (default true)
+#   show_importance:       bool  (default true)
+#   show_entry_discovery:  bool  (default true)
+#   show_filter_discovery:  bool  (default true)
+#   show_exit_disc:         bool  (default true)
+#   show_classification:    bool  (default true)
+#   show_position_sizing:   bool  (default true)
+#   show_cohort_analysis:         bool  (default true)
+#   show_drawdown_analysis:       bool  (default true)
+#   show_risk_metrics:            bool  (default true)
+#   show_parameter_sensitivity:   bool  (default true)
+#
+# strategy_discovery_entry_rules:
+#   max_runs: int                (default 5)
+#   show_all_runs: bool          (default false)
+#
+# strategy_discovery_filter_rules:
+#   max_runs: int                (default 5)
+#   show_all_runs: bool          (default false)
+#
+# strategy_discovery_exit_policies:
+#   max_runs: int                (default 5)
+#   show_all_runs: bool          (default false)
+#   top_n_policies: int          policies shown per run (default 10)
+#
+# strategy_discovery_feature_importance:
+#   max_runs: int                (default 5)
+#   show_all_runs: bool          (default false)
+#   top_n_features: int          rows in per-run tables (default 12)
+#   show_cross_run: bool         cross-run frequency table (default true)
+#   show_rf: bool                show RF importance (default true)
+#
+# strategy_discovery_validation:
+#   max_runs: int                (default 10)
+#   show_all_runs: bool          (default false)
+#   show_cross_run: bool         cross-run gate summary table (default true)
+#   show_per_run: bool           per-run WF/t-test/MC details (default true)
+#
+# strategy_discovery_mae_mfe:
+#   max_runs: int                (default 5)
+#   show_all_runs: bool          (default false)
+#   show_cross_run: bool         cross-run bounds comparison (default true)
+#   show_per_run: bool           per-run percentile tables (default true)
+#   show_direction: bool         long/short breakdown (default true)
+#
+# strategy_discovery_comparison:
+#   group_columns: bool          show column group headers (default true)
+#   max_runs: int                0 = all runs (default 0)
+#   highlight_best: bool         bold best value per column (default true)
+#   show_risk_adj: bool          Sharpe/Sortino/Calmar/Omega group (default true)
+#   show_drawdown: bool          drawdown group (default true)
+#   show_sizing: bool            Kelly sizing group (default true)
+#   show_stability: bool         OOS degrade / decay group (default true)
+#   show_classification: bool    classification group (default true)
