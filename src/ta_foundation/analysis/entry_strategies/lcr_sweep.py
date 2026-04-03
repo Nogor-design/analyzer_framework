@@ -15,6 +15,7 @@ import pandas as pd
 
 from ta_foundation.analysis.entry_strategies.lcr.regions import compute_lcr_regions_and_events
 from ta_foundation.analysis.entry_strategies.lcr.signals import (
+    compute_break_outcome_time_of_day_stats,
     compute_region_to_region_stats,
     compute_retrace_stats,
     emit_lcr_entries,
@@ -77,6 +78,7 @@ def run_lcr_discovery(
     results: List[Dict[str, Any]] = []
     global_r2r: Optional[Dict] = None
     global_retrace: Optional[Dict] = None
+    global_break_tod: Optional[Dict] = None
 
     for mult, lb, zt, tp, sl in combos:
         regions, events = compute_lcr_regions_and_events(
@@ -95,6 +97,11 @@ def run_lcr_discovery(
         if global_r2r is None:
             global_r2r = compute_region_to_region_stats(regions, bars_1m, tick_size=tick_size)
             global_retrace = compute_retrace_stats(regions, events)
+            global_break_tod = compute_break_outcome_time_of_day_stats(
+                regions,
+                bars_1m,
+                tick_size=tick_size,
+            )
 
         for sig_type in signal_types:
             trades = emit_lcr_entries(
@@ -156,6 +163,7 @@ def run_lcr_discovery(
         "results": ranked,
         "r2r_stats": global_r2r,
         "retrace_stats": global_retrace,
+        "break_outcome_tod_stats": global_break_tod,
         "config": config,
     }
 

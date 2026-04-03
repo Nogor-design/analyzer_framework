@@ -19,6 +19,8 @@ def render_lcr_discovery_overview(ctx: dict) -> str:
     top_n = int(options.get("top_n", 20))
     show_r2r = bool(options.get("show_r2r_stats", True))
     show_retrace = bool(options.get("show_retrace_stats", True))
+    show_break_tod = bool(options.get("show_break_time_of_day_stats", True))
+    min_breaks_per_hour = int(options.get("min_breaks_per_hour", 5))
 
     # Collect lcr_discovery from any package
     disc: Optional[Dict[str, Any]] = None
@@ -38,6 +40,7 @@ def render_lcr_discovery_overview(ctx: dict) -> str:
     results = disc.get("results") or []
     r2r = disc.get("r2r_stats") or {}
     retrace = disc.get("retrace_stats") or {}
+    break_tod = disc.get("break_outcome_tod_stats") or {}
     n_run = disc.get("n_combinations_run", 0)
     n_results = disc.get("n_results", 0)
 
@@ -59,6 +62,15 @@ def render_lcr_discovery_overview(ctx: dict) -> str:
         html.append("<h3>Retrace Behaviour</h3>")
         html.append("<p>Of regions that break, what fraction retrace back into the zone?</p>")
         html.append(_retrace_table(retrace))
+
+    # ---- Break outcomes by time of day ----
+    if show_break_tod and break_tod:
+        html.append("<h3>Break Outcome by Time of Day (America/Denver)</h3>")
+        html.append(
+            "<p>For each hour, compares break outcomes: retrace back into zone vs "
+            "continuation to next region.</p>"
+        )
+        html.append(_break_tod_table(break_tod, min_breaks_per_hour=min_breaks_per_hour))
 
     # ---- Top results table ----
     if results:
@@ -162,6 +174,42 @@ def _retrace_table(retrace: Dict) -> str:
     </tr>
   </tbody>
 </table>"""
+
+
+def _break_tod_table(stats: Dict, min_breaks_per_hour: int = 5) -> str:
+    hourly = stats.get("hourly") or []
+    if not hourly:
+        return "<p><em>No broken-region time-of-day stats available.</em></p>"
+
+    filtered = [row for row in hourly if int(row.get("n_breaks", 0)) >= min_breaks_per_hour]
+    if not filtered:
+        return (
+            "<p><em>Time-of-day stats available, but no hour meets the minimum "
+            f"sample filter ({min_breaks_per_hour} breaks/hour).</em></p>"
+        )
+
+    rows = []
+    for row in filtered:
+        rows.append(
+            "<tr>"
+            f"<td>{row.get('label', '')}</td>"
+            f"<td>{row.get('n_breaks', 0)}</td>"
+            f"<td>{row.get('n_retraces', 0)} ({_pct(row.get('retrace_rate'))})</td>"
+            f"<td>{row.get('n_reach_next_region', 0)} ({_pct(row.get('reach_next_region_rate'))})</td>"
+            f"<td>{row.get('n_neither', 0)} ({_pct(row.get('neither_rate'))})</td>"
+            f"<td>{row.get('n_bull_breaks', 0)} / {row.get('n_bear_breaks', 0)}</td>"
+            "</tr>"
+        )
+
+    return (
+        "<table>"
+        "<thead><tr>"
+        "<th>Hour</th><th>Breaks</th><th>Retrace</th><th>Reach Next Region</th>"
+        "<th>Neither</th><th>Bull/Bear Breaks</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
 
 
 _SIGNAL_LABELS = {
