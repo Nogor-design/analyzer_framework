@@ -4,6 +4,7 @@ from ta_foundation.analysis.entry_strategies.lcr.regions import (
     compute_lcr_regions_and_events,
 )
 from ta_foundation.analysis.entry_strategies.lcr.signals import (
+    compute_break_outcome_time_of_day_stats,
     emit_lcr_entries,
     compute_region_to_region_stats,
     compute_retrace_stats,
@@ -16,4 +17,5 @@ __all__ = [
     "emit_lcr_entries",
     "compute_region_to_region_stats",
     "compute_retrace_stats",
+    "compute_break_outcome_time_of_day_stats",
 ]

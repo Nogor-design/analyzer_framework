@@ -101,6 +101,8 @@ sections:
       top_n: 25                  # number of ranked combinations to show
       show_r2r_stats: true       # show region-to-region continuation table
       show_retrace_stats: true   # show retrace rate table
+      show_break_time_of_day_stats: true   # show break outcomes by hour
+      min_breaks_per_hour: 5               # suppress very low-sample hours
 
   # General market context
   - id: daily_scoreboard

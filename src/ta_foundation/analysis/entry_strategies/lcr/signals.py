@@ -310,3 +310,107 @@ def compute_retrace_stats(
             "bear_regions": _dir_summary(by_dir[-1]),
         },
     }
+
+
+def compute_break_outcome_time_of_day_stats(
+    regions: List[LCRRegion],
+    bars: pd.DataFrame,
+    tick_size: float = 0.25,
+    max_bars_forward: int = 100,
+) -> Dict[str, Any]:
+    """
+    Group broken-region outcomes by hour-of-day (America/Denver index on bars).
+
+    Outcomes are measured from each region break:
+      - retrace: region had a retrace event
+      - reach_next_region: price reached the next region in break direction
+      - neither: neither condition occurred within the forward scan window
+    """
+    broken = [r for r in regions if r.broken]
+    if not broken or bars is None or bars.empty:
+        return {"n_breaks": 0, "hourly": []}
+
+    h = bars["high"].to_numpy(dtype=float)
+    lo = bars["low"].to_numpy(dtype=float)
+    n = len(bars)
+    idx = bars.index
+
+    hourly: Dict[int, Dict[str, int]] = {}
+    for reg in broken:
+        if reg.broken_bar is None or reg.broken_bar >= n:
+            continue
+
+        break_ts = idx[reg.broken_bar]
+        hour = int(break_ts.hour)
+        bucket = hourly.setdefault(
+            hour,
+            {
+                "n_breaks": 0,
+                "n_retraces": 0,
+                "n_reach_next_region": 0,
+                "n_neither": 0,
+                "n_bull_breaks": 0,
+                "n_bear_breaks": 0,
+            },
+        )
+        bucket["n_breaks"] += 1
+
+        break_dir = -reg.direction
+        if break_dir == 1:
+            bucket["n_bull_breaks"] += 1
+        else:
+            bucket["n_bear_breaks"] += 1
+
+        has_retrace = bool(getattr(reg, "had_retrace", False))
+        if has_retrace:
+            bucket["n_retraces"] += 1
+
+        reached_next_region = False
+        dist_ticks = float(reg.next_region_dist_ticks or 0.0)
+        if dist_ticks > 0:
+            start = (reg.broken_bar or 0) + 1
+            if break_dir == 1:
+                target = reg.zone_high + dist_ticks * tick_size
+            else:
+                target = reg.zone_low - dist_ticks * tick_size
+
+            for j in range(start, min(start + max_bars_forward, n)):
+                if break_dir == 1 and h[j] >= target:
+                    reached_next_region = True
+                    break
+                if break_dir == -1 and lo[j] <= target:
+                    reached_next_region = True
+                    break
+
+        if reached_next_region:
+            bucket["n_reach_next_region"] += 1
+
+        if (not has_retrace) and (not reached_next_region):
+            bucket["n_neither"] += 1
+
+    rows: List[Dict[str, Any]] = []
+    for hour in sorted(hourly.keys()):
+        d = hourly[hour]
+        total = d["n_breaks"]
+        rows.append(
+            {
+                "hour": hour,
+                "label": f"{hour:02d}:00-{hour:02d}:59",
+                "n_breaks": total,
+                "n_retraces": d["n_retraces"],
+                "retrace_rate": (d["n_retraces"] / total) if total else None,
+                "n_reach_next_region": d["n_reach_next_region"],
+                "reach_next_region_rate": (
+                    (d["n_reach_next_region"] / total) if total else None
+                ),
+                "n_neither": d["n_neither"],
+                "neither_rate": (d["n_neither"] / total) if total else None,
+                "n_bull_breaks": d["n_bull_breaks"],
+                "n_bear_breaks": d["n_bear_breaks"],
+            }
+        )
+
+    return {
+        "n_breaks": int(sum(r["n_breaks"] for r in rows)),
+        "hourly": rows,
+    }
