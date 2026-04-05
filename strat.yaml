@@ -461,29 +461,29 @@ candle_discovery:
 ## Comment out sections you don't want rendered.
 ## All sections listed; options shown as comments when available.
 ## ============================================================
-#sections:
+sections:
 #
 #  # ----------------------------------------------------------
 #  # STRATEGY DISCOVERY — UNIFIED CROSS-STRATEGY VIEWS
 #  # ----------------------------------------------------------
 #
-#  # Aggregate top-25 across ALL strategy modules; family comparison + regime/session breakdown
-#  - id: strategy_discovery_unified
-#    # No options — reads all *_discovery results automatically
-#
-#  # ----------------------------------------------------------
-#  # CANDLE PATTERN DISCOVERY SECTIONS
-#  # ----------------------------------------------------------
-#
-#  # Heatmaps: pattern × TF, pattern × regime, MTF comparison
-#  - id: candle_discovery_overview
-#    # No section-level options — driven by top-level candle_discovery: block above
-#
-#  # 5-tier ranking (best_raw, best_filtered, most_robust, likely_overfit, most_useful_filters)
-#  # + TP×SL payoff matrix
-#  - id: candle_discovery_ranking
-#    # No section-level options — driven by top-level candle_discovery: block above
-#
+  # Aggregate top-25 across ALL strategy modules; family comparison + regime/session breakdown
+  - id: strategy_discovery_unified
+    # No options — reads all *_discovery results automatically
+
+  # ----------------------------------------------------------
+  # CANDLE PATTERN DISCOVERY SECTIONS
+  # ----------------------------------------------------------
+
+  # Heatmaps: pattern × TF, pattern × regime, MTF comparison
+  - id: candle_discovery_overview
+    # No section-level options — driven by top-level candle_discovery: block above
+
+  # 5-tier ranking (best_raw, best_filtered, most_robust, likely_overfit, most_useful_filters)
+  # + TP×SL payoff matrix
+  - id: candle_discovery_ranking
+    # No section-level options — driven by top-level candle_discovery: block above
+
 #  # ----------------------------------------------------------
 #  # INDIVIDUAL STRATEGY FAMILY OVERVIEWS
 #  # Signal × TF heatmap, direction comparison, avg PF summary
@@ -808,7 +808,7 @@ candle_discovery:
 #  # ----------------------------------------------------------
 #
 #  # Entry rule summary — best conditions discovered via rule search
-  - id: strategy_discovery_overview
+#  - id: strategy_discovery_overview
 #
 #  # Full ranked table of all discovered entry rules
 #  - id: strategy_discovery_ranked_table

@@ -111,14 +111,16 @@ def render_bb_discovery_overview(ctx: dict) -> str:
 
     if "bb_discovery" in ctx:
         bd_data = ctx["bb_discovery"]
-    elif ctx.get("all_options", {}).get("bb_discovery"):
-        bd_data = ctx["all_options"]["bb_discovery"]
     else:
-        for pkg in (ctx.get("packages") or {}).values():
-            derived = getattr(pkg, "metadata", {}).get("derived", {})
-            if "bb_discovery" in derived:
-                bd_data = derived["bb_discovery"]
-                break
+        ao_bd = ctx.get("all_options", {}).get("bb_discovery")
+        if ao_bd and isinstance(ao_bd, dict) and "sweep_results" in ao_bd:
+            bd_data = ao_bd
+        else:
+            for pkg in (ctx.get("packages") or {}).values():
+                derived = getattr(pkg, "metadata", {}).get("derived", {})
+                if "bb_discovery" in derived:
+                    bd_data = derived["bb_discovery"]
+                    break
 
     if not bd_data:
         return (

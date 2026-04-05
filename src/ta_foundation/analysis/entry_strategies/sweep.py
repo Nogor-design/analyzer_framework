@@ -177,8 +177,16 @@ def _run_single_combo(
     tf_minutes: int,
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    bars_tf: Optional[pd.DataFrame] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Run one full pipeline combination and return a SweepResult dict or None."""
+    """Run one full pipeline combination and return a SweepResult dict or None.
+
+    Parameters
+    ----------
+    bars_tf : pre-resampled bars at tf_minutes resolution.  When provided,
+              used directly for next_open timing (avoids resampling per combo).
+              Falls back to resampling bars_1m if None.
+    """
 
     # 1. Detect signals
     detect_params = {**params, "direction": direction}
@@ -190,7 +198,11 @@ def _run_single_combo(
 
     # 2. Emit entries
     timing_params = {**timing_cfg, "tick_size": outcome_cfg.get("tick_size", 0.25)}
-    bars_for_timing = ohlcv_resample_from_bars(bars_1m, f"{tf_minutes}m") if timing_mode == "next_open" else None
+    if timing_mode == "next_open":
+        # Use pre-resampled bars if available to avoid per-combo resample overhead
+        bars_for_timing = bars_tf if bars_tf is not None else ohlcv_resample_from_bars(bars_1m, f"{tf_minutes}m")
+    else:
+        bars_for_timing = None
     try:
         pending = emit_entries(signals_df, timing_mode, bars=bars_for_timing, params=timing_params)
     except Exception:
@@ -337,14 +349,16 @@ def run_candle_discovery(
 
     sweep_results:   List[Dict[str, Any]] = []
     signals_by_tf:   Dict[int, Dict[str, pd.DataFrame]] = {}  # {tf: {pattern_id: signals_df}}
+    bars_tf_cache:   Dict[int, pd.DataFrame] = {}             # {tf: resampled bars}
     n_combinations_run = 0
 
     for tf in timeframes:
-        # Resample to TF
+        # Resample to TF (cached — avoids re-resampling per combo)
         if tf == 1:
             bars_tf = bars_1m.copy()
         else:
             bars_tf = ohlcv_resample_from_bars(bars_1m, f"{tf}m")
+        bars_tf_cache[tf] = bars_tf
 
         if bars_tf is None or bars_tf.empty:
             continue
@@ -397,6 +411,7 @@ def run_candle_discovery(
                             tf_minutes=tf,
                             min_trades=min_trades,
                             filter_cfg=filter_cfg,
+                            bars_tf=bars_tf,
                         )
                         if results:
                             sweep_results.extend(results)
@@ -432,6 +447,7 @@ def run_candle_discovery(
                 timing_cfg_item = timing_cfgs.get(timing_mode, {})
                 n_combinations_run += 1
 
+                _min_tf = min(by_tf.keys())
                 results = _run_single_combo(
                     enriched_tf=filtered,   # already has candle feature cols
                     bars_1m=bars_1m,
@@ -443,9 +459,10 @@ def run_candle_discovery(
                     outcome_cfg=outcome_cfg,
                     bars_with_regime=bars_with_regime,
                     mtf_label=f"confluence_{min_agreement}of{len(by_tf)}",
-                    tf_minutes=min(by_tf.keys()),
+                    tf_minutes=_min_tf,
                     min_trades=min_trades,
                     filter_cfg=filter_cfg,
+                    bars_tf=bars_tf_cache.get(_min_tf),
                 )
                 if results:
                     mtf_confluence_results.extend(results)
@@ -502,6 +519,7 @@ def run_candle_discovery(
                         tf_minutes=ent_tf,
                         min_trades=min_trades,
                         filter_cfg=filter_cfg,
+                        bars_tf=bars_tf_cache.get(ent_tf),
                     )
                     if results:
                         mtf_hierarchical_results.extend(results)

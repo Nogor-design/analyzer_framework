@@ -49,12 +49,19 @@ class HtmlReportBuilder:
 
             parts.append(
                 f"""
-                <section class="card">
+                <section id="{_esc(s.id)}" class="card">
                   <h2>{_esc(s.title)}</h2>
                   {body}
                 </section>
                 """
             )
+
+        nav_links = "".join(
+            f'<a href="#{_esc(s.id)}" style="color:#64748b;font-size:13px;'
+            f'white-space:nowrap;padding:4px 0;text-decoration:none">'
+            f'{_esc(s.title)}</a>'
+            for s in self.sections
+        )
 
         return f"""<!doctype html>
 <html lang="en">
@@ -65,6 +72,17 @@ class HtmlReportBuilder:
   <style>{css}</style>
 </head>
 <body>
+  <!-- Sticky top nav -->
+  <nav style="position:sticky;top:0;z-index:100;background:#1e2a3a;
+              border-bottom:1px solid #2d3f55;padding:0 24px;">
+    <div style="max-width:1400px;margin:0 auto;display:flex;align-items:center;
+                gap:20px;height:44px;overflow-x:auto;">
+      <span style="color:#ffffff;font-size:14px;font-weight:700;
+                   white-space:nowrap;margin-right:8px">{_esc(self.report_title)}</span>
+      {nav_links}
+    </div>
+  </nav>
+
   <div class="wrap">
     <div class="header">
       <div>
@@ -72,8 +90,8 @@ class HtmlReportBuilder:
         <div class="subtitle">Generated: <span class="mono">{_esc(generated_at)}</span></div>
       </div>
       <div class="row">
-        <span class="pill">Timezone: America/Denver</span>
-        <span class="pill">Embedded images</span>
+        <span class="pill">America/Denver</span>
+        <span class="pill">{len(self.sections)} sections</span>
       </div>
     </div>
 

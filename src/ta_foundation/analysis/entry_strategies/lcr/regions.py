@@ -116,7 +116,9 @@ def compute_lcr_regions_and_events(
     body = np.abs(c - o)
     rolling_body = pd.Series(body).rolling(lookback, min_periods=1).mean().to_numpy()
     atr = _compute_atr(bars, atr_period).to_numpy()
-    idx = bars.index
+    # Use dt column for timestamps when available (bars may have integer RangeIndex
+    # after reset_index); fall back to index only when dt column is absent.
+    idx = bars["dt"].values if "dt" in bars.columns else bars.index
 
     regions: List[LCRRegion] = []
     events: List[LCREvent] = []

@@ -115,7 +115,7 @@ def _resolve_outcome(
     Scan forward from *start_idx* in *bars_1m* to resolve win/loss/timeout.
 
     Returns (result, profit_ticks, exit_price, exit_dt).
-    Conservative tie-breaking: if both target and stop are hit in the same bar → loss.
+    Conservative tie-breaking: if both target and stop are hit in the same bar -> loss.
     """
     end_idx = min(start_idx + max_bars, len(bars_1m))
 
@@ -224,6 +224,205 @@ def _ts_to_utc_ns(ts: Any) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Vectorized forward-scan helpers (used by simulate_tick_outcomes fast path)
+# ---------------------------------------------------------------------------
+
+def _build_forward_windows(
+    bar_indices: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+    n_bars: int,
+    max_bars: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build 2D forward-scan windows for all signals in one vectorized pass.
+
+    Parameters
+    ----------
+    bar_indices : (n,) entry bar positions (scan starts at bar_indices + 1)
+    highs, lows, closes : (n_bars,) price arrays
+    n_bars : total number of bars
+    max_bars : timeout window size
+
+    Returns
+    -------
+    fw_h, fw_l, fw_c : (n, max_bars) arrays; NaN for out-of-range positions
+    in_bounds        : (n, max_bars) bool mask
+    last_valid_col   : (n,) index of last valid bar per signal
+    """
+    scan_starts = bar_indices + 1                              # (n,)
+    j = np.arange(max_bars)                                    # (max_bars,)
+    all_idx = scan_starts[:, None] + j[None, :]               # (n, max_bars)
+    in_bounds = all_idx < n_bars                               # (n, max_bars)
+    clipped = np.clip(all_idx, 0, n_bars - 1)
+
+    fw_h = np.where(in_bounds, highs[clipped], np.nan)
+    fw_l = np.where(in_bounds, lows[clipped], np.nan)
+    fw_c = np.where(in_bounds, closes[clipped], np.nan)
+
+    last_valid_col = in_bounds.sum(axis=1).astype(np.int64) - 1
+    last_valid_col = np.clip(last_valid_col, 0, max_bars - 1)
+
+    return fw_h, fw_l, fw_c, in_bounds, last_valid_col
+
+
+def _resolve_outcomes_vectorized(
+    ep: np.ndarray,
+    dirs: np.ndarray,
+    tp_p: np.ndarray,
+    sl_p: np.ndarray,
+    fw_h: np.ndarray,
+    fw_l: np.ndarray,
+    fw_c: np.ndarray,
+    in_bounds: np.ndarray,
+    last_valid_col: np.ndarray,
+    max_bars: int,
+    timeout_result: str,
+    tick_size: float,
+    tick_value: float,
+    comm: float,
+    slip_ticks: float,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Vectorized outcome resolution for one (tp, sl) combo.
+
+    Returns
+    -------
+    res_arr    : (n,) str array "win" | "loss" | "timeout"
+    pticks     : (n,) profit in ticks
+    pnet       : (n,) net P&L in dollars
+    exit_col   : (n,) column index in fw_h/fw_l where exit occurred
+    """
+    nan_m = ~in_bounds                                         # (n, max_bars)
+    dirs_2d = dirs[:, None]                                    # (n, 1)
+    tp_2d = tp_p[:, None]
+    sl_2d = sl_p[:, None]
+
+    # Target / stop hit masks
+    t_hit = np.where(dirs_2d == 1, fw_h >= tp_2d, fw_l <= tp_2d) & ~nan_m
+    s_hit = np.where(dirs_2d == 1, fw_l <= sl_2d, fw_h >= sl_2d) & ~nan_m
+
+    # First bar where each condition fires
+    ft = np.argmax(t_hit, axis=1)           # (n,) — 0 if never
+    fs = np.argmax(s_hit, axis=1)
+    has_t = t_hit.any(axis=1)
+    has_s = s_hit.any(axis=1)
+
+    ft_eff = np.where(has_t, ft, max_bars)  # max_bars = "never"
+    fs_eff = np.where(has_s, fs, max_bars)
+
+    # Outcome classification (conservative: both-same-bar -> loss)
+    both_same = has_t & has_s & (ft == fs)
+    is_win     = has_t & ~both_same & (ft_eff < fs_eff)
+    is_loss    = (~is_win) & (has_s | both_same)
+    is_timeout = ~is_win & ~is_loss
+
+    # Exit prices
+    n = len(ep)
+    arange_n = np.arange(n)
+    if timeout_result == "at_close":
+        timeout_ep = fw_c[arange_n, last_valid_col]
+    elif timeout_result == "neutral":
+        timeout_ep = fw_c[arange_n, last_valid_col]
+    else:  # "loss" conservative
+        timeout_ep = sl_p
+
+    exit_p = np.where(is_win, tp_p, np.where(is_loss, sl_p, timeout_ep))
+
+    # Profit ticks
+    pticks = (exit_p - ep) * dirs / tick_size
+    if timeout_result == "neutral":
+        pticks = np.where(is_timeout, 0.0, pticks)
+
+    # Net P&L
+    cost = 2.0 * comm + 2.0 * slip_ticks * tick_size * (tick_value / tick_size)
+    pnet = pticks * tick_value - cost
+
+    # Exit column index (for exit timestamp lookup)
+    exit_col = np.where(is_win, ft_eff, np.where(is_loss, fs_eff, last_valid_col))
+    exit_col = exit_col.clip(0, max_bars - 1).astype(np.int64)
+
+    res_arr = np.where(is_win, "win", np.where(is_loss, "loss", "timeout"))
+    return res_arr, pticks, pnet, exit_col
+
+
+def _simulate_tick_outcomes_slow(
+    pending: pd.DataFrame,
+    bars: pd.DataFrame,
+    cmp_arr: np.ndarray,
+    combos: list,
+    max_bars: int,
+    timeout_result: str,
+    tick_size: float,
+    tick_value: float,
+    comm: float,
+    slip_ticks: float,
+    sig_dt_col: str,
+) -> pd.DataFrame:
+    """Row-by-row fallback for limit-order entries (break_extreme / body_midpoint)."""
+    all_records: List[Dict[str, Any]] = []
+    for _, row in pending.iterrows():
+        signal_dt   = row[sig_dt_col]
+        direction   = int(row["direction"])
+        timing_mode = str(row.get("timing_mode", "next_open"))
+
+        sig_val        = _ts_to_utc_ns(signal_dt)
+        signal_bar_idx = int(np.searchsorted(cmp_arr, sig_val, side="left"))
+        if signal_bar_idx >= len(bars):
+            continue
+
+        limit_price       = float(row.get("limit_price", np.nan))
+        fill_timeout_bars = int(row.get("fill_timeout_bars", 3))
+        if np.isnan(limit_price):
+            continue
+        fill_idx, fill_dt = _fill_limit_order(
+            limit_price, direction, bars, signal_bar_idx, fill_timeout_bars
+        )
+        if fill_idx is None:
+            continue
+        entry_price   = limit_price
+        entry_bar_idx = fill_idx
+        fill_bars_n   = fill_idx - signal_bar_idx
+        entry_dt      = fill_dt
+
+        for tp_ticks, sl_ticks in combos:
+            stop_price   = entry_price - direction * sl_ticks * tick_size
+            target_price = entry_price + direction * tp_ticks * tick_size
+
+            result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
+                entry_price, direction, stop_price, target_price,
+                bars, entry_bar_idx + 1, max_bars,
+                timeout_result, tick_size, tick_value, comm, slip_ticks,
+            )
+
+            pnet = _net_profit(profit_ticks, tick_value, comm, slip_ticks, tick_size)
+
+            rec = dict(row)
+            rec.update({
+                "entry_time":   _tz_aware(pd.Series([entry_dt])).iloc[0],
+                "exit_time":    _tz_aware(pd.Series([exit_dt])).iloc[0],
+                "market_pos":   "Long" if direction == 1 else "Short",
+                "profit_net":   pnet,
+                "profit_ticks": profit_ticks,
+                "entry_price":  entry_price,
+                "exit_price":   exit_price,
+                "stop_price":   stop_price,
+                "target_price": target_price,
+                "result":       result,
+                "outcome_mode": f"ticks_{tp_ticks}_{sl_ticks}",
+                "fill_bars":    fill_bars_n,
+                "tp_ticks":     tp_ticks,
+                "sl_ticks":     sl_ticks,
+            })
+            all_records.append(rec)
+
+    if not all_records:
+        return pd.DataFrame()
+    return pd.DataFrame(all_records).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
 # Public: simulate one outcome config on a set of pending entries
 # ---------------------------------------------------------------------------
 
@@ -233,7 +432,7 @@ def simulate_atr_outcomes(
     config: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
     """
-    Simulate ATR-based outcomes (target = entry ± target_mult * ATR).
+    Simulate ATR-based outcomes (target = entry +/- target_mult * ATR).
 
     Parameters
     ----------
@@ -354,6 +553,15 @@ def simulate_tick_outcomes(
 
     Returns one synthetic trade per pending entry per (tp, sl) combo.
     The ``outcome_mode`` column encodes which combo: ``"ticks_{tp}_{sl}"``.
+
+    Fast path (vectorized numpy):
+        Used for ``next_open`` entries.  Builds a 2-D forward-scan window
+        (n_signals x max_bars) with fancy indexing, then resolves all combos
+        with array operations — no Python loops over bars.
+
+    Slow path (row-by-row fallback):
+        Used for limit-order entries (``break_extreme`` / ``body_midpoint``).
+        Identical to the original implementation.
     """
     cfg = {**DEFAULT_OUTCOME_CONFIG, **(config or {})}
     tick_cfg        = cfg.get("ticks", {})
@@ -369,82 +577,114 @@ def simulate_tick_outcomes(
     if pending is None or pending.empty or bars_1m is None or bars_1m.empty:
         return pd.DataFrame()
 
-    bars = _build_1m_lookup(bars_1m)
+    bars    = _build_1m_lookup(bars_1m)
     cmp_arr = _dt_to_utc_ns(bars["dt"])
+    n_bars  = len(bars)
+    highs   = bars["high"].values.astype(np.float64)
+    lows    = bars["low"].values.astype(np.float64)
+    closes  = bars["close"].values.astype(np.float64)
+    bar_dts = bars["dt"].values
 
+    pending = pending.reset_index(drop=True)
     _sig_dt_col = "signal_dt" if "signal_dt" in pending.columns else "dt"
     combos = list(product(tp_list, sl_list))
 
-    all_records: List[Dict[str, Any]] = []
+    # Split next_open (fast vectorized) vs limit orders (slow row-by-row)
+    if "timing_mode" in pending.columns:
+        no_mask = (pending["timing_mode"] == "next_open").values
+    else:
+        no_mask = np.ones(len(pending), dtype=bool)
 
-    for _, row in pending.iterrows():
-        signal_dt   = row[_sig_dt_col]
-        direction   = int(row["direction"])
-        timing_mode = str(row.get("timing_mode", "next_open"))
+    fast_idx = np.where(no_mask)[0]
+    slow_idx = np.where(~no_mask)[0]
 
-        sig_val    = _ts_to_utc_ns(signal_dt)
-        candidates = int(np.searchsorted(cmp_arr, sig_val, side="left"))
-        if candidates >= len(bars):
-            continue
-        signal_bar_idx = candidates
+    result_parts: List[pd.DataFrame] = []
 
-        # Determine entry price (shared across all combos)
-        if timing_mode == "next_open":
-            entry_price = float(row.get("entry_price", np.nan))
-            if np.isnan(entry_price):
-                continue
-            entry_bar_idx = signal_bar_idx
-            fill_bars_n   = 0
-            entry_dt      = row.get("entry_time", signal_dt)
-        else:
-            limit_price       = float(row.get("limit_price", np.nan))
-            fill_timeout_bars = int(row.get("fill_timeout_bars", 3))
-            if np.isnan(limit_price):
-                continue
-            fill_idx, fill_dt = _fill_limit_order(
-                limit_price, direction, bars, signal_bar_idx, fill_timeout_bars
+    # ----------------------------------------------------------------
+    # FAST PATH: next_open entries — fully vectorized
+    # ----------------------------------------------------------------
+    if len(fast_idx) > 0:
+        fast_df = pending.iloc[fast_idx].reset_index(drop=True)
+
+        # 1. Bar index for each signal (vectorized searchsorted)
+        sig_ns  = _dt_to_utc_ns(fast_df[_sig_dt_col])
+        b_idx   = np.searchsorted(cmp_arr, sig_ns, side="left")
+
+        # Filter: drop signals past end of bar data or with NaN entry_price
+        ep_raw = pd.to_numeric(fast_df.get("entry_price", pd.Series(dtype=float)), errors="coerce").values
+        valid_mask = (b_idx < n_bars) & ~np.isnan(ep_raw)
+        vi = np.where(valid_mask)[0]
+
+        if len(vi) > 0:
+            base_df = fast_df.iloc[vi].reset_index(drop=True)
+            b       = b_idx[vi]
+            ep      = ep_raw[vi]
+            dirs    = base_df["direction"].values.astype(np.int64)
+
+            # Entry timestamps — tz conversion done once in bulk
+            entry_dt_col = "entry_time" if "entry_time" in base_df.columns else _sig_dt_col
+            entry_times  = _tz_aware(base_df[entry_dt_col]).values  # numpy array of tz-aware ts
+
+            # 2. Build forward windows (vectorized fancy indexing)
+            fw_h, fw_l, fw_c, in_bounds, last_valid_col = _build_forward_windows(
+                b, highs, lows, closes, n_bars, max_bars
             )
-            if fill_idx is None:
-                continue
-            entry_price   = limit_price
-            entry_bar_idx = fill_idx
-            fill_bars_n   = fill_idx - signal_bar_idx
-            entry_dt      = fill_dt
+            scan_starts = b + 1
 
-        for tp_ticks, sl_ticks in combos:
-            stop_price   = entry_price - direction * sl_ticks * tick_size
-            target_price = entry_price + direction * tp_ticks * tick_size
+            # 3. Resolve each (tp, sl) combo
+            for tp_ticks, sl_ticks in combos:
+                tp_p = ep + dirs * (tp_ticks * tick_size)  # (n_valid,)
+                sl_p = ep - dirs * (sl_ticks * tick_size)
 
-            result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
-                entry_price, direction, stop_price, target_price,
-                bars, entry_bar_idx + 1, max_bars,
-                timeout_result, tick_size, tick_value, comm, slip_ticks,
-            )
+                res_arr, pticks, pnet, exit_col = _resolve_outcomes_vectorized(
+                    ep, dirs, tp_p, sl_p,
+                    fw_h, fw_l, fw_c, in_bounds, last_valid_col,
+                    max_bars, timeout_result, tick_size, tick_value, comm, slip_ticks,
+                )
 
-            pnet = _net_profit(profit_ticks, tick_value, comm, slip_ticks, tick_size)
+                # Exit timestamps (vectorized)
+                exit_global = np.clip(scan_starts + exit_col, 0, n_bars - 1)
+                exit_times  = _tz_aware(pd.Series(bar_dts[exit_global])).values
 
-            rec = dict(row)
-            rec.update({
-                "entry_time":   _tz_aware(pd.Series([entry_dt])).iloc[0],
-                "exit_time":    _tz_aware(pd.Series([exit_dt])).iloc[0],
-                "market_pos":   "Long" if direction == 1 else "Short",
-                "profit_net":   pnet,
-                "profit_ticks": profit_ticks,
-                "entry_price":  entry_price,
-                "exit_price":   exit_price,
-                "stop_price":   stop_price,
-                "target_price": target_price,
-                "result":       result,
-                "outcome_mode": f"ticks_{tp_ticks}_{sl_ticks}",
-                "fill_bars":    fill_bars_n,
-                "tp_ticks":     tp_ticks,
-                "sl_ticks":     sl_ticks,
-            })
-            all_records.append(rec)
+                # 4. Build result DataFrame — no Python loop
+                df_combo = base_df.copy()
+                df_combo["entry_time"]   = entry_times
+                df_combo["exit_time"]    = exit_times
+                df_combo["market_pos"]   = np.where(dirs == 1, "Long", "Short")
+                df_combo["profit_net"]   = pnet
+                df_combo["profit_ticks"] = pticks
+                df_combo["entry_price"]  = ep
+                df_combo["exit_price"]   = np.where(res_arr == "win", tp_p,
+                                               np.where(res_arr == "loss", sl_p,
+                                                   (fw_c[np.arange(len(vi)), last_valid_col]
+                                                    if timeout_result in ("at_close", "neutral")
+                                                    else sl_p)))
+                df_combo["stop_price"]   = sl_p
+                df_combo["target_price"] = tp_p
+                df_combo["result"]       = res_arr
+                df_combo["outcome_mode"] = f"ticks_{tp_ticks}_{sl_ticks}"
+                df_combo["fill_bars"]    = 0
+                df_combo["tp_ticks"]     = tp_ticks
+                df_combo["sl_ticks"]     = sl_ticks
 
-    if not all_records:
+                result_parts.append(df_combo)
+
+    # ----------------------------------------------------------------
+    # SLOW PATH: limit-order entries (break_extreme / body_midpoint)
+    # ----------------------------------------------------------------
+    if len(slow_idx) > 0:
+        slow_trades = _simulate_tick_outcomes_slow(
+            pending.iloc[slow_idx],
+            bars, cmp_arr, combos,
+            max_bars, timeout_result, tick_size, tick_value, comm, slip_ticks,
+            _sig_dt_col,
+        )
+        if not slow_trades.empty:
+            result_parts.append(slow_trades)
+
+    if not result_parts:
         return pd.DataFrame()
-    return pd.DataFrame(all_records).reset_index(drop=True)
+    return pd.concat(result_parts, ignore_index=True)
 
 
 def simulate_outcomes(

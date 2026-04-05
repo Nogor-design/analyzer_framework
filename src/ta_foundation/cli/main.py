@@ -245,6 +245,47 @@ def main() -> int:
         all_bars = list(result.market.minute_bars.values())
         return all_bars[0] if all_bars else None
 
+    def _apply_session_filter(bars, session_filter: dict):
+        """
+        Slice bars to a session window.
+
+        session_filter keys:
+          hour_from    int  — start hour (inclusive), default 0
+          minute_from  int  — start minute within hour_from, default 0
+          hour_to      int  — end hour (exclusive), default 24
+
+        Example — NY premarket + open (06:00–09:59 Denver):
+          session_filter: {hour_from: 6, minute_from: 0, hour_to: 10}
+        Example — RTH only (07:30–15:59):
+          session_filter: {hour_from: 7, minute_from: 30, hour_to: 16}
+        """
+        if not session_filter or bars is None or bars.empty:
+            return bars
+        import pandas as _pd
+        hour_from   = int(session_filter.get("hour_from", 0))
+        minute_from = int(session_filter.get("minute_from", 0))
+        hour_to     = int(session_filter.get("hour_to", 24))
+
+        if "dt" in bars.columns:
+            dt_s = _pd.to_datetime(bars["dt"])
+        else:
+            dt_s = _pd.to_datetime(bars.index)
+
+        hour   = dt_s.dt.hour
+        minute = dt_s.dt.minute
+        if minute_from > 0:
+            start_mask = (hour > hour_from) | ((hour == hour_from) & (minute >= minute_from))
+        else:
+            start_mask = hour >= hour_from
+        mask = start_mask & (hour < hour_to)
+        filtered = bars[mask.values].reset_index(drop=True)
+        n_orig = len(bars)
+        n_filt = len(filtered)
+        if n_filt < n_orig:
+            print(f"[ta_foundation]   session_filter: {n_orig:,} -> {n_filt:,} bars "
+                  f"({hour_from:02d}:{minute_from:02d}-{hour_to:02d}:00)")
+        return filtered
+
     def _run_discovery_module(key, label, run_fn, create_placeholder=False):
         """
         Run one entry-strategy discovery module.
@@ -268,6 +309,13 @@ def main() -> int:
             if bars_1m is None or bars_1m.empty:
                 print(f"[ta_foundation] {label} skipped: no minute bars in market store.")
                 return
+            # Optional session filter — slice bars to a time window before sweeping
+            session_filter = cfg.get("session_filter")
+            if session_filter:
+                bars_1m = _apply_session_filter(bars_1m, session_filter)
+                if bars_1m is None or bars_1m.empty:
+                    print(f"[ta_foundation] {label} skipped: no bars after session filter.")
+                    return
             disc = run_fn(bars_1m=bars_1m, config=cfg)
             print(f"[ta_foundation] {label} complete: "
                   f"{disc.get('n_combinations_run', 0)} combos, "
@@ -284,7 +332,7 @@ def main() -> int:
                     summary=None,
                     settings=_pd.DataFrame(),
                 )
-                placeholder.metadata["derived"][key] = disc
+                placeholder.metadata.setdefault("derived", {})[key] = disc
                 result.packages[f"__{key}__"] = placeholder
         except Exception as e:
             print(f"[ta_foundation] WARNING {key} failed: {type(e).__name__}: {e}")
