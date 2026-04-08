@@ -40,6 +40,10 @@ from ta_foundation.analysis.entry_strategies.level_sweep import run_level_discov
 from ta_foundation.analysis.entry_strategies.lcr_sweep import run_lcr_discovery
 from ta_foundation.analysis.entry_strategies.premarket_sweep import run_premarket_predictor
 from ta_foundation.analysis.large_candle_excursion import run_large_candle_excursion
+from ta_foundation.analysis.large_candle_excursion.downstream_reports import (
+    build_large_candle_excursion_discovery,
+    build_large_candle_excursion_findings,
+)
 
 
 
@@ -406,6 +410,36 @@ def main() -> int:
             traceback.print_exc()
     else:
         print("[ta_foundation] No Large Candle Excursion configuration detected.")
+
+    # --------------------------------------------------------
+    # RUN LARGE CANDLE EXCURSION DOWNSTREAM REPORT ANALYTICS
+    # --------------------------------------------------------
+    lce_findings_cfg = _find_generic_discovery_config(cfgs, "large_candle_excursion_findings")
+    lce_discovery_cfg = _find_generic_discovery_config(cfgs, "large_candle_excursion_discovery")
+    if lce_findings_cfg or lce_discovery_cfg:
+        source_lce = None
+        for pkg in result.packages.values():
+            source_lce = (getattr(pkg, "metadata", {}) or {}).get("derived", {}).get("large_candle_excursion")
+            if source_lce:
+                break
+
+        if lce_findings_cfg:
+            findings = build_large_candle_excursion_findings(source_lce, lce_findings_cfg)
+            for pkg in result.packages.values():
+                pkg.metadata.setdefault("derived", {})["large_candle_excursion_findings"] = findings
+            print(
+                f"[ta_foundation] Large Candle Excursion Findings ready: "
+                f"{len(findings.get('top_discoveries', []))} discoveries."
+            )
+
+        if lce_discovery_cfg:
+            discovery = build_large_candle_excursion_discovery(source_lce, lce_discovery_cfg)
+            for pkg in result.packages.values():
+                pkg.metadata.setdefault("derived", {})["large_candle_excursion_discovery"] = discovery
+            print(
+                f"[ta_foundation] Large Candle Excursion Discovery ready: "
+                f"{len(discovery.get('final_discoveries', []))} final discoveries."
+            )
 
     # --------------------------------------------------------
     # RUN STRATEGY DISCOVERY ENGINE
