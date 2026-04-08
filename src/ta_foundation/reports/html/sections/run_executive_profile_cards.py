@@ -793,6 +793,48 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
           font-weight:700;
         }
 
+        /* ── Reset global theme rules that bleed into exec card layout tables ── */
+
+        /* The outer .card wrapper (from builder.py) must be transparent for
+           exec cards because the card itself provides its own dark background. */
+        section#run_executive_profile_cards.card {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        section#run_executive_profile_cards.card > h2 {
+          color: #e0e6ef;
+          padding: 10px 24px 10px;
+          background: #1a2030;
+          border-bottom: 1px solid rgba(255,255,255,0.10);
+          border-radius: 12px 12px 0 0;
+          margin: 0;
+          font-size: 15px;
+        }
+
+        /* The global theme adds borders and padding to every td.
+           Reset these for exec card layout tables.
+           :not(.ta-wlr-box):not(.ta-wlr-gap) preserves WLR strip cells
+           which set their own inline padding:0 already. */
+        .ta-exec-card td:not(.ta-wlr-box):not(.ta-wlr-gap) {
+          border: none !important;
+          border-bottom: none !important;
+          border-left: none !important;
+          padding: 0 !important;
+        }
+
+        /* The global theme stripes even rows and highlights hover rows.
+           These wash out the dark background panel colours.
+           WLR boxes set their colour via inline style — exclude them so
+           win/loss/no-trade colours are preserved. */
+        .ta-exec-card tbody tr:nth-child(even) td:not(.ta-wlr-box) {
+          background: transparent;
+        }
+        .ta-exec-card tbody tr:hover td:not(.ta-wlr-box) {
+          background: transparent !important;
+          transition: none !important;
+        }
 
         </style>
         """.strip()

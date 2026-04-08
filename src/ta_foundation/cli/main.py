@@ -12,6 +12,7 @@ from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvPar
 from ta_foundation.parsers.ninjatrader.analysis_by_day_csv import NinjaTraderDailyAnalysisCsvParser
 from ta_foundation.parsers.ninjatrader.summary_csv import NinjaTraderSummaryCsvParser
 from ta_foundation.parsers.ninjatrader.settings_csv import NinjaTraderSettingsCsvParser
+from ta_foundation.parsers.ninjatrader.optimization_csv import NinjaTraderOptimizationCsvParser
 from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLastTxtParser
 from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
 from ta_foundation.core.manifest import ManifestFileEntry, sha256_file, write_manifest
@@ -37,6 +38,8 @@ from ta_foundation.analysis.entry_strategies.breakout_sweep import run_breakout_
 from ta_foundation.analysis.entry_strategies.pullback_sweep import run_pullback_discovery
 from ta_foundation.analysis.entry_strategies.level_sweep import run_level_discovery
 from ta_foundation.analysis.entry_strategies.lcr_sweep import run_lcr_discovery
+from ta_foundation.analysis.entry_strategies.premarket_sweep import run_premarket_predictor
+from ta_foundation.analysis.large_candle_excursion import run_large_candle_excursion
 
 
 
@@ -134,6 +137,7 @@ def main() -> int:
         NinjaTraderDailyAnalysisCsvParser(),
         NinjaTraderSummaryCsvParser(),
         NinjaTraderSettingsCsvParser(),
+        NinjaTraderOptimizationCsvParser(),
         MinuteBarsLastTxtParser(),
         TickLastTxtParser(),
     ])
@@ -346,6 +350,62 @@ def main() -> int:
     _run_discovery_module("pullback_discovery", "Pullback Discovery", run_pullback_discovery)
     _run_discovery_module("level_discovery",    "Level Discovery",    run_level_discovery)
     _run_discovery_module("lcr_discovery",     "LCR Discovery",      run_lcr_discovery)
+    _run_discovery_module("premarket_discovery", "Pre-Market Predictor", run_premarket_predictor, create_placeholder=True)
+
+    # --------------------------------------------------------
+    # RUN LARGE CANDLE FORWARD EXCURSION ENGINE
+    # Separate from _run_discovery_module so we can pass tick data.
+    # --------------------------------------------------------
+    lce_cfg = _find_generic_discovery_config(cfgs, "large_candle_excursion")
+    if lce_cfg:
+        print("[ta_foundation] Running Large Candle Excursion analysis...")
+        try:
+            bars_1m_lce = _get_bars_1m()
+            if bars_1m_lce is None or bars_1m_lce.empty:
+                print("[ta_foundation] Large Candle Excursion skipped: no minute bars.")
+            else:
+                session_filter_lce = lce_cfg.get("session_filter")
+                if session_filter_lce:
+                    bars_1m_lce = _apply_session_filter(bars_1m_lce, session_filter_lce)
+
+                # Provide tick data when requested
+                ticks_lce = None
+                if lce_cfg.get("tick_analysis", {}).get("use_tick_data", False):
+                    for _key, _tdf in result.market.ticks.items():
+                        if _tdf is not None and not _tdf.empty:
+                            ticks_lce = _tdf
+                            break
+
+                lce_disc = run_large_candle_excursion(
+                    bars_1m=bars_1m_lce,
+                    config=lce_cfg,
+                    ticks=ticks_lce,
+                )
+                print(
+                    f"[ta_foundation] Large Candle Excursion complete: "
+                    f"{lce_disc.get('n_combinations_run', 0)} combos, "
+                    f"{lce_disc.get('n_results', 0)} results."
+                )
+                for pkg in result.packages.values():
+                    pkg.metadata.setdefault("derived", {})["large_candle_excursion"] = lce_disc
+
+                if not result.packages:
+                    import pandas as _pd
+                    from ta_foundation.core.model import AnalysisPackage
+                    placeholder = AnalysisPackage(
+                        run_id="__large_candle_excursion__",
+                        trades=_pd.DataFrame(),
+                        daily=_pd.DataFrame(),
+                        summary=None,
+                        settings=_pd.DataFrame(),
+                    )
+                    placeholder.metadata.setdefault("derived", {})["large_candle_excursion"] = lce_disc
+                    result.packages["__large_candle_excursion__"] = placeholder
+        except Exception as e:
+            print(f"[ta_foundation] WARNING large_candle_excursion failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
+    else:
+        print("[ta_foundation] No Large Candle Excursion configuration detected.")
 
     # --------------------------------------------------------
     # RUN STRATEGY DISCOVERY ENGINE
@@ -485,6 +545,7 @@ def main() -> int:
                 result.packages,
                 cfg,
                 market=result.market,
+                optimization_store=result.optimization_store,
             )
 
             out_path = out_dir / output_filename

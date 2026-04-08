@@ -4,23 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Many new strategy dicovery based on raw data entry">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed discovery of strategies and added funnel">
+      <change afterPath="$PROJECT_DIR$/docs/designs/ai_integration_architecture.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lcr_discovery.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/lcr_discovery.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/candle/signals.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/candle/signals.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/lcr/regions.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/lcr/regions.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/outcome/simulator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/outcome/simulator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/sweep.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/sweep.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ny_open_scalp.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ny_open_scalp.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/builder.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/builder.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/bb_discovery_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/bb_discovery_overview.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/candle_discovery_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/candle_discovery_overview.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/candle_discovery_ranking.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/candle_discovery_ranking.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/ma_discovery_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/ma_discovery_overview.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/orb_discovery_overview.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/orb_discovery_overview.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/strategy_discovery_unified.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/strategy_discovery_unified.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/theme.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/theme.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/strat.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/strat.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/marketdata/resample.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/marketdata/resample.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -547,7 +541,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775134725015</updated>
     </task>
-    <option name="localTasksCounter" value="45" />
+    <task id="LOCAL-00045" summary="Fixed discovery of strategies and added funnel">
+      <option name="closed" value="true" />
+      <created>1775404738922</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1775404738922</updated>
+    </task>
+    <option name="localTasksCounter" value="46" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -574,7 +576,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Candle data report" />
     <MESSAGE value="Added recommendations to the analysis" />
     <MESSAGE value="Fixed simulate.py to read tick data correct" />
     <MESSAGE value="Fixed debug report for exit strategies" />
@@ -599,6 +600,7 @@
     <MESSAGE value="Strategy discovery fully implemented" />
     <MESSAGE value="Strategy discovery fully implemented With added features" />
     <MESSAGE value="Many new strategy dicovery based on raw data entry" />
-    <option name="LAST_COMMIT_MESSAGE" value="Many new strategy dicovery based on raw data entry" />
+    <MESSAGE value="Fixed discovery of strategies and added funnel" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed discovery of strategies and added funnel" />
   </component>
 </project>

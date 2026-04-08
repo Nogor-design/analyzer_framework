@@ -9,6 +9,7 @@ import yaml
 from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 from ta_foundation.marketdata.store import MarketDataStore
+from ta_foundation.optimization.model import OptimizationStore
 from ta_foundation.analysis.pattern_engine.orchestrator import compute_and_attach_pattern_engine
 from ta_foundation.analysis.ma_structure import orchestrator as anchor_interaction_orchestrator
 from ta_foundation.analysis.regime_recommender.orchestrator import compute_and_attach_regime_recommendation
@@ -184,6 +185,7 @@ def build_report_from_config(
     packages: Dict[str, Any],
     cfg: ReportConfig,
     market: Optional[MarketDataStore] = None,
+    optimization_store: Optional[OptimizationStore] = None,
 ):
     """
     Returns: (html_string, output_filename)
@@ -197,6 +199,7 @@ def build_report_from_config(
         "market": market,
         "report_config": cfg,
         "all_options": cfg.raw,  # full merged config
+        "optimization_store": optimization_store,
     }
 
     # Pattern engine compute (analysis phase). Never crash report generation.

@@ -1,0 +1,120 @@
+# ============================================================
+# STAGE 2 — CANDLE PATTERN DEEP DIVE
+# ============================================================
+# Run this if Stage 1 showed candle patterns with PF >= 1.2.
+#
+# Sweeps all 9 patterns with full parameter grid.
+# Adds the second entry type (break_extreme).
+# Sweeps 3 TP × 2 SL combinations.
+# Runs both 1m and 5m timeframes.
+#
+# Runtime: ~8-12 minutes with --no-tick-data
+# Combos:  ~600-800
+#
+# WHAT TO LOOK AT:
+#   "Candle Discovery — 5-Tier Ranking" section.
+#   Focus on "Most Robust" tier. Note the exact pattern name,
+#   body_multiplier, TP ticks, SL ticks, and timeframe.
+#   That becomes the entry rule for your strategy.
+# ============================================================
+
+report:
+  title: "Stage 2 — Candle Pattern Deep Dive"
+  output_filename: "02_candle_patterns.html"
+  timezone: "America/Denver"
+
+candle_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  timeframes: [1, 5]       # Compare 1m vs 5m
+  min_trades: 20
+
+  candle_features:
+    size_lookbacks: [5, 10] # 5-bar (fast) vs 10-bar (slower) rolling average
+    atr_period: 14
+    tick_size: 0.25
+    min_body_ticks: 2
+
+  patterns:
+    # ---- MOMENTUM ----
+    large_body:
+      enabled: true
+      body_multiplier: [1.5, 2.0]   # 2 values — removed 2.5 (too rare)
+      wick_to_body_max: [0.3, 0.5]
+      lookback: [5, 10]
+      min_size_ticks: 3
+
+    clean_breakout_bar:
+      enabled: true
+      atr_mult: [1.5, 2.0]
+      body_to_range_min: [0.60, 0.70]
+
+    # ---- REVERSAL ----
+    pin_bar_bullish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]
+      body_to_range_max: [0.30, 0.35]
+
+    pin_bar_bearish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]
+      body_to_range_max: [0.30, 0.35]
+
+    engulfing_bullish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+
+    engulfing_bearish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+
+    # ---- CONSOLIDATION ----
+    inside_bar:
+      enabled: true
+
+    outside_bar:
+      enabled: true
+
+    doji:
+      enabled: true
+      body_to_range_max: [0.10, 0.15]
+
+  direction: both
+
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1
+      fill_timeout_bars: 3
+    body_midpoint:
+      enabled: false        # Only enable if break_extreme shows well
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [15, 20, 30]   # 3 TP values
+      stop: [8, 12]               # 2 SL values (tighter vs wider)
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: true, top_n: 10}
+
+sections:
+  - id: candle_discovery_ranking
+    options:
+      top_n: 30
+      # PRIMARY: look at "Most Robust" tier first.
+      # Note which pattern/TP/SL combination leads.
+
+  - id: candle_discovery_overview
+
+  - id: strategy_discovery_unified
+    options:
+      top_n: 20

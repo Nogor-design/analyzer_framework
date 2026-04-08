@@ -1,0 +1,135 @@
+# ============================================================
+# STAGE 3 — ZONES AND LEVELS (LCR / Breakout / Level)
+# ============================================================
+# Run this if Stage 1 showed lcr_discovery, breakout_discovery,
+# or level_discovery with PF >= 1.2.
+#
+# Full parameter sweep for zone-based and structure-based signals.
+# This covers:
+#   LCR  — large candle regions (FVG-style magnets)
+#   Breakout — N-bar high/low breakouts and volatility expansions
+#   Level — swing levels, consolidation zones, round numbers
+#
+# Runtime: ~5-8 minutes with --no-tick-data
+# Combos:  ~400
+#
+# WHAT TO LOOK AT:
+#   "LCR Discovery Overview" → retrace rate + R2R stats first.
+#   High retrace rate (>80%) = strong zone magnet = trade the retrace.
+#   Low retrace rate = regions break cleanly = trade the continuation.
+#
+#   "Breakout Discovery" and "Level Discovery" → ranked tables.
+#   Note which lookback and signal type ranks highest.
+# ============================================================
+
+report:
+  title: "Stage 3 — Zones and Levels"
+  output_filename: "03_levels_regions.html"
+  timezone: "America/Denver"
+
+# ============================================================
+# LCR DISCOVERY — full multiplier/lookback/zone sweep
+# 3 × 2 × 2 × 3 TP × 2 SL × 4 signals = 288 combos
+# ============================================================
+lcr_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+
+  size_multipliers: [1.5, 2.0, 2.5]  # 150% / 200% / 250% of avg body
+  lookbacks: [10, 20]
+  zone_types: ["body", "range"]       # body = tighter, range = includes wicks
+
+  tp_ticks: [15, 20, 30]
+  sl_ticks: [8, 12]
+
+  tick_size: 0.25
+  tick_value: 12.50
+  max_bars_timeout: 20
+  retrace_window: 20
+  atr_period: 14
+  min_region_size_ticks: 2.0
+
+  signal_types:
+    - fresh       # Trade WITH the large candle on formation
+    - touch       # Bounce off intact zone
+    - break       # Continuation after zone breaks
+    - retrace     # Re-test of broken level (typically best)
+
+  min_trades: 15
+  max_active_regions: 100
+  max_region_age: 500
+
+# ============================================================
+# BREAKOUT DISCOVERY
+# ~80 combos
+# ============================================================
+breakout_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 15
+  lookback_bars: [5, 10, 20]
+  timeframes: [1, 5]
+
+  signals:
+    n_bar_breakout:    {enabled: true}
+    volatility_break:  {enabled: true}
+
+  outcome:
+    ticks:
+      enabled: true
+      take_profit: [15, 20]
+      stop: [8, 12]
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# LEVEL DISCOVERY
+# ~80 combos
+# ============================================================
+level_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 15
+  lookback_bars: [10, 20]
+  timeframes: [1, 5]
+
+  signals:
+    swing_level:       {enabled: true}
+    consolidation:     {enabled: true}
+    round_number:      {enabled: true}
+
+  outcome:
+    ticks:
+      enabled: true
+      take_profit: [15, 20]
+      stop: [8, 12]
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+sections:
+  - id: lcr_discovery_overview
+    options:
+      top_n: 30
+      show_r2r_stats: true
+      show_retrace_stats: true
+
+  - id: breakout_discovery_overview
+
+  - id: level_discovery_overview
+
+  - id: strategy_discovery_unified
+    options:
+      top_n: 20

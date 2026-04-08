@@ -1,0 +1,140 @@
+# ============================================================
+# LARGE CANDLE FORWARD EXCURSION REPORT
+# ============================================================
+# Measures what price does after an unusually large candle.
+#
+# This is NOT a trade-entry report.
+# This is a candle-event forward-excursion report.
+#
+# Key questions answered:
+#   - After a large bullish candle, how far does price continue upward
+#     within the next N minutes?
+#   - How far does it move against the candle in the same window?
+#   - Does behavior differ by body size vs full candle range?
+#   - At what thresholds (1.5x, 2.0x, 2.5x average) is continuation
+#     most reliable?
+#
+# Runtime: ~2-5 minutes depending on bar count and combinations.
+# Use for: stop/target calibration, strategy entry criteria design.
+#
+# WHAT TO LOOK AT:
+#   "Large Candle Excursion — Summary" section.
+#   Focus on combinations where mean_fav >> mean_adv and
+#   Fav Dominant% >= 55%. These indicate reliable continuation.
+#   Use percentile tables to set initial TP targets.
+# ============================================================
+
+report:
+  title: "Large Candle Forward Excursion Report"
+  output_filename: "large_candle_excursion.html"
+  timezone: "America/Denver"
+
+large_candle_excursion:
+  enabled: true
+
+  # ---- Session filter ----
+  # RTH only: 07:30 to 16:00 Mountain (Denver) time
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+
+  # ---- Timeframes ----
+  # Compare 1m candles (fast, intraday) vs 5m candles (slower, more structure)
+  timeframes: [1, 2]
+
+  # ---- Direction ----
+  # "both" = analyze bullish and bearish large candles separately
+  # "long_only" | "short_only" = directional filter
+  direction: both
+
+  # ---- Minimum events per combo ----
+  # Skip combos with fewer than this many qualifying candles
+  min_events: 20
+
+  # ---- Candle size qualification ----
+  candle_size:
+    # Rolling average lookbacks (prior bars, lag-safe — current bar excluded)
+    average_lookbacks: [10, 20, 50]
+
+    # Which size metric to use for qualification
+    average_basis:
+      body: true    # body = abs(close - open)
+      range: true   # range = high - low
+
+    # Threshold mode: "multiplier" = N× the rolling average
+    #                 "percent_of_average" = N% of the rolling average (150 = 1.5x)
+    threshold_mode: multiplier
+    threshold_multipliers: [1.5, 2.0, 2.5]
+    # threshold_percents: [150, 200, 250]   # used when threshold_mode = percent_of_average
+
+    # Minimum absolute size guards (prevent qualifying tiny noise candles)
+    min_body_ticks: 2
+    min_range_ticks: 4
+
+    # Maximum absolute size guards (optional: set to filter extreme outliers)
+    # max_body_ticks: 100
+    # max_range_ticks: 150
+
+    # Instrument tick parameters (NQ futures)
+    tick_size: 0.25
+    atr_period: 14
+
+  # ---- Forward analysis windows ----
+  # How many minutes after the signal candle closes to scan.
+  # All window durations are computed in a single pass per event.
+  forward_window:
+    minutes: [5, 10]
+#    minutes: [5, 10, 15, 30]
+
+  # ---- Tick data analysis ----
+  # Requires --no-tick-data NOT set and tick data files present in input folder.
+  tick_analysis:
+    use_tick_data: false   # Set to true to enable tick-path reversal analysis
+
+    reversal:
+      enabled: true
+      # Reversal threshold: how many ticks must price pull back from its running peak
+      # before we call it a "reversal" and record the pre-reversal excursion.
+      reversal_ticks: 8
+      # Minimum swing size to track (smaller moves are noise)
+      min_swing_ticks: 2
+
+  # ---- Output options ----
+  output:
+    include_event_table: true
+    include_methodology: true
+    include_distribution_tables: true
+    include_direction_breakdown: true
+    include_timeframe_breakdown: true
+    include_basis_breakdown: true
+    max_events_sample: 2000   # cap on how many individual events are stored for the table
+
+# ---- Report sections ----
+sections:
+  - id: large_candle_excursion_summary
+    # PRIMARY: Banner + combo breakdown table.
+    # Look at mean_fav_ticks vs mean_adv_ticks.
+    # High fav_dominant% (>= 55%) indicates reliable continuation.
+
+  - id: large_candle_excursion_distributions
+    # Percentile tables (P10/P25/P50/P75/P90) and grouped breakdowns
+    # by direction, basis, timeframe, forward window, and threshold.
+    options:
+      include_direction_breakdown: true
+      include_timeframe_breakdown: true
+      include_basis_breakdown: true
+      include_distribution_tables: true
+
+  - id: large_candle_excursion_threshold_hits
+    # Hit rate tables: what % of events reached 3t / 5t / 8t / 10t / 15t / 20t / 30t
+    # favorable excursion within the forward window.
+    # Use this to calibrate TP levels.
+
+  - id: large_candle_excursion_event_table
+    # Individual event records (top N sorted by favorable excursion).
+    options:
+      top_n: 300
+
+  - id: large_candle_excursion_methodology
+    # Plain-language explanation of how the analysis works.

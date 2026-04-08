@@ -31,6 +31,7 @@ from ta_foundation.core.daily_outcomes import derive_daily_outcomes_for_package
 from ta_foundation.core.market_time_profile import derive_trade_time_profile_for_package
 from ta_foundation.reports.html.embed import file_to_base64_data_uri
 from ta_foundation.marketdata.store import MarketDataStore
+from ta_foundation.optimization.model import OptimizationBatch, OptimizationStore
 
 from ta_foundation.marketdata.tick_cache import (
     TickCacheConfig,
@@ -41,7 +42,7 @@ from ta_foundation.marketdata.tick_cache import (
     parquet_engine_available,
 )
 
-KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv")
+KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv", "_Optimization.csv")
 RUN_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 
@@ -85,6 +86,7 @@ class IngestResult:
     packages: dict[str, AnalysisPackage]
     unparsed_files: list[Path] = field(default_factory=list)
     market: Optional[MarketDataStore] = None
+    optimization_store: Optional[OptimizationStore] = None
 
 
 def _attach_run_image_if_present(pkg: "AnalysisPackage", folder: Path) -> None:
@@ -127,6 +129,39 @@ def _attach_market_artifact(market: MarketDataStore, art: ParsedArtifact, warnin
         })
 
 
+def _attach_optimization_artifact(
+    opt_store: OptimizationStore,
+    art: ParsedArtifact,
+    warnings_sink: list[dict],
+) -> None:
+    """
+    Convert a ``kind="optimization"`` ParsedArtifact into an OptimizationBatch
+    and register it with the OptimizationStore.
+
+    Called by ingest_folder when an artifact has kind="optimization", BEFORE
+    any AnalysisPackage is created or updated for the same run_id.
+    """
+    from datetime import datetime, timezone
+
+    summary  = art.summary or {}
+    batch_id = str(summary.get("batch_id") or art.run_id or art.source_path.stem)
+
+    batch = OptimizationBatch(
+        batch_id=batch_id,
+        source_path=art.source_path,
+        strategy_name=batch_id,
+        instrument=summary.get("instrument"),
+        imported_at=datetime.now(tz=timezone.utc),
+        results=art.df if art.df is not None else pd.DataFrame(),
+        parameter_names=list(summary.get("parameter_names") or []),
+        metric_columns=list(summary.get("metric_columns") or []),
+        warnings=list(art.warnings),
+        row_count=int(summary.get("row_count") or (len(art.df) if art.df is not None else 0)),
+        successfully_parsed_rows=int(summary.get("successfully_parsed_rows") or 0),
+    )
+    opt_store.add(batch)
+
+
 def ingest_folder(
     folder: Path,
     registry: ParserRegistry,
@@ -144,6 +179,7 @@ def ingest_folder(
     unparsed: list[Path] = []
     market = MarketDataStore()
     market_warnings: list[dict] = []
+    opt_store = OptimizationStore()
 
     # -------------------------
     # 1) Parse run-scoped CSVs
@@ -160,6 +196,12 @@ def ingest_folder(
 
         run_id = derive_run_id(path, run_id_regex=run_id_regex)
         art: ParsedArtifact = parser.parse(path, run_id=run_id)
+
+        # Route optimization artifacts to the OptimizationStore —
+        # do NOT create or update any AnalysisPackage for them.
+        if art.kind == "optimization":
+            _attach_optimization_artifact(opt_store, art, warnings_sink=market_warnings)
+            continue
 
         # If a parser ever returns run_id=None, treat as shared
         if art.run_id is None:
@@ -362,4 +404,5 @@ def ingest_folder(
         packages=packages,
         unparsed_files=unparsed,
         market=market if (market.minute_bars or market.ticks) else None,
+        optimization_store=opt_store if not opt_store.is_empty else None,
     )

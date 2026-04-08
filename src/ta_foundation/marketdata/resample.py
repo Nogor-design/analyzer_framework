@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
 from typing import Literal, Optional
 
 import pandas as pd
@@ -8,21 +8,23 @@ import pandas as pd
 
 Timeframe = Literal["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
 
+_TF_RE = re.compile(r"^(\d+)(s|m|h|d)$", re.IGNORECASE)
+_UNIT_MAP = {"s": "s", "m": "min", "h": "h", "d": "D"}
+
 
 def _tf_to_pandas_rule(timeframe: str) -> str:
     tf = (timeframe or "").strip().lower()
-    mapping = {
-        "1m": "1min",
-        "5m": "5min",
-        "15m": "15min",
-        "30m": "30min",
-        "1h": "1H",
-        "4h": "4H",
-        "1d": "1D",
-    }
-    if tf not in mapping:
-        raise ValueError(f"Unsupported timeframe: {timeframe}")
-    return mapping[tf]
+    m = _TF_RE.match(tf)
+    if not m:
+        raise ValueError(f"Unsupported timeframe: {timeframe!r}")
+    n, unit = m.group(1), m.group(2).lower()
+    return f"{n}{_UNIT_MAP[unit]}"
+
+
+def _is_subminute(timeframe: str) -> bool:
+    tf = (timeframe or "").strip().lower()
+    m = _TF_RE.match(tf)
+    return bool(m) and m.group(2).lower() == "s"
 
 
 def ohlcv_resample_from_ticks(
@@ -71,6 +73,8 @@ def ohlcv_resample_from_bars(
       - dt (tz-aware)
       - open, high, low, close, volume
     """
+    if _is_subminute(timeframe):
+        raise ValueError(f"Cannot resample bars to sub-minute timeframe: {timeframe!r}")
     if bars is None or bars.empty:
         return pd.DataFrame(columns=["dt", "open", "high", "low", "close", "volume"])
 
