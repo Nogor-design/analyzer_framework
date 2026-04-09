@@ -1,0 +1,48 @@
+report:
+  title: "Large Candle Excursion Findings"
+  output_filename: "large_candle_excursion_findings.html"
+  timezone: "America/Denver"
+
+large_candle_excursion:
+  enabled: true
+  timeframes: [1, 5]
+  min_events: 20
+  candle_size:
+    average_lookbacks: [10, 20]
+    threshold_mode: multiplier
+    threshold_multipliers: [1.5, 2.0, 2.5]
+  forward_window:
+    minutes: [5, 10, 15, 30]
+  trade_analysis:
+    enabled: true
+    target:
+      percents: [25, 50, 75, 100, 125]
+  volume_context:
+    enabled: true
+  candle_structure_context:
+    enabled: true
+  volatility_context:
+    enabled: true
+
+large_candle_excursion_findings:
+  enabled: true
+  source_report: large_candle_excursion
+  min_events: 30
+  ranking:
+    primary_metric: composite_score
+    require_min_win_rate: 0.50
+    penalize_low_sample: true
+    penalize_complexity: true
+  output:
+    top_n_discoveries: 25
+    include_executive_summary: true
+    include_fragility_warnings: true
+    include_suggested_next_tests: true
+
+sections:
+  - id: large_candle_excursion_findings_executive_summary
+  - id: large_candle_excursion_findings_top_discoveries
+  - id: large_candle_excursion_findings_interactions
+  - id: large_candle_excursion_findings_fragility
+  - id: large_candle_excursion_findings_next_tests
+  - id: large_candle_excursion_findings_methodology

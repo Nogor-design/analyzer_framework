@@ -1,0 +1,67 @@
+report:
+  title: "Large Candle Excursion Discovery"
+  output_filename: "large_candle_excursion_discovery.html"
+  timezone: "America/Denver"
+
+large_candle_excursion:
+  enabled: true
+  timeframes: [1, 5]
+  min_events: 20
+  candle_size:
+    average_lookbacks: [10, 20]
+    threshold_mode: multiplier
+    threshold_multipliers: [1.5, 2.0, 2.5]
+  forward_window:
+    minutes: [5, 10, 15, 30]
+  trade_analysis:
+    enabled: true
+    target:
+      percents: [25, 50, 75, 100, 125]
+  volume_context:
+    enabled: true
+  candle_structure_context:
+    enabled: true
+  volatility_context:
+    enabled: true
+
+large_candle_excursion_discovery:
+  enabled: true
+  source_report: large_candle_excursion
+  objective:
+    primary_metric: composite_score
+    min_events: 30
+    min_win_rate: 0.50
+  stages:
+    broad_scan:
+      enabled: true
+      top_n_to_keep: 50
+    refinement:
+      enabled: true
+      top_n_parents: 20
+      refinement_rules:
+        target_percent_step: 10
+        threshold_multiplier_step: 0.25
+    interaction_chaining:
+      enabled: true
+      top_n_parents: 10
+      max_chain_depth: 3
+      min_incremental_improvement: 0.03
+      min_remaining_events: 50
+    robustness_validation:
+      enabled: true
+      time_splits: 3
+      require_neighbor_stability: true
+      require_out_of_sample_check: false
+  output:
+    include_diagnostics: true
+    top_n_final_discoveries: 25
+
+sections:
+  - id: large_candle_excursion_discovery_summary
+  - id: large_candle_excursion_discovery_broad_scan
+  - id: large_candle_excursion_discovery_refinement
+  - id: large_candle_excursion_discovery_chains
+  - id: large_candle_excursion_discovery_robustness
+  - id: large_candle_excursion_discovery_diagnostics
+  - id: large_candle_excursion_discovery_next_steps
+  - id: large_candle_excursion_discovery_methodology
