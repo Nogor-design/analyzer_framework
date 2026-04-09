@@ -20,7 +20,6 @@ def render_large_candle_excursion_findings_next_tests(ctx: dict) -> str:
     if not data.get("has_source"):
         return info_box(f"Next tests unavailable: {data.get('message', 'source analytics missing')}.")
 
-    tests_ranked = data.get("next_tests_ranked") or []
     tests = data.get("next_tests") or []
     if not tests:
         return info_box("No next-test suggestions generated.", color="#f8f9fa", border="#dee2e6")
@@ -28,11 +27,7 @@ def render_large_candle_excursion_findings_next_tests(ctx: dict) -> str:
     html = '<div style="font-family:Arial,sans-serif">'
     html += section_title("Suggested Next Tests")
     html += '<ol style="margin:8px 0 8px 20px">'
-    if tests_ranked:
-        for t in tests_ranked:
-            html += f"<li style='margin-bottom:6px'>{t.get('recommendation')} <span style='color:#888'>(freq={t.get('frequency',1)})</span></li>"
-    else:
-        for t in tests:
-            html += f"<li style='margin-bottom:6px'>{t}</li>"
+    for t in tests:
+        html += f"<li style='margin-bottom:6px'>{t}</li>"
     html += "</ol></div>"
     return html

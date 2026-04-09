@@ -31,19 +31,6 @@ def render_large_candle_excursion_discovery_summary(ctx: dict) -> str:
     if s.get("strongest_chain"):
         c = s["strongest_chain"]
         html += f"<li>Strongest chain: {c.get('base_setup')} + {', '.join(c.get('chain_conditions') or [])} (score={c.get('composite_score')}).</li>"
-    plateau = s.get("plateau_assessment")
-    if plateau == "stable_plateau":
-        html += "<li>Strongest candidate appears to sit on a stable plateau across nearby parameters.</li>"
-    elif plateau == "fragile_peak":
-        html += "<li>Strongest candidate appears fragile to nearby parameter changes.</li>"
-    chain_value = s.get("chain_value_assessment")
-    if chain_value == "no_chain_added_value":
-        html += "<li>No chained setup added enough value beyond the simple setup.</li>"
-    time_assessment = s.get("time_split_assessment")
-    if time_assessment == "acceptable_through_time":
-        html += "<li>Strongest candidate retained acceptable performance across time splits.</li>"
-    elif time_assessment == "weak_through_time":
-        html += "<li>Strongest candidate weakened across time splits and needs caution.</li>"
     if cautions:
         for c in cautions:
             html += f"<li><strong>Caution:</strong> {c}</li>"

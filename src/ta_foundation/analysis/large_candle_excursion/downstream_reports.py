@@ -118,17 +118,6 @@ def _build_trade_candidates(lce: Dict[str, Any], min_events: int, min_win_rate_p
             {
                 **c,
                 "expectancy_ticks": round(expectancy_ticks, 3),
-                "avg_target_ticks": c.get("avg_target_ticks"),
-                "median_target_ticks": c.get("median_target_ticks"),
-                "avg_favorable_ticks": c.get("avg_trade_fav_ticks"),
-                "median_favorable_ticks": c.get("median_trade_fav_ticks"),
-                "avg_adverse_ticks": c.get("avg_trade_adv_ticks"),
-                "median_adverse_ticks": c.get("median_trade_adv_ticks"),
-                "stop_hit_rate": (
-                    round((_safe_float(c.get("n_stop_hit"), 0.0) / max(_safe_float(c.get("n_events"), 1.0), 1.0)) * 100.0, 2)
-                    if c.get("n_stop_hit") is not None
-                    else None
-                ),
                 "win_rate_frac": round(wr / 100.0, 6),
                 "setup_definition": (
                     f"{c.get('trade_mode', '?')} | tf={c.get('tf_minutes', '?')}m | "
@@ -231,96 +220,6 @@ def _strong_context_effects(context_analysis: Dict[str, Any]) -> Dict[str, List[
     }
 
 
-def _dedupe_ranked_recommendations(lines: List[str]) -> List[Dict[str, Any]]:
-    counts: Dict[str, int] = {}
-    for raw in lines:
-        key = " ".join(str(raw or "").strip().split())
-        if not key:
-            continue
-        counts[key] = counts.get(key, 0) + 1
-    rows = [{"recommendation": k, "frequency": v} for k, v in counts.items()]
-    rows.sort(key=lambda r: (-int(r["frequency"]), r["recommendation"]))
-    return rows
-
-
-def _interaction_diagnostics(context_analysis: Dict[str, Any], min_events: int) -> Dict[str, Any]:
-    interactions = (context_analysis or {}).get("interactions") or {}
-    attempted: List[Dict[str, Any]] = []
-    kept: List[Dict[str, Any]] = []
-    for name, rows in interactions.items():
-        for r in rows or []:
-            n = int(r.get("n_observations") or 0)
-            cont = _safe_float(r.get("cont_win_rate"), 0.0)
-            rev = _safe_float(r.get("rev_win_rate"), 0.0)
-            edge = abs(cont - rev)
-            stability = _clamp01(1.0 - abs(50.0 - max(cont, rev)) / 50.0)
-            score = round(0.50 * (edge / 100.0) + 0.30 * _clamp01(math.log10(max(n, 1)) / 2.5) + 0.20 * stability, 6)
-            rec = {
-                "interaction_name": name,
-                "n_observations": n,
-                "edge_abs": round(edge, 3),
-                "score": score,
-                "better_mode": r.get("better_mode"),
-            }
-            attempted.append(rec)
-            reason = None
-            if n < min_events:
-                reason = "low_sample"
-            elif edge < 5:
-                reason = "weak_edge"
-            elif score < 0.35:
-                reason = "low_composite_score"
-            elif stability < 0.45:
-                reason = "low_stability"
-
-            if reason is None:
-                kept.append(rec)
-            else:
-                rec["rejection_reason"] = reason
-
-    attempted.sort(key=lambda x: (-_safe_float(x.get("score"), -1.0), -int(x.get("n_observations", 0))))
-    kept.sort(key=lambda x: (-_safe_float(x.get("score"), -1.0), -int(x.get("n_observations", 0))))
-    rejected = [r for r in attempted if r.get("rejection_reason")]
-    return {"kept": kept, "attempted": attempted[:30], "rejected": rejected[:30]}
-
-
-def _plateau_neighbors(
-    ranked_rows: List[Dict[str, Any]],
-    anchor: Dict[str, Any],
-    targets: List[int],
-) -> List[Dict[str, Any]]:
-    if not anchor:
-        return []
-    rows = []
-    for t in targets:
-        hit = next(
-            (
-                r for r in ranked_rows
-                if r.get("trade_mode") == anchor.get("trade_mode")
-                and r.get("direction") == anchor.get("direction")
-                and r.get("tf_minutes") == anchor.get("tf_minutes")
-                and r.get("lookback") == anchor.get("lookback")
-                and r.get("basis") == anchor.get("basis")
-                and r.get("candle_bucket") == anchor.get("candle_bucket")
-                and int(_safe_float(r.get("target_percent"), -999)) == int(t)
-            ),
-            None,
-        )
-        if hit:
-            rows.append(
-                {
-                    "target_percent": hit.get("target_percent"),
-                    "win_rate": hit.get("win_rate"),
-                    "n_events": hit.get("n_events"),
-                    "score": hit.get("composite_score"),
-                    "stability_score": hit.get("stability_score"),
-                    "delta_from_anchor": round(_safe_float(hit.get("composite_score")) - _safe_float(anchor.get("composite_score")), 6),
-                }
-            )
-    rows.sort(key=lambda r: _safe_float(r.get("target_percent"), 0.0))
-    return rows
-
-
 def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     cfg = _deep_merge(DEFAULT_FINDINGS_CONFIG, config or {})
     source, err = _extract_lce(source_lce)
@@ -356,21 +255,18 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     top = [r.record for r in ranked[:ranked_n]]
     top_cont = next((r.record for r in ranked if r.record.get("trade_mode") == "continuation"), None)
     top_rev = next((r.record for r in ranked if r.record.get("trade_mode") == "reverse"), None)
-    ranked_rows = [r.record for r in ranked]
 
     context = source.get("context_analysis") or {}
     strong = _strong_context_effects(context)
-    interaction_diag = _interaction_diagnostics(context, min_events=min_events)
-    best_interaction = (interaction_diag.get("kept") or interaction_diag.get("attempted") or [None])[0]
 
     summary: List[str] = []
     if top_cont:
         summary.append(
-            f"Best continuation: {top_cont.get('setup_definition')} | WR {top_cont.get('win_rate')}% | N={top_cont.get('n_events')} | score={top_cont.get('composite_score')} | avg_target={top_cont.get('avg_target_ticks')}t"
+            f"Best continuation: {top_cont.get('setup_definition')} | WR {top_cont.get('win_rate')}% | N={top_cont.get('n_events')} | score={top_cont.get('composite_score')}"
         )
     if top_rev:
         summary.append(
-            f"Best reverse: {top_rev.get('setup_definition')} | WR {top_rev.get('win_rate')}% | N={top_rev.get('n_events')} | score={top_rev.get('composite_score')} | avg_target={top_rev.get('avg_target_ticks')}t"
+            f"Best reverse: {top_rev.get('setup_definition')} | WR {top_rev.get('win_rate')}% | N={top_rev.get('n_events')} | score={top_rev.get('composite_score')}"
         )
     if strong["volume"]:
         b = strong["volume"][0]
@@ -387,18 +283,6 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         summary.append(
             f"Strongest volatility effect: {b.get('bucket')} (edge={b.get('edge_abs')} pp, N={b.get('n_observations', 0)})"
         )
-    if strong.get("structure"):
-        b = strong["structure"][0]
-        if str(b.get("bucket", "")).startswith("bottom"):
-            summary.append("Reverse advantage strengthens in weak-close buckets.")
-    if top and int(_safe_float(top[0].get("target_percent"), 0)) <= 25:
-        summary.append("Strongest findings are currently concentrated at small 25% targets.")
-    if not interaction_diag.get("kept"):
-        summary.append("No interaction findings passed thresholds, suggesting either weak interaction effects or overly strict filtering.")
-    elif best_interaction:
-        summary.append(
-            f"Top retained interaction: {best_interaction.get('interaction_name')} (edge={best_interaction.get('edge_abs')} pp, N={best_interaction.get('n_observations')})."
-        )
 
     fragility: List[Dict[str, Any]] = []
     for rec in top:
@@ -412,28 +296,16 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         if st < 0.45:
             fragility.append({"type": "neighbor_instability", "severity": "medium", "setup": rec.get("setup_definition"), "details": f"Low neighbor stability ({st:.2f})"})
 
-    next_tests_raw: List[str] = []
+    next_tests: List[str] = []
     for rec in top[:8]:
         tgt = int(_safe_float(rec.get("target_percent"), 0.0))
         tf = rec.get("tf_minutes")
         bucket = rec.get("candle_bucket")
-        next_tests_raw.append(f"Refine target around {tgt}% for tf={tf}m, bucket={bucket} (test {max(tgt-10, 5)} / {tgt} / {tgt+10}).")
+        next_tests.append(f"Refine target around {tgt}% for tf={tf}m, bucket={bucket} (test {max(tgt-10, 5)} / {tgt} / {tgt+10}).")
     if strong["volume"]:
-        next_tests_raw.append("Split strongest RVOL bucket into narrower bands to test local stability.")
+        next_tests.append("Split strongest RVOL bucket into narrower bands to test local stability.")
     if top_cont and top_rev:
-        next_tests_raw.append("Re-test best continuation and reverse setups on a separate date segment for out-of-sample confidence.")
-    next_tests_ranked = _dedupe_ranked_recommendations(next_tests_raw)
-
-    findings_plateau = {
-        "best_continuation_neighbors": _plateau_neighbors(ranked_rows, top_cont, [15, 25, 35, 50]),
-        "best_reverse_neighbors": _plateau_neighbors(ranked_rows, top_rev, [15, 25, 35, 50]),
-    }
-    findings_time_split: Dict[str, Any] = {"best_continuation_splits": [], "best_reverse_splits": []}
-    trade_events = ((source.get("trade_analysis") or {}).get("trade_events_sample") or [])
-    if top_cont:
-        findings_time_split["best_continuation_splits"] = _time_split_rows(trade_events, top_cont, n_splits=3)
-    if top_rev:
-        findings_time_split["best_reverse_splits"] = _time_split_rows(trade_events, top_rev, n_splits=3)
+        next_tests.append("Re-test best continuation and reverse setups on a separate date segment for out-of-sample confidence.")
 
     return {
         "enabled": True,
@@ -446,16 +318,10 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         },
         "executive_summary": summary,
         "top_discoveries": top,
-        "top_continuation": top_cont,
-        "top_reverse": top_rev,
         "strong_context_effects": strong,
         "strongest_interactions": strong.get("interactions") or [],
-        "interaction_diagnostics": interaction_diag,
-        "plateau_analysis": findings_plateau,
-        "time_split_stability": findings_time_split,
         "fragility_warnings": fragility,
-        "next_tests": [r["recommendation"] for r in next_tests_ranked[:20]],
-        "next_tests_ranked": next_tests_ranked[:20],
+        "next_tests": next_tests[:20],
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
@@ -506,7 +372,6 @@ def _chain_candidates(candidates: List[Dict[str, Any]], interactions: List[Dict[
     min_remaining = int(cfg.get("min_remaining_events", 50))
 
     out: List[Dict[str, Any]] = []
-    rejected: List[Dict[str, Any]] = []
     parents = candidates[:top_n_parents]
     for p in parents:
         base_score = _safe_float(p.get("composite_score"), 0.0)
@@ -517,57 +382,17 @@ def _chain_candidates(candidates: List[Dict[str, Any]], interactions: List[Dict[
             rev = _safe_float(ix.get("rev_win_rate"), 0.0)
             n = int(ix.get("n_observations") or 0)
             if n < min_remaining:
-                rejected.append(
-                    {
-                        "base_setup": p.get("setup_definition"),
-                        "reason": "too_few_remaining_events",
-                        "details": f"n={n} < min_remaining_events={min_remaining}",
-                    }
-                )
                 continue
             better = ix.get("better_mode")
             if (p_mode == "continuation" and better != "continuation") or (p_mode == "reverse" and better != "reverse"):
-                rejected.append(
-                    {
-                        "base_setup": p.get("setup_definition"),
-                        "reason": "mode_mismatch",
-                        "details": f"better_mode={better} does not match trade_mode={p_mode}",
-                    }
-                )
                 continue
             ix_edge = abs(cont - rev) / 100.0
             improvement = ix_edge * 0.30
             if improvement < min_imp:
-                rejected.append(
-                    {
-                        "base_setup": p.get("setup_definition"),
-                        "reason": "insufficient_incremental_improvement",
-                        "details": f"improvement={improvement:.4f} < min_incremental_improvement={min_imp}",
-                    }
-                )
                 continue
             chain_depth = min(max_depth, 2)
             complexity_penalty = 0.04 * (chain_depth - 1)
-            if complexity_penalty > 0.10:
-                rejected.append(
-                    {
-                        "base_setup": p.get("setup_definition"),
-                        "reason": "complexity_penalty_too_high",
-                        "details": f"complexity_penalty={complexity_penalty:.4f}",
-                    }
-                )
-                continue
             chained_score = base_score + improvement - complexity_penalty
-            robustness_score = round(_clamp01(_safe_float(p.get("stability_score"), 0.5) - complexity_penalty), 6)
-            if robustness_score < 0.40:
-                rejected.append(
-                    {
-                        "base_setup": p.get("setup_definition"),
-                        "reason": "robustness_too_weak",
-                        "details": f"robustness_score={robustness_score:.4f}",
-                    }
-                )
-                continue
             out.append(
                 {
                     "base_setup": p.get("setup_definition"),
@@ -582,141 +407,13 @@ def _chain_candidates(candidates: List[Dict[str, Any]], interactions: List[Dict[
                     "base_score": round(base_score, 6),
                     "incremental_improvement": round(improvement, 6),
                     "complexity_penalty": round(complexity_penalty, 6),
-                    "robustness_score": robustness_score,
+                    "robustness_score": round(_clamp01(_safe_float(p.get("stability_score"), 0.5) - complexity_penalty), 6),
                     "composite_score": round(chained_score, 6),
                     "win_rate": p.get("win_rate"),
-                    "avg_target_ticks": p.get("avg_target_ticks"),
-                    "median_target_ticks": p.get("median_target_ticks"),
-                    "avg_favorable_ticks": p.get("avg_favorable_ticks"),
-                    "median_favorable_ticks": p.get("median_favorable_ticks"),
-                    "avg_adverse_ticks": p.get("avg_adverse_ticks"),
-                    "median_adverse_ticks": p.get("median_adverse_ticks"),
-                    "stop_hit_rate": p.get("stop_hit_rate"),
-                    "expectancy_ticks": p.get("expectancy_ticks"),
                 }
             )
     out.sort(key=lambda r: (-_safe_float(r.get("composite_score"), -999), -_safe_float(r.get("n_events"), 0)))
-    return out, rejected
-
-
-def _bucket_sort_key(label: Any) -> float:
-    s = str(label or "")
-    try:
-        return float(s.replace("+", "").split("-")[0])
-    except Exception:
-        return 9999.0
-
-
-def _neighbor_rows_for_candidate(base_candidates: List[Dict[str, Any]], candidate: Dict[str, Any]) -> List[Dict[str, Any]]:
-    target = _safe_float(candidate.get("target_percent"), 0.0)
-    threshold = _safe_float(candidate.get("threshold_value"), 0.0)
-    bucket = candidate.get("candle_bucket")
-    peers: List[Dict[str, Any]] = []
-    for c in base_candidates:
-        if (
-            c.get("trade_mode") == candidate.get("trade_mode")
-            and c.get("direction") == candidate.get("direction")
-            and c.get("tf_minutes") == candidate.get("tf_minutes")
-            and c.get("lookback") == candidate.get("lookback")
-            and c.get("basis") == candidate.get("basis")
-        ):
-            rel = None
-            if c.get("target_percent") != candidate.get("target_percent"):
-                rel = "target_neighbor"
-            elif c.get("threshold_value") != candidate.get("threshold_value"):
-                rel = "threshold_neighbor"
-            elif c.get("candle_bucket") != bucket:
-                rel = "bucket_neighbor"
-            else:
-                rel = "self"
-
-            peers.append(
-                {
-                    "neighbor_type": rel,
-                    "target_percent": c.get("target_percent"),
-                    "threshold_value": c.get("threshold_value"),
-                    "candle_bucket": c.get("candle_bucket"),
-                    "score": c.get("composite_score"),
-                    "win_rate": c.get("win_rate"),
-                    "n_events": c.get("n_events"),
-                    "robustness_score": c.get("stability_score"),
-                    "delta_from_parent": round(_safe_float(c.get("composite_score")) - _safe_float(candidate.get("composite_score")), 6),
-                    "target_dist": abs(_safe_float(c.get("target_percent"), target) - target),
-                    "threshold_dist": abs(_safe_float(c.get("threshold_value"), threshold) - threshold),
-                }
-            )
-    peers.sort(
-        key=lambda x: (
-            x["neighbor_type"] != "self",
-            x.get("target_dist", 999.0),
-            x.get("threshold_dist", 999.0),
-            _bucket_sort_key(x.get("candle_bucket")),
-        )
-    )
-    return peers[:12]
-
-
-def _plateau_label(neighbors: List[Dict[str, Any]]) -> str:
-    deltas = [abs(_safe_float(n.get("delta_from_parent"), 0.0)) for n in neighbors if n.get("neighbor_type") != "self"]
-    if not deltas:
-        return "unknown"
-    avg_delta = sum(deltas) / len(deltas)
-    if avg_delta <= 0.04:
-        return "stable_plateau"
-    if avg_delta <= 0.09:
-        return "moderate_plateau"
-    return "fragile_peak"
-
-
-def _time_split_rows(
-    events: List[Dict[str, Any]],
-    candidate: Dict[str, Any],
-    n_splits: int,
-) -> List[Dict[str, Any]]:
-    if not events:
-        return []
-    matched = []
-    for ev in events:
-        if (
-            ev.get("trade_mode") == candidate.get("trade_mode")
-            and ev.get("direction") == candidate.get("direction")
-            and ev.get("tf_minutes") == candidate.get("tf_minutes")
-            and ev.get("lookback") == candidate.get("lookback")
-            and ev.get("basis") == candidate.get("basis")
-            and _safe_float(ev.get("threshold_value"), -999.0) == _safe_float(candidate.get("threshold_value"), -999.0)
-            and _safe_float(ev.get("target_percent"), -999.0) == _safe_float(candidate.get("target_percent"), -999.0)
-            and str(ev.get("candle_bucket")) == str(candidate.get("candle_bucket"))
-        ):
-            matched.append(ev)
-
-    if not matched:
-        return []
-    matched.sort(key=lambda e: str(e.get("dt") or ""))
-    splits = max(1, int(n_splits))
-    chunk = max(1, len(matched) // splits)
-    rows: List[Dict[str, Any]] = []
-    for i in range(splits):
-        lo = i * chunk
-        hi = len(matched) if i == splits - 1 else min(len(matched), (i + 1) * chunk)
-        subset = matched[lo:hi]
-        if not subset:
-            continue
-        n = len(subset)
-        wins = sum(1 for s in subset if s.get("win") is True)
-        wr = round(wins / n * 100.0, 2) if n > 0 else None
-        exp = round(
-            sum((_safe_float(s.get("trade_fav_ticks")) - _safe_float(s.get("trade_adv_ticks"))) for s in subset) / n, 4
-        ) if n > 0 else None
-        rows.append(
-            {
-                "split_id": f"split_{i+1}",
-                "n_events": n,
-                "win_rate": wr,
-                "score": candidate.get("composite_score"),
-                "expectancy_ticks": exp,
-            }
-        )
-    return rows
+    return out
 
 
 def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]], config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -755,9 +452,8 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
 
     interactions = ((source.get("context_analysis") or {}).get("interactions") or {}).get("vol_x_size") or []
     chained_rows: List[Dict[str, Any]] = []
-    rejected_chains: List[Dict[str, Any]] = []
     if chain_cfg.get("enabled", True):
-        chained_rows, rejected_chains = _chain_candidates(broad_candidates, interactions, chain_cfg)
+        chained_rows = _chain_candidates(broad_candidates, interactions, chain_cfg)
 
     robust_rows: List[Dict[str, Any]] = []
     if robust_cfg.get("enabled", True):
@@ -783,32 +479,11 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
     top_final_n = int((cfg.get("output") or {}).get("top_n_final_discoveries", 25))
     final_rows = final_pool[:top_final_n]
 
-    plateau_rows: List[Dict[str, Any]] = []
-    split_rows: List[Dict[str, Any]] = []
-    time_split_n = int((robust_cfg or {}).get("time_splits", 3))
-    trade_events = ((source.get("trade_analysis") or {}).get("trade_events_sample") or [])
-    for cand in final_rows:
-        neighbors = _neighbor_rows_for_candidate(base, cand)
-        plateau_rows.append(
-            {
-                "setup_definition": cand.get("setup_definition"),
-                "plateau_label": _plateau_label(neighbors),
-                "neighbors": neighbors,
-            }
-        )
-        split_rows.append(
-            {
-                "setup_definition": cand.get("setup_definition"),
-                "splits": _time_split_rows(trade_events, cand, time_split_n),
-            }
-        )
-
     diagnostics = {
         "n_broad_evaluated": len(base),
         "n_broad_retained": len(broad_candidates),
         "n_refinement_rows": len(refinement_rows),
         "n_chain_rows": len(chained_rows),
-        "n_chain_rejected": len(rejected_chains),
         "n_robust_rows": len(robust_rows),
         "n_final": len(final_rows),
         "dropped_low_sample_or_winrate": max(0, len((source.get("trade_analysis") or {}).get("trade_combo_results") or []) - len(base)),
@@ -824,11 +499,6 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
         "strongest_broad_scan": broad_candidates[0] if broad_candidates else None,
         "strongest_refined": refinement_rows[0] if refinement_rows else None,
         "strongest_chain": chained_rows[0] if chained_rows else None,
-        "plateau_assessment": (plateau_rows[0]["plateau_label"] if plateau_rows else "unknown"),
-        "time_split_assessment": "acceptable_through_time" if any(
-            s.get("win_rate", 0) >= 45.0 for s in (split_rows[0].get("splits") if split_rows else [])
-        ) else "weak_through_time",
-        "chain_value_assessment": "no_chain_added_value" if not chained_rows else "chain_added_value",
         "major_cautions": cautions,
     }
 
@@ -856,10 +526,7 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
         },
         "refinement": {"candidates": refinement_rows},
         "interaction_chaining": {"candidates": chained_rows},
-        "chain_rejection_diagnostics": {"attempted": rejected_chains[:120]},
         "robustness_validation": {"candidates": robust_rows},
-        "plateau_analysis": plateau_rows,
-        "time_split_validation": split_rows,
         "final_discoveries": final_rows,
         "diagnostics": diagnostics,
         "next_steps": next_steps,

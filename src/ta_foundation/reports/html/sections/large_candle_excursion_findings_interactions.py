@@ -51,31 +51,10 @@ def render_large_candle_excursion_findings_interactions(ctx: dict) -> str:
         return info_box(f"Findings unavailable: {data.get('message', 'source analytics missing')}.")
 
     strong = data.get("strong_context_effects") or {}
-    diag = data.get("interaction_diagnostics") or {}
     html = '<div style="font-family:Arial,sans-serif">'
     html += _render_table("Strongest Volume Effects", strong.get("volume") or [])
     html += _render_table("Strongest Structure Effects", strong.get("structure") or [])
     html += _render_table("Strongest Volatility Effects", strong.get("volatility") or [])
     html += _render_table("Strongest Interaction Effects", data.get("strongest_interactions") or [])
-
-    kept = diag.get("kept") or []
-    attempted = diag.get("attempted") or []
-    if not kept and attempted:
-        html += section_title("Interaction Diagnostics — No Rows Passed Final Filters")
-        headers = ["Interaction", "N", "Score", "Edge", "Rejection Reason"]
-        hdr_row = "".join(hdr(h) for h in headers)
-        rows_html = []
-        for r in attempted[:20]:
-            rows_html.append(
-                "<tr>"
-                + cell(str(r.get("interaction_name", "—")), bold=True)
-                + cell(str(r.get("n_observations", 0)))
-                + cell(fmt(r.get("score"), 3))
-                + cell(fmt(r.get("edge_abs"), 2))
-                + cell(str(r.get("rejection_reason", "passed")))
-                + "</tr>"
-            )
-        html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">'
-        html += f"<thead><tr>{hdr_row}</tr></thead><tbody>{''.join(rows_html)}</tbody></table></div>"
     html += "</div>"
     return html
