@@ -1,202 +1,103 @@
-# ta_foundation — Report Sections
+# ta_foundation — Reporting Sections
 
-All HTML report content is composed from reusable “sections”.
-Sections are enabled, ordered, and titled by `report.yaml`.
-
-Each section:
-- has a stable `id` (used in YAML),
-- renders HTML given a context dict:
-  - ctx["packages"] : dict[str, AnalysisPackage]
-- may generate embedded images (base64 PNG).
+This document describes how report sections work and where to find the authoritative registry.
 
 ---
 
-## Section registry
-Sections are registered in:
-`src/ta_foundation/reports/html/registry.py`
+## 1) Source of truth
+
+Sections are registry-driven.
+
+- Registry file: `src/ta_foundation/reports/html/registry.py`
+- Each section entry maps:
+  - `id`
+  - default title
+  - `render_fn`
+
+Use the registry as the authoritative list of available sections.
 
 ---
 
-## Current sections
+## 2) Section runtime contract
 
-### 1) comparison_overview
-**Default title:** Comparison Overview  
-**File:** `reports/html/sections/comparison_overview.py`  
-**Purpose:** Ranked table across all runs.  
-**Data sources:**
-- Primary: `pkg.summary.kpis_all` (normalized keys)
-- Fallback: `pkg.daily` totals if summary missing  
-**Outputs:**
-- HTML table with columns:
-  - run_id
-  - total net profit
-  - profit factor
-  - max drawdown
-  - trades
-  - win rate
+Report flow:
 
-**Notes:**
-- Sorting typically by net profit descending.
+```text
+report.yaml
+  ↓ load_report_config(s)
+build_report_from_config(packages, cfg, market, optimization_store)
+  ↓ HtmlReportBuilder.build(context)
+section.render_fn(section_ctx)
+```
 
----
+Every section receives context with at least:
+- `ctx["packages"]`
+- `ctx["market"]`
+- `ctx["report_config"]`
+- `ctx["section_id"]`
+- `ctx["section"]`
+- `ctx["options"]` (section-local options)
+- `ctx["all_options"]` (full merged YAML)
 
-### 2) equity_curve_comparison
-**Default title:** Equity Curve Comparison  
-**File:** `reports/html/sections/equity_curve.py`  
-**Purpose:** Compare equity curves across runs on one chart.  
-**Data sources (preference order):**
-1) `pkg.daily["date"]` + `pkg.daily["cum_net_profit"]`
-2) `pkg.trades["exit_time"]` + cumulative sum of `pkg.trades["profit"]`
+Expected section pattern:
 
-**Output:**
-- Embedded PNG (matplotlib) as data URI.
-
-**Time handling:**
-- X-axis uses tz-aware America/Denver timestamps.
+```python
+def render_my_section(ctx: dict[str, Any]) -> str:
+    packages = ctx.get("packages", {}) or {}
+    options = ctx.get("options") or {}
+    market = ctx.get("market")
+    report_config = ctx.get("report_config")
+    ...
+```
 
 ---
 
-### 3) run_metadata_cards
-**Default title:** Run Metadata Cards  
-**File:** `reports/html/sections/run_metadata.py`  
-**Purpose:** Show run-level metadata per run.  
-**Data sources:**
-- `pkg.summary.start_dt`, `pkg.summary.end_dt`
-- Presence checks:
-  - trades table present
-  - daily table present
-  - summary present
+## 3) Section hard boundaries
 
-**Output:**
-- Card per run with:
-  - start, end (America/Denver)
-  - duration
-  - file presence indicators
+Sections must:
+- render HTML only,
+- gracefully handle missing data,
+- read behavior from `ctx["options"]`.
 
----
+Sections must not:
+- read files from disk,
+- call ingest/pipeline,
+- parse YAML,
+- run heavy analytics inline,
+- bypass the registry.
 
-### 4) run_kpi_cards
-**Default title:** Run KPI Cards  
-**File:** `reports/html/sections/run_kpis.py`  
-**Purpose:** KPI cards per run for quick scanning.  
-**Data sources:**
-- `pkg.summary.kpis_all` (normalized keys)
-
-**Typical KPIs displayed:**
-- total net profit
-- profit factor
-- max drawdown
-- percent profitable
-- total number of trades
-
-**Output:**
-- Card per run with KPI tiles.
+If new derived data is needed, compute it in analysis/pipeline first and pass through context.
 
 ---
 
-## Section authoring guidelines
+## 4) Images and tables
 
-### Inputs
-- Always assume a run may be missing:
-  - trades, daily, or summary
-- Handle missing data gracefully with placeholders and/or a muted note.
-- Do not crash on missing columns; emit a readable message instead.
-
-### Embedded images
-- Use matplotlib only.
-- Convert figures with `fig_to_base64_png(fig)` from `reports/html/embed.py`.
-- Never write image files to disk for HTML reports.
-
-### KPI access
-- Use normalized-key dict lookups:
-  - `k = pkg.summary.kpis_all`
-  - `k.get("total net profit")`, `k.get("profit factor")`, etc.
-
-### Cross-run comparisons
-- Always label output by run_id.
-- Prefer daily-based series when available for stability.
-### daily_leaderboard_cards
-**Default title:** Daily Leaders (Session Winners)  
-**File:** `reports/html/sections/daily_leaderboard_cards.py`  
-**Purpose:** For a selected day, show top winners per session using `_card.png` tiles, plus a bar chart summarizing session PnL.  
-**Data sources:** `_Trades.csv` (profit via exit_time date; session inferred via entry_time)  
-**Options:**
-- `target_date`: "YYYY-MM-DD" (defaults to most recent date found)
-- `top_n`: int (default 8)
-- `hide_missing_cards`: bool (default true)
-- `session_windows`: custom windows (same schema as `run_card_catalog.py`)
-- `fallback_session_label`, `fallback_market_label`
+- Embed charts as base64 data URIs.
+- Do not write image files during report rendering.
+- Keep table rendering resilient to absent columns.
 
 ---
 
-### weekly_leaderboard_cards
-**Default title:** Weekly Leaders  
-**File:** `reports/html/sections/weekly_leaderboard_cards.py`  
-**Purpose:** Top bots by total PnL for the week.  
-**Data sources:** `_Trades.csv`  
-**Options:**
-- `week_ending`: "YYYY-MM-DD" (defaults to most recent date found; week is Mon→Sun around that date)
-- `top_n`: int (default 12)
-- `hide_missing_cards`: bool (default true)
-- `session_windows`, `fallback_session_label`, `fallback_market_label`
+## 5) Section families in this project
 
-### 5) drawdown_curve
-**Default title:** Drawdown Curve Comparison  
-**File:** `reports/html/sections/drawdown_curve.py`  
-**Purpose:** Compare drawdown curves across runs and quantify recovery time.  
-**Data sources (preference order):**
-1) `pkg.daily["date"/"Period"]` + `pkg.daily["cum_net_profit"]`
-2) `pkg.trades["exit_time"]` + cumulative sum of `pkg.trades["profit"]`
+The codebase currently includes a large set of sections (100+), including:
+- core run/comparison views,
+- drawdown/survival diagnostics,
+- discovery sections (candle/MA/ORB/BB/LCR/levels/etc.),
+- strategy discovery and validation suites,
+- pattern engine outputs,
+- large-candle excursion (base, discovery, findings),
+- optimization and ancillary diagnostics.
 
-**Output:**
-- Embedded PNG: drawdown curves (equity - running peak), with max drawdown trough markers.
-- Table per run:
-  - max drawdown
-  - peak time
-  - trough time
-  - recovery time (first return to prior peak)
-  - recovery duration (trough → recovery)
-
-**Notes:**
-- If a run never recovers to its prior peak within the dataset, recovery fields are blank and `recovered = No`.
-
-
-### Future config options
-If a section needs parameters (e.g., top N trades), prefer YAML-driven options:
-```yaml
-- id: top_trades_table
-  title: "Top Trades"
-  options:
-    top_n: 20
+For exact IDs and titles, consult `registry.py`.
 
 ---
 
-### drawdown_survival_profile
-**Default title:** Drawdown Survival Profile  
-**File:** `reports/html/sections/drawdown_survival_profile.py`  
-**Purpose:** Visualizes the Drawdown Governor (survival layer) and regime-aware risk budgets.  
-**Data sources:**
-- Primary: `pkg.metadata["derived"]["drawdown_governor"]["daily"]`
-- Derived is computed by: `analysis/drawdown_governor.py` (invoked in `reports/html/config.py` when section enabled)
-- Optional regime inputs: shared market bars from `ctx["market"].get(instrument, contract)`
+## 6) Adding a new section
 
-**Outputs:**
-- Embedded PNG: equity vs trailing line, plus final budget series
-- KPI tiles and a recent-days table
+1. Create file under `src/ta_foundation/reports/html/sections/`.
+2. Implement render function using context contract.
+3. Register in `src/ta_foundation/reports/html/registry.py`.
+4. Enable/order via report YAML `sections:`.
 
-**Notes:**
-- Section is a pure renderer (no disk IO, no heavy compute).
-- All behavior is configured via `report.yaml` section `options`.
-
-
-### strategy_discovery_pure_discovery
-**Default title:** Pure Discovery Leaderboard  
-**File:** `reports/html/sections/strategy_discovery_pure_discovery.py`  
-**Purpose:** Shows the Pure Discovery leaderboard (ranked discovered strategies) and a rejection audit trail.  
-**Data sources:**
-- `pkg.metadata["derived"]["strategy_discovery"]["pure_discovery"]["leaderboard"]`
-- `pkg.metadata["derived"]["strategy_discovery"]["pure_discovery"]["rejections"]`
-
-**Options:**
-- `max_rows` (default 100)
-- `max_rejections_per_run` (default 20)
+Prefer YAML options over hardcoded behavior.

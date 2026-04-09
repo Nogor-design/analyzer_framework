@@ -1,84 +1,122 @@
 # ta_foundation — Project Context
 
 ## Purpose
-Reusable foundation library for parsing NinjaTrader CSV exports and producing self-contained HTML reports for single-run and multi-run (comparison) analysis.
+`ta_foundation` is a reusable analytics/reporting framework for NinjaTrader exports.
+It supports both run-attached analysis and market-data-driven research workflows, producing self-contained HTML reports.
 
-## Supported file types (current)
-- *_Trades.csv
-- *_Analysis.csv
-- *_Summery.csv (also supports *_Summary.csv)
+---
 
-## Folder ingest behavior
-- The framework ingests a folder containing many runs.
-- Multiple files of the same type are supported.
-- Files are grouped into runs using run_id.
+## Ingest model (current)
 
-## run_id derivation (default)
-- run_id is derived from filename by stripping known suffixes:
-  - _Trades.csv
-  - _Analysis.csv
-  - _Summery.csv / _Summary.csv
-Example:
-  bot1_Trades.csv   -> run_id = bot1
-  bot1_Analysis.csv -> run_id = bot1
-  bot1_Summery.csv  -> run_id = bot1
+### Run-scoped inputs (CSV)
+Typical parser coverage includes:
+- `*_Trades.csv`
+- `*_Analysis.csv`
+- `*_Summery.csv` / `*_Summary.csv`
+- `*_Settings.csv`
+- `*_Optimization.csv`
 
-## Optional run_id regex override
-- CLI supports --run-id-regex
-- If provided, the first capture group is used as run_id.
-- Use this if filenames include dates/variants and you want stable grouping.
+### Shared market inputs
+- minute bars: `*.Last*.txt` (minute format)
+- ticks: `*.Last*.txt` (tick format)
+- optional tick parquet cache files under `.ta_cache/`
 
-## Timestamp policy (authoritative)
-- Source timestamps are NinjaTrader local PC time (account/local).
-- All datetimes are localized on ingest to:
-  - America/Denver
-- Internal tables use tz-aware datetimes only.
+Shared artifacts are ingested with `run_id=None` and attached to `MarketDataStore`.
 
-Metadata recorded:
-- timezone: America/Denver
-- timestamp_source: ninjatrader_local_pc_time
-- datetime_policy: localized_on_ingest
+---
+
+## run_id behavior
+
+Default `run_id` derivation strips known suffixes (for CSV run files), e.g.:
+- `bot1_Trades.csv` → `bot1`
+- `bot1_Analysis.csv` → `bot1`
+- `bot1_Summery.csv` → `bot1`
+
+Optional override:
+- `--run-id-regex "(...)"` uses capture group 1 as run_id.
+
+---
+
+## Time policy (authoritative)
+
+- Canonical timezone: `America/Denver`.
+- All canonical datetimes are tz-aware.
+- NinjaTrader run timestamps are localized on ingest.
+- Market minute/tick feeds may come from UTC-style exports and are normalized during ingest/parsing.
+
+Metadata commonly records:
+- `timezone: America/Denver`
+- `timestamp_source`
+- `datetime_policy`
+
+---
 
 ## Data model
-- One AnalysisPackage per run_id:
-  - trades: DataFrame (one row per trade)
-  - daily: DataFrame (one row per day/period)
-  - summary: SummaryBlock (kpis_all/long/short + start_dt/end_dt)
-  - warnings: list[dict]
-  - metadata: dict
 
-## KPI keys
-- Summary KPIs use normalized keys (case/punctuation/spacing tolerant).
-- Reports should read KPIs via .get("total net profit"), etc.
+### AnalysisPackage (run-scoped)
+One package per run_id with:
+- `trades`
+- `daily`
+- `summary`
+- `settings`
+- `metadata`
+- `assets`
+- `warnings`
 
-## Reports (current)
-- HTML comparison report
-  - single self-contained HTML file
-  - all images embedded as base64 data URIs
-  - sections:
-    - Comparison Overview
-    - Equity Curve Comparison
-    - Run Metadata Cards
-    - Run KPI Cards
+### MarketDataStore (shared)
+Stores shared market series and derived cache:
+- minute bars
+- ticks
+- resampled bars cache
 
-### trades_intraday_pnl_by_day
-**Default title:** Intraday Trade PnL by Day (MFE Overlay)  
-**File:** `reports/html/sections/trades_intraday_pnl_by_day.py`  
-**Purpose:** For each run, render a chart per trading day showing direction-adjusted realized PnL bars at entry times, with a blue MFE (potential) overlay.  
-**Data sources:**
-- `pkg.trades` (entry time, profit, direction, mfe)
+Consumers typically access minute bars via:
+- `market.get(instrument, contract)`
+or timeframe bars via:
+- `market.get_bars(instrument, contract, timeframe="5m", source="auto")`
 
-**Options:**
-- `max_days_per_run` (default 10)
-- `max_trades_per_day` (default 250)
-- `mfe_alpha` (default 0.22)
-- `show_run_card` (default True)
-- `show_legend_hint` (default True)
+---
 
-## How to run (CLI)
-Example:
-python -m ta_foundation.cli.main --input "C:/path/to/folder" --output ./outputs
+## Report system
 
-Optional:
---recursive
---run-id-regex "(...)"  (first capture group used for run_id)
+Config/build flow:
+
+```text
+report.yaml (or multi-report YAML)
+  ↓ load_report_config(s)
+build_report_from_config(packages, cfg, market, optimization_store)
+  ↓ HtmlReportBuilder.build(context)
+section.render_fn(section_ctx)
+```
+
+Sections are registry-driven and rendered as pure HTML using context.
+
+---
+
+## CLI usage (typical)
+
+```bash
+python -m ta_foundation.cli.main \
+  --input /path/to/run_folder \
+  --output ./outputs \
+  --report-config ./report.yaml
+```
+
+Common options:
+- `--recursive`
+- `--run-id-regex "(...)"`
+- `--market-data /path/to/market_data`
+- `--no-tick-data`
+- `--include-run-images`
+
+---
+
+## Extension mindset
+
+The framework is intentionally stable.
+New functionality should fit one of:
+- parser,
+- analysis helper,
+- report section,
+- minor pipeline enhancement.
+
+When in doubt, prefer extending existing modules over introducing new architecture.

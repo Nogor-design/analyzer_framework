@@ -1,327 +1,129 @@
-Contributing to ta_foundation
+# Contributing to ta_foundation
 
-This project is a structured analytics and reporting framework.
-Architectural consistency is more important than feature velocity.
+This is a mature production framework. Architectural consistency is more important than feature velocity.
 
-Before making changes, read:
+Before changing code, read:
+- `ARCHITECTURE.md`
+- `REPORTING_SECTIONS.md`
+- `PROJECT_CONTEXT.md`
 
-ARCHITECTURE.md
+---
 
-REPORT_SECTIONS.md
+## 1) Hard rules (do not break)
 
-PROJECT_CONTEXT.md
+### Layering
+- Parsers: parse + normalize artifacts only.
+- Pipeline: assemble `AnalysisPackage` + `MarketDataStore`, route artifacts.
+- Analysis: compute reusable derived metrics.
+- Report sections: pure HTML rendering from context.
 
-Core Architectural Rules (Do Not Break)
-1. Layer Separation
+**Sections must never**:
+- read files,
+- call ingest/pipeline,
+- parse YAML,
+- run heavy analytics inline.
 
-The system has four layers:
+### Time policy
+- Canonical timezone is `America/Denver`.
+- Canonical datetimes must be tz-aware.
+- Never mix naive and tz-aware datetimes.
 
-Parsers → produce normalized artifacts
+### Data ownership
+- Run-scoped artifacts attach to `AnalysisPackage` (`run_id != None`).
+- Shared market artifacts attach to `MarketDataStore` (`run_id = None`).
+- Never duplicate shared market data into each run package.
 
-Pipeline → assemble AnalysisPackage + shared MarketDataStore
+### Derived data contract
+- Attach derived outputs under:
+  - `pkg.metadata["derived"][...]`
+- Do not create ad-hoc top-level package attributes.
 
-Analysis modules → compute reusable derived metrics
+---
 
-HTML sections → render from context only
+## 2) Where new work belongs
 
-Sections must never:
+| Feature type | Location |
+|---|---|
+| New file parser | `src/ta_foundation/parsers/...` |
+| New derived metric / analytics | `src/ta_foundation/analysis/...` |
+| Ingest behavior change | `src/ta_foundation/core/pipeline.py` |
+| HTML visualization | `src/ta_foundation/reports/html/sections/...` |
+| Section order/options | report YAML (`report.yaml` / report configs) |
 
-Read files from disk
+If unclear, stop and decide layer first.
 
-Call ingest
+---
 
-Parse YAML
+## 3) Parser contribution checklist
 
-Compute heavy analytics inline
+- Implement parser interface from `parsers/base.py`:
+  - `can_parse(path, header) -> bool`
+  - `parse(path, run_id) -> ParsedArtifact`
+- Normalize datetime + numeric fields.
+- Ensure timezone policy compliance.
+- Return shared artifacts with `run_id=None`.
+- Register parser in CLI registry setup.
 
-2. Time Handling (Strict)
+Never perform cross-run analysis in parser code.
 
-All canonical timestamps must be:
+---
 
-tz-aware America/Denver
+## 4) Analysis contribution checklist
 
+- No HTML rendering.
+- No file I/O.
+- Operate on package/store/dataframes already loaded.
+- Return/attach derived outputs to metadata contract.
+- Preserve existing behavior for unaffected reports.
 
-Never mix naive and tz-aware datetimes.
+---
 
-Minute bar files may be UTC on disk, but must be converted during ingest.
+## 5) Report section contribution checklist
 
-3. Shared vs Run-Scoped Data
-Run-Scoped
+Section signature pattern:
 
-Attached to:
-
-AnalysisPackage
-
-
-Examples:
-
-Trades
-
-Daily analysis
-
-Summary
-
-Settings
-
-Shared
-
-Attached to:
-
-MarketDataStore
-
-
-Examples:
-
-Minute candles (*.Last.txt)
-
-Shared artifacts must have:
-
-run_id = None
-
-
-They must NEVER be duplicated into each run.
-
-Adding New Functionality
-A. Adding a New Parser
-
-Location:
-
-src/ta_foundation/parsers/<vendor>/...
-
-
-Requirements:
-
-Implement:
-
-can_parse(path, header) -> bool
-
-parse(path, run_id) -> ParsedArtifact
-
-Normalize:
-
-Datetimes → America/Denver (tz-aware)
-
-Money fields → numeric
-
-Return:
-
-run_id != None for run-scoped
-
-run_id = None for shared artifacts
-
-Register in CLI registry
-
-Never:
-
-Attach directly to AnalysisPackage
-
-Perform cross-run logic in parser
-
-B. Adding an Analysis Module
-
-Location:
-
-src/ta_foundation/analysis/
-
+```python
+def render_my_section(ctx: dict[str, Any]) -> str:
+    packages = ctx.get("packages", {}) or {}
+    options = ctx.get("options") or {}
+    market = ctx.get("market")
+    report_config = ctx.get("report_config")
+```
 
 Rules:
+- Use `ctx["options"]` for section config.
+- Keep section rendering pure (HTML only).
+- Embed figures as base64 data URIs (no image file writes).
+- Register section in `src/ta_foundation/reports/html/registry.py`.
 
-Pure Python module
+---
 
-No HTML rendering
+## 6) Config behavior rules
 
-No file IO
+- Runtime report behavior must come from report YAML.
+- Do not introduce CLI flags for report display behavior.
+- Do not hardcode section ordering/behavior in code if it belongs in config.
 
-Operates on:
+---
 
-AnalysisPackage
+## 7) Pre-commit verification
 
-pd.DataFrame
+Run relevant checks for your change scope (examples):
+- targeted unit tests,
+- report generation smoke test,
+- lint/type checks if configured.
 
-MarketDataStore
+Minimum manual checks:
+- timezone contract preserved,
+- no shared/run ownership violations,
+- derived outputs attached under metadata,
+- no section-side data loading.
 
-Results must attach under:
+---
 
-pkg.metadata["derived"][...]
+## 8) Change philosophy
 
-
-Never create new top-level attributes dynamically.
-
-C. Adding a Report Section
-
-Location:
-
-src/ta_foundation/reports/html/sections/
-
-Required Signature
-def render_<name>(ctx: dict[str, Any]) -> str:
-
-Always Start With
-packages = ctx.get("packages", {}) or {}
-options = ctx.get("options") or {}
-market = ctx.get("market")
-report_config = ctx.get("report_config")
-
-
-Never assume keys exist.
-
-Register Section
-
-In:
-
-reports/html/registry.py
-
-
-Add:
-
-SECTION_REGISTRY["my_section"] = SectionDef(
-    id="my_section",
-    default_title="My Section",
-    render_fn=render_my_section,
-)
-
-
-Enable in report.yaml.
-
-D. Adding Configurable Behavior
-
-All runtime behavior must come from:
-
-report.yaml
-
-
-Not CLI flags (unless it affects ingest behavior).
-
-Section-specific configuration lives under:
-
-sections:
-  - id: my_section
-    options:
-      key: value
-
-
-Access via:
-
-options = ctx.get("options") or {}
-
-
-Sections must never parse YAML directly.
-
-Report Builder Context Contract
-
-Each section receives:
-
-ctx["packages"]
-ctx["market"]
-ctx["options"]
-ctx["section_id"]
-ctx["section"]
-ctx["report_config"]
-
-
-Sections must only use these objects.
-
-If new data is required:
-
-Add it in pipeline
-
-Or compute it in analysis module
-
-Then pass via ctx
-
-What NOT To Do
-
-❌ Read files inside a section
-❌ Modify pipeline logic from a section
-❌ Attach shared data to AnalysisPackage
-❌ Introduce new global state
-❌ Mix timezones
-❌ Break registry-based section lookup
-❌ Hardcode section order
-
-Testing Checklist Before Committing
-
-When adding new functionality:
-
-Parser
-
- Timezone correct?
-
- Numeric fields normalized?
-
- run_id correct?
-
- Shared artifacts use run_id=None?
-
-Analysis
-
- Derived data stored under metadata["derived"]?
-
- No file IO?
-
- No section imports?
-
-Section
-
- Uses ctx.get(...) guards?
-
- Uses options from YAML?
-
- No disk reads?
-
- No ingest calls?
-
- Images embedded via base64?
-
-AI-Assisted Development Guidelines
-
-When using AI to extend this project, always include:
-
-- Respect ARCHITECTURE.md.
-- Respect CONTRIBUTING.md.
-- Do not change pipeline flow unless explicitly requested.
-- Sections are pure renderers.
-- All section options come from report.yaml via ctx["options"].
-- Market data is shared in ctx["market"], not inside AnalysisPackage.
-- Modify the smallest number of files necessary.
-
-
-If AI suggests:
-
-New CLI flags for report behavior → reject.
-
-Direct file access in section → reject.
-
-Bypassing registry → reject.
-
-Creating new data loading logic in section → reject.
-
-Design Philosophy
-
-This project prioritizes:
-
-Deterministic reproducibility
-
-Clean separation of concerns
-
-Extensibility without structural drift
-
-Self-contained reporting
-
-Prop-firm risk modeling integrity
-
-If a change violates these principles, it must be redesigned.
-
-Long-Term Stability Principle
-
-Every new feature must fit into one of these categories:
-
-New parser
-
-New analysis helper
-
-New report section
-
-Minor pipeline extension
-
-If it doesn’t clearly fit, rethink the implementation.
+- Smallest possible change set.
+- No opportunistic refactors unless requested.
+- Match existing naming/style patterns.
+- Prefer extending existing helpers/orchestrators over introducing new layers.
