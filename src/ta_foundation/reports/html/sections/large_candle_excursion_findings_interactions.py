@@ -2,14 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from ta_foundation.reports.html.sections.large_candle_excursion_downstream_common import (
-    cell,
-    fmt,
-    get_derived_payload,
-    hdr,
-    info_box,
-    section_title,
-)
+from ta_foundation.reports.html.sections.large_candle_excursion_downstream_common import cell, fmt, get_derived_payload, hdr, info_box, section_title
 
 
 def _render_table(title: str, rows: List[dict]) -> str:
@@ -30,11 +23,28 @@ def _render_table(title: str, rows: List[dict]) -> str:
             + cell(str(r.get("better_mode", "—")))
             + "</tr>"
         )
-    return (
-        section_title(title)
-        + '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">'
-        + f"<thead><tr>{hdr_row}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
-    )
+    return section_title(title) + '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">' + f"<thead><tr>{hdr_row}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
+
+
+def _render_attempted(rows: List[dict]) -> str:
+    if not rows:
+        return ""
+    headers = ["Condition Combination", "Event Count", "Win%", "Score", "Rejection Reason"]
+    hdr_row = "".join(hdr(h) for h in headers)
+    body = []
+    for r in rows:
+        reason = r.get("rejection_reason") or "passed"
+        bg = "#fff3e0" if reason != "passed" else "#e8f5e9"
+        body.append(
+            "<tr>"
+            + cell(str(r.get("condition_combination", "—")))
+            + cell(str(r.get("event_count", 0)))
+            + cell(fmt(r.get("win_rate"), 1, "%"))
+            + cell(fmt(r.get("score"), 3))
+            + cell(str(reason), bg=bg)
+            + "</tr>"
+        )
+    return section_title("Attempted Interaction Candidates") + '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12px">' + f"<thead><tr>{hdr_row}</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
 
 
 def render_large_candle_excursion_findings_interactions(ctx: dict) -> str:
@@ -56,5 +66,6 @@ def render_large_candle_excursion_findings_interactions(ctx: dict) -> str:
     html += _render_table("Strongest Structure Effects", strong.get("structure") or [])
     html += _render_table("Strongest Volatility Effects", strong.get("volatility") or [])
     html += _render_table("Strongest Interaction Effects", data.get("strongest_interactions") or [])
+    html += _render_attempted((data.get("interaction_diagnostics") or {}).get("attempted") or [])
     html += "</div>"
     return html

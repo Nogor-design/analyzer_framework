@@ -47,11 +47,18 @@ large_candle_excursion_discovery:
       max_chain_depth: 3
       min_incremental_improvement: 0.03
       min_remaining_events: 50
+      min_score: 0.45
+      attempted_top_n: 15
     robustness_validation:
       enabled: true
       time_splits: 3
       require_neighbor_stability: true
       require_out_of_sample_check: false
+  neighbor_analysis:
+    enabled: true
+    top_setups: 10
+    max_neighbors: 8
+    target_neighbor_values: [15, 25, 35, 50]
   output:
     include_diagnostics: true
     top_n_final_discoveries: 25
