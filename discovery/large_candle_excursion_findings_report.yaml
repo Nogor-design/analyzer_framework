@@ -33,11 +33,27 @@ large_candle_excursion_findings:
     require_min_win_rate: 0.50
     penalize_low_sample: true
     penalize_complexity: true
+  interactions:
+    min_events: 50
+    min_edge_pp: 4.0
+    min_score: 0.48
+    min_stability: 0.45
+    max_complexity_penalty: 0.12
+    attempted_top_n: 12
+  neighbor_analysis:
+    enabled: true
+    top_setups: 6
+    max_neighbors: 6
+    target_neighbor_values: [15, 25, 35, 50]
+  time_split:
+    enabled: true
+    n_splits: 3
   output:
     top_n_discoveries: 25
     include_executive_summary: true
     include_fragility_warnings: true
     include_suggested_next_tests: true
+    max_next_tests: 10
 
 sections:
   - id: large_candle_excursion_findings_executive_summary
