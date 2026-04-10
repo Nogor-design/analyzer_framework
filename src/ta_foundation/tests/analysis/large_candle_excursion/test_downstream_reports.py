@@ -6,6 +6,7 @@ from ta_foundation.analysis.large_candle_excursion.downstream_reports import (
     build_large_candle_excursion_discovery,
     build_large_candle_excursion_findings,
 )
+from ta_foundation.analysis.large_candle_excursion.recursive_edge_search import compute_recursive_edge_search
 
 
 def _source_payload(include_interactions: bool = True) -> dict:
@@ -176,6 +177,7 @@ def test_findings_populates_summary_rank_fragility_and_next_tests() -> None:
     assert findings["top_discoveries"][0]["composite_score"] >= findings["top_discoveries"][-1]["composite_score"]
     assert any(w["type"] == "low_sample" for w in findings["fragility_warnings"])
     assert findings["next_tests"]
+    assert "recursive_edge_search" in findings
 
 
 def test_findings_deduplicates_and_ranks_next_tests() -> None:
@@ -215,6 +217,9 @@ def test_findings_neighbor_time_split_and_tradability_present() -> None:
     top = findings["top_discoveries"][0]
     assert "tradability" in top
     assert top["tradability"]["avg_favorable_excursion"] is not None
+    rec = findings.get("recursive_edge_search") or {}
+    assert rec.get("enabled") is True
+    assert rec.get("search_configuration") or rec.get("message")
 
 
 def test_discovery_stages_and_diagnostics() -> None:
@@ -271,3 +276,33 @@ large_candle_excursion_discovery:
     assert raw["large_candle_excursion_findings"]["enabled"] is True
     assert raw["large_candle_excursion_findings"]["ranking"]["require_min_win_rate"] == 0.5
     assert raw["large_candle_excursion_discovery"]["enabled"] is True
+
+
+def test_recursive_edge_search_accepts_tuple_family_keys() -> None:
+    payload = {
+        "config": {"reversal_decision_engine": {}},
+        "setup_families": [{"family_key": ("reverse", -1, 1, "25-50")}],
+        "next_tests": [],
+        "reversal_decision_engine": {"decision_rules": []},
+        "elite_reversal_setup_extractor": {"elite_setups": []},
+    }
+    events = [
+        {
+            "direction": -1,
+            "size_ticks": 10,
+            "adv_ticks": 8,
+            "fav_ticks": 4,
+            "early_fav_2bar_ticks": 4,
+            "early_adv_2bar_ticks": 1,
+            "did_price_reclaim_signal_midpoint": True,
+            "did_price_break_signal_extreme_again": False,
+            "trade_mode": "reverse",
+            "tf_minutes": 1,
+            "window_minutes": 30,
+            "candle_bucket": "25-50",
+            "session_bucket": "asia",
+        }
+    ] * 40
+    out = compute_recursive_edge_search(payload, events, {"enabled": True})
+    assert out["enabled"] is True
+    assert "message" not in out

@@ -17,6 +17,10 @@ from ta_foundation.analysis.large_candle_excursion.elite_reversal_setup_extracto
     compute_elite_reversal_setup_extractor,
     DEFAULT_ELITE_REVERSAL_SETUP_CONFIG,
 )
+from ta_foundation.analysis.large_candle_excursion.recursive_edge_search import (
+    compute_recursive_edge_search,
+    DEFAULT_RECURSIVE_EDGE_SEARCH_CONFIG,
+)
 
 
 DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
@@ -107,6 +111,8 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     "reversal_decision_engine": DEFAULT_REVERSAL_DECISION_CONFIG,
     # Elite reversal setup extractor — concentrates only the highest-quality reversal slices
     "elite_reversal_setup_extractor": DEFAULT_ELITE_REVERSAL_SETUP_CONFIG,
+    # Recursive edge search engine — controlled branch-and-bound refinement on reversal setups
+    "recursive_edge_search": DEFAULT_RECURSIVE_EDGE_SEARCH_CONFIG,
 }
 
 DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
@@ -1503,6 +1509,18 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     max_next = int((cfg.get("output") or {}).get("max_next_tests", 10))
     deduped_tests = _build_family_next_tests(families, strong, top_n=max_next)
     ranked_test_rows: List[Dict[str, Any]] = [{"recommendation": t, "count": 1, "group": "family_specific"} for t in deduped_tests]
+    recursive_cfg = _deep_merge(DEFAULT_RECURSIVE_EDGE_SEARCH_CONFIG, cfg.get("recursive_edge_search") or {})
+    recursive_edge_search_result = compute_recursive_edge_search(
+        findings_payload={
+            "config": cfg,
+            "setup_families": families,
+            "next_tests": deduped_tests,
+            "reversal_decision_engine": reversal_decision_engine_result,
+            "elite_reversal_setup_extractor": elite_reversal_setup_result,
+        },
+        events_sample=events_sample,
+        cfg=recursive_cfg,
+    )
 
     split_cfg = cfg.get("time_split") or {}
     split_rows = []
@@ -1545,6 +1563,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "reversal_size_analysis":     reversal_size_analysis_result,
         "reversal_decision_engine":   reversal_decision_engine_result,
         "elite_reversal_setup_extractor": elite_reversal_setup_result,
+        "recursive_edge_search": recursive_edge_search_result,
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
@@ -1555,6 +1574,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
             "n_context_conditioned": len(context_conditioned_setups),
             "decision_engine_rules": len(reversal_decision_engine_result.get("decision_rules") or []),
             "elite_setups": len(elite_reversal_setup_result.get("elite_setups") or []),
+            "recursive_promoted": len(recursive_edge_search_result.get("best_promoted_branches") or []),
         },
     }
 
