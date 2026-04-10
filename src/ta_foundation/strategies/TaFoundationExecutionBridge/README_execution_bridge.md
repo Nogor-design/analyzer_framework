@@ -38,6 +38,10 @@ Implemented guardrails:
 - one-trade-at-a-time mode,
 - heartbeat timeout detection + optional flatten (`FlattenOnHeartbeatLoss`),
 - explicit emergency command: `FLATTEN_AND_DISABLE`.
+- strict gate rejection while `EntryPending` for non-cancel/exit commands (prevents unsafe queue execution bursts),
+- MOVE_STOP side-aware safety checks (rejects unsafe stop levels),
+- startup reconciliation snapshot logs (`HEALTH`) for shell mode/order/position observability,
+- recovery fallback stop synthesis (`RecoveryFallbackStopTicks`) when position survives restart but persisted stop is missing.
 
 ## Logging model
 Shell logs to both NT8 output (`Print`) and optional file (`LogFilePath`):
@@ -48,10 +52,18 @@ Shell logs to both NT8 output (`Print`) and optional file (`LogFilePath`):
 - lockouts,
 - heartbeat loss,
 - flatten/disable events.
+- optional outbox events for Python consumption (`OutboxDirectory`) with statuses like `ACCEPTED`, `REJECTED`, `FILLED`, `STOP_MOVED`, `HEARTBEAT_LOST`.
 
 ## Dry-run/simulation mode
 `DryRunMode=true` allows complete parsing/validation/state transitions and logging without live order submission.
 Use this first in Simulation account while validating bridge behavior.
+
+## New operational controls (hardening pass)
+- `EnableOutboxEvents` (default `true`) writes structured bridge status events to `OutboxDirectory`.
+- `RecoveryFallbackStopTicks` (default `16`) applies a conservative synthetic stop on restart when a live position exists but stop state is missing.
+- `HealthSnapshotIntervalSeconds` (default `30`) emits periodic reconciliation snapshots for diagnostics.
+
+See `NT8_EXECUTION_SHELL_HARDENING_TEST_MATRIX.md` for required DryRun and Sim-account validation coverage before live deployment.
 
 ## Manual NT8 setup required
 1. Import/compile `TaFoundationExecutionShell.cs` in NinjaTrader 8.

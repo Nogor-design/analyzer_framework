@@ -100,6 +100,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         [DataMember(Name = "pending_stop_price")] public double PendingStopPrice { get; set; }
         [DataMember(Name = "pending_target_ticks")] public int PendingTargetTicks { get; set; }
         [DataMember(Name = "processed_ids")] public List<string> ProcessedIds { get; set; }
+        [DataMember(Name = "last_health_snapshot_utc")] public string LastHealthSnapshotUtc { get; set; }
     }
 
     public class TaFoundationExecutionShell : Strategy
@@ -119,6 +120,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private DateTime lastBridgeMessageUtc = DateTime.MinValue;
         private DateTime lastPollUtc = DateTime.MinValue;
         private DateTime currentTradingDay = Core.Globals.MinDate;
+        private DateTime lastHealthSnapshotUtc = DateTime.MinValue;
 
         private string activeTemplate = string.Empty;
         private string lastInstructionId = string.Empty;
@@ -160,6 +162,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 InboxDirectory = @"C:\ta_foundation\bridge\inbox";
                 ArchiveDirectory = @"C:\ta_foundation\bridge\archive";
                 RejectDirectory = @"C:\ta_foundation\bridge\rejected";
+                OutboxDirectory = @"C:\ta_foundation\bridge\outbox";
                 LogFilePath = @"C:\ta_foundation\bridge\logs\execution_shell.log";
                 TemplateDirectory = @"C:\ta_foundation\bridge\templates";
                 StateFilePath = @"C:\ta_foundation\bridge\state\shell_state.json";
@@ -179,12 +182,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                 MaxStopTicksCap = 100;
                 MaxDailyLoss = 500;
                 RequireInstrumentMatch = true;
+                EnableOutboxEvents = true;
+                RecoveryFallbackStopTicks = 16;
+                HealthSnapshotIntervalSeconds = 30;
             }
             else if (State == State.Configure)
             {
                 EnsureDirectory(InboxDirectory);
                 EnsureDirectory(ArchiveDirectory);
                 EnsureDirectory(RejectDirectory);
+                EnsureDirectory(OutboxDirectory);
                 EnsureDirectory(Path.GetDirectoryName(LogFilePath));
                 EnsureDirectory(Path.GetDirectoryName(StateFilePath));
                 EnsureDirectory(Path.GetDirectoryName(ProcessedIdsFilePath));
@@ -195,6 +202,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             else if (State == State.DataLoaded)
             {
                 TryRecoverPositionState();
+                LogReconciliationSnapshot("STARTUP");
             }
             else if (State == State.Terminated)
             {
@@ -246,17 +254,29 @@ namespace NinjaTrader.NinjaScript.Strategies
                     shellMode = ShellMode.Idle;
                     entryOrder = null;
                 }
+
+                WriteOutboxEvent("ORDER_REJECTED", string.Format(CultureInfo.InvariantCulture,
+                    "signal={0};order_id={1};error={2};comment={3}", order.Name, order.OrderId, error, comment));
             }
             else if (orderState == OrderState.Cancelled)
             {
                 AppendLog("ORDER_CANCEL", string.Format(CultureInfo.InvariantCulture,
                     "name={0} id={1}", order.Name, order.OrderId));
+                WriteOutboxEvent("ORDER_CANCELLED", string.Format(CultureInfo.InvariantCulture,
+                    "signal={0};order_id={1}", order.Name, order.OrderId));
+            }
+            else if (orderState == OrderState.PartFilled)
+            {
+                AppendLog("ORDER_PARTIAL", string.Format(CultureInfo.InvariantCulture,
+                    "name={0} id={1} filled={2}/{3} avg={4}", order.Name, order.OrderId, filled, quantity, averageFillPrice));
             }
             else if (orderState == OrderState.Working)
             {
                 AppendLog("ORDER_WORKING", string.Format(CultureInfo.InvariantCulture,
                     "name={0} id={1} qty={2} stop={3} limit={4}", order.Name, order.OrderId, quantity, stopPrice, limitPrice));
             }
+
+            LogReconciliationSnapshot("ORDER_UPDATE");
         }
 
         protected override void OnExecutionUpdate(Execution execution, string executionId, double price, int quantity,
@@ -276,6 +296,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 quantity,
                 price,
                 order.OrderState));
+            WriteOutboxEvent("FILLED", string.Format(CultureInfo.InvariantCulture,
+                "order_id={0};signal={1};side={2};qty={3};price={4}", orderId, order.Name, marketPosition, quantity, price));
 
             if (order.Name == EntryLongSignal || order.Name == EntryShortSignal)
             {
@@ -298,6 +320,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             lastKnownPositionQuantity = Position.Quantity;
             SavePersistentState();
+            LogReconciliationSnapshot("EXECUTION");
         }
 
         private void PollBridgeFiles()
@@ -331,7 +354,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                 {
                     AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
                         "id={0} reason={1}", instruction == null ? "<null>" : instruction.MessageId, rejection));
-                    MoveFile(path, RejectDirectory);
+                    string ignored;
+                    TryMoveFile(path, RejectDirectory, out ignored);
+                    return;
+                }
+
+                string archivedPath;
+                if (!TryMoveFile(path, ArchiveDirectory, out archivedPath))
+                {
+                    AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
+                        "id={0} reason=archive move failed, leaving unprocessed", instruction.MessageId));
                     return;
                 }
 
@@ -342,15 +374,17 @@ namespace NinjaTrader.NinjaScript.Strategies
                 lastInstructionId = instruction.MessageId;
 
                 AppendLog("ACCEPT", string.Format(CultureInfo.InvariantCulture,
-                    "id={0} action={1} template={2}", instruction.MessageId, instruction.Action, instruction.TemplateName));
-                MoveFile(path, ArchiveDirectory);
+                    "id={0} action={1} template={2} archived={3}", instruction.MessageId, instruction.Action, instruction.TemplateName, archivedPath));
+                WriteOutboxEvent("ACCEPTED", string.Format(CultureInfo.InvariantCulture,
+                    "id={0};action={1};template={2}", instruction.MessageId, instruction.Action, instruction.TemplateName));
                 SavePersistentState();
             }
             catch (Exception ex)
             {
                 AppendLog("ERROR", string.Format(CultureInfo.InvariantCulture,
                     "file={0} message={1} payload={2}", path, ex.Message, payload));
-                MoveFile(path, RejectDirectory);
+                string ignored;
+                TryMoveFile(path, RejectDirectory, out ignored);
             }
         }
 
@@ -362,16 +396,24 @@ namespace NinjaTrader.NinjaScript.Strategies
                 safetyCounter++;
                 BridgeInstruction instruction = pendingInstructions.Peek();
 
-                if (!CanExecuteInstructionNow(instruction))
-                    break;
-
                 pendingInstructions.Dequeue();
+                string gateReason;
+                if (!CanExecuteInstructionNow(instruction, out gateReason))
+                {
+                    AppendLog("REJECT_GATE", string.Format(CultureInfo.InvariantCulture,
+                        "id={0} action={1} reason={2}", instruction.MessageId, instruction.Action, gateReason));
+                    WriteOutboxEvent("REJECTED", string.Format(CultureInfo.InvariantCulture,
+                        "id={0};action={1};reason={2}", instruction.MessageId, instruction.Action, gateReason));
+                    continue;
+                }
+
                 ExecuteInstruction(instruction);
             }
         }
 
-        private bool CanExecuteInstructionNow(BridgeInstruction instruction)
+        private bool CanExecuteInstructionNow(BridgeInstruction instruction, out string reason)
         {
+            reason = string.Empty;
             BridgeAction action = ParseAction(instruction.Action);
 
             if (action == BridgeAction.HEARTBEAT || action == BridgeAction.FLATTEN_AND_DISABLE)
@@ -379,15 +421,27 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (shellMode == ShellMode.EntryPending)
             {
-                return action == BridgeAction.EXIT_ALL ||
-                       action == BridgeAction.SCRATCH ||
-                       action == BridgeAction.CANCEL_WORKING ||
-                       action == BridgeAction.FLATTEN_AND_DISABLE;
+                bool allowed = action == BridgeAction.EXIT_ALL ||
+                               action == BridgeAction.SCRATCH ||
+                               action == BridgeAction.CANCEL_WORKING ||
+                               action == BridgeAction.FLATTEN_AND_DISABLE;
+                if (!allowed)
+                    reason = "entry pending";
+                return allowed;
             }
 
             if ((action == BridgeAction.TAKE_PARTIAL || action == BridgeAction.MOVE_STOP || action == BridgeAction.HOLD_FOR_RUNNER || action == BridgeAction.DOWNGRADE_TO_SCALP)
                 && Position.MarketPosition == MarketPosition.Flat)
+            {
+                reason = "no open position";
                 return false;
+            }
+
+            if ((action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT) && Position.MarketPosition != MarketPosition.Flat)
+            {
+                reason = "already in position";
+                return false;
+            }
 
             return true;
         }
@@ -400,6 +454,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 case BridgeAction.HEARTBEAT:
                     AppendLog("HEARTBEAT", string.Format(CultureInfo.InvariantCulture, "id={0}", instruction.MessageId));
+                    WriteOutboxEvent("HEARTBEAT", string.Format(CultureInfo.InvariantCulture, "id={0}", instruction.MessageId));
                     return;
 
                 case BridgeAction.ENTER_LONG:
@@ -447,6 +502,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 default:
                     AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
                         "id={0} reason=unknown action", instruction.MessageId));
+                    WriteOutboxEvent("REJECTED", string.Format(CultureInfo.InvariantCulture,
+                        "id={0};action={1};reason=unknown action", instruction.MessageId, instruction.Action));
                     return;
             }
         }
@@ -457,6 +514,14 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
                     "id={0} reason=intake disabled or daily lockout", instruction.MessageId));
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(instruction.ExpectedPositionState) &&
+                !string.Equals(instruction.ExpectedPositionState.Trim(), "FLAT", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
+                    "id={0} reason=expected_position_state mismatch expected={1} actual=FLAT", instruction.MessageId, instruction.ExpectedPositionState));
                 return;
             }
 
@@ -508,6 +573,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                     ? RoundToTickSize(Close[0] - (stopTicks * TickSize))
                     : RoundToTickSize(Close[0] + (stopTicks * TickSize));
                 SavePersistentState();
+                WriteOutboxEvent("ACCEPTED", string.Format(CultureInfo.InvariantCulture,
+                    "id={0};action={1};mode=DRYRUN", instruction.MessageId, instruction.Action));
                 return;
             }
 
@@ -533,6 +600,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 targetTicks,
                 activeTemplate,
                 pendingStopPrice));
+            WriteOutboxEvent("ENTRY_SUBMITTED", string.Format(CultureInfo.InvariantCulture,
+                "id={0};side={1};qty={2};stop={3};target_ticks={4}", instruction.MessageId, desiredSide, quantity, pendingStopPrice, targetTicks));
             SavePersistentState();
         }
 
@@ -563,6 +632,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             AppendLog("PARTIAL", string.Format(CultureInfo.InvariantCulture,
                 "id={0} qty={1}", instruction.MessageId, partialQty));
+            WriteOutboxEvent("PARTIAL_SUBMITTED", string.Format(CultureInfo.InvariantCulture,
+                "id={0};qty={1}", instruction.MessageId, partialQty));
         }
 
         private void HandleMoveStop(BridgeInstruction instruction)
@@ -582,6 +653,15 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
 
             double newStop = RoundToTickSize(instruction.StopPrice.Value);
+            if (!IsValidStopForCurrentPosition(newStop))
+            {
+                AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
+                    "id={0} reason=unsafe stop for current side stop={1} avg={2}", instruction.MessageId, newStop, Position.AveragePrice));
+                WriteOutboxEvent("REJECTED", string.Format(CultureInfo.InvariantCulture,
+                    "id={0};action=MOVE_STOP;reason=unsafe stop level", instruction.MessageId));
+                return;
+            }
+
             pendingStopPrice = newStop;
 
             if (DryRunMode)
@@ -599,6 +679,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             AppendLog("MOVE_STOP", string.Format(CultureInfo.InvariantCulture,
                 "id={0} stop_price={1}", instruction.MessageId, newStop));
+            WriteOutboxEvent("STOP_MOVED", string.Format(CultureInfo.InvariantCulture,
+                "id={0};stop_price={1}", instruction.MessageId, newStop));
             SavePersistentState();
         }
 
@@ -621,6 +703,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             CancelTrackedWorkingOrders();
             AppendLog("EXIT", reason);
+            WriteOutboxEvent("EXIT_SUBMITTED", string.Format(CultureInfo.InvariantCulture, "reason={0}", reason));
             SavePersistentState();
         }
 
@@ -630,6 +713,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             shellMode = ShellMode.Disabled;
             ExitAll("FLATTEN_AND_DISABLE:" + reason);
             AppendLog("DISABLE", reason);
+            WriteOutboxEvent("FLATTENED", string.Format(CultureInfo.InvariantCulture, "reason={0}", reason));
             SavePersistentState();
         }
 
@@ -651,6 +735,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                     signalIntakeEnabled = false;
                     SavePersistentState();
                 }
+
+                WriteOutboxEvent("HEARTBEAT_LOST", string.Format(CultureInfo.InvariantCulture,
+                    "timeout_seconds={0};flatten={1}", HeartbeatTimeoutSeconds, FlattenOnHeartbeatLoss));
             }
         }
 
@@ -672,6 +759,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if ((DateTime.UtcNow - tsUtc).TotalSeconds > expirySeconds)
                 return "stale signal";
+            if ((tsUtc - DateTime.UtcNow).TotalSeconds > 30)
+                return "future timestamp";
 
             if (RequireInstrumentMatch && !string.IsNullOrWhiteSpace(instruction.Instrument))
             {
@@ -684,11 +773,15 @@ namespace NinjaTrader.NinjaScript.Strategies
             BridgeAction action = ParseAction(instruction.Action);
             if (action == BridgeAction.NONE)
                 return "unsupported action";
+            if ((action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT) && string.IsNullOrWhiteSpace(instruction.TemplateName))
+                return "missing template_name for entry";
 
             if ((action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT) && instruction.Quantity > MaxPositionSize)
                 return "quantity above max position size";
             if (instruction.StopTicks > MaxStopTicksCap)
                 return "stop ticks above configured cap";
+            if ((action == BridgeAction.MOVE_STOP) && (!instruction.StopPrice.HasValue || instruction.StopPrice.Value <= 0))
+                return "invalid stop price";
             if (dailyLockout && (action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT))
                 return "daily loss lockout active";
 
@@ -813,13 +906,14 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Directory.CreateDirectory(path);
         }
 
-        private void MoveFile(string sourcePath, string destinationDirectory)
+        private bool TryMoveFile(string sourcePath, string destinationDirectory, out string destinationPath)
         {
+            destinationPath = string.Empty;
             try
             {
                 EnsureDirectory(destinationDirectory);
                 string fileName = Path.GetFileName(sourcePath);
-                string destinationPath = Path.Combine(destinationDirectory,
+                destinationPath = Path.Combine(destinationDirectory,
                     string.Format(CultureInfo.InvariantCulture,
                         "{0:yyyyMMdd_HHmmssfff}_{1}", DateTime.UtcNow, fileName));
 
@@ -827,11 +921,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                     File.Delete(destinationPath);
 
                 File.Move(sourcePath, destinationPath);
+                return true;
             }
             catch (Exception ex)
             {
                 AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
                     "move failed src={0} dst={1} err={2}", sourcePath, destinationDirectory, ex.Message));
+                return false;
             }
         }
 
@@ -909,6 +1005,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
                 "pos={0} stop_price={1}", Position.MarketPosition, pendingStopPrice));
+            WriteOutboxEvent("STOP_ATTACHED", string.Format(CultureInfo.InvariantCulture,
+                "side={0};stop_price={1};qty={2}", Position.MarketPosition, pendingStopPrice, Math.Abs(Position.Quantity)));
+        }
+
+        private bool IsValidStopForCurrentPosition(double stopPrice)
+        {
+            double minGap = TickSize;
+            if (Position.MarketPosition == MarketPosition.Long)
+                return stopPrice <= RoundToTickSize(Close[0] - minGap);
+            if (Position.MarketPosition == MarketPosition.Short)
+                return stopPrice >= RoundToTickSize(Close[0] + minGap);
+            return false;
         }
 
         private void CancelTrackedWorkingOrders()
@@ -983,6 +1091,7 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (Position.MarketPosition == MarketPosition.Flat)
             {
                 shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+                LogReconciliationSnapshot("RECOVERY_FLAT");
                 return;
             }
 
@@ -996,6 +1105,21 @@ namespace NinjaTrader.NinjaScript.Strategies
                 shellMode = ShellMode.InPosition;
                 AppendLog("RECOVERY", "protective stop restored from persisted state");
                 SavePersistentState();
+                LogReconciliationSnapshot("RECOVERY_RESTORED");
+                return;
+            }
+
+            if (!DryRunMode && RecoveryFallbackStopTicks > 0)
+            {
+                pendingStopPrice = Position.MarketPosition == MarketPosition.Long
+                    ? RoundToTickSize(Position.AveragePrice - (RecoveryFallbackStopTicks * TickSize))
+                    : RoundToTickSize(Position.AveragePrice + (RecoveryFallbackStopTicks * TickSize));
+                AppendLog("RECOVERY_WARN", string.Format(CultureInfo.InvariantCulture,
+                    "persisted stop missing; applying fallback stop ticks={0} stop={1}", RecoveryFallbackStopTicks, pendingStopPrice));
+                EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);
+                shellMode = ShellMode.InPosition;
+                SavePersistentState();
+                LogReconciliationSnapshot("RECOVERY_FALLBACK_STOP");
                 return;
             }
 
@@ -1076,14 +1200,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                     PositionId = activePositionId,
                     PendingStopPrice = pendingStopPrice,
                     PendingTargetTicks = pendingTargetTicks,
-                    ProcessedIds = seenMessageIds.TakeLastSafe(ProcessedIdsRetainCount).ToList()
+                    ProcessedIds = processedMessageOrder.TakeLastSafe(ProcessedIdsRetainCount).ToList(),
+                    LastHealthSnapshotUtc = lastHealthSnapshotUtc == DateTime.MinValue ? string.Empty : lastHealthSnapshotUtc.ToString("o", CultureInfo.InvariantCulture)
                 };
 
-                string tmpPath = StateFilePath + ".tmp";
-                File.WriteAllText(tmpPath, SerializeJson(state), Encoding.UTF8);
-                if (File.Exists(StateFilePath))
-                    File.Delete(StateFilePath);
-                File.Move(tmpPath, StateFilePath);
+                WriteTextAtomically(StateFilePath, SerializeJson(state));
             }
             catch (Exception ex)
             {
@@ -1096,6 +1217,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             if (CurrentBar % 5 == 0)
                 SavePersistentState();
+            if ((DateTime.UtcNow - lastHealthSnapshotUtc).TotalSeconds >= Math.Max(5, HealthSnapshotIntervalSeconds))
+                LogReconciliationSnapshot("PERIODIC");
         }
 
         private void LoadProcessedIds()
@@ -1105,6 +1228,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (!PersistProcessedIds || string.IsNullOrWhiteSpace(ProcessedIdsFilePath) || !File.Exists(ProcessedIdsFilePath))
                     return;
 
+                bool restoredFromState = false;
                 foreach (string line in File.ReadAllLines(ProcessedIdsFilePath, Encoding.UTF8))
                 {
                     string id = line == null ? string.Empty : line.Trim();
@@ -1114,7 +1238,25 @@ namespace NinjaTrader.NinjaScript.Strategies
                         processedMessageOrder.Enqueue(id);
                 }
 
+                if (processedMessageOrder.Count == 0 && File.Exists(StateFilePath))
+                {
+                    PersistentShellState persisted = DeserializeJson<PersistentShellState>(File.ReadAllText(StateFilePath, Encoding.UTF8));
+                    if (persisted != null && persisted.ProcessedIds != null)
+                    {
+                        foreach (string id in persisted.ProcessedIds)
+                        {
+                            if (string.IsNullOrWhiteSpace(id))
+                                continue;
+                            if (seenMessageIds.Add(id.Trim()))
+                                processedMessageOrder.Enqueue(id.Trim());
+                        }
+                        restoredFromState = processedMessageOrder.Count > 0;
+                    }
+                }
+
                 TrimProcessedIdsRetention();
+                AppendLog("STATE", string.Format(CultureInfo.InvariantCulture,
+                    "processed_id_count={0} restored_from_state={1}", processedMessageOrder.Count, restoredFromState));
             }
             catch (Exception ex)
             {
@@ -1131,7 +1273,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
 
             processedMessageOrder.Enqueue(id);
-            TrimProcessedIdsRetention();
+            bool trimmed = TrimProcessedIdsRetention();
 
             if (!PersistProcessedIds || string.IsNullOrWhiteSpace(ProcessedIdsFilePath))
                 return;
@@ -1139,7 +1281,10 @@ namespace NinjaTrader.NinjaScript.Strategies
             try
             {
                 EnsureDirectory(Path.GetDirectoryName(ProcessedIdsFilePath));
-                File.AppendAllText(ProcessedIdsFilePath, id + Environment.NewLine, Encoding.UTF8);
+                if (trimmed)
+                    WriteProcessedIdsSnapshot();
+                else
+                    File.AppendAllText(ProcessedIdsFilePath, id + Environment.NewLine, Encoding.UTF8);
             }
             catch (Exception ex)
             {
@@ -1148,12 +1293,96 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
-        private void TrimProcessedIdsRetention()
+        private bool TrimProcessedIdsRetention()
         {
+            bool trimmed = false;
             while (processedMessageOrder.Count > Math.Max(100, ProcessedIdsRetainCount))
             {
                 string oldest = processedMessageOrder.Dequeue();
                 seenMessageIds.Remove(oldest);
+                trimmed = true;
+            }
+            return trimmed;
+        }
+
+        private void WriteProcessedIdsSnapshot()
+        {
+            if (!PersistProcessedIds || string.IsNullOrWhiteSpace(ProcessedIdsFilePath))
+                return;
+
+            EnsureDirectory(Path.GetDirectoryName(ProcessedIdsFilePath));
+            StringBuilder builder = new StringBuilder();
+            foreach (string id in processedMessageOrder)
+                builder.AppendLine(id);
+
+            WriteTextAtomically(ProcessedIdsFilePath, builder.ToString());
+        }
+
+        private void WriteTextAtomically(string finalPath, string contents)
+        {
+            string tmpPath = finalPath + ".tmp";
+            File.WriteAllText(tmpPath, contents ?? string.Empty, Encoding.UTF8);
+            if (File.Exists(finalPath))
+                File.Delete(finalPath);
+            File.Move(tmpPath, finalPath);
+        }
+
+        private void LogReconciliationSnapshot(string reason)
+        {
+            lastHealthSnapshotUtc = DateTime.UtcNow;
+            AppendLog("HEALTH", string.Format(CultureInfo.InvariantCulture,
+                "reason={0} shell_mode={1} intake={2} heartbeat_faulted={3} daily_lockout={4} active_position_id={5} pos_side={6} pos_qty={7} avg={8} entry_order={9} stop_order={10} target_order={11} exit_order={12} pending_stop={13} pending_target_ticks={14} queue_depth={15} last_msg_utc={16:o}",
+                reason,
+                shellMode,
+                signalIntakeEnabled,
+                heartbeatFaulted,
+                dailyLockout,
+                activePositionId,
+                Position.MarketPosition,
+                Position.Quantity,
+                Position.AveragePrice,
+                entryOrder == null ? "<null>" : entryOrder.OrderId,
+                stopOrder == null ? "<null>" : stopOrder.OrderId,
+                targetOrder == null ? "<null>" : targetOrder.OrderId,
+                exitOrder == null ? "<null>" : exitOrder.OrderId,
+                pendingStopPrice,
+                pendingTargetTicks,
+                pendingInstructions.Count,
+                lastBridgeMessageUtc));
+        }
+
+        private void WriteOutboxEvent(string status, string detail)
+        {
+            if (!EnableOutboxEvents || string.IsNullOrWhiteSpace(OutboxDirectory))
+                return;
+
+            try
+            {
+                EnsureDirectory(OutboxDirectory);
+                string id = string.IsNullOrWhiteSpace(lastInstructionId) ? Guid.NewGuid().ToString("N") : lastInstructionId;
+                string safeStatus = string.IsNullOrWhiteSpace(status) ? "UNKNOWN" : status.Trim().ToUpperInvariant();
+                string fileName = string.Format(CultureInfo.InvariantCulture,
+                    "{0:yyyyMMdd_HHmmssfff}_{1}_{2}.evt.json",
+                    DateTime.UtcNow,
+                    safeStatus,
+                    id.Replace(":", "_").Replace("/", "_"));
+
+                string payload = string.Format(CultureInfo.InvariantCulture,
+                    "{{\"timestamp_utc\":\"{0:o}\",\"status\":\"{1}\",\"instruction_id\":\"{2}\",\"shell_mode\":\"{3}\",\"position\":\"{4}\",\"quantity\":{5},\"detail\":\"{6}\"}}",
+                    DateTime.UtcNow,
+                    safeStatus,
+                    id,
+                    shellMode,
+                    Position.MarketPosition,
+                    Position.Quantity,
+                    (detail ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\""));
+
+                WriteTextAtomically(Path.Combine(OutboxDirectory, fileName), payload);
+            }
+            catch (Exception ex)
+            {
+                AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
+                    "outbox write failed status={0} err={1}", status, ex.Message));
             }
         }
 
@@ -1171,24 +1400,28 @@ namespace NinjaTrader.NinjaScript.Strategies
         public string RejectDirectory { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "TemplateDirectory", GroupName = "Bridge", Order = 4)]
+        [Display(Name = "OutboxDirectory", GroupName = "Bridge", Order = 4)]
+        public string OutboxDirectory { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "TemplateDirectory", GroupName = "Bridge", Order = 5)]
         public string TemplateDirectory { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "LogFilePath", GroupName = "Bridge", Order = 5)]
+        [Display(Name = "LogFilePath", GroupName = "Bridge", Order = 6)]
         public string LogFilePath { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "StateFilePath", GroupName = "Bridge", Order = 6)]
+        [Display(Name = "StateFilePath", GroupName = "Bridge", Order = 7)]
         public string StateFilePath { get; set; }
 
         [NinjaScriptProperty]
-        [Display(Name = "ProcessedIdsFilePath", GroupName = "Bridge", Order = 7)]
+        [Display(Name = "ProcessedIdsFilePath", GroupName = "Bridge", Order = 8)]
         public string ProcessedIdsFilePath { get; set; }
 
         [NinjaScriptProperty]
         [Range(1, 30)]
-        [Display(Name = "PollIntervalSeconds", GroupName = "Bridge", Order = 8)]
+        [Display(Name = "PollIntervalSeconds", GroupName = "Bridge", Order = 9)]
         public int PollIntervalSeconds { get; set; }
 
         [NinjaScriptProperty]
@@ -1252,6 +1485,20 @@ namespace NinjaTrader.NinjaScript.Strategies
         [NinjaScriptProperty]
         [Display(Name = "RequireInstrumentMatch", GroupName = "Risk", Order = 4)]
         public bool RequireInstrumentMatch { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "EnableOutboxEvents", GroupName = "Execution", Order = 6)]
+        public bool EnableOutboxEvents { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0, 200)]
+        [Display(Name = "RecoveryFallbackStopTicks", GroupName = "Execution", Order = 7)]
+        public int RecoveryFallbackStopTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(5, 600)]
+        [Display(Name = "HealthSnapshotIntervalSeconds", GroupName = "Execution", Order = 8)]
+        public int HealthSnapshotIntervalSeconds { get; set; }
         #endregion
     }
 
