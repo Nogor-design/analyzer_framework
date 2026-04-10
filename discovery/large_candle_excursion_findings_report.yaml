@@ -103,6 +103,30 @@ large_candle_excursion_findings:
       min_p50_pct:      20.0
       min_runner_score: 0.40
 
+  reversal_decision_engine:
+    enabled: true
+    forward_window_minutes: 30
+    min_n:
+      overall: 80
+      class: 20
+      interaction: 20
+      rule: 25
+    outcome_thresholds:
+      failed_reversal_max_adv_pct: 10.0
+      micro_bounce_max_adv_pct: 25.0
+      scalp_reversal_max_adv_pct: 50.0
+      expansion_reversal_min_adv_pct: 50.0
+      strong_runner_min_adv_pct: 100.0
+    early_path:
+      explosive_min_fav_2bar_pct: 45.0
+      explosive_max_adv_2bar_pct: 20.0
+      orderly_min_fav_2bar_pct: 25.0
+      orderly_max_adv_2bar_pct: 35.0
+      weak_max_fav_2bar_pct: 15.0
+      weak_min_adv_2bar_pct: 35.0
+      midpoint_reclaim_bars: 2
+      rebreak_bars: 2
+
   ranking:
     primary_metric: composite_score
     require_min_win_rate: 0.50
@@ -184,6 +208,7 @@ sections:
     # Setup families table — groups by (mode/direction/tf/bucket), shows promotion ladder
     options:
       top_n: 20
+  - id: large_candle_excursion_findings_decision_engine
   - id: large_candle_excursion_strategy_cards
     options:
       top_n: 10
