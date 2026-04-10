@@ -1,0 +1,42 @@
+{
+  "template_name": "runner_reversal_template",
+  "allow_entry": true,
+  "stop_mode": "signal_extreme_capped",
+  "hard_stop_ticks_cap": 52,
+  "initial_target_mode": "partial_then_runner",
+  "initial_target_ticks": 30,
+  "partial_rules": {
+    "enabled": true,
+    "partial_size_pct": 40,
+    "partial_target_ticks": 20,
+    "move_stop_to_break_even_after_partial": true
+  },
+  "runner_rules": {
+    "enabled": true,
+    "trail_mode": "structure_with_guardrail",
+    "runner_size_pct": 60,
+    "min_favorable_move_2bar_pct": 55,
+    "max_adverse_move_2bar_pct": 15,
+    "allow_rebreak_within_bars": 1
+  },
+  "downgrade_rules": {
+    "enabled": true,
+    "bars_without_follow_through": 4,
+    "weak_start_action": "DOWNGRADE_TO_SCALP"
+  },
+  "scratch_rules": {
+    "enabled": true,
+    "weak_start_no_midpoint_reclaim_action": "SCRATCH"
+  },
+  "session_rules": {
+    "enabled": true,
+    "allowed_sessions": ["RTH_OPEN", "RTH_MID"],
+    "session_start": "08:30:00",
+    "session_end": "15:00:00",
+    "timezone": "America/Denver"
+  },
+  "max_hold_bars": 24,
+  "max_adds": 0,
+  "allow_scale_in": false,
+  "flatten_on_session_end": true
+}
