@@ -76,6 +76,8 @@ namespace NinjaTrader.NinjaScript.Strategies
     {
         private const string EntryLongSignal = "TF_ENTER_LONG";
         private const string EntryShortSignal = "TF_ENTER_SHORT";
+        private const string LongStopSignal = "TF_STOP_LONG";
+        private const string ShortStopSignal = "TF_STOP_SHORT";
 
         private readonly Queue<BridgeInstruction> pendingInstructions = new Queue<BridgeInstruction>();
         private readonly Dictionary<string, StrategyTemplate> templates = new Dictionary<string, StrategyTemplate>(StringComparer.OrdinalIgnoreCase);
@@ -90,6 +92,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         private bool heartbeatFaulted = false;
         private bool dailyLockout = false;
         private double dailyRealizedPnL = 0.0;
+        private int pendingLongStopTicks = 0;
+        private int pendingShortStopTicks = 0;
 
         protected override void OnStateChange()
         {
@@ -156,6 +160,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (execution.Order.OrderState == OrderState.Filled)
             {
+                if (execution.Order.Name == EntryLongSignal && pendingLongStopTicks > 0)
+                {
+                    double initialStop = RoundToTickSize(price - (pendingLongStopTicks * TickSize));
+                    ExitLongStopMarket(0, true, execution.Order.Filled, initialStop, LongStopSignal, EntryLongSignal);
+                    AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
+                        "signal={0} stop_price={1} stop_ticks={2}", EntryLongSignal, initialStop, pendingLongStopTicks));
+                    pendingLongStopTicks = 0;
+                }
+                else if (execution.Order.Name == EntryShortSignal && pendingShortStopTicks > 0)
+                {
+                    double initialStop = RoundToTickSize(price + (pendingShortStopTicks * TickSize));
+                    ExitShortStopMarket(0, true, execution.Order.Filled, initialStop, ShortStopSignal, EntryShortSignal);
+                    AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
+                        "signal={0} stop_price={1} stop_ticks={2}", EntryShortSignal, initialStop, pendingShortStopTicks));
+                    pendingShortStopTicks = 0;
+                }
+
                 AppendLog("FILL", string.Format(CultureInfo.InvariantCulture,
                     "order={0} signal={1} side={2} qty={3} price={4}",
                     orderId,
@@ -320,13 +341,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (desiredSide == MarketPosition.Long)
             {
-                SetStopLoss(EntryLongSignal, CalculationMode.Ticks, stopTicks, false);
+                pendingLongStopTicks = stopTicks;
                 SetProfitTarget(EntryLongSignal, CalculationMode.Ticks, targetTicks);
                 EnterLong(quantity, EntryLongSignal);
             }
             else
             {
-                SetStopLoss(EntryShortSignal, CalculationMode.Ticks, stopTicks, false);
+                pendingShortStopTicks = stopTicks;
                 SetProfitTarget(EntryShortSignal, CalculationMode.Ticks, targetTicks);
                 EnterShort(quantity, EntryShortSignal);
             }
@@ -382,13 +403,20 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
+            if (Position.MarketPosition == MarketPosition.Flat)
+            {
+                AppendLog("REJECT", string.Format("id={0} reason=no position for move stop", instruction.MessageId));
+                return;
+            }
+
+            double newStop = RoundToTickSize(instruction.StopPrice.Value);
             if (Position.MarketPosition == MarketPosition.Long)
-                SetStopLoss(EntryLongSignal, CalculationMode.Price, instruction.StopPrice.Value, false);
+                ExitLongStopMarket(0, true, Math.Abs(Position.Quantity), newStop, LongStopSignal, EntryLongSignal);
             else if (Position.MarketPosition == MarketPosition.Short)
-                SetStopLoss(EntryShortSignal, CalculationMode.Price, instruction.StopPrice.Value, false);
+                ExitShortStopMarket(0, true, Math.Abs(Position.Quantity), newStop, ShortStopSignal, EntryShortSignal);
 
             AppendLog("MOVE_STOP", string.Format(CultureInfo.InvariantCulture,
-                "id={0} stop_price={1}", instruction.MessageId, instruction.StopPrice.Value));
+                "id={0} stop_price={1}", instruction.MessageId, newStop));
         }
 
         private void ExitAll(string reason)
