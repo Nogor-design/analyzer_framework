@@ -44,3 +44,37 @@ def test_reversal_decision_engine_outputs_rules_and_tables() -> None:
     assert out.get("tables", {}).get("outcome_by_early_path_class")
     assert out.get("decision_rules")
     assert out.get("strong_runner_definition")
+
+
+def test_reversal_decision_engine_window_and_excursion_fallbacks() -> None:
+    events = [
+        {
+            "dt": "2026-01-01T07:00:00-07:00",
+            "forward_window_minutes": "15",
+            "size_ticks": 20.0,
+            "trade_fav_ticks": 22.0,
+            "trade_adv_ticks": 8.0,
+            "early_fav_2bar_ticks": 10.0,
+            "early_adv_2bar_ticks": 4.0,
+            "did_price_reclaim_signal_midpoint": "true",
+            "did_price_break_signal_extreme_again": "false",
+            "session_bucket": "ny_open",
+            "trend_alignment_label": "countertrend_exhaustion",
+            "vwap_ext_bucket": "extended",
+            "directional_context_label": "trend_exhaustion",
+            "level_interaction_label": "approaching",
+            "candle_bucket": "25-50",
+            "tf_minutes": 1,
+            "direction": -1,
+        }
+        for _ in range(45)
+    ]
+
+    out = compute_reversal_decision_engine(
+        events,
+        cfg={"forward_window_minutes": 30, "min_n": {"overall": 20, "class": 10, "interaction": 10, "rule": 10}},
+    )
+
+    assert out.get("enabled") is True
+    assert out.get("baseline", {}).get("n") == 45
+    assert out.get("diagnostics", {}).get("window_fallback_used") is True

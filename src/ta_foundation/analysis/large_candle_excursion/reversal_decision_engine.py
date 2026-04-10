@@ -81,6 +81,20 @@ def _pct(x: int, n: int) -> float:
     return round(_safe_div(x, n) * 100.0, 1) if n else 0.0
 
 
+def _to_bool(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("true", "t", "1", "yes", "y"):
+            return True
+        if s in ("false", "f", "0", "no", "n", "", "none", "null"):
+            return False
+    return bool(v)
+
+
 def _label_outcome(adv_pct: float, th: Dict[str, float]) -> str:
     if adv_pct < th["failed_reversal_max_adv_pct"]:
         return "failed_reversal"
@@ -106,15 +120,71 @@ def _early_path_class(row: Dict[str, Any], cfg: Dict[str, Any]) -> str:
     return "mixed_start"
 
 
-def _event_rows(events: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _select_window_events(events: List[Dict[str, Any]], desired_win: int) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    filtered: List[Dict[str, Any]] = []
+    parse_fail = 0
+    for ev in events:
+        w = ev.get("window_minutes", ev.get("forward_window_minutes"))
+        try:
+            if int(float(w)) == desired_win:
+                filtered.append(ev)
+        except Exception:
+            parse_fail += 1
+
+    if filtered:
+        return filtered, {
+            "requested_window_minutes": desired_win,
+            "selected_window_minutes": desired_win,
+            "window_fallback_used": False,
+            "window_parse_failures": parse_fail,
+        }
+
+    all_windows: List[int] = []
+    for ev in events:
+        w = ev.get("window_minutes", ev.get("forward_window_minutes"))
+        try:
+            all_windows.append(int(float(w)))
+        except Exception:
+            continue
+    for w in sorted(set(all_windows), reverse=True):
+        cands = []
+        for ev in events:
+            try:
+                if int(float(ev.get("window_minutes", ev.get("forward_window_minutes")))) == w:
+                    cands.append(ev)
+            except Exception:
+                continue
+        if cands:
+            return cands, {
+                "requested_window_minutes": desired_win,
+                "selected_window_minutes": w,
+                "window_fallback_used": True,
+                "window_parse_failures": parse_fail,
+            }
+
+    return events, {
+        "requested_window_minutes": desired_win,
+        "selected_window_minutes": None,
+        "window_fallback_used": True,
+        "window_parse_failures": parse_fail,
+    }
+
+
+def _event_rows(events: List[Dict[str, Any]], cfg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     win = int(cfg.get("forward_window_minutes", 30))
+    filtered_events, window_meta = _select_window_events(events, win)
     ep_cfg = cfg.get("early_path") or {}
     th = cfg.get("outcome_thresholds") or {}
+    diagnostics = {
+        **window_meta,
+        "input_events": len(events),
+        "window_filtered_events": len(filtered_events),
+        "excluded_missing_size_or_excursion": 0,
+        "valid_rows": 0,
+    }
 
-    for ev in events:
-        if int(ev.get("window_minutes") or -1) != win:
-            continue
+    for ev in filtered_events:
         size = _sf(ev.get("size_ticks"))
         fav = _sf(ev.get("early_fav_1bar_ticks"), 0.0)
         fav2 = _sf(ev.get("early_fav_2bar_ticks"), 0.0)
@@ -122,9 +192,10 @@ def _event_rows(events: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[
         adv1 = _sf(ev.get("early_adv_1bar_ticks"), 0.0)
         adv2 = _sf(ev.get("early_adv_2bar_ticks"), 0.0)
         adv3 = _sf(ev.get("early_adv_3bar_ticks"), 0.0)
-        rev_mfe = _sf(ev.get("adv_ticks"))
-        rev_mae = _sf(ev.get("fav_ticks"))
+        rev_mfe = _sf(ev.get("adv_ticks", ev.get("trade_fav_ticks")))
+        rev_mae = _sf(ev.get("fav_ticks", ev.get("trade_adv_ticks")))
         if not size or size <= 0 or rev_mfe is None or rev_mae is None:
+            diagnostics["excluded_missing_size_or_excursion"] = int(diagnostics["excluded_missing_size_or_excursion"]) + 1
             continue
 
         fav1_pct = _safe_div(fav or 0.0, size) * 100.0
@@ -155,8 +226,8 @@ def _event_rows(events: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[
             "adverse_move_1bar_pct": round(adv1_pct, 1),
             "adverse_move_2bar_pct": round(adv2_pct, 1),
             "adverse_move_3bar_pct": round(adv3_pct, 1),
-            "midpoint_reclaimed_within_2bars": bool(ev.get("did_price_reclaim_signal_midpoint")),
-            "signal_extreme_rebreak_within_2bars": bool(ev.get("did_price_break_signal_extreme_again")),
+            "midpoint_reclaimed_within_2bars": _to_bool(ev.get("did_price_reclaim_signal_midpoint")),
+            "signal_extreme_rebreak_within_2bars": _to_bool(ev.get("did_price_break_signal_extreme_again")),
             "first_pullback_timing_bars": ev.get("time_to_first_pullback_bars"),
             "first_pullback_size_ticks": ev.get("first_pullback_size_ticks"),
             "early_path_efficiency": round(_safe_div(fav2_pct, max(adv2_pct, 1.0)), 3),
@@ -167,7 +238,8 @@ def _event_rows(events: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[
         }
         row["early_path_class"] = _early_path_class(row, ep_cfg)
         out.append(row)
-    return out
+    diagnostics["valid_rows"] = len(out)
+    return out, diagnostics
 
 
 def _distribution(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -338,13 +410,23 @@ def compute_reversal_decision_engine(events_sample: List[Dict[str, Any]], cfg: O
     if not events_sample:
         return {"enabled": True, "message": "no events in sample", "n_events": 0}
 
-    rows = _event_rows(events_sample, merged)
+    rows, row_diag = _event_rows(events_sample, merged)
     if not rows:
-        return {"enabled": True, "message": "no valid reversal events", "n_events": 0}
+        return {
+            "enabled": True,
+            "message": "no valid reversal events",
+            "n_events": 0,
+            "diagnostics": row_diag,
+        }
 
     min_overall = int((merged.get("min_n") or {}).get("overall", 80))
     if len(rows) < min_overall:
-        return {"enabled": True, "message": f"insufficient events for stable decision modeling ({len(rows)} < {min_overall})", "n_events": len(rows)}
+        return {
+            "enabled": True,
+            "message": f"insufficient events for stable decision modeling ({len(rows)} < {min_overall})",
+            "n_events": len(rows),
+            "diagnostics": row_diag,
+        }
 
     baseline = _distribution(rows)
     min_class = int((merged.get("min_n") or {}).get("class", 20))
@@ -395,6 +477,7 @@ def compute_reversal_decision_engine(events_sample: List[Dict[str, Any]], cfg: O
         "decision_rules": rules,
         "event_decisions_sample": event_decisions,
         "research_questions": questions,
+        "diagnostics": row_diag,
     }
 
 

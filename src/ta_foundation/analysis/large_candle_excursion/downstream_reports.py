@@ -13,6 +13,10 @@ from ta_foundation.analysis.large_candle_excursion.reversal_decision_engine impo
     compute_reversal_decision_engine,
     DEFAULT_REVERSAL_DECISION_CONFIG,
 )
+from ta_foundation.analysis.large_candle_excursion.elite_reversal_setup_extractor import (
+    compute_elite_reversal_setup_extractor,
+    DEFAULT_ELITE_REVERSAL_SETUP_CONFIG,
+)
 
 
 DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
@@ -101,6 +105,8 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     "reversal_size_analysis": DEFAULT_REVERSAL_SIZE_CONFIG,
     # Reversal decision engine — maps early path + context to operational actions
     "reversal_decision_engine": DEFAULT_REVERSAL_DECISION_CONFIG,
+    # Elite reversal setup extractor — concentrates only the highest-quality reversal slices
+    "elite_reversal_setup_extractor": DEFAULT_ELITE_REVERSAL_SETUP_CONFIG,
 }
 
 DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
@@ -1196,6 +1202,10 @@ def _build_strategy_cards(
     rde = reversal_decision_engine or {}
     rde_rules = rde.get("decision_rules") or []
     rde_base = rde.get("baseline") or {}
+    if not rde_base:
+        trows = ((rde.get("tables") or {}).get("outcome_by_early_path_class") or [])
+        if trows:
+            rde_base = trows[0]
 
     cards: List[Dict[str, Any]] = []
     for rank, rec in enumerate(top_discoveries[:top_n], 1):
@@ -1422,6 +1432,8 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     reversal_size_analysis_result = compute_reversal_size_analysis(events_sample, rsa_cfg)
     decision_cfg = _deep_merge(DEFAULT_REVERSAL_DECISION_CONFIG, cfg.get("reversal_decision_engine") or {})
     reversal_decision_engine_result = compute_reversal_decision_engine(events_sample, decision_cfg)
+    elite_cfg = _deep_merge(DEFAULT_ELITE_REVERSAL_SETUP_CONFIG, cfg.get("elite_reversal_setup_extractor") or {})
+    elite_reversal_setup_result = compute_elite_reversal_setup_extractor(reversal_decision_engine_result, elite_cfg)
 
     # Context-conditioned setups (uses enriched events_sample)
     context_conditioned_setups = _compute_context_conditioned_setups(
@@ -1532,6 +1544,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "context_conditioned_setups": context_conditioned_setups,
         "reversal_size_analysis":     reversal_size_analysis_result,
         "reversal_decision_engine":   reversal_decision_engine_result,
+        "elite_reversal_setup_extractor": elite_reversal_setup_result,
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
@@ -1541,6 +1554,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
             "interaction_passed": interaction_diag.get("n_passed", 0),
             "n_context_conditioned": len(context_conditioned_setups),
             "decision_engine_rules": len(reversal_decision_engine_result.get("decision_rules") or []),
+            "elite_setups": len(elite_reversal_setup_result.get("elite_setups") or []),
         },
     }
 
