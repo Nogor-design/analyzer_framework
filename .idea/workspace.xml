@@ -4,36 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New candle discovery">
-      <change afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket/features.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket_sweep.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/_bucket_utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/reversal_followthrough_quality.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/reversal_size_analysis.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/session_classifier.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/signal_candle_context.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/target_curve.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_context_diagnostics.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_context_families.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_findings_families.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_findings_interpretation.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_reversal_leaders.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_session_context.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_session_large_moves.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_signal_context.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_strategy_cards.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_target_curves.py" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New candle discovery Report added">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/discovery/large_candle_excursion.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/discovery/large_candle_excursion.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/discovery/large_candle_excursion_findings_report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/discovery/large_candle_excursion_findings_report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_enricher.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_enricher.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_stats.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_stats.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/downstream_reports.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/downstream_reports.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/forward_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/forward_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/sweep.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/sweep.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -50,10 +22,11 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="Simulator" />
+        <entry key="$PROJECT_DIR$" value="Discovery" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="UPDATE_TYPE" value="REBASE" />
   </component>
   <component name="GitHubPullRequestSearchHistory">{
   &quot;lastFilter&quot;: {
@@ -76,25 +49,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.test_anchor_interaction_diagnostics.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_orchestrator.executor&quot;: &quot;Run&quot;,
-    &quot;Python.tst.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;Discovery&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;D:/Backup/projects/PythonProject/ta_foundation&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;PyConsoleConfigurable.Python Console&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config.executor": "Debug",
+    "Python.test_anchor_interaction_diagnostics.executor": "Run",
+    "Python.test_orchestrator.executor": "Run",
+    "Python.tst.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "CandleDiscovery",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation",
+    "settings.editor.selected.configurable": "PyConsoleConfigurable.Python Console"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;ChangesTree.GroupingKeys&quot;: [
-      &quot;directory&quot;
+  "keyToStringList": {
+    "ChangesTree.GroupingKeys": [
+      "directory"
     ]
   }
-}</component>
+}]]></component>
   <component name="PyConsoleOptionsProvider">
     <option name="myPythonConsoleState">
       <console-settings module-name="ta_foundation" is-module-sdk="true" working-directory="$PROJECT_DIR$">
@@ -576,7 +549,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775683038287</updated>
     </task>
-    <option name="localTasksCounter" value="47" />
+    <task id="LOCAL-00047" summary="New candle discovery Report added">
+      <option name="closed" value="true" />
+      <created>1775792376028</created>
+      <option name="number" value="00047" />
+      <option name="presentableId" value="LOCAL-00047" />
+      <option name="project" value="LOCAL" />
+      <updated>1775792376028</updated>
+    </task>
+    <option name="localTasksCounter" value="48" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -603,7 +584,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Fixed simulate.py to read tick data correct" />
     <MESSAGE value="Fixed debug report for exit strategies" />
     <MESSAGE value="new debug report for exit strategies" />
     <MESSAGE value="new exit_policy_simulation.py" />
@@ -628,6 +608,7 @@
     <MESSAGE value="Many new strategy dicovery based on raw data entry" />
     <MESSAGE value="Fixed discovery of strategies and added funnel" />
     <MESSAGE value="New candle discovery" />
-    <option name="LAST_COMMIT_MESSAGE" value="New candle discovery" />
+    <MESSAGE value="New candle discovery Report added" />
+    <option name="LAST_COMMIT_MESSAGE" value="New candle discovery Report added" />
   </component>
 </project>
