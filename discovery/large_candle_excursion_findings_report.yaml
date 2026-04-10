@@ -182,6 +182,42 @@ large_candle_excursion_findings:
       low_sample_penalty: 0.12
       plateau_bonus: 0.06
       edge_decay_penalty: 0.10
+  edge_validation_engine:
+    enabled: true
+    candidate_limits:
+      elite_setups: 10
+      decision_rules: 12
+      recursive_branches: 12
+      family_baselines: 8
+    split:
+      method: time_is_oos
+      is_ratio: 0.7
+      multi_period:
+        enabled: true
+        periods: 3
+      rolling:
+        enabled: false
+        train_ratio: 0.6
+        test_ratio: 0.2
+        step_ratio: 0.2
+    minimum_samples:
+      is_min_n: 30
+      oos_min_n: 20
+    classification:
+      stable:
+        runner_drop_pp_max: 8.0
+        fail_increase_pp_max: 6.0
+        min_oos_mfe_mae: 1.05
+        min_oos_runner_vs_baseline_pp: 6.0
+      acceptable:
+        runner_drop_pp_max: 15.0
+        fail_increase_pp_max: 10.0
+        min_oos_runner_vs_baseline_pp: 2.0
+      likely_overfit:
+        runner_drop_pp_min: 20.0
+        fail_increase_pp_min: 12.0
+        runner_to_baseline_distance_pp_max: 3.0
+        mfe_mae_collapse_delta_min: 0.35
 
   ranking:
     primary_metric: composite_score
@@ -267,6 +303,7 @@ sections:
   - id: large_candle_excursion_findings_decision_engine
   - id: large_candle_excursion_elite_reversal_setup_extractor
   - id: large_candle_excursion_recursive_edge_search
+  - id: large_candle_excursion_edge_validation_engine
   - id: large_candle_excursion_strategy_cards
     options:
       top_n: 10

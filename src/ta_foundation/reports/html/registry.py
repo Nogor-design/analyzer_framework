@@ -243,6 +243,9 @@ from ta_foundation.reports.html.sections.large_candle_excursion_elite_reversal_s
 from ta_foundation.reports.html.sections.large_candle_excursion_recursive_edge_search import (
     render_large_candle_excursion_recursive_edge_search,
 )
+from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_engine import (
+    render_large_candle_excursion_edge_validation_engine,
+)
 from ta_foundation.reports.html.sections.large_candle_excursion_signal_context import (
     render_large_candle_excursion_signal_context,
 )
@@ -892,6 +895,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_recursive_edge_search",
         default_title="Large Candle Excursion Findings — Recursive Edge Search",
         render_fn=render_large_candle_excursion_recursive_edge_search,
+    ),
+    "large_candle_excursion_edge_validation_engine": SectionDef(
+        id="large_candle_excursion_edge_validation_engine",
+        default_title="Large Candle Excursion Findings — Edge Validation Engine",
+        render_fn=render_large_candle_excursion_edge_validation_engine,
     ),
     "large_candle_excursion_target_curves": SectionDef(
         id="large_candle_excursion_target_curves",
