@@ -105,6 +105,7 @@ def _render_card(card: Dict[str, Any]) -> str:
     why      = card.get("why_interesting", "")
     promo    = card.get("promotion") or {}
     tradab   = card.get("tradability") or {}
+    de       = card.get("decision_engine") or {}
 
     wr       = metrics.get("win_rate")
     wr_str   = f"{float(wr):.1f}%" if wr is not None else "?"
@@ -230,7 +231,34 @@ def _render_card(card: Dict[str, Any]) -> str:
     html += _robustness_bar(1.0 - edp, "Edge Stability")
     html += '</div>'
 
-    html += '</div></div>'
+    html += '</div>'
+
+    # Decision engine block (staged operational logic)
+    if de:
+        exp = de.get("expected_outcome_distribution") or {}
+        conf = de.get("required_confirmation_conditions") or []
+        inv = de.get("invalidation_conditions") or []
+        down = de.get("downgrade_conditions") or []
+        run_hold = de.get("runner_hold_conditions") or []
+        html += (
+            '<div style="margin-top:10px;padding:10px 12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px">'
+            '<p style="font-size:11px;font-weight:bold;color:#555;margin:0 0 6px">DECISION ENGINE</p>'
+            f'<p style="font-size:12px;color:#333;margin:0 0 8px"><b>Expected distribution after validation:</b> '
+            f'fail {exp.get("failed_reversal", "?")}%, scalp {exp.get("scalp_reversal", "?")}%, '
+            f'expansion {exp.get("expansion_reversal", "?")}%, runner {exp.get("strong_runner", "?")}%</p>'
+            '<div style="display:flex;gap:16px;flex-wrap:wrap">'
+            '<div style="flex:1;min-width:200px"><p style="font-size:11px;font-weight:bold;margin:0 0 4px;color:#555">Required confirmation</p><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:#333">'
+            + "".join(f"<li>{x}</li>" for x in conf)
+            + '</ul></div>'
+            '<div style="flex:1;min-width:200px"><p style="font-size:11px;font-weight:bold;margin:0 0 4px;color:#555">Invalidation / downgrade</p><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:#333">'
+            + "".join(f"<li>{x}</li>" for x in (inv + down))
+            + '</ul></div>'
+            '<div style="flex:1;min-width:200px"><p style="font-size:11px;font-weight:bold;margin:0 0 4px;color:#555">Runner hold conditions</p><ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:#333">'
+            + "".join(f"<li>{x}</li>" for x in run_hold)
+            + '</ul></div></div></div>'
+        )
+
+    html += '</div>'
     return html
 
 

@@ -234,6 +234,9 @@ from ta_foundation.reports.html.sections.large_candle_excursion_findings_interpr
 from ta_foundation.reports.html.sections.large_candle_excursion_findings_families import (
     render_large_candle_excursion_findings_families,
 )
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_decision_engine import (
+    render_large_candle_excursion_findings_decision_engine,
+)
 from ta_foundation.reports.html.sections.large_candle_excursion_signal_context import (
     render_large_candle_excursion_signal_context,
 )
@@ -868,6 +871,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_findings_families",
         default_title="Large Candle Excursion — Top Setup Families",
         render_fn=render_large_candle_excursion_findings_families,
+    ),
+    "large_candle_excursion_findings_decision_engine": SectionDef(
+        id="large_candle_excursion_findings_decision_engine",
+        default_title="Large Candle Excursion Findings — Reversal Decision Engine",
+        render_fn=render_large_candle_excursion_findings_decision_engine,
     ),
     "large_candle_excursion_target_curves": SectionDef(
         id="large_candle_excursion_target_curves",

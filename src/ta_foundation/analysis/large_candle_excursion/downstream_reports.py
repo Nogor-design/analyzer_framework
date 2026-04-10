@@ -9,6 +9,10 @@ from ta_foundation.analysis.large_candle_excursion.reversal_size_analysis import
     compute_reversal_size_analysis,
     DEFAULT_REVERSAL_SIZE_CONFIG,
 )
+from ta_foundation.analysis.large_candle_excursion.reversal_decision_engine import (
+    compute_reversal_decision_engine,
+    DEFAULT_REVERSAL_DECISION_CONFIG,
+)
 
 
 DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
@@ -95,6 +99,8 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     },
     # Reversal size analysis — move-size tiers, large-move probability, runner potential
     "reversal_size_analysis": DEFAULT_REVERSAL_SIZE_CONFIG,
+    # Reversal decision engine — maps early path + context to operational actions
+    "reversal_decision_engine": DEFAULT_REVERSAL_DECISION_CONFIG,
 }
 
 DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
@@ -1170,6 +1176,7 @@ def _build_strategy_cards(
     min_sample_thresholds: Optional[Dict[str, Any]] = None,
     promo_cfg: Optional[Dict[str, Any]] = None,
     all_ranked: Optional[List[Dict[str, Any]]] = None,
+    reversal_decision_engine: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Build enriched strategy card dicts from top discoveries + target curve + session context."""
     curves = (lce.get("target_curves") or {}).get("curves") or {}
@@ -1186,6 +1193,9 @@ def _build_strategy_cards(
     suspicious_wr = float(st.get("suspicious_strength_wr", 70.0))
 
     _all_ranked = all_ranked or top_discoveries
+    rde = reversal_decision_engine or {}
+    rde_rules = rde.get("decision_rules") or []
+    rde_base = rde.get("baseline") or {}
 
     cards: List[Dict[str, Any]] = []
     for rank, rec in enumerate(top_discoveries[:top_n], 1):
@@ -1288,6 +1298,33 @@ def _build_strategy_cards(
             },
             "tradability": tradability_ext,
             "fragility_flags": fragility_flags,
+            "decision_engine": {
+                "expected_outcome_distribution": {
+                    "failed_reversal": rde_base.get("failure_rate"),
+                    "micro_bounce": round(_safe_float(rde_base.get("prob_micro_bounce"), 0.0) * 100.0, 1) if rde_base else None,
+                    "scalp_reversal": rde_base.get("scalp_rate"),
+                    "expansion_reversal": rde_base.get("expansion_rate"),
+                    "strong_runner": rde_base.get("runner_rate"),
+                },
+                "required_confirmation_conditions": [
+                    "midpoint reclaimed within 2 bars",
+                    "adverse_move_2bar_pct remains below configured threshold",
+                    "no signal-extreme rebreak within 2 bars",
+                ],
+                "invalidation_conditions": [
+                    "signal extreme breaks again within 2 bars",
+                    "early path class is weak_start",
+                ],
+                "downgrade_conditions": [
+                    "favorable progress stalls by bar 3",
+                    "early-path efficiency drops below 1.0",
+                ],
+                "runner_hold_conditions": [
+                    "early_path_class is explosive_start",
+                    "runner probability exceeds hold threshold",
+                ],
+                "candidate_rules": rde_rules[:5],
+            },
         })
 
     return cards
@@ -1383,6 +1420,8 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     events_sample = source.get("events_sample") or []
     rsa_cfg = _deep_merge(DEFAULT_REVERSAL_SIZE_CONFIG, cfg.get("reversal_size_analysis") or {})
     reversal_size_analysis_result = compute_reversal_size_analysis(events_sample, rsa_cfg)
+    decision_cfg = _deep_merge(DEFAULT_REVERSAL_DECISION_CONFIG, cfg.get("reversal_decision_engine") or {})
+    reversal_decision_engine_result = compute_reversal_decision_engine(events_sample, decision_cfg)
 
     # Context-conditioned setups (uses enriched events_sample)
     context_conditioned_setups = _compute_context_conditioned_setups(
@@ -1465,6 +1504,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         min_sample_thresholds=sample_thr,
         promo_cfg=promo_cfg,
         all_ranked=all_ranked,
+        reversal_decision_engine=reversal_decision_engine_result,
     )
 
     return {
@@ -1491,6 +1531,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "next_tests_ranked": ranked_test_rows,
         "context_conditioned_setups": context_conditioned_setups,
         "reversal_size_analysis":     reversal_size_analysis_result,
+        "reversal_decision_engine":   reversal_decision_engine_result,
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
@@ -1499,6 +1540,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
             "interaction_attempted": interaction_diag.get("n_attempted", 0),
             "interaction_passed": interaction_diag.get("n_passed", 0),
             "n_context_conditioned": len(context_conditioned_setups),
+            "decision_engine_rules": len(reversal_decision_engine_result.get("decision_rules") or []),
         },
     }
 
