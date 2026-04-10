@@ -6,6 +6,7 @@ from ta_foundation.reports.html.sections.large_candle_excursion_discovery_summar
 from ta_foundation.reports.html.sections.large_candle_excursion_findings_executive_summary import render_large_candle_excursion_findings_executive_summary
 from ta_foundation.reports.html.sections.large_candle_excursion_findings_interactions import render_large_candle_excursion_findings_interactions
 from ta_foundation.reports.html.sections.large_candle_excursion_recursive_edge_search import render_large_candle_excursion_recursive_edge_search
+from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_engine import render_large_candle_excursion_edge_validation_engine
 
 
 def test_findings_section_renders_payload() -> None:
@@ -128,3 +129,43 @@ def test_recursive_edge_search_section_renders_payload() -> None:
     html = render_large_candle_excursion_recursive_edge_search({"packages": {"run1": pkg}, "options": {}})
     assert "Recursive Edge Search" in html
     assert "runner +8pp" in html
+
+
+def test_edge_validation_section_renders_payload() -> None:
+    pkg = AnalysisPackage(
+        run_id="run1",
+        metadata={
+            "derived": {
+                "large_candle_excursion_findings": {
+                    "enabled": True,
+                    "has_source": True,
+                    "edge_validation_engine": {
+                        "enabled": True,
+                        "validation_configuration": {"split": {"method": "time_is_oos"}, "minimum_samples": {"is_min_n": 30, "oos_min_n": 20}, "classification_thresholds": {}, "rolling_validation": {"enabled": False}},
+                        "overall_baseline": {"in_sample": {"n": 80}, "out_of_sample": {"n": 40}},
+                        "validated_candidates": [
+                            {
+                                "candidate_name": "elite:{early_path_class=explosive_start}",
+                                "source_type": "elite_setup",
+                                "in_sample": {"n": 50, "fail_rate": 2.0, "runner_rate": 78.0, "mfe_mae": 2.3},
+                                "out_of_sample": {"n": 24, "fail_rate": 4.0, "runner_rate": 71.0, "mfe_mae": 2.0},
+                                "deltas": {"runner_rate_delta_pp": -7.0, "fail_rate_delta_pp": 2.0},
+                                "stability_score": 0.81,
+                                "validation_label": "stable_edge",
+                            }
+                        ],
+                        "stable_candidates": [],
+                        "degrading_candidates": [],
+                        "likely_overfit_candidates": [],
+                        "validation_leaderboard": [],
+                        "research_conclusions": {"survived": [], "degraded": [], "likely_overfit": [], "paper_test_next": [], "discard": []},
+                        "strategy_handoff": [],
+                        "validation_questions": {},
+                    },
+                }
+            }
+        },
+    )
+    html = render_large_candle_excursion_edge_validation_engine({"packages": {"run1": pkg}, "options": {}})
+    assert "Edge Validation Engine" in html
+    assert "stable_edge" in html

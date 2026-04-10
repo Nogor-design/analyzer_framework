@@ -21,6 +21,10 @@ from ta_foundation.analysis.large_candle_excursion.recursive_edge_search import 
     compute_recursive_edge_search,
     DEFAULT_RECURSIVE_EDGE_SEARCH_CONFIG,
 )
+from ta_foundation.analysis.large_candle_excursion.edge_validation_engine import (
+    compute_edge_validation_engine,
+    DEFAULT_EDGE_VALIDATION_CONFIG,
+)
 
 
 DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
@@ -113,6 +117,8 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     "elite_reversal_setup_extractor": DEFAULT_ELITE_REVERSAL_SETUP_CONFIG,
     # Recursive edge search engine — controlled branch-and-bound refinement on reversal setups
     "recursive_edge_search": DEFAULT_RECURSIVE_EDGE_SEARCH_CONFIG,
+    # Edge validation engine — IS/OOS robustness checks on elite/decision/recursive edges
+    "edge_validation_engine": DEFAULT_EDGE_VALIDATION_CONFIG,
 }
 
 DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
@@ -1521,6 +1527,18 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         events_sample=events_sample,
         cfg=recursive_cfg,
     )
+    validation_cfg = _deep_merge(DEFAULT_EDGE_VALIDATION_CONFIG, cfg.get("edge_validation_engine") or {})
+    edge_validation_result = compute_edge_validation_engine(
+        findings_payload={
+            "config": cfg,
+            "setup_families": families,
+            "reversal_decision_engine": reversal_decision_engine_result,
+            "elite_reversal_setup_extractor": elite_reversal_setup_result,
+            "recursive_edge_search": recursive_edge_search_result,
+        },
+        events_sample=events_sample,
+        cfg=validation_cfg,
+    )
 
     split_cfg = cfg.get("time_split") or {}
     split_rows = []
@@ -1564,6 +1582,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "reversal_decision_engine":   reversal_decision_engine_result,
         "elite_reversal_setup_extractor": elite_reversal_setup_result,
         "recursive_edge_search": recursive_edge_search_result,
+        "edge_validation_engine": edge_validation_result,
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
@@ -1575,6 +1594,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
             "decision_engine_rules": len(reversal_decision_engine_result.get("decision_rules") or []),
             "elite_setups": len(elite_reversal_setup_result.get("elite_setups") or []),
             "recursive_promoted": len(recursive_edge_search_result.get("best_promoted_branches") or []),
+            "edge_validated_candidates": len(edge_validation_result.get("validated_candidates") or []),
         },
     }
 
