@@ -285,13 +285,28 @@ def _collect_seed_filters(findings: Dict[str, Any], cfg: Dict[str, Any]) -> List
                 seeds.append({"seed_type": "elite_setup", "filters": cond, "label": f"elite_setup:{cond}"})
     if ss.get("top_families", True):
         for f in (findings.get("setup_families") or [])[:8]:
-            key = f.get("family_key") or {}
-            cond = {
-                "trade_mode": key.get("trade_mode"),
-                "direction": key.get("direction"),
-                "tf_minutes": key.get("tf_minutes"),
-                "candle_bucket": key.get("candle_bucket"),
-            }
+            key = f.get("family_key")
+            if isinstance(key, dict):
+                cond = {
+                    "trade_mode": key.get("trade_mode"),
+                    "direction": key.get("direction"),
+                    "tf_minutes": key.get("tf_minutes"),
+                    "candle_bucket": key.get("candle_bucket"),
+                }
+            elif isinstance(key, (list, tuple)) and len(key) >= 4:
+                cond = {
+                    "trade_mode": key[0],
+                    "direction": key[1],
+                    "tf_minutes": key[2],
+                    "candle_bucket": key[3],
+                }
+            else:
+                cond = {
+                    "trade_mode": f.get("trade_mode"),
+                    "direction": f.get("direction"),
+                    "tf_minutes": f.get("tf_minutes"),
+                    "candle_bucket": f.get("candle_bucket"),
+                }
             cond = {k: v for k, v in cond.items() if v is not None}
             if cond:
                 seeds.append({"seed_type": "top_family", "filters": cond, "label": f"top_family:{cond}"})
