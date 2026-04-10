@@ -6,13 +6,12 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
 using System.Text;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
 using NinjaTrader.NinjaScript.Strategies;
+using System.Web.Script.Serialization;
 #endregion
 
 namespace NinjaTrader.NinjaScript.Strategies
@@ -43,64 +42,64 @@ namespace NinjaTrader.NinjaScript.Strategies
         Recovery = 5
     }
 
-    [DataContract]
+   
     public class BridgeInstruction
     {
-        [DataMember(Name = "message_id")] public string MessageId { get; set; }
-        [DataMember(Name = "timestamp")] public string Timestamp { get; set; }
-        [DataMember(Name = "instrument")] public string Instrument { get; set; }
-        [DataMember(Name = "timeframe")] public string Timeframe { get; set; }
-        [DataMember(Name = "action")] public string Action { get; set; }
-        [DataMember(Name = "side")] public string Side { get; set; }
-        [DataMember(Name = "template_name")] public string TemplateName { get; set; }
-        [DataMember(Name = "confidence")] public double Confidence { get; set; }
-        [DataMember(Name = "entry_mode")] public string EntryMode { get; set; }
-        [DataMember(Name = "quantity")] public int Quantity { get; set; }
-        [DataMember(Name = "stop_mode")] public string StopMode { get; set; }
-        [DataMember(Name = "stop_ticks")] public int StopTicks { get; set; }
-        [DataMember(Name = "stop_price")] public double? StopPrice { get; set; }
-        [DataMember(Name = "target_mode")] public string TargetMode { get; set; }
-        [DataMember(Name = "target_ticks")] public int? TargetTicks { get; set; }
-        [DataMember(Name = "partial_target_ticks")] public int? PartialTargetTicks { get; set; }
-        [DataMember(Name = "runner_mode")] public string RunnerMode { get; set; }
-        [DataMember(Name = "max_hold_bars")] public int? MaxHoldBars { get; set; }
-        [DataMember(Name = "thesis_id")] public string ThesisId { get; set; }
-        [DataMember(Name = "notes")] public string Notes { get; set; }
-        [DataMember(Name = "position_id")] public string PositionId { get; set; }
-        [DataMember(Name = "expected_position_state")] public string ExpectedPositionState { get; set; }
-        [DataMember(Name = "signal_expiry_seconds")] public int? SignalExpirySeconds { get; set; }
+		public string MessageId { get; set; }
+		public string Timestamp { get; set; }
+		public string Instrument { get; set; }
+		public string Timeframe { get; set; }
+		public string Action { get; set; }
+		public string Side { get; set; }
+		public string TemplateName { get; set; }
+		public double Confidence { get; set; }
+		public string EntryMode { get; set; }
+		public int Quantity { get; set; }
+		public string StopMode { get; set; }
+		public int StopTicks { get; set; }
+		public double? StopPrice { get; set; }
+		public string TargetMode { get; set; }
+		public int? TargetTicks { get; set; }
+		public int? PartialTargetTicks { get; set; }
+		public string RunnerMode { get; set; }
+		public int? MaxHoldBars { get; set; }
+		public string ThesisId { get; set; }
+		public string Notes { get; set; }
+		public string PositionId { get; set; }
+		public string ExpectedPositionState { get; set; }
+		public int? SignalExpirySeconds { get; set; }
     }
 
-    [DataContract]
+   
     public class StrategyTemplate
     {
-        [DataMember(Name = "template_name")] public string TemplateName { get; set; }
-        [DataMember(Name = "allow_entry")] public bool AllowEntry { get; set; }
-        [DataMember(Name = "stop_mode")] public string StopMode { get; set; }
-        [DataMember(Name = "hard_stop_ticks_cap")] public int HardStopTicksCap { get; set; }
-        [DataMember(Name = "initial_target_mode")] public string InitialTargetMode { get; set; }
-        [DataMember(Name = "max_hold_bars")] public int MaxHoldBars { get; set; }
-        [DataMember(Name = "max_adds")] public int MaxAdds { get; set; }
-        [DataMember(Name = "allow_scale_in")] public bool AllowScaleIn { get; set; }
-        [DataMember(Name = "flatten_on_session_end")] public bool FlattenOnSessionEnd { get; set; }
+		public string TemplateName { get; set; }
+		public bool AllowEntry { get; set; }
+		public string StopMode { get; set; }
+		public int HardStopTicksCap { get; set; }
+		public string InitialTargetMode { get; set; }
+		public int MaxHoldBars { get; set; }
+		public int MaxAdds { get; set; }
+		public bool AllowScaleIn { get; set; }
+		public bool FlattenOnSessionEnd { get; set; }
     }
 
-    [DataContract]
+   
     public class PersistentShellState
     {
-        [DataMember(Name = "active_template")] public string ActiveTemplate { get; set; }
-        [DataMember(Name = "last_instruction_id")] public string LastInstructionId { get; set; }
-        [DataMember(Name = "signal_intake_enabled")] public bool SignalIntakeEnabled { get; set; }
-        [DataMember(Name = "heartbeat_faulted")] public bool HeartbeatFaulted { get; set; }
-        [DataMember(Name = "daily_lockout")] public bool DailyLockout { get; set; }
-        [DataMember(Name = "current_trading_day")] public string CurrentTradingDay { get; set; }
-        [DataMember(Name = "last_bridge_message_utc")] public string LastBridgeMessageUtc { get; set; }
-        [DataMember(Name = "shell_mode")] public string ShellMode { get; set; }
-        [DataMember(Name = "position_id")] public string PositionId { get; set; }
-        [DataMember(Name = "pending_stop_price")] public double PendingStopPrice { get; set; }
-        [DataMember(Name = "pending_target_ticks")] public int PendingTargetTicks { get; set; }
-        [DataMember(Name = "processed_ids")] public List<string> ProcessedIds { get; set; }
-        [DataMember(Name = "last_health_snapshot_utc")] public string LastHealthSnapshotUtc { get; set; }
+		public string ActiveTemplate { get; set; }
+		public string LastInstructionId { get; set; }
+		public bool SignalIntakeEnabled { get; set; }
+		public bool HeartbeatFaulted { get; set; }
+		public bool DailyLockout { get; set; }
+		public string CurrentTradingDay { get; set; }
+		public string LastBridgeMessageUtc { get; set; }
+		public string ShellMode { get; set; }
+		public string PositionId { get; set; }
+		public double PendingStopPrice { get; set; }
+		public int PendingTargetTicks { get; set; }
+		public List<string> ProcessedIds { get; set; }
+		public string LastHealthSnapshotUtc { get; set; }
     }
 
     public class TaFoundationExecutionShell : Strategy
@@ -570,8 +569,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 shellMode = ShellMode.InPosition;
                 entryBarNumber = CurrentBar;
                 pendingStopPrice = desiredSide == MarketPosition.Long
-                    ? RoundToTickSize(Close[0] - (stopTicks * TickSize))
-                    : RoundToTickSize(Close[0] + (stopTicks * TickSize));
+                    ? RoundPriceToTick(Close[0] - (stopTicks * TickSize))
+                    : RoundPriceToTick(Close[0] + (stopTicks * TickSize));
                 SavePersistentState();
                 WriteOutboxEvent("ACCEPTED", string.Format(CultureInfo.InvariantCulture,
                     "id={0};action={1};mode=DRYRUN", instruction.MessageId, instruction.Action));
@@ -582,12 +581,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (desiredSide == MarketPosition.Long)
             {
-                pendingStopPrice = RoundToTickSize(Close[0] - (stopTicks * TickSize));
+                pendingStopPrice = RoundPriceToTick(Close[0] - (stopTicks * TickSize));
                 EnterLong(quantity, EntryLongSignal);
             }
             else
             {
-                pendingStopPrice = RoundToTickSize(Close[0] + (stopTicks * TickSize));
+                pendingStopPrice = RoundPriceToTick(Close[0] + (stopTicks * TickSize));
                 EnterShort(quantity, EntryShortSignal);
             }
 
@@ -652,7 +651,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            double newStop = RoundToTickSize(instruction.StopPrice.Value);
+            double newStop = RoundPriceToTick(instruction.StopPrice.Value);
             if (!IsValidStopForCurrentPosition(newStop))
             {
                 AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
@@ -882,21 +881,16 @@ namespace NinjaTrader.NinjaScript.Strategies
         }
 
         private static T DeserializeJson<T>(string json)
-        {
-            DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(T));
-            using (MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
-                return (T)serializer.ReadObject(stream);
-        }
-
-        private static string SerializeJson<T>(T value)
-        {
-            DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(T));
-            using (MemoryStream stream = new MemoryStream())
-            {
-                serializer.WriteObject(stream, value);
-                return Encoding.UTF8.GetString(stream.ToArray());
-            }
-        }
+		{
+		    JavaScriptSerializer serializer = new JavaScriptSerializer();
+		    return serializer.Deserialize<T>(json);
+		}
+		
+		private static string SerializeJson<T>(T value)
+		{
+		    JavaScriptSerializer serializer = new JavaScriptSerializer();
+		    return serializer.Serialize(value);
+		}
 
         private static void EnsureDirectory(string path)
         {
@@ -906,6 +900,14 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Directory.CreateDirectory(path);
         }
 
+		private double RoundPriceToTick(double price)
+		{
+		    if (TickSize <= 0)
+		        return price;
+		
+		    return Math.Round(price / TickSize, MidpointRounding.AwayFromZero) * TickSize;
+		}
+		
         private bool TryMoveFile(string sourcePath, string destinationDirectory, out string destinationPath)
         {
             destinationPath = string.Empty;
@@ -992,8 +994,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 int fallbackTicks = Math.Min(12, MaxStopTicksCap);
                 pendingStopPrice = Position.MarketPosition == MarketPosition.Long
-                    ? RoundToTickSize(fillPrice - fallbackTicks * TickSize)
-                    : RoundToTickSize(fillPrice + fallbackTicks * TickSize);
+                    ? RoundPriceToTick(fillPrice - fallbackTicks * TickSize)
+                    : RoundPriceToTick(fillPrice + fallbackTicks * TickSize);
                 AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
                     "fallback protective stop applied at {0}", pendingStopPrice));
             }
@@ -1013,9 +1015,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             double minGap = TickSize;
             if (Position.MarketPosition == MarketPosition.Long)
-                return stopPrice <= RoundToTickSize(Close[0] - minGap);
+                return stopPrice <= RoundPriceToTick(Close[0] - minGap);
             if (Position.MarketPosition == MarketPosition.Short)
-                return stopPrice >= RoundToTickSize(Close[0] + minGap);
+                return stopPrice >= RoundPriceToTick(Close[0] + minGap);
             return false;
         }
 
@@ -1112,8 +1114,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (!DryRunMode && RecoveryFallbackStopTicks > 0)
             {
                 pendingStopPrice = Position.MarketPosition == MarketPosition.Long
-                    ? RoundToTickSize(Position.AveragePrice - (RecoveryFallbackStopTicks * TickSize))
-                    : RoundToTickSize(Position.AveragePrice + (RecoveryFallbackStopTicks * TickSize));
+                    ? RoundPriceToTick(Position.AveragePrice - (RecoveryFallbackStopTicks * TickSize))
+                    : RoundPriceToTick(Position.AveragePrice + (RecoveryFallbackStopTicks * TickSize));
                 AppendLog("RECOVERY_WARN", string.Format(CultureInfo.InvariantCulture,
                     "persisted stop missing; applying fallback stop ticks={0} stop={1}", RecoveryFallbackStopTicks, pendingStopPrice));
                 EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);

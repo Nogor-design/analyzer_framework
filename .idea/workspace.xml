@@ -4,9 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New candle discovery Report added">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New Strategy shell added">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -565,7 +565,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775823255276</updated>
     </task>
-    <option name="localTasksCounter" value="49" />
+    <task id="LOCAL-00049" summary="New Strategy shell added">
+      <option name="closed" value="true" />
+      <created>1775842883118</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1775842883118</updated>
+    </task>
+    <option name="localTasksCounter" value="50" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -592,7 +600,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Fixed debug report for exit strategies" />
     <MESSAGE value="new debug report for exit strategies" />
     <MESSAGE value="new exit_policy_simulation.py" />
     <MESSAGE value="exit_policy_simulation_debug improved" />
@@ -617,6 +624,7 @@
     <MESSAGE value="Fixed discovery of strategies and added funnel" />
     <MESSAGE value="New candle discovery" />
     <MESSAGE value="New candle discovery Report added" />
-    <option name="LAST_COMMIT_MESSAGE" value="New candle discovery Report added" />
+    <MESSAGE value="New Strategy shell added" />
+    <option name="LAST_COMMIT_MESSAGE" value="New Strategy shell added" />
   </component>
 </project>
