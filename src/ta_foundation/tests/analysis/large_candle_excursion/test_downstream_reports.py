@@ -176,6 +176,7 @@ def test_findings_populates_summary_rank_fragility_and_next_tests() -> None:
     assert findings["top_discoveries"][0]["composite_score"] >= findings["top_discoveries"][-1]["composite_score"]
     assert any(w["type"] == "low_sample" for w in findings["fragility_warnings"])
     assert findings["next_tests"]
+    assert "recursive_edge_search" in findings
 
 
 def test_findings_deduplicates_and_ranks_next_tests() -> None:
@@ -215,6 +216,9 @@ def test_findings_neighbor_time_split_and_tradability_present() -> None:
     top = findings["top_discoveries"][0]
     assert "tradability" in top
     assert top["tradability"]["avg_favorable_excursion"] is not None
+    rec = findings.get("recursive_edge_search") or {}
+    assert rec.get("enabled") is True
+    assert rec.get("search_configuration") or rec.get("message")
 
 
 def test_discovery_stages_and_diagnostics() -> None:
