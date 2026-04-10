@@ -75,11 +75,14 @@
 3. Reject duplicate `message_id`.
 4. Reject if `timestamp` missing/invalid/non-timezone-aware.
 5. Reject stale messages older than `StaleSignalSeconds`.
-6. Reject instrument mismatch if strict instrument matching enabled.
-7. Reject unsupported action.
-8. Reject entry quantity above `MaxPositionSize`.
-9. Reject stop ticks above `MaxStopTicksCap`.
-10. Reject new entries while daily loss lockout is active.
+6. Reject messages with timestamps too far in the future (clock-skew guard).
+7. Reject instrument mismatch if strict instrument matching enabled.
+8. Reject unsupported action.
+9. Reject entry quantity above `MaxPositionSize`.
+10. Reject stop ticks above `MaxStopTicksCap`.
+11. Reject new entries while daily loss lockout is active.
+12. Reject entry without `template_name`.
+13. Reject `MOVE_STOP` without a positive `stop_price`.
 
 ## Rejection reasons emitted in log
 - `payload parse failed`
@@ -89,11 +92,25 @@
 - `stale signal`
 - `instrument mismatch`
 - `unsupported action`
+- `future timestamp`
 - `quantity above max position size`
 - `stop ticks above configured cap`
 - `daily loss lockout active`
 - `invalid stop price`
 - `one_trade_at_a_time`
+
+## Optional NT8 outbox events (v1.1 hardening)
+When `EnableOutboxEvents=true`, the shell writes status files to `OutboxDirectory`:
+- `ACCEPTED`
+- `REJECTED`
+- `ENTRY_SUBMITTED`
+- `PARTIAL_SUBMITTED`
+- `FILLED`
+- `STOP_ATTACHED`
+- `STOP_MOVED`
+- `EXIT_SUBMITTED`
+- `FLATTENED`
+- `HEARTBEAT_LOST`
 
 ## Message lifecycle
 1. Python writes JSON to inbox.
