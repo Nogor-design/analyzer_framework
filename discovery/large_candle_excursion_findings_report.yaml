@@ -218,6 +218,21 @@ large_candle_excursion_findings:
         fail_increase_pp_min: 12.0
         runner_to_baseline_distance_pp_max: 3.0
         mfe_mae_collapse_delta_min: 0.35
+  strategy_construction_engine:
+    enabled: true
+    accepted_validation_labels: [stable_edge, acceptable_degradation, possibly_monitor_further]
+    deprioritized_validation_labels: [fragile_edge, likely_overfit, insufficient_oos_data]
+    risk_constraints:
+      instrument: NQ
+      max_stop_ticks: 100
+      base_unit: 1
+      max_add_ons: 1
+      max_total_units: 2
+    ranking_thresholds:
+      paper_test_ready_min: 0.72
+      code_next_min: 0.80
+      watchlist_min: 0.58
+    max_strategies: 8
 
   ranking:
     primary_metric: composite_score
@@ -304,6 +319,7 @@ sections:
   - id: large_candle_excursion_elite_reversal_setup_extractor
   - id: large_candle_excursion_recursive_edge_search
   - id: large_candle_excursion_edge_validation_engine
+  - id: large_candle_excursion_strategy_construction_engine
   - id: large_candle_excursion_strategy_cards
     options:
       top_n: 10

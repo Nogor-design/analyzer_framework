@@ -7,6 +7,7 @@ from ta_foundation.reports.html.sections.large_candle_excursion_findings_executi
 from ta_foundation.reports.html.sections.large_candle_excursion_findings_interactions import render_large_candle_excursion_findings_interactions
 from ta_foundation.reports.html.sections.large_candle_excursion_recursive_edge_search import render_large_candle_excursion_recursive_edge_search
 from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_engine import render_large_candle_excursion_edge_validation_engine
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_construction_engine import render_large_candle_excursion_strategy_construction_engine
 
 
 def test_findings_section_renders_payload() -> None:
@@ -169,3 +170,60 @@ def test_edge_validation_section_renders_payload() -> None:
     html = render_large_candle_excursion_edge_validation_engine({"packages": {"run1": pkg}, "options": {}})
     assert "Edge Validation Engine" in html
     assert "stable_edge" in html
+
+
+def test_strategy_construction_section_renders_payload() -> None:
+    pkg = AnalysisPackage(
+        run_id="run1",
+        metadata={
+            "derived": {
+                "large_candle_excursion_findings": {
+                    "enabled": True,
+                    "has_source": True,
+                    "strategy_construction_engine": {
+                        "enabled": True,
+                        "input_candidate_summary": {
+                            "considered": [{"candidate_name": "elite:{early_path_class=explosive_start}", "source_type": "elite_setup", "validation_label": "stable_edge", "oos_n": 24}],
+                            "rejected_before_construction": []
+                        },
+                        "constructed_strategies": [
+                            {
+                                "strategy_name": "Explosive Start Reversal Runner [elite_setup]",
+                                "source_candidate": "elite:{early_path_class=explosive_start}",
+                                "archetype": "runner_reversal",
+                                "deployment_score": 0.84,
+                                "complexity_level": "medium",
+                                "paper_test_priority": "high",
+                                "automation_readiness": "medium",
+                                "thesis": "Runner-first reversal profile.",
+                                "eligible_market_context": {"session": "asia"},
+                                "entry_trigger": {"rules": ["rule"]},
+                                "initial_invalidation": ["invalidation"],
+                                "initial_stop_logic": {"primary": {"distance_ticks": 80}},
+                                "early_management_logic": {"hold_expansion": ["yes"]},
+                                "profit_taking_logic": {"runner_target": "100%-150%"},
+                                "session_rules": {"mode": "session_conditioned"},
+                                "risk_position_logic": {"base_entry_size": 1},
+                                "failure_mode_warnings": ["warning"],
+                                "ninjatrader_translation_notes": {"automation_mode": "semi_automated_first"},
+                            }
+                        ],
+                        "rejected_construction_candidates": [],
+                        "deployment_rankings": {"code_next": ["Explosive Start Reversal Runner [elite_setup]"], "paper_test_ready": [], "monitor_only": [], "discard": []},
+                        "research_questions": {"1_which_edges_become_scalp": []},
+                        "summary": {
+                            "best_strategy_candidates": ["Explosive Start Reversal Runner [elite_setup]"],
+                            "best_scalp_candidate": None,
+                            "best_expansion_candidate": None,
+                            "best_runner_candidate": "Explosive Start Reversal Runner [elite_setup]",
+                            "best_hybrid_candidate": None,
+                            "paper_test_first": ["Explosive Start Reversal Runner [elite_setup]"]
+                        },
+                    },
+                }
+            }
+        },
+    )
+    html = render_large_candle_excursion_strategy_construction_engine({"packages": {"run1": pkg}, "options": {}})
+    assert "Strategy Construction Engine" in html
+    assert "Explosive Start Reversal Runner [elite_setup]" in html

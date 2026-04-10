@@ -177,6 +177,7 @@ def test_findings_populates_summary_rank_fragility_and_next_tests() -> None:
     assert any(w["type"] == "low_sample" for w in findings["fragility_warnings"])
     assert findings["next_tests"]
     assert "recursive_edge_search" in findings
+    assert "strategy_construction_engine" in findings
 
 
 def test_findings_deduplicates_and_ranks_next_tests() -> None:
@@ -219,6 +220,9 @@ def test_findings_neighbor_time_split_and_tradability_present() -> None:
     rec = findings.get("recursive_edge_search") or {}
     assert rec.get("enabled") is True
     assert rec.get("search_configuration") or rec.get("message")
+    sce = findings.get("strategy_construction_engine") or {}
+    assert sce.get("enabled") is True
+    assert "constructed_strategies" in sce
 
 
 def test_discovery_stages_and_diagnostics() -> None:
