@@ -126,6 +126,25 @@ large_candle_excursion_findings:
       weak_min_adv_2bar_pct: 35.0
       midpoint_reclaim_bars: 2
       rebreak_bars: 2
+  elite_reversal_setup_extractor:
+    enabled: true
+    top_n: 5
+    min_n: 25
+    min_runner_lift_pp: 4.0
+    max_fail_rate: 35.0
+    min_mfe_mae: 1.25
+    max_conditions: 4
+    dedupe:
+      enabled: true
+      priority_features: [session, early_path_class, recommended_action]
+    score_weights:
+      runner_weight: 0.38
+      expansion_weight: 0.22
+      failure_penalty: 0.30
+      low_sample_penalty: 0.18
+      mfe_mae_weight: 0.18
+      stability_weight: 0.14
+      simplicity_bonus: 0.08
 
   ranking:
     primary_metric: composite_score
@@ -209,6 +228,7 @@ sections:
     options:
       top_n: 20
   - id: large_candle_excursion_findings_decision_engine
+  - id: large_candle_excursion_elite_reversal_setup_extractor
   - id: large_candle_excursion_strategy_cards
     options:
       top_n: 10
