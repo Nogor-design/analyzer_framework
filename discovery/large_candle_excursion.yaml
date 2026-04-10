@@ -87,6 +87,63 @@ large_candle_excursion:
     minutes: [5, 10]
 #    minutes: [5, 10, 15, 30]
 
+  # ---- Session tagging ----
+  # Tag each qualifying candle with the trading session it occurred in.
+  # Enabled by default; disable only to reduce metadata size.
+  session_analysis:
+    enabled: true
+    # Custom bucket definitions are not yet supported at runtime.
+    # The built-in sessions (london, london_ny_overlap, ny_pre, ny_open,
+    # mid_ny, power_hour, after_hours, asia) are used when enabled: true.
+
+  # ---- Target curve analysis ----
+  # Requires trade_analysis.enabled: true.
+  # Builds win-rate curves across the target ladder to classify setup behaviour
+  # (scalp / runner / mixed) and identify the stable target range.
+  target_curves:
+    enabled: true
+    plateau_tolerance:          3.0    # pp within peak WR = plateau territory
+    plateau_min_width:          3      # consecutive steps required for "runner" classification
+    scalp_max_target_pct:       50.0   # peak target% at/below which "scalp" applies
+    scalp_min_edge_decay:       0.20   # minimum WR decay fraction for "scalp" classification
+    edge_decay_full_penalty_pp: 50.0   # pp decay that gives maximum edge_decay_penalty (1.0)
+
+  # ---- Signal candle context intelligence ----
+  directional_context:
+    enabled: true
+    streak_lookback: 3
+
+  ma_vwap_context:
+    enabled: true
+    ma_periods: [100, 200]
+    include_vwap: true
+    at_level_atr_threshold: 0.05
+    extension_buckets:
+      - {label: near,     max: 0.25}
+      - {label: moderate, min: 0.25, max: 0.75}
+      - {label: extended, min: 0.75}
+
+  key_level_context:
+    enabled: true
+    level_types: [prior_day_high, prior_day_low, prior_day_close,
+                  session_high, session_low, overnight_high, overnight_low,
+                  vwap, ma100, ma200]
+    rth_start_hour: 7
+    rth_start_minute: 30
+    rth_end_hour: 16
+    interaction_atr_buckets:
+      - {label: at_level,    max: 0.10}
+      - {label: approaching, min: 0.10, max: 0.30}
+      - {label: nearby,      min: 0.30, max: 0.60}
+      - {label: departing,   min: 0.60}
+
+  trend_state_context:
+    enabled: true
+    slope_lookback: 5
+    ma_periods: [100, 200]
+    slope_strong_threshold_atr: 0.04
+    slope_flat_threshold_atr: 0.01
+
   # ---- Tick data analysis ----
   # Requires --no-tick-data NOT set and tick data files present in input folder.
   tick_analysis:

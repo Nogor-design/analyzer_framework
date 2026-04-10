@@ -29,9 +29,23 @@ Excursion metrics (per event × window)
   time_to_max_adv_min minutes from signal_close_time to the bar that produced max adverse excursion
   n_bars_in_window    number of 1m bars found in the forward window
   forward_end_dt      actual end of forward window (close_time + window_minutes)
+
+Early-path features (added when bars_1m has a close column)
+------------------------------------------------------------
+These capture post-entry behavior in the first 1, 2, and 3 minutes:
+
+  early_fav_Nbar_ticks  max favorable excursion in first N 1m bars (reversal direction for fade)
+  early_adv_Nbar_ticks  max adverse excursion in first N 1m bars (continuation = heat for fade)
+
+  did_price_reclaim_signal_midpoint   bool: reversal reached (high+low)/2 of signal candle
+  did_price_break_signal_extreme_again bool: price went back beyond signal candle's leading extreme
+                                        (signal high for bull, signal low for bear) — reversal failure flag
+
+  time_to_first_pullback_bars  bars until the reversal direction first pulled back >= min_pullback_ticks
+  first_pullback_size_ticks    size of that first pullback in ticks (None if no pullback detected)
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -93,10 +107,11 @@ def compute_forward_excursion(
 
     # Sort and prepare 1m bars
     bars = bars_1m.sort_values("dt").reset_index(drop=True)
-    bar_ns   = _dt_to_utc_ns(bars["dt"])          # nanosecond lookup array
-    bar_high = bars["high"].values.astype(np.float64)
-    bar_low  = bars["low"].values.astype(np.float64)
-    bar_dt   = bars["dt"].values                   # for time_to_max computation
+    bar_ns    = _dt_to_utc_ns(bars["dt"])          # nanosecond lookup array
+    bar_high  = bars["high"].values.astype(np.float64)
+    bar_low   = bars["low"].values.astype(np.float64)
+    bar_close = bars["close"].values.astype(np.float64) if "close" in bars.columns else None
+    bar_dt    = bars["dt"].values                   # for time_to_max computation
 
     tf_delta_ns = int(pd.Timedelta(minutes=tf_minutes).value)
 
@@ -195,9 +210,122 @@ def compute_forward_excursion(
                 "time_to_max_fav_min":    time_to_max_fav,
                 "time_to_max_adv_min":    time_to_max_adv,
             })
+
+            # Early-path features (lightweight — just first N bars of the same arrays)
+            w_close = bar_close[start_idx:end_idx] if bar_close is not None else None
+            _add_early_path_features(rec, direction, ev_close, ev_dict, w_high, w_low, w_close, tick_size)
+
             records.append(rec)
 
     if not records:
         return pd.DataFrame()
 
     return pd.DataFrame(records).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Early-path feature extraction
+# ---------------------------------------------------------------------------
+
+_EARLY_BAR_COUNTS = (1, 2, 3)
+_MIN_PULLBACK_TICKS = 2   # bars where reversal retraced >= this many ticks
+
+
+def _add_early_path_features(
+    rec: Dict,
+    direction: int,
+    ev_close: float,
+    ev_dict: Dict,
+    w_high: np.ndarray,
+    w_low: np.ndarray,
+    w_close: Optional[np.ndarray],
+    tick_size: float,
+) -> None:
+    """
+    Mutate rec in-place with early-path features from the first N 1m bars of
+    the forward window.  All features are lightweight array slices.
+
+    Parameters
+    ----------
+    direction : 1 (bull signal) or -1 (bear signal).  Determines which side is
+                favorable for a reversal (fade) trade.
+    ev_close  : signal candle's close price (= entry reference price).
+    ev_dict   : event row dict — used to access signal candle high/low.
+    w_high    : forward-window 1m high array.
+    w_low     : forward-window 1m low array.
+    w_close   : forward-window 1m close array (may be None).
+    tick_size : instrument tick size.
+    """
+    n_total  = len(w_high)
+    sig_high = float(ev_dict.get("high", ev_close))
+    sig_low  = float(ev_dict.get("low",  ev_close))
+    sig_mid  = (sig_high + sig_low) * 0.5
+
+    # ---- 1-bar / 2-bar / 3-bar early excursions ----
+    for n in _EARLY_BAR_COUNTS:
+        if n_total >= n:
+            h_n = float(np.nanmax(w_high[:n]))
+            l_n = float(np.nanmin(w_low[:n]))
+            up  = max(h_n - ev_close, 0.0)
+            dn  = max(ev_close - l_n, 0.0)
+            # For reversal trade: favorable = against signal direction
+            if direction == 1:        # bull signal → reversal short → fav = down
+                fav_n = dn
+                adv_n = up
+            else:                      # bear signal → reversal long → fav = up
+                fav_n = up
+                adv_n = dn
+            rec[f"early_fav_{n}bar_ticks"] = round(fav_n / tick_size, 2)
+            rec[f"early_adv_{n}bar_ticks"] = round(adv_n / tick_size, 2)
+        else:
+            rec[f"early_fav_{n}bar_ticks"] = None
+            rec[f"early_adv_{n}bar_ticks"] = None
+
+    # ---- Signal midpoint reclaim ----
+    # Did the reversal move reach the signal candle's midpoint?
+    if n_total > 0:
+        if direction == 1:   # bull signal → reversal short → price needs to drop to sig_mid
+            rec["did_price_reclaim_signal_midpoint"]    = bool(float(np.nanmin(w_low)) <= sig_mid)
+            rec["did_price_break_signal_extreme_again"] = bool(float(np.nanmax(w_high)) >= sig_high)
+        else:                # bear signal → reversal long → price needs to rise to sig_mid
+            rec["did_price_reclaim_signal_midpoint"]    = bool(float(np.nanmax(w_high)) >= sig_mid)
+            rec["did_price_break_signal_extreme_again"] = bool(float(np.nanmin(w_low)) <= sig_low)
+    else:
+        rec["did_price_reclaim_signal_midpoint"]    = None
+        rec["did_price_break_signal_extreme_again"] = None
+
+    # ---- First pullback detection ----
+    # Scan bar-by-bar: track the running extreme in the reversal direction,
+    # find the first bar where closes have pulled back >= _MIN_PULLBACK_TICKS from that extreme.
+    if w_close is not None and n_total > 0:
+        min_pb = _MIN_PULLBACK_TICKS * tick_size
+        if direction == 1:    # reversal = short → track running low
+            running_low = ev_close
+            pb_bar = None
+            pb_size = None
+            for i in range(n_total):
+                if w_low[i] < running_low:
+                    running_low = float(w_low[i])
+                retracement = w_close[i] - running_low
+                if retracement >= min_pb and running_low < ev_close:
+                    pb_bar  = i + 1   # 1-indexed bar number
+                    pb_size = round(retracement / tick_size, 2)
+                    break
+        else:                  # reversal = long → track running high
+            running_high = ev_close
+            pb_bar = None
+            pb_size = None
+            for i in range(n_total):
+                if w_high[i] > running_high:
+                    running_high = float(w_high[i])
+                retracement = running_high - w_close[i]
+                if retracement >= min_pb and running_high > ev_close:
+                    pb_bar  = i + 1
+                    pb_size = round(retracement / tick_size, 2)
+                    break
+
+        rec["time_to_first_pullback_bars"] = pb_bar
+        rec["first_pullback_size_ticks"]   = pb_size
+    else:
+        rec["time_to_first_pullback_bars"] = None
+        rec["first_pullback_size_ticks"]   = None

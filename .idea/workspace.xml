@@ -4,17 +4,36 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed discovery of strategies and added funnel">
-      <change afterPath="$PROJECT_DIR$/docs/designs/ai_integration_architecture.md" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New candle discovery">
+      <change afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket/features.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/entry_strategies/premarket_sweep.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/_bucket_utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/reversal_followthrough_quality.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/reversal_size_analysis.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/session_classifier.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/signal_candle_context.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/target_curve.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_context_diagnostics.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_context_families.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_findings_families.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_findings_interpretation.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_reversal_leaders.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_session_context.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_session_large_moves.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_signal_context.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_strategy_cards.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/large_candle_excursion_target_curves.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ny_open_scalp.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/ny_open_scalp.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/marketdata/resample.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/marketdata/resample.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/discovery/large_candle_excursion.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/discovery/large_candle_excursion.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/discovery/large_candle_excursion_findings_report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/discovery/large_candle_excursion_findings_report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_enricher.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_enricher.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_stats.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/context_stats.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/downstream_reports.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/downstream_reports.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/forward_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/forward_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/sweep.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/analysis/large_candle_excursion/sweep.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -549,7 +568,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775404738922</updated>
     </task>
-    <option name="localTasksCounter" value="46" />
+    <task id="LOCAL-00046" summary="New candle discovery">
+      <option name="closed" value="true" />
+      <created>1775683038287</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1775683038287</updated>
+    </task>
+    <option name="localTasksCounter" value="47" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -576,7 +603,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added recommendations to the analysis" />
     <MESSAGE value="Fixed simulate.py to read tick data correct" />
     <MESSAGE value="Fixed debug report for exit strategies" />
     <MESSAGE value="new debug report for exit strategies" />
@@ -601,6 +627,7 @@
     <MESSAGE value="Strategy discovery fully implemented With added features" />
     <MESSAGE value="Many new strategy dicovery based on raw data entry" />
     <MESSAGE value="Fixed discovery of strategies and added funnel" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed discovery of strategies and added funnel" />
+    <MESSAGE value="New candle discovery" />
+    <option name="LAST_COMMIT_MESSAGE" value="New candle discovery" />
   </component>
 </project>

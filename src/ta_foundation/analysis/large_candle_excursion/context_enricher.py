@@ -47,6 +47,20 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from ta_foundation.analysis.large_candle_excursion._bucket_utils import assign_labeled_bucket  # noqa: F401 (re-exported for back-compat)
+from ta_foundation.analysis.large_candle_excursion.signal_candle_context import (
+    DEFAULT_DIRECTIONAL_CONTEXT,
+    DEFAULT_MA_VWAP_CONTEXT,
+    DEFAULT_KEY_LEVEL_CONTEXT,
+    DEFAULT_TREND_STATE_CONTEXT,
+    DEFAULT_EXHAUSTION_CONTEXT,
+    add_directional_context,
+    add_ma_vwap_context,
+    add_key_level_context,
+    add_trend_state_context,
+    add_exhaustion_context,
+)
+
 
 # ---------------------------------------------------------------------------
 # Default configs (merged by sweep.py into its DEFAULT_CONFIG)
@@ -101,28 +115,6 @@ DEFAULT_VOLAT_CONTEXT: Dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
-# Bucket helper (public for tests)
-# ---------------------------------------------------------------------------
-
-def assign_labeled_bucket(value: float, buckets: List[Dict]) -> str:
-    """
-    Assign *value* to the first matching bucket label.
-
-    Each bucket dict has optional "min" (inclusive, default -inf) and
-    "max" (exclusive, default +inf) plus a required "label".
-    Returns "other" if no bucket matches.
-    """
-    if value is None or (isinstance(value, float) and value != value):  # NaN guard
-        return "unknown"
-    for b in buckets:
-        lo = float(b.get("min", float("-inf")))
-        hi = float(b.get("max", float("inf")))
-        if lo <= value < hi:
-            return b["label"]
-    return "other"
-
-
-# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -132,19 +124,29 @@ def enrich_events_with_context(
     vol_cfg: Optional[Dict] = None,
     struct_cfg: Optional[Dict] = None,
     volat_cfg: Optional[Dict] = None,
+    directional_cfg: Optional[Dict] = None,
+    ma_vwap_cfg: Optional[Dict] = None,
+    key_level_cfg: Optional[Dict] = None,
+    trend_state_cfg: Optional[Dict] = None,
+    exhaustion_cfg: Optional[Dict] = None,
     tick_size: float = 0.25,
 ) -> pd.DataFrame:
     """
-    Enrich event rows with volume, structure, and volatility context features.
+    Enrich event rows with context features.
 
     Parameters
     ----------
-    events   : output of detect_large_candles() — has bar_idx, OHLC, atr, …
-    tf_bars  : resampled bars at the event's timeframe (has volume column)
-    vol_cfg  : volume_context config dict
-    struct_cfg : candle_structure_context config dict
-    volat_cfg  : volatility_context config dict
-    tick_size : instrument tick size
+    events          : output of detect_large_candles() — has bar_idx, OHLC, atr, …
+    tf_bars         : resampled bars at the event's timeframe
+    vol_cfg         : volume_context config dict
+    struct_cfg      : candle_structure_context config dict
+    volat_cfg       : volatility_context config dict
+    directional_cfg : directional_context config dict
+    ma_vwap_cfg     : ma_vwap_context config dict
+    key_level_cfg   : key_level_context config dict
+    trend_state_cfg : trend_state_context config dict
+    exhaustion_cfg  : exhaustion_context config dict (derived — runs last)
+    tick_size       : instrument tick size
 
     Returns
     -------
@@ -163,6 +165,22 @@ def enrich_events_with_context(
 
     if (volat_cfg or {}).get("enabled"):
         _add_volatility_features(out, tf_bars, volat_cfg or {}, tick_size)
+
+    if (directional_cfg or {}).get("enabled"):
+        add_directional_context(out, tf_bars, directional_cfg or {}, tick_size)
+
+    if (ma_vwap_cfg or {}).get("enabled"):
+        add_ma_vwap_context(out, tf_bars, ma_vwap_cfg or {}, tick_size)
+
+    if (key_level_cfg or {}).get("enabled"):
+        add_key_level_context(out, tf_bars, key_level_cfg or {}, tick_size)
+
+    if (trend_state_cfg or {}).get("enabled"):
+        add_trend_state_context(out, tf_bars, trend_state_cfg or {}, tick_size)
+
+    # Exhaustion context must run after the 4 primary modules (it reads their output)
+    if (exhaustion_cfg or {}).get("enabled"):
+        add_exhaustion_context(out, tf_bars, exhaustion_cfg or {}, tick_size)
 
     return out
 

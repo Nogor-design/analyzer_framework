@@ -1,0 +1,327 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+**Install (editable, src layout):**
+```bash
+pip install -e .
+```
+
+**Run the CLI:**
+```bash
+python -m ta_foundation.cli.main \
+  --input "C:/path/to/ninjatrader/exports" \
+  --output ./outputs \
+  [--recursive] \
+  [--run-id-regex "(.+)_Trades"] \
+  [--report-config report.yaml] \
+  [--market-data "C:/path/to/market/data"] \
+  [--include-run-images] \
+  [--export-exec-cards-png] \
+  [--exec-cards-dir ./outputs/cards] \
+  [--no-tick-data]
+```
+
+**Run a single test file:**
+```bash
+python -m pytest src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py -v
+```
+
+**Run all tests:**
+```bash
+python -m pytest src/ta_foundation/tests/ -v
+```
+
+## Architecture
+
+This is a **4-layer system** — layers must not collapse into each other:
+
+```
+1. Parsers      → produce normalized ParsedArtifact objects
+2. Pipeline     → assembles AnalysisPackage (per run) + MarketDataStore (shared)
+3. Analysis     → computes derived metrics; stores under pkg.metadata["derived"]
+4. Sections     → pure HTML renderers; consume ctx only, no IO
+```
+
+CLI orchestration order: **ingest → MA anchor analysis → pattern engine → strategy discovery → regime recommender → report rendering**
+
+### Core Data Model
+
+**`AnalysisPackage`** (`core/model.py`) — one per `run_id`:
+- `trades: DataFrame`, `daily: DataFrame`, `summary: SummaryBlock`, `settings: DataFrame`
+- `assets: dict` — embedded images (e.g., run card PNGs as data URIs)
+- `metadata: dict` — must remain JSON-safe; derived analytics stored under `metadata["derived"][...]`
+- `warnings: list`
+
+**`MarketDataStore`** (`marketdata/store.py`) — shared across all runs:
+- Minute bars and tick data keyed by `(instrument_root, contract)`
+- Artifacts with `run_id=None` route here; never duplicated into packages
+
+**`OptimizationStore`** (`optimization/model.py`) — holds parameter-sweep batches:
+- One `OptimizationBatch` per imported `*_Optimization.csv` file
+- Keyed by `batch_id` (derived from filename, e.g. `"PantheonMasterBotV01TesterV2"`)
+- Lives in `IngestResult.optimization_store`; passed to report context as `ctx["optimization_store"]`
+- Never mixed into `AnalysisPackage` — optimization files do NOT create backtest run packages
+
+**`OptimizationBatch`** — one optimization file / parameter sweep:
+- `batch_id`, `source_path`, `strategy_name`, `instrument`, `imported_at`
+- `results: DataFrame` — one row per tested combination, with `param_<Name>` columns
+- `parameter_names: list[str]` — canonical ordered parameter names
+- `metric_columns: list[str]` — numeric KPI column names present in results
+- `row_count`, `successfully_parsed_rows`, `warnings`
+
+**`SummaryBlock`** — KPIs split into `kpis_all`, `kpis_long`, `kpis_short` + `start_dt`/`end_dt`
+KPI keys are normalized (lowercase, punctuation-insensitive): use `kpis_all.get("total net profit")`.
+
+### `pkg.metadata["derived"]` Key Conventions
+
+```python
+pkg.metadata["derived"] = {
+    "anchor_interaction": {...},        # MA anchor results
+    "pattern_engine": {
+        "artifacts": [...],             # Parquet file references (not embedded)
+        "diagnostics": {...}
+    },
+    "strategy_discovery": {...},        # Strategy discovery pipeline results
+    "regime_recommender": {...},        # Regime classification results
+    "daily_outcomes": {...},            # Daily P&L/win-loss statistics
+    "trade_time_profile": {...}         # Hourly trade distribution
+}
+```
+
+All values must be **JSON-safe** — no DataFrames, callables, or registry objects.
+
+### Parser Protocol (`parsers/base.py`)
+
+```python
+class Parser(Protocol):
+    kind: str
+    def can_parse(self, path: Path, header: str) -> bool: ...
+    def parse(self, path: Path, run_id: Optional[str]) -> ParsedArtifact: ...
+```
+
+Parsers live in `parsers/ninjatrader/`. New parsers must be registered in `cli/main.py`'s `ParserRegistry`. Run-scoped artifacts use `run_id != None`; shared market artifacts use `run_id = None`.
+
+**Existing NinjaTrader parsers:**
+- `trades_csv.py` — trade-level P&L
+- `analysis_by_day_csv.py` — daily summary
+- `summary_csv.py` — strategy summary / KPIs
+- `settings_csv.py` — strategy settings/parameters
+- `optimization_csv.py` — parameter-sweep optimization results (routes to `OptimizationStore`, NOT AnalysisPackage)
+- `minute_bars_last_txt.py` — minute OHLCV market data (routes to `MarketDataStore`)
+- `tick_last_txt.py` — tick data (routes to `MarketDataStore`)
+
+**Optimization file import:**
+Drop any number of `*_Optimization.csv` NinjaTrader exports into the `--input` folder alongside (or without) backtest files. The pipeline automatically discovers, parses, and routes them. The `optimization_overview` report section renders the results.
+
+The `Parameters` column uses the format:
+`val1/val2/.../bot_name (Name1 Name2 ... NameN)`
+The parser uses a backward-scanning parenthesis matcher to handle parameter names that themselves contain parens (e.g. `Start_Time_(HH)`).
+
+To include the optimization report section in your `report.yaml`:
+```yaml
+sections:
+  - id: optimization_overview
+    options:
+      top_n: 10       # rows per leaderboard (default 10)
+      min_trades: 1   # min trade count guard for PF/drawdown boards
+```
+
+### Report Section Contract
+
+Every section renderer signature:
+```python
+def render_my_section(ctx: dict[str, Any]) -> str:
+    packages = ctx.get("packages", {}) or {}
+    options = ctx.get("options") or {}          # section-local options from YAML
+    all_options = ctx.get("all_options") or {}  # full merged YAML (top-level blocks)
+    market = ctx.get("market")
+    report_config = ctx.get("report_config")
+```
+
+- Returns a pure HTML string
+- Embeds images as base64 via `fig_to_base64_png(fig)` from `reports/html/embed.py`
+- No disk IO, no YAML parsing, no pipeline calls
+- Register in `reports/html/registry.py` → `SECTION_REGISTRY`
+
+**Options distinction (critical):**
+- `ctx["options"]` = section-local options only (from `sections[].options` in YAML)
+- `ctx["all_options"]` = full merged YAML including top-level feature blocks like `anchor_interaction:`, `pattern_engine:`
+
+### Report YAML Config
+
+`report.yaml` (or `--report-config`) controls everything about rendering:
+```yaml
+report:
+  title: "Strategy Comparison"
+  output_filename: "comparison_report.html"
+  timezone: "America/Denver"
+
+sections:
+  - id: comparison_overview
+  - id: run_kpi_cards
+  - id: daily_scoreboard
+    options:
+      top_n: 12
+
+# Top-level analysis feature blocks (consumed via ctx["all_options"])
+anchor_interaction:
+  enabled: true
+  strategy_family: "SMA"
+  anchors:
+    - family: "SMA"
+      length: 20
+      source: "close"
+
+pattern_engine:
+  enabled: true
+
+strategy_discovery:
+  enabled: true
+  instrument: "NQ"
+  contract: "H25"
+  timeframe: "5m"
+
+regime_recommender:
+  enabled: true
+```
+
+Multiple reports can be defined in one YAML under a top-level `reports:` list.
+
+### Analysis Subsystems
+
+**MA Anchor Interaction** (`analysis/ma_structure/`):
+- Entry: `orchestrator.run_anchor_interaction_analysis(...)`
+- Runs during CLI main before report rendering
+- Attaches results under `pkg.metadata["derived"]["anchor_interaction"]`
+- Config: top-level `anchor_interaction:` block in YAML
+- Key modules: `anchors.py` (detection), `segment_detection.py`, `tp_sl_engine.py` (scoring), `trade_alignment.py` (recommendations), `regime_context.py`
+
+**Pattern Engine** (`analysis/pattern_engine/`):
+- Sweeps parameterized templates on market bars/ticks, clusters results, runs Monte Carlo
+- Templates registered by key `{family}::{structure}` (e.g., `ORB::orb_break_retest`)
+- Add new templates in `templates/` and register via `builtins.py`:`default_template_registry()`
+- Artifacts written as parquet to `.ta_artifacts/pattern_engine/<run_id>/`
+- References stored under `pkg.metadata["derived"]["pattern_engine"]["artifacts"]`
+- Must run before rendering; sections are read-only consumers
+- Key modules: `engine.py` (sweep), `cluster.py`, `monte_carlo.py`, `robustness_cv.py`, `trade_pattern_audit.py`
+
+**Entry Strategy Discovery** (`analysis/entry_strategies/`):
+- 8 strategy families, each with a `*_sweep.py` orchestrator + submodule:
+  - `candle/` — candle pattern recognition (supports MTF via `mtf.py`)
+  - `ma/` — moving average crossover signals
+  - `bb/` — Bollinger Band touch/break signals
+  - `orb/` — Opening Range Breakout
+  - `breakout/` — general breakout patterns
+  - `pullback/` — pullback confirmation entries
+  - `level/` — support/resistance level entries
+  - `lcr/` — Left-Center-Right level discovery
+- `_sweep_base.py` — shared sweep runner for breakout/pullback/level
+- `sweep.py` — master candle discovery orchestrator
+- `outcome/` — trade outcome simulation
+- `ranking.py` — entry signal ranking
+- `validation.py` — IS/OOS degradation checks
+
+**Strategy Discovery** (`analysis/strategy_discovery/`):
+- Entry: `orchestrator.py`
+- Walk-forward validation: `validation.py` (rolling/anchored)
+- Performance scoring: `evaluation.py` (Sharpe, Sortino, MAE/MFE)
+- `pure_discovery.py` — parameter optimization pipeline
+- `entry_pattern_bridge.py` — connects patterns to discovered entries
+- `nt_template_generator.py` — generates NinjaTrader C# strategy templates
+- `pantheon_bot_v2_template.py`, `pantheon_master_template.py` — bot-specific templates
+- Phase 1-2 (entry/exit discovery) are partially implemented stubs
+
+**Regime Recommender** (`analysis/regime_recommender/`):
+- Entry: `orchestrator.py`
+- `classifier.py` — regime classifier (ADX, ATR-based features)
+- `recommender.py` — generates trading recommendations per regime
+- `storage.py` — persistence layer
+- Results stored under `pkg.metadata["derived"]["regime_recommender"]`
+
+### Non-Negotiable Contracts
+
+**Timestamps:** All canonical datetimes are **tz-aware `America/Denver`**. Naive datetimes are forbidden. NinjaTrader local PC timestamps are localized on ingest; UTC market data files are converted during ingest.
+
+**Shared data:** `MarketDataStore` artifacts (`run_id=None`) must never be duplicated into `AnalysisPackage`.
+
+**Derived data:** All computed metrics attach under `pkg.metadata["derived"][...]`. Never add dynamic top-level attributes to `AnalysisPackage`. `pkg.metadata` must remain JSON-safe — no DataFrames, callables, or registries stored in it.
+
+**Sections:** Must not read files, call ingest, parse YAML, or compute heavy analytics. If a section needs new data, add it in pipeline/analysis and pass via ctx.
+
+**New CLI flags** must only be added for ingest behavior; report rendering behavior belongs in `report.yaml`.
+
+### Adding New Functionality
+
+| What to add | Where | Key requirement |
+|---|---|---|
+| New file format | `parsers/<vendor>/` | Register in `cli/main.py`; if it routes to a new store (not AnalysisPackage) intercept in `pipeline.py` before `pkg = packages.get(run_id)` |
+| New analysis metric | `analysis/` | Store under `metadata["derived"]`; no HTML |
+| New report section | `reports/html/sections/` | Pure renderer; register in `registry.py`; enable in YAML |
+| New pattern template | `analysis/pattern_engine/templates/` | Register in `builtins.py` via `default_template_registry()` |
+| New entry strategy | `analysis/entry_strategies/<name>/` | Add `*_sweep.py` + submodule with `features.py`, `signals.py` |
+| New report behavior | `report.yaml` sections `options:` | Never via CLI flags |
+
+### Output Artifacts
+
+- `<output_filename>.html` — self-contained HTML (all assets base64-embedded)
+- `manifest.json` — metadata, file hashes, parse warnings
+- `unparsed_files.txt` — files not matched by any parser
+- `.ta_artifacts/` — parquet artifacts from pattern engine (disk-referenced, not embedded)
+
+## Source Map
+
+```
+src/ta_foundation/
+├── optimization/
+│   ├── __init__.py
+│   └── model.py                         # OptimizationBatch, OptimizationStore
+├── cli/main.py                          # CLI entry point & pipeline orchestrator
+├── core/
+│   ├── model.py                         # AnalysisPackage, SummaryBlock
+│   ├── pipeline.py                      # Ingest → derivation pipeline
+│   ├── registry.py                      # ParserRegistry
+│   ├── derived_metrics.py               # Metric computation & image embedding
+│   ├── daily_outcomes.py                # Daily P&L derivation
+│   └── market_time_profile.py           # Hourly trade distribution
+├── parsers/
+│   ├── base.py                          # Parser protocol, ParsedArtifact
+│   └── ninjatrader/                     # 7 NinjaTrader CSV/TXT parsers
+│       └── optimization_csv.py          # *_Optimization.csv → OptimizationStore
+├── marketdata/
+│   ├── store.py                         # MarketDataStore (shared market bars/ticks)
+│   ├── resample.py                      # OHLCV resampling
+│   └── tick_cache.py                    # Tick parquet cache
+├── analysis/
+│   ├── ma_structure/                    # MA anchor interaction analysis
+│   ├── pattern_engine/                  # Pattern sweep + Monte Carlo
+│   ├── entry_strategies/                # 8 entry strategy families
+│   ├── strategy_discovery/              # Strategy synthesis & validation
+│   ├── regime_recommender/              # Market regime classification
+│   ├── exits/                           # Exit policy definitions & simulation
+│   ├── indicators/                      # Basic indicator registry
+│   ├── features/                        # Microstructure & regime features
+│   ├── leaderboards.py                  # Daily/weekly leaderboard generation
+│   └── trade_enrichment.py             # Trade-level derived data
+├── reports/html/
+│   ├── builder.py                       # HtmlReportBuilder orchestrator
+│   ├── config.py                        # YAML report config parsing
+│   ├── registry.py                      # SECTION_REGISTRY (100+ sections)
+│   ├── embed.py                         # fig_to_base64_png() and asset embedding
+│   ├── theme.py                         # Default CSS
+│   └── sections/                        # Pure HTML renderers (~100+ files)
+├── strategy_metadata/                   # Strategy parameter extraction
+└── tests/                               # Pytest test suite
+    ├── analysis/entry_strategies/
+    ├── analysis/ma_structure/           # 4 test files
+    ├── analysis/regime_recommender/     # 4 test files
+    ├── analysis/strategy_discovery/
+    └── reports/html/sections/
+```
+
+## Dependencies
+
+Declared in `pyproject.toml`: `pandas`, `matplotlib`, `pyyaml`
+Implicit (used in analysis code): `numpy`, `scipy`, `scikit-learn`

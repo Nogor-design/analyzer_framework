@@ -38,7 +38,16 @@ from ta_foundation.analysis.large_candle_excursion.context_enricher import (
     DEFAULT_STRUCT_CONTEXT,
     DEFAULT_VOLAT_CONTEXT,
 )
+from ta_foundation.analysis.large_candle_excursion.signal_candle_context import (
+    DEFAULT_DIRECTIONAL_CONTEXT,
+    DEFAULT_MA_VWAP_CONTEXT,
+    DEFAULT_KEY_LEVEL_CONTEXT,
+    DEFAULT_TREND_STATE_CONTEXT,
+    DEFAULT_EXHAUSTION_CONTEXT,
+)
 from ta_foundation.analysis.large_candle_excursion.context_stats import compute_context_analysis
+from ta_foundation.analysis.large_candle_excursion.session_classifier import add_session_bucket_to_events
+from ta_foundation.analysis.large_candle_excursion.target_curve import build_target_curves, curves_to_dict
 
 
 # ---------------------------------------------------------------------------
@@ -83,9 +92,29 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
     "trade_analysis": DEFAULT_TRADE_CONFIG,
 
+    "session_analysis": {
+        "enabled": True,
+        # Custom bucket boundaries are not yet supported at runtime;
+        # use this key to toggle session tagging on/off.
+    },
+
+    "target_curves": {
+        "enabled":                    True,
+        "plateau_tolerance":          3.0,   # pp within peak WR = plateau
+        "plateau_min_width":          3,     # steps required for "runner" classification
+        "scalp_max_target_pct":       50.0,  # peak target% at/below which "scalp" applies
+        "scalp_min_edge_decay":       0.20,  # minimum WR decay fraction for "scalp"
+        "edge_decay_full_penalty_pp": 50.0,  # pp decay that maxes out edge_decay_penalty
+    },
+
     "volume_context":           DEFAULT_VOL_CONTEXT,
     "candle_structure_context": DEFAULT_STRUCT_CONTEXT,
     "volatility_context":       DEFAULT_VOLAT_CONTEXT,
+    "directional_context":      DEFAULT_DIRECTIONAL_CONTEXT,
+    "ma_vwap_context":          DEFAULT_MA_VWAP_CONTEXT,
+    "key_level_context":        DEFAULT_KEY_LEVEL_CONTEXT,
+    "trend_state_context":      DEFAULT_TREND_STATE_CONTEXT,
+    "exhaustion_context":       DEFAULT_EXHAUSTION_CONTEXT,
 
     "output": {
         "include_event_table":         True,
@@ -250,6 +279,49 @@ def _event_to_record(row: pd.Series, use_tick_data: bool) -> Dict[str, Any]:
         rec["tick_pre_reversal_adv_ticks"] = _v("tick_pre_reversal_adv_ticks")
         rec["tick_reversal_occurred"]       = _v("tick_reversal_occurred")
 
+    # Context columns — serialize if present (safe: all are str or numeric)
+    _CONTEXT_COLS = [
+        "session_bucket", "candle_bucket",
+        # directional
+        "prev_direction_bucket", "streak_bucket", "engulf_bucket",
+        "directional_context_label",
+        "prev_direction", "same_as_prev", "direction_streak",
+        # MA/VWAP
+        "ma100_location_bucket", "ma200_location_bucket", "vwap_location_bucket",
+        "ma100_ext_bucket", "ma200_ext_bucket", "vwap_ext_bucket",
+        "ma100_signed_bucket", "ma200_signed_bucket", "vwap_signed_bucket",
+        "above_ma100", "above_ma200", "above_vwap",
+        "dist_ma100_atr", "dist_ma200_atr", "dist_vwap_atr",
+        # key level
+        "nearest_level_type", "level_interaction_label",
+        "dist_nearest_level_ticks", "dist_nearest_level_atr",
+        # trend state
+        "trend_alignment_label", "ma100_slope_label", "ma200_slope_label",
+        "stacked_above_mas", "stacked_below_mas",
+        # exhaustion / extension (derived)
+        "exhaustion_label",
+        # early-path bar-level features (from forward_window.py)
+        "early_fav_1bar_ticks", "early_fav_2bar_ticks", "early_fav_3bar_ticks",
+        "early_adv_1bar_ticks", "early_adv_2bar_ticks", "early_adv_3bar_ticks",
+        "did_price_reclaim_signal_midpoint",
+        "did_price_break_signal_extreme_again",
+        "time_to_first_pullback_bars",
+        "first_pullback_size_ticks",
+    ]
+    for col in _CONTEXT_COLS:
+        v = row.get(col)
+        if v is not None:
+            if isinstance(v, (np.integer,)):
+                rec[col] = int(v)
+            elif isinstance(v, (np.floating,)):
+                rec[col] = None if np.isnan(v) else float(v)
+            elif isinstance(v, (bool, np.bool_)):
+                rec[col] = bool(v)
+            elif isinstance(v, pd.Timestamp):
+                rec[col] = v.isoformat()
+            else:
+                rec[col] = v
+
     return rec
 
 
@@ -314,19 +386,37 @@ def run_large_candle_excursion(
         "min_swing_ticks": float(reversal_cfg.get("min_swing_ticks", 2)),
     }
 
+    # Session analysis config
+    session_cfg: Dict          = cfg.get("session_analysis", {})
+    run_session_analysis: bool = bool(session_cfg.get("enabled", True))
+
     # Trade analysis config
     trade_cfg_raw: Dict        = cfg.get("trade_analysis", {})
     trade_cfg: Dict            = _deep_merge(DEFAULT_TRADE_CONFIG, trade_cfg_raw)
     run_trade_analysis: bool   = bool(trade_cfg.get("enabled", False))
 
+    # Target curves config (requires trade_analysis.enabled)
+    tc_cfg: Dict               = cfg.get("target_curves", {})
+    run_target_curves: bool    = bool(tc_cfg.get("enabled", True)) and run_trade_analysis
+
     # Context configs
-    vol_cfg:    Dict = _deep_merge(DEFAULT_VOL_CONTEXT,    cfg.get("volume_context", {}))
-    struct_cfg: Dict = _deep_merge(DEFAULT_STRUCT_CONTEXT, cfg.get("candle_structure_context", {}))
-    volat_cfg:  Dict = _deep_merge(DEFAULT_VOLAT_CONTEXT,  cfg.get("volatility_context", {}))
+    vol_cfg:        Dict = _deep_merge(DEFAULT_VOL_CONTEXT,           cfg.get("volume_context", {}))
+    struct_cfg:     Dict = _deep_merge(DEFAULT_STRUCT_CONTEXT,        cfg.get("candle_structure_context", {}))
+    volat_cfg:      Dict = _deep_merge(DEFAULT_VOLAT_CONTEXT,         cfg.get("volatility_context", {}))
+    dir_cfg:        Dict = _deep_merge(DEFAULT_DIRECTIONAL_CONTEXT,   cfg.get("directional_context", {}))
+    ma_vwap_cfg:    Dict = _deep_merge(DEFAULT_MA_VWAP_CONTEXT,       cfg.get("ma_vwap_context", {}))
+    key_level_cfg:  Dict = _deep_merge(DEFAULT_KEY_LEVEL_CONTEXT,     cfg.get("key_level_context", {}))
+    trend_cfg:      Dict = _deep_merge(DEFAULT_TREND_STATE_CONTEXT,   cfg.get("trend_state_context", {}))
+    exhaustion_cfg: Dict = _deep_merge(DEFAULT_EXHAUSTION_CONTEXT,    cfg.get("exhaustion_context", {}))
     any_context: bool = (
         vol_cfg.get("enabled", False) or
         struct_cfg.get("enabled", False) or
-        volat_cfg.get("enabled", False)
+        volat_cfg.get("enabled", False) or
+        dir_cfg.get("enabled", False) or
+        ma_vwap_cfg.get("enabled", False) or
+        key_level_cfg.get("enabled", False) or
+        trend_cfg.get("enabled", False) or
+        exhaustion_cfg.get("enabled", False)
     )
 
     combo_results:  List[Dict] = []
@@ -351,11 +441,30 @@ def run_large_candle_excursion(
             print(f"[large_candle_excursion] TF={tf}m: no qualifying candles detected.")
             continue
 
-        # Enrich events with volume / structure / volatility context
+        # Add session bucket (configurable; enabled by default)
+        if run_session_analysis:
+            events_all = add_session_bucket_to_events(events_all)
+
+        # Enrich events with all enabled context modules
         if any_context:
             events_all = enrich_events_with_context(
-                events_all, tf_bars, vol_cfg, struct_cfg, volat_cfg, tick_size,
+                events_all, tf_bars,
+                vol_cfg, struct_cfg, volat_cfg,
+                dir_cfg, ma_vwap_cfg, key_level_cfg, trend_cfg,
+                exhaustion_cfg=exhaustion_cfg,
+                tick_size=tick_size,
             )
+
+        # Add candle_bucket from size_ticks so interaction tables work
+        if "size_ticks" in events_all.columns:
+            size_buckets = trade_cfg.get("candle_size_buckets_ticks",
+                                         DEFAULT_TRADE_CONFIG["candle_size_buckets_ticks"])
+            from ta_foundation.analysis.large_candle_excursion.trade_analyzer import assign_candle_bucket
+            events_all["candle_bucket"] = [
+                assign_candle_bucket(float(v), size_buckets)
+                if v is not None and not (isinstance(v, float) and np.isnan(v)) else "unknown"
+                for v in events_all["size_ticks"]
+            ]
 
         # Group by the combo dimensions to avoid redundant forward scans
         combo_groups = events_all.groupby(
@@ -430,11 +539,29 @@ def run_large_candle_excursion(
     if run_trade_analysis and combined_fwd is not None:
         trade_analysis_result = compute_trade_outcomes(combined_fwd, trade_cfg, tick_size)
 
+    # Build target curves from trade combo results (requires trade_analysis + enabled)
+    target_curves_result: Dict = {"enabled": False}
+    if run_target_curves and isinstance(trade_analysis_result, dict):
+        raw_combos = trade_analysis_result.get("combo_results", [])
+        if raw_combos:
+            curves = build_target_curves(raw_combos, config=tc_cfg)
+            target_curves_result = {
+                "enabled": True,
+                "n_setups": len(curves),
+                "curves": curves_to_dict(curves),
+                "config": {k: tc_cfg[k] for k in tc_cfg if k != "enabled"},
+            }
+
     context_analysis_result: Dict = {"enabled": False}
     if any_context and combined_fwd is not None:
         context_analysis_result = compute_context_analysis(
             combined_fwd, vol_cfg, struct_cfg, volat_cfg,
             trade_cfg if run_trade_analysis else None,
+            directional_cfg=dir_cfg,
+            ma_vwap_cfg=ma_vwap_cfg,
+            key_level_cfg=key_level_cfg,
+            trend_state_cfg=trend_cfg,
+            exhaustion_cfg=exhaustion_cfg,
         )
 
     print(
@@ -453,6 +580,8 @@ def run_large_candle_excursion(
     }
     if run_trade_analysis:
         result["trade_analysis"] = trade_analysis_result
+    if run_target_curves or run_trade_analysis:
+        result["target_curves"] = target_curves_result
     if any_context:
         result["context_analysis"] = context_analysis_result
     return result

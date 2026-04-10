@@ -228,6 +228,36 @@ from ta_foundation.reports.html.sections.large_candle_excursion_findings_next_te
 from ta_foundation.reports.html.sections.large_candle_excursion_findings_methodology import (
     render_large_candle_excursion_findings_methodology,
 )
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_interpretation import (
+    render_large_candle_excursion_findings_interpretation,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_families import (
+    render_large_candle_excursion_findings_families,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_signal_context import (
+    render_large_candle_excursion_signal_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_context_diagnostics import (
+    render_large_candle_excursion_context_diagnostics,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_context_families import (
+    render_large_candle_excursion_context_families,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_reversal_leaders import (
+    render_large_candle_excursion_reversal_leaders,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_session_large_moves import (
+    render_large_candle_excursion_session_large_moves,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_target_curves import (
+    render_large_candle_excursion_target_curves,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_session_context import (
+    render_large_candle_excursion_session_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_cards import (
+    render_large_candle_excursion_strategy_cards,
+)
 from ta_foundation.reports.html.sections.large_candle_excursion_discovery_summary import (
     render_large_candle_excursion_discovery_summary,
 )
@@ -828,6 +858,56 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_findings_methodology",
         default_title="Large Candle Excursion Findings — Methodology",
         render_fn=render_large_candle_excursion_findings_methodology,
+    ),
+    "large_candle_excursion_findings_interpretation": SectionDef(
+        id="large_candle_excursion_findings_interpretation",
+        default_title="Large Candle Excursion Findings — Research Interpretation Guide",
+        render_fn=render_large_candle_excursion_findings_interpretation,
+    ),
+    "large_candle_excursion_findings_families": SectionDef(
+        id="large_candle_excursion_findings_families",
+        default_title="Large Candle Excursion — Top Setup Families",
+        render_fn=render_large_candle_excursion_findings_families,
+    ),
+    "large_candle_excursion_target_curves": SectionDef(
+        id="large_candle_excursion_target_curves",
+        default_title="Large Candle Excursion — Target Curve Analysis",
+        render_fn=render_large_candle_excursion_target_curves,
+    ),
+    "large_candle_excursion_session_context": SectionDef(
+        id="large_candle_excursion_session_context",
+        default_title="Large Candle Excursion — Session Context",
+        render_fn=render_large_candle_excursion_session_context,
+    ),
+    "large_candle_excursion_signal_context": SectionDef(
+        id="large_candle_excursion_signal_context",
+        default_title="Large Candle Excursion — Signal Candle Context Intelligence",
+        render_fn=render_large_candle_excursion_signal_context,
+    ),
+    "large_candle_excursion_context_diagnostics": SectionDef(
+        id="large_candle_excursion_context_diagnostics",
+        default_title="Large Candle Excursion — Signal Context Coverage Diagnostics",
+        render_fn=render_large_candle_excursion_context_diagnostics,
+    ),
+    "large_candle_excursion_context_families": SectionDef(
+        id="large_candle_excursion_context_families",
+        default_title="Large Candle Excursion — Top Context-Conditioned Setup Families",
+        render_fn=render_large_candle_excursion_context_families,
+    ),
+    "large_candle_excursion_reversal_leaders": SectionDef(
+        id="large_candle_excursion_reversal_leaders",
+        default_title="Large Candle Excursion — Large Reversal Move Leaders",
+        render_fn=render_large_candle_excursion_reversal_leaders,
+    ),
+    "large_candle_excursion_session_large_moves": SectionDef(
+        id="large_candle_excursion_session_large_moves",
+        default_title="Large Candle Excursion — Large Move Probability by Session",
+        render_fn=render_large_candle_excursion_session_large_moves,
+    ),
+    "large_candle_excursion_strategy_cards": SectionDef(
+        id="large_candle_excursion_strategy_cards",
+        default_title="Large Candle Excursion — Strategy Cards",
+        render_fn=render_large_candle_excursion_strategy_cards,
     ),
     "large_candle_excursion_discovery_summary": SectionDef(
         id="large_candle_excursion_discovery_summary",

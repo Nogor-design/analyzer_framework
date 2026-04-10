@@ -13,10 +13,25 @@ large_candle_excursion:
     threshold_multipliers: [1.5, 2.0, 2.5]
   forward_window:
     minutes: [5, 10, 15, 30]
+
+  # Session tagging — classify each event by trading session
+  session_analysis:
+    enabled: true
+
+  # Target curve analysis — requires trade_analysis.enabled: true
+  target_curves:
+    enabled: true
+    plateau_tolerance:          3.0    # pp within peak WR = plateau
+    plateau_min_width:          3      # steps for "runner" classification
+    scalp_max_target_pct:       50.0
+    scalp_min_edge_decay:       0.20
+    edge_decay_full_penalty_pp: 50.0
+
   trade_analysis:
     enabled: true
     target:
       percents: [25, 50, 75, 100, 125]
+
   volume_context:
     enabled: true
   candle_structure_context:
@@ -24,15 +39,117 @@ large_candle_excursion:
   volatility_context:
     enabled: true
 
+  # ---- Signal candle context intelligence ----
+  directional_context:
+    enabled: true
+    streak_lookback: 3
+
+  ma_vwap_context:
+    enabled: true
+    ma_periods: [100, 200]
+    include_vwap: true
+    at_level_atr_threshold: 0.05
+    extension_buckets:
+      - {label: near,     max: 0.25}
+      - {label: moderate, min: 0.25, max: 0.75}
+      - {label: extended, min: 0.75}
+
+  key_level_context:
+    enabled: true
+    level_types: [prior_day_high, prior_day_low, prior_day_close,
+                  session_high, session_low, overnight_high, overnight_low,
+                  vwap, ma100, ma200]
+    rth_start_hour: 7
+    rth_start_minute: 30
+    rth_end_hour: 16
+    interaction_atr_buckets:
+      - {label: at_level,    max: 0.10}
+      - {label: approaching, min: 0.10, max: 0.30}
+      - {label: nearby,      min: 0.30, max: 0.60}
+      - {label: departing,   min: 0.60}
+
+  trend_state_context:
+    enabled: true
+    slope_lookback: 5
+    ma_periods: [100, 200]
+    slope_strong_threshold_atr: 0.04
+    slope_flat_threshold_atr: 0.01
+
+  # Exhaustion / extension labels — derived from the above modules (runs last)
+  exhaustion_context:
+    enabled: true
+    extended_vwap_atr: 0.75
+    extended_ma_atr: 0.75
+    exhaustion_streak_min: 3
+    level_approach_max_atr: 0.30
+
 large_candle_excursion_findings:
   enabled: true
   source_report: large_candle_excursion
   min_events: 30
+
+  # ---- Reversal size analysis — large-move probability and runner potential ----
+  reversal_size_analysis:
+    enabled: true
+    forward_window_minutes: 30      # analyse using the largest forward window
+    target_percents: [10, 25, 50, 75, 100, 150]
+    min_n_setup:   30
+    min_n_session: 20
+    min_n_context: 25
+    top_n_setups:  10
+    top_n_context: 12
+    large_move_candidate:
+      min_n:            40
+      min_p50_pct:      20.0
+      min_runner_score: 0.40
+
   ranking:
     primary_metric: composite_score
     require_min_win_rate: 0.50
     penalize_low_sample: true
     penalize_complexity: true
+
+  promotion:
+    candidate:
+      min_score: 0.52
+      min_n: 80
+      min_plateau: 2
+      max_edge_decay_penalty: 0.80
+    strategy_test_ready:
+      min_score: 0.57
+      min_n: 120
+      min_plateau: 2
+      max_edge_decay_penalty: 0.50
+
+  family_grouping:
+    top_n_families: 20
+
+  fragility_thresholds:
+    plateau_fragile_below: 1
+    edge_decay_fragile_above: 0.70
+    session_concentration_pct: 80.0
+    max_variants_per_family: 5
+
+  # Scoring weights — must sum to ≤ 1.0 (sparse_penalty subtracted separately)
+  scoring_weights:
+    win_rate:         0.40
+    sample_score:     0.20
+    expectancy_score: 0.20
+    stability:        0.15
+    simplicity:       0.05
+
+  # Sample-size thresholds for fragility warnings and sparse scoring penalty
+  min_sample_thresholds:
+    fragility_low:          60    # N below → high-severity fragility warning
+    sparse_penalty_below:   80    # N below → sparse penalty applied in scoring
+    suspicious_strength_n:  80    # combined with suspicious_strength_wr
+    suspicious_strength_wr: 70.0  # WR% at or above triggers "suspicious" flag
+
+  # Optional penalty for setups concentrated in a single session
+  session_concentration_penalty:
+    enabled: false
+    penalty_per_session_pct: 0.05
+
   interactions:
     min_events: 50
     min_edge_pp: 4.0
@@ -40,24 +157,47 @@ large_candle_excursion_findings:
     min_stability: 0.45
     max_complexity_penalty: 0.12
     attempted_top_n: 12
+
   neighbor_analysis:
     enabled: true
     top_setups: 6
     max_neighbors: 6
     target_neighbor_values: [15, 25, 35, 50]
+
   time_split:
     enabled: true
     n_splits: 3
+
   output:
-    top_n_discoveries: 25
-    include_executive_summary: true
-    include_fragility_warnings: true
+    top_n_discoveries:           25
+    top_n_strategy_cards:        10   # max cards rendered in the strategy cards section
+    include_executive_summary:   true
+    include_fragility_warnings:  true
     include_suggested_next_tests: true
-    max_next_tests: 10
+    max_next_tests:              10
 
 sections:
+  - id: large_candle_excursion_findings_interpretation
+    # Research workflow guide — how to use these results, wired to actual metrics
   - id: large_candle_excursion_findings_executive_summary
+  - id: large_candle_excursion_findings_families
+    # Setup families table — groups by (mode/direction/tf/bucket), shows promotion ladder
+    options:
+      top_n: 20
+  - id: large_candle_excursion_strategy_cards
+    options:
+      top_n: 10
   - id: large_candle_excursion_findings_top_discoveries
+  - id: large_candle_excursion_context_diagnostics
+    # Per-module coverage: what ran, N classified, failure reasons
+  - id: large_candle_excursion_signal_context
+    # Signal candle context: directional, MA/VWAP, key level, trend state effects
+  - id: large_candle_excursion_context_families
+    # Context-conditioned setup families: which signal contexts improve edge
+  - id: large_candle_excursion_reversal_leaders
+    # Large Reversal Move Leaders: which reverse setups produce the biggest moves
+  - id: large_candle_excursion_session_large_moves
+    # Large Move Probability by Session: session-by-session reversal size breakdown
   - id: large_candle_excursion_findings_interactions
   - id: large_candle_excursion_findings_fragility
   - id: large_candle_excursion_findings_next_tests
