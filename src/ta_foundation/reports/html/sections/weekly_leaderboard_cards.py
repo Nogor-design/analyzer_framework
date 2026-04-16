@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -9,9 +10,231 @@ import pandas as pd
 from ta_foundation.analysis.prop_trailing import compute_prop_trailing_states, PropDaySnapshot
 from ta_foundation.core.model import AnalysisPackage
 from ta_foundation.reports.html.embed import fig_to_base64_png
+from ta_foundation.reports.html.sections._wlr_strip import render_wlr_strip
 
+TZ_DENVER = ZoneInfo("America/Denver")
 
 WEEKDAY_LABELS_6 = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
+
+
+def _recent_trading_days(count: int, *, today: date | None = None) -> List[str]:
+    if count <= 0:
+        return []
+
+    cursor = today or datetime.now(TZ_DENVER).date()
+    days: List[date] = []
+    while len(days) < count:
+        if cursor.weekday() < 5:
+            days.append(cursor)
+        cursor -= timedelta(days=1)
+
+    return [d.isoformat() for d in reversed(days)]
+
+
+def _rolling_days(count: int, *, end_day: date, trading_days_only: bool) -> List[date]:
+    if count <= 0:
+        return []
+
+    cursor = end_day
+    out: List[date] = []
+    while len(out) < count:
+        if (not trading_days_only) or cursor.weekday() < 5:
+            out.append(cursor)
+        cursor -= timedelta(days=1)
+    out.reverse()
+    return out
+
+
+def _find_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+    if df is None or df.empty:
+        return None
+
+    def norm(s: str) -> str:
+        return "".join(ch for ch in str(s).lower().strip() if ch.isalnum())
+
+    cols = {norm(c): c for c in df.columns}
+    for cand in candidates:
+        key = norm(cand)
+        if key in cols:
+            return cols[key]
+    return None
+
+
+def _daily_df(pkg: AnalysisPackage) -> Optional[pd.DataFrame]:
+    for attr in ("daily", "analysis_by_day", "daily_analysis", "analysis_daily"):
+        value = getattr(pkg, attr, None)
+        if isinstance(value, pd.DataFrame) and not value.empty:
+            return value
+    return None
+
+
+def _filter_daily_by_dates(df: pd.DataFrame, days: List[date]) -> pd.DataFrame:
+    if df is None or len(df) == 0:
+        return df
+
+    day_col = _find_col(df, ["date", "Period", "Date", "Day"])
+    if not day_col:
+        return df.iloc[0:0].copy()
+
+    parsed_days = pd.to_datetime(df[day_col], errors="coerce").dt.date
+    return df.loc[parsed_days.isin(set(days))].copy()
+
+
+def _compute_prop_trailing_states_from_daily(
+    daily_df: pd.DataFrame,
+    *,
+    start_balance: float,
+    trailing_dd: float,
+    mode: str,
+) -> Dict[date, PropDaySnapshot]:
+    if daily_df is None or len(daily_df) == 0:
+        return {}
+
+    day_col = _find_col(daily_df, ["date", "Period", "Date", "Day"])
+    pnl_col = _find_col(daily_df, ["net_profit", "Net profit", "Net Profit", "NetProfit"])
+    mae_col = _find_col(daily_df, ["avg_mae", "Avg. MAE", "Average MAE"])
+    mfe_col = _find_col(daily_df, ["avg_mfe", "Avg. MFE", "Average MFE"])
+    trades_col = _find_col(daily_df, ["trade_count", "Total trades", "Trades", "Total Trades", "# Trades"])
+
+    if not day_col or not pnl_col:
+        return {}
+
+    df = daily_df.copy()
+    df["_day"] = pd.to_datetime(df[day_col], errors="coerce").dt.date
+    df["_pnl"] = pd.to_numeric(df[pnl_col], errors="coerce")
+    df["_mae"] = pd.to_numeric(df[mae_col], errors="coerce") if mae_col else 0.0
+    df["_mfe"] = pd.to_numeric(df[mfe_col], errors="coerce") if mfe_col else pd.to_numeric(df[pnl_col], errors="coerce")
+
+    if trades_col:
+        df["_trades"] = pd.to_numeric(df[trades_col], errors="coerce").fillna(0).astype(int)
+    else:
+        df["_trades"] = (df["_pnl"].fillna(0.0) != 0.0).astype(int)
+
+    df = df.dropna(subset=["_day", "_pnl"]).sort_values("_day")
+    if len(df) == 0:
+        return {}
+
+    out: Dict[date, PropDaySnapshot] = {}
+
+    def reset_account_state() -> tuple[float, float, float]:
+        equity0 = float(start_balance)
+        hwm0 = float(start_balance)
+        trail0 = float(start_balance - trailing_dd)
+        return equity0, hwm0, trail0
+
+    def buffer(equity: float, trail: float) -> float:
+        return float(equity - trail)
+
+    equity, hwm, trail = reset_account_state()
+
+    for _, row in df.iterrows():
+        if int(row["_trades"]) <= 0:
+            continue
+
+        day = row["_day"]
+        pnl = float(row["_pnl"])
+        mfe = float(row["_mfe"]) if pd.notna(row["_mfe"]) else max(pnl, 0.0)
+        mae = abs(float(row["_mae"])) if pd.notna(row["_mae"]) else 0.0
+
+        if mode == "daily_reset":
+            equity, hwm, trail = reset_account_state()
+
+        equity_open = equity
+        hwm_open = hwm
+        trail_open = trail
+
+        open_buffer = buffer(equity, trail)
+        trough_equity = equity - mae
+        trough_buffer = buffer(trough_equity, trail)
+
+        peak_equity = equity + mfe
+        min_buffer = min(open_buffer, trough_buffer, buffer(peak_equity, trail))
+
+        if peak_equity > hwm:
+            hwm = peak_equity
+            trail = hwm - trailing_dd
+
+        min_buffer = min(min_buffer, buffer(peak_equity, trail))
+
+        equity = equity + pnl
+        close_buffer = buffer(equity, trail)
+        min_buffer = min(min_buffer, close_buffer)
+
+        out[day] = PropDaySnapshot(
+            day=day,
+            equity_open=equity_open,
+            equity_close=equity,
+            hwm_open=hwm_open,
+            hwm_close=hwm,
+            trail_open=trail_open,
+            trail_close=trail,
+            buffer_open=open_buffer,
+            buffer_close=close_buffer,
+            min_buffer=float(min_buffer),
+            worst_trough_buffer=float(trough_buffer),
+            trail_move_today=max(0.0, float(trail - trail_open)),
+        )
+
+    return out
+
+
+def _snapshot_lists_for_pkg(
+    pkg: AnalysisPackage,
+    *,
+    week_days: List[date],
+    prev_week_days: List[date],
+    start_balance: float,
+    trailing_dd: float,
+    baseline_mode: str,
+) -> Tuple[List[Optional[PropDaySnapshot]], List[Optional[PropDaySnapshot]]]:
+    trades_all = getattr(pkg, "trades", None)
+    if isinstance(trades_all, pd.DataFrame) and len(trades_all) > 0:
+        if baseline_mode == "fresh_week":
+            trades_week = _filter_trades_by_dates(trades_all, week_days)
+            trades_prev = _filter_trades_by_dates(trades_all, prev_week_days)
+
+            states_week = compute_prop_trailing_states(trades_week, start_balance=start_balance, trailing_dd=trailing_dd)
+            states_prev = compute_prop_trailing_states(trades_prev, start_balance=start_balance, trailing_dd=trailing_dd)
+            cont_week = states_week.get("continuous", {}) or {}
+            cont_prev = states_prev.get("continuous", {}) or {}
+        else:
+            states_all = compute_prop_trailing_states(trades_all, start_balance=start_balance, trailing_dd=trailing_dd)
+            cont_all = states_all.get("continuous", {}) or {}
+            cont_week = cont_all
+            cont_prev = cont_all
+
+        return [cont_week.get(d) for d in week_days], [cont_prev.get(d) for d in prev_week_days]
+
+    daily_all = _daily_df(pkg)
+    if not isinstance(daily_all, pd.DataFrame) or daily_all.empty:
+        return [None for _ in week_days], [None for _ in prev_week_days]
+
+    if baseline_mode == "fresh_week":
+        daily_week = _filter_daily_by_dates(daily_all, week_days)
+        daily_prev = _filter_daily_by_dates(daily_all, prev_week_days)
+        week_map = _compute_prop_trailing_states_from_daily(
+            daily_week,
+            start_balance=start_balance,
+            trailing_dd=trailing_dd,
+            mode="continuous",
+        )
+        prev_map = _compute_prop_trailing_states_from_daily(
+            daily_prev,
+            start_balance=start_balance,
+            trailing_dd=trailing_dd,
+            mode="continuous",
+        )
+    else:
+        all_map = _compute_prop_trailing_states_from_daily(
+            daily_all,
+            start_balance=start_balance,
+            trailing_dd=trailing_dd,
+            mode="continuous",
+        )
+        week_map = all_map
+        prev_map = all_map
+
+    return [week_map.get(d) for d in week_days], [prev_map.get(d) for d in prev_week_days]
 
 def _compute_streaks(snaps_week: List[Optional[PropDaySnapshot]]) -> Dict[str, Any]:
     """
@@ -93,6 +316,15 @@ def _parse_week_ending(options: Dict[str, Any], packages: Dict[str, AnalysisPack
     for pkg in packages.values():
         trades = getattr(pkg, "trades", None)
         if trades is None or len(trades) == 0:
+            daily = _daily_df(pkg)
+            if isinstance(daily, pd.DataFrame) and not daily.empty:
+                day_col = _find_col(daily, ["date", "Period", "Date", "Day"])
+                if day_col:
+                    s = pd.to_datetime(daily[day_col], errors="coerce").dropna()
+                    if len(s):
+                        cand = s.dt.date.max()
+                        if best is None or cand > best:
+                            best = cand
             continue
         tcol = None
         for c in ("Exit time", "Exit Time", "exit_time"):
@@ -118,6 +350,43 @@ def _parse_week_ending(options: Dict[str, Any], packages: Dict[str, AnalysisPack
 def _week_sunday_start(d: date) -> date:
     delta = (d.weekday() + 1) % 7
     return d - timedelta(days=delta)
+
+
+def _resolve_dashboard_window(
+    options: Dict[str, Any],
+    packages: Dict[str, AnalysisPackage],
+) -> Tuple[List[date], List[date], List[str], str]:
+    today = datetime.now(TZ_DENVER).date()
+    requested_end = _parse_week_ending(options, packages)
+
+    window_mode = (options.get("window_mode") or "auto").strip().lower()
+    if window_mode not in {"auto", "week", "rolling"}:
+        window_mode = "auto"
+
+    rolling_days_count = int(options.get("rolling_days_count", 6))
+    rolling_trading_only = bool(options.get("rolling_trading_days_only", True))
+
+    use_rolling = window_mode == "rolling" or (
+        window_mode == "auto" and (requested_end is None or requested_end > today)
+    )
+
+    if use_rolling:
+        active_end = today if requested_end is None else min(requested_end, today)
+        days = _rolling_days(rolling_days_count, end_day=active_end, trading_days_only=rolling_trading_only)
+        prev_end = days[0] - timedelta(days=1) if days else active_end
+        prev_days = _rolling_days(rolling_days_count, end_day=prev_end, trading_days_only=rolling_trading_only)
+        labels = [d.strftime("%a") for d in days]
+        descriptor = f"Rolling {len(days)}-day window ending {active_end.isoformat()}"
+        return days, prev_days, labels, descriptor
+
+    active_end = requested_end or today
+    week_start = _week_sunday_start(active_end)
+    days = [week_start + timedelta(days=i) for i in range(6)]
+    prev_week_start = week_start - timedelta(days=7)
+    prev_days = [prev_week_start + timedelta(days=i) for i in range(6)]
+    labels = WEEKDAY_LABELS_6
+    descriptor = f"Week ending {active_end.isoformat()}"
+    return days, prev_days, labels, descriptor
 
 
 def _prop_cfg(options: Dict[str, Any]) -> Tuple[float, float]:
@@ -295,9 +564,12 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
     # If worst buffer <= warn_buffer, show a "TIGHT" badge.
     warn_buffer = float(options.get("warn_buffer", 500))
+    recent_days_count = int(options.get("recent_trading_days_count", 5))
+    recent_strip_days = _recent_trading_days(recent_days_count)
+    recent_strip_end = recent_strip_days[-1] if recent_strip_days else datetime.now(TZ_DENVER).date().isoformat()
 
-    week_ending = _parse_week_ending(options, packages)
-    if not week_ending:
+    week_days, prev_week_days, labels, window_descriptor = _resolve_dashboard_window(options, packages)
+    if not week_days:
         return "<div><em>No week could be inferred (no trades timestamps found).</em></div>"
 
     compact_noimg = bool(options.get("compact_noimg", True))
@@ -305,13 +577,6 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
     bot_columns = int(options.get("bot_columns", 1))
     if bot_columns not in (1, 2, 3):
         bot_columns = 1
-
-    week_start = _week_sunday_start(week_ending)
-    week_days = [week_start + timedelta(days=i) for i in range(6)]
-    labels = WEEKDAY_LABELS_6
-
-    prev_week_start = week_start - timedelta(days=7)
-    prev_week_days = [prev_week_start + timedelta(days=i) for i in range(6)]
 
     start_balance, trailing_dd = _prop_cfg(options)
 
@@ -332,45 +597,31 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             continue
 
         trades_all = getattr(pkg, "trades", None)
-        # print(trades_all)
+        daily_all = _daily_df(pkg)
         if trades_all is None or len(trades_all) == 0:
-            continue
+            if daily_all is None or len(daily_all) == 0:
+                continue
 
         # ✅ ALWAYS initialize outcome counters
         win_days = 0
         loss_days = 0
         no_trade_days = 0
 
-        # --- Compute snapshots depending on baseline_mode ---
-        if baseline_mode == "fresh_week":
-            # Fresh $50k baseline each week: compute states from week-only trades
-            trades_week = _filter_trades_by_dates(trades_all, week_days)
-            trades_prev = _filter_trades_by_dates(trades_all, prev_week_days)
+        snaps_week, snaps_prev = _snapshot_lists_for_pkg(
+            pkg,
+            week_days=week_days,
+            prev_week_days=prev_week_days,
+            start_balance=start_balance,
+            trailing_dd=trailing_dd,
+            baseline_mode=baseline_mode,
+        )
 
-            states_week = compute_prop_trailing_states(trades_week, start_balance=start_balance, trailing_dd=trailing_dd)
-            cont_week = states_week.get("continuous", {}) or {}
-            snaps_week: List[Optional[PropDaySnapshot]] = [cont_week.get(d) for d in week_days]
-
-            states_prev = compute_prop_trailing_states(trades_prev, start_balance=start_balance, trailing_dd=trailing_dd)
-            cont_prev = states_prev.get("continuous", {}) or {}
-            snaps_prev: List[Optional[PropDaySnapshot]] = [cont_prev.get(d) for d in prev_week_days]
-
-            chart_baseline = start_balance  # fresh-week baseline
-        else:
-            # Continuous account: compute once from all trades, then slice out the week
-            states_all = compute_prop_trailing_states(trades_all, start_balance=start_balance, trailing_dd=trailing_dd)
-            cont_all = states_all.get("continuous", {}) or {}
-
-            snaps_week = [cont_all.get(d) for d in week_days]
-            snaps_prev = [cont_all.get(d) for d in prev_week_days]
-
-            # For continuous view, chart baseline should be the equity_open of the first available day,
-            # so the chart reads as “what happened this week relative to where I started this week”.
+        chart_baseline = start_balance
+        if baseline_mode != "fresh_week":
             first = next((s for s in snaps_week if s is not None), None)
             chart_baseline = float(first.equity_open) if first is not None else start_balance
 
         have_any = any(s is not None for s in snaps_week)
-        print(have_any)
         if not have_any:
             continue
 
@@ -509,28 +760,92 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
 
       .tf-week-card {
-        border-radius: 18px;
-        padding: 12px 12px;
-        background: rgba(18,18,22,0.64);
-        border: 1px solid rgba(255,255,255,0.10);
-        box-shadow: 0 10px 26px rgba(0,0,0,0.30);
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px;
+        padding: 14px;
+        background:
+          radial-gradient(circle at top left, rgba(114,196,150,0.14), transparent 34%),
+          linear-gradient(180deg, rgba(36,36,40,0.96), rgba(22,22,26,0.94));
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 16px 40px rgba(0,0,0,0.32);
+      }
+      .tf-week-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent 28%, transparent 72%, rgba(255,255,255,0.03));
+        pointer-events: none;
       }
       .tf-week-card { width: 100%; }
+      .tf-week-topbar {
+        position: relative;
+        z-index: 1;
+        margin-bottom: 12px;
+        padding: 10px 12px 12px;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+      }
+      .tf-week-topbar-label {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.35px;
+        text-transform: uppercase;
+        opacity: 0.82;
+        margin-bottom: 6px;
+      }
 
 
       /* Layout adapts if card image is hidden */
-      .tf-week-row { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: start; }
+      .tf-week-row { display: grid; grid-template-columns: minmax(220px, 250px) minmax(0, 1fr); gap: 16px; align-items: start; }
       .tf-week-row--noimg { grid-template-columns: 1fr; }
-      .tf-week-meta { display: flex; flex-direction: column; gap: 10px; }
-      .tf-week-title { font-size: 22px; font-weight: 800; letter-spacing: 0.2px; }
+      .tf-week-meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        position: relative;
+        z-index: 1;
+      }
+      .tf-week-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        position: relative;
+        z-index: 1;
+      }
+      .tf-week-identity {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 4px 2px 0;
+        min-width: 0;
+      }
+      .tf-week-title {
+        font-size: 21px;
+        font-weight: 900;
+        letter-spacing: 0.15px;
+        line-height: 1.08;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        text-wrap: balance;
+        color: rgba(236,239,248,0.98);
+        text-shadow: 0 1px 0 rgba(0,0,0,0.28);
+      }
       .tf-week-title--noimg { font-size: 26px; }
       .tf-week-badge {
-        align-self: flex-end;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.10);
+        align-self: stretch;
+        padding: 10px 12px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
         border: 1px solid rgba(255,255,255,0.12);
-        font-weight: 900;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+        font-weight: 800;
+        color: rgba(230,234,244,0.94);
       }
       .tf-week-row--compact .tf-week-meta { gap: 6px; }
       .tf-week-row--compact .tf-week-badge { padding: 6px 10px; font-size: 13px; }
@@ -539,28 +854,68 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
       .tf-week-row--compact .tf-weekly-v { font-size: 32px; }
 
 
-      .tf-weekly-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .tf-weekly-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
       .tf-weekly-kpi {
+        min-width: 0;
         border-radius: 18px;
-        padding: 12px 14px;
-        background: rgba(12,12,16,0.52);
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(11,16,28,0.54), rgba(18,18,22,0.44));
         border: 1px solid rgba(255,255,255,0.10);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
       }
-      .tf-weekly-k { font-size: 15px; opacity: 0.85; }
-      .tf-weekly-v { font-size: 36px; font-weight: 900; margin-top: 4px; }
-      .tf-weekly-sub { font-size: 13px; opacity: 0.75; margin-top: 2px; }
+      .tf-weekly-k {
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        color: rgba(176,184,204,0.88);
+      }
+      .tf-weekly-v {
+        font-size: clamp(30px, 3.2vw, 44px);
+        font-weight: 950;
+        line-height: 1;
+        margin-top: 8px;
+        color: rgba(241,244,252,0.98);
+      }
+      .tf-weekly-sub {
+        font-size: 12px;
+        color: rgba(180,188,204,0.78);
+        margin-top: 8px;
+        line-height: 1.3;
+      }
 
-      .tf-week-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 10px; }
+      .tf-week-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-top: 4px; }
       .tf-day-tile {
         border-radius: 18px;
         padding: 12px 12px;
         border: 1px solid rgba(255,255,255,0.10);
         position: relative;
         overflow: hidden;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
       }
-      .tf-day-dow { font-size: 22px; font-weight: 800; opacity: 0.9; }
-      .tf-day-pnl { font-size: 34px; font-weight: 950; margin-top: 6px; }
-      .tf-day-sub { font-size: 16px; opacity: 0.85; margin-top: 6px; line-height: 1.15; }
+      .tf-day-dow { font-size: 22px; font-weight: 900; opacity: 0.96; }
+      .tf-day-date {
+        display: inline-block;
+        font-size: 11px;
+        letter-spacing: 0.25px;
+        color: rgba(222,226,236,0.70);
+        margin-top: 4px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+      }
+      .tf-day-pnl {
+        font-size: clamp(30px, 2.7vw, 40px);
+        font-weight: 950;
+        line-height: 1;
+        margin-top: 16px;
+      }
+      .tf-day-sub {
+        font-size: 15px;
+        opacity: 0.88;
+        margin-top: 12px;
+        line-height: 1.22;
+      }
 
       .tf-ratchet { outline: 2px solid rgba(255,255,255,0.22); }
       .tf-day-tile { padding-top: 44px; } /* ensures room for top badges */
@@ -622,14 +977,16 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         opacity: 0.92;
       }
       table.tf-debug tbody tr:hover { background: rgba(255,255,255,0.04); }
-            .tf-week-outcomes {
+      .tf-week-outcomes {
         display: inline-flex;
+        flex-wrap: wrap;
         gap: 10px;
         align-items: center;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.12);
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.10);
         font-weight: 900;
         font-size: 13px;
         letter-spacing: 0.3px;
@@ -652,6 +1009,23 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         box-shadow: 0 10px 26px rgba(0,0,0,0.30), 0 0 0 4px rgba(255,120,120,0.12);
       }
 
+      @media (max-width: 1100px) {
+        .tf-week-row {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .tf-weekly-kpis,
+        .tf-week-strip {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .tf-weekly-kpis,
+        .tf-week-strip {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
 
 
     </style>
@@ -665,7 +1039,8 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
     html.append(
         f'<div class="tf-weekly-head">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;">'
-        f'<div><b>Weekly Prop Dashboard</b> (Sun–Fri). Week ending: {week_ending.isoformat()} • Mode: {mode_label}</div>'
+        f'<div><b>Weekly Prop Dashboard</b>. {window_descriptor} • Mode: {mode_label}<br/>'
+        f'<span style="opacity:0.8;">Top strip: last {recent_days_count} trading days ending {recent_strip_end}</span></div>'
         f'<div style="opacity:0.8;font-weight:800;">Worst Buf uses MAE trough • Warn ≤ {warn_buffer:,.0f}</div>'
         f"</div>"
         f"</div>"
@@ -723,12 +1098,27 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             card_cls += " tf-week-card--risk"
 
         html.append(f'<div class="{card_cls}">')
+        recent_strip_html = render_wlr_strip(
+            run_id,
+            packages[run_id],
+            recent_strip_days,
+            box_px=int(options.get("recent_strip_box_px", 12)),
+            gap_px=int(options.get("recent_strip_gap_px", 3)),
+            show_legend=False,
+        )
+        html.append(
+            '<div class="tf-week-topbar">'
+            f'<div class="tf-week-topbar-label">Recent trading days</div>'
+            f"{recent_strip_html}"
+            "</div>"
+        )
 
         html.append(f'<div class="{row_cls}">')
 
         # Left meta (optional image)
         html.append('<div class="tf-week-meta">')
-        html.append(f'<div class="{title_cls}">{run_id}</div>')
+        html.append('<div class="tf-week-identity">')
+        html.append(f'<div class="{title_cls}" title="{run_id}">{run_id}</div>')
 
 
         # html.append(
@@ -758,6 +1148,7 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
             f'</div>'
             f"</div>"
         )
+        html.append("</div>")
 
         if show_card_image and card_uri:
             html.append(
@@ -767,7 +1158,7 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         html.append("</div>")
 
         # Right content (always present; if no image, it's the only column)
-        html.append("<div>")
+        html.append('<div class="tf-week-main">')
         html.append('<div class="tf-weekly-kpis">')
         html.append(
             f'<div class="tf-weekly-kpi"><div class="tf-weekly-k">Week PnL</div>'
@@ -827,6 +1218,7 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
                 html.append(f'<div class="tf-ratchet-badge">↑ {_fmt_money(tm)}</div>')
 
             html.append(f'<div class="tf-day-dow">{labels[i]}</div>')
+            html.append(f'<div class="tf-day-date">{week_days[i]:%m/%d}</div>')
             html.append(f'<div class="tf-day-pnl">{pnl_txt}</div>')
             html.append(
                 f'<div class="tf-day-sub">'

@@ -1,0 +1,116 @@
+group: "B"
+label: "Stop Attachment & Movement"
+
+tests:
+
+  - test_id: "P2-B01"
+    title: "After fill: STOP_ATTACHED event written and health shows live stop"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: filled_outbox
+        source: outbox
+        status: FILLED
+        proof_weight: strong
+      - id: stop_attached
+        source: outbox
+        status: STOP_ATTACHED
+        proof_weight: strong
+      - id: stop_working
+        source: outbox
+        status: STOP_WORKING
+        proof_weight: moderate
+        optional: true
+    required_state:
+      - id: health_stop_live
+        source: health
+        field: stop_order_live
+        op: eq
+        value: true
+        proof_weight: weak
+        optional: true
+    downgrade_rules:
+      - condition_type: event_not_matched
+        ref: stop_working
+        action: pass_unverified
+        reason: >
+          STOP_WORKING event not observed in collection window; stop may be
+          working but the event was not emitted before evidence was collected.
+          STOP_ATTACHED is sufficient for strong proof without STOP_WORKING.
+    notes: >
+      STOP_WORKING is optional but triggers PASS_UNVERIFIED if absent.
+      STOP_ATTACHED (strong) + STOP_WORKING (moderate) together = strong proof.
+      health.stop_order_live is corroborating weak evidence only.
+
+  - test_id: "P2-B02"
+    title: "MOVE_STOP to valid price is accepted; STOP_MOVED or ACCEPT event written"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: any_required
+    required_events:
+      - id: move_stop_accept
+        source: outbox
+        status: ACCEPTED
+        proof_weight: strong
+      - id: stop_moved_event
+        source: outbox
+        status: STOP_MOVED
+        proof_weight: strong
+    notes: >
+      Uses any_required: an ACCEPT event (shell accepted the signal) or a
+      STOP_MOVED event (shell confirmed the broker move) is sufficient.
+      Both appearing together would be strong; either alone is strong.
+
+  - test_id: "P2-B03"
+    title: "MOVE_STOP to unsafe price (above market for Long) is rejected"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: any_required
+    required_events:
+      - id: unsafe_move_rejected
+        source: outbox
+        status: REJECTED
+        proof_weight: strong
+      - id: unsafe_move_gate_log
+        source: log
+        event_type: GATE
+        proof_weight: moderate
+      - id: unsafe_move_reject_log
+        source: log
+        event_type: REJECT
+        proof_weight: moderate
+    notes: >
+      An unsafe stop move (stop above fill price for Long) must be rejected.
+      REJECTED outbox event is strong evidence. GATE or REJECT log records
+      are corroborating moderate evidence. any_required: one is enough.
+
+  - test_id: "P2-B04"
+    title: "Two sequential MOVE_STOP commands do not stack duplicate stop orders"
+    severity: high
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: first_move_accepted
+        source: outbox
+        status: ACCEPTED
+        proof_weight: strong
+    checkpoint_rules:
+      - checkpoint_label: "Single stop order in NT8"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "Single stop order in NT8"
+        action: pass_unverified
+        reason: >
+          Human confirmation of single-stop invariant not obtained.
+          Cannot verify no-stacking from file evidence alone; requires NT8 UI check.
+    notes: >
+      No automated evidence can definitively prove that exactly ONE stop order
+      exists. The NT8 Orders tab is the authoritative view. Without human
+      confirmation this test is PASS_UNVERIFIED.

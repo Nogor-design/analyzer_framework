@@ -32,6 +32,7 @@ from ta_foundation.core.market_time_profile import derive_trade_time_profile_for
 from ta_foundation.reports.html.embed import file_to_base64_data_uri
 from ta_foundation.marketdata.store import MarketDataStore
 from ta_foundation.optimization.model import OptimizationBatch, OptimizationStore
+from ta_foundation.core.run_name_parser import ARTIFACT_SUFFIXES, strip_artifact_suffix
 
 from ta_foundation.marketdata.tick_cache import (
     TickCacheConfig,
@@ -42,7 +43,8 @@ from ta_foundation.marketdata.tick_cache import (
     parquet_engine_available,
 )
 
-KNOWN_SUFFIXES = ("_Trades.csv", "_Analysis.csv", "_Summery.csv", "_Settings.csv", "_Optimization.csv")
+# Legacy alias — kept so any external code importing KNOWN_SUFFIXES still works.
+KNOWN_SUFFIXES = ARTIFACT_SUFFIXES
 RUN_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 
@@ -65,6 +67,13 @@ def _apply_daily_outcomes(pkg) -> None:
 
 
 def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
+    """
+    Extract the run_id from a file path.
+
+    1. If ``run_id_regex`` is provided and matches, use capture group 1.
+    2. Otherwise delegate to ``strip_artifact_suffix`` which knows all
+       recognized artifact suffixes for both old and new naming conventions.
+    """
     name = path.name
 
     if run_id_regex:
@@ -74,11 +83,7 @@ def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
             if candidate:
                 return candidate
 
-    for suf in KNOWN_SUFFIXES:
-        if name.endswith(suf):
-            return name[: -len(suf)]
-
-    return path.stem
+    return strip_artifact_suffix(name)
 
 
 @dataclass

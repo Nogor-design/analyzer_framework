@@ -1,7 +1,17 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Tuple
+from zoneinfo import ZoneInfo
+
+TZ_DENVER = ZoneInfo("America/Denver")
+
+
+def _parse_iso_day(value: str) -> date | None:
+    try:
+        return datetime.fromisoformat(str(value)).date()
+    except Exception:
+        return None
 
 
 def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> List[str]:
@@ -15,17 +25,20 @@ def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> Lis
 
     This avoids injecting weekends/holidays by default and matches "days with data".
     """
-    all_days: List[str] = []
+    all_days: List[datetime.date] = []
     for pkg in packages.values():
         derived = (getattr(pkg, "metadata", {}) or {}).get("derived", {}) or {}
         outcomes = (derived.get("daily_outcomes") or {}).get("by_date", {}) or {}
-        all_days.extend(outcomes.keys())
+        all_days.extend(d for d in (_parse_iso_day(key) for key in outcomes.keys()) if d is not None)
 
-    # De-dupe + sort lexicographically works for ISO dates.
-    unique_sorted = sorted(set(all_days))
+    today = datetime.now(TZ_DENVER).date()
     if days_back <= 0:
-        return unique_sorted
-    return unique_sorted[-days_back:]
+        start_day = min(all_days) if all_days else today
+    else:
+        start_day = today - timedelta(days=days_back - 1)
+
+    total_days = max(0, (today - start_day).days) + 1
+    return [(start_day + timedelta(days=i)).isoformat() for i in range(total_days)]
 
 
 def render_wlr_strip(

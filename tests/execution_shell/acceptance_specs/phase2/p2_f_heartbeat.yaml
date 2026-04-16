@@ -1,0 +1,81 @@
+group: "F"
+label: "Heartbeat / Liveness"
+
+tests:
+
+  - test_id: "P2-F01"
+    title: "Heartbeat loss while flat: HEARTBEAT_LOST logged, intake disabled"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: hb_lost_log
+        source: log
+        event_type: HEARTBEAT_LOST
+        proof_weight: strong
+    required_state:
+      - id: intake_disabled
+        source: health
+        field: intake
+        op: eq
+        value: false
+        proof_weight: weak
+        optional: true
+    downgrade_rules:
+      - condition_type: state_not_matched
+        ref: intake_disabled
+        action: pass_unverified
+        reason: >
+          Health snapshot did not confirm intake=false after HEARTBEAT_LOST.
+          HEARTBEAT_LOST log event is present but intake state is unverified.
+    notes: >
+      HEARTBEAT_LOST log event is strong primary evidence.
+      Health snapshot intake=false is corroborating but indirect (weak).
+      WARNING: this test permanently disables intake; NT8 restart required after.
+      Not blocking_for_sim_readiness — the Phase 1 Group C tests cover HB timing
+      exhaustively. Phase 2 F01 confirms the behaviour holds with a live Sim account.
+
+  - test_id: "P2-F02"
+    title: "Heartbeat loss while Long with FlattenOnHBLoss=true: position auto-flattened"
+    severity: high
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: hb_lost_log
+        source: log
+        event_type: HEARTBEAT_LOST
+        proof_weight: strong
+      - id: flat_after_hb_loss
+        source: log
+        contains: "|pos=Flat|"
+        proof_weight: strong
+    checkpoint_rules:
+      - checkpoint_label: "Confirm FlattenOnHeartbeatLoss=true in NT8"
+        required: true
+        if_missing: fail
+      - checkpoint_label: "NT8 position flattened on heartbeat loss"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "NT8 position flattened on heartbeat loss"
+        action: pass_unverified
+        reason: "Operator did not confirm NT8 position was closed on heartbeat loss"
+    notes: >
+      The FlattenOnHeartbeatLoss parameter confirmation checkpoint uses if_missing=fail
+      because running this test without confirming the parameter would be misleading.
+      WARNING: permanently disables intake. NT8 restart required after.
+
+  - test_id: "P2-F03"
+    title: "Heartbeat loss while in position with FlattenOnHBLoss=false: position NOT flattened"
+    severity: normal
+    automation_level: MANUAL_REQUIRED
+    blocking_for_sim_readiness: false
+    pass_mode: manual_only
+    notes: >
+      Requires FlattenOnHeartbeatLoss=false and manual observation.
+      Cannot be automated. Not blocking_for_sim_readiness because this is a
+      deliberate configuration; the default FlattenOnHBLoss=true behaviour
+      is covered by P2-F02.

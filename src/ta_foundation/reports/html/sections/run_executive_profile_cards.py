@@ -862,6 +862,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             cell_h_px=int(options.get("timeline_cell_h_px", 10)),
             show_hour_labels=bool(options.get("timeline_show_hours", True)),
             show_summary=bool(options.get("timeline_show_summary", True)),
+            prefer_settings_window=True,
         )
 
         card_parts.append("<tr>")

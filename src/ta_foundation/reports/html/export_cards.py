@@ -18,7 +18,7 @@ def export_exec_cards_to_png(
     *,
     selector: str = ".ta-exec-card",
     device_scale_factor: float = 2.0,
-    timeout_ms: int = 20_000,
+    timeout_ms: int = 120_000,
 ) -> ExportResult:
     """
     Export each Executive Profile card (identified by CSS selector) into its own PNG.
@@ -28,7 +28,7 @@ def export_exec_cards_to_png(
     Output files:
       <output_dir>/<run_id>.png  where run_id comes from data-run-id attribute.
     """
-    html_path = Path(html_path)
+    html_path = Path(html_path).resolve()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -50,8 +50,12 @@ def export_exec_cards_to_png(
         browser = p.chromium.launch()
         page = browser.new_page(device_scale_factor=device_scale_factor)
 
-        # Use file:// URL so relative resources resolve (though your report is self-contained)
-        page.goto(html_path.resolve().as_uri(), wait_until="networkidle", timeout=timeout_ms)
+        # Navigate via file:// URI so Chromium reads the file directly from disk.
+        # Avoid page.set_content() — it transfers the entire HTML through Node.js's
+        # IPC pipe as a string, which crashes with ERR_STRING_TOO_LONG on large
+        # self-contained reports (many base64-embedded images > ~512 MB).
+        # Path.as_uri() produces the correct file:///D:/... form on Windows.
+        page.goto(html_path.as_uri(), wait_until="load", timeout=timeout_ms)
 
         cards = page.query_selector_all(selector)
 

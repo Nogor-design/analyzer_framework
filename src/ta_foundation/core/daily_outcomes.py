@@ -64,11 +64,27 @@ def derive_daily_outcomes_for_package(pkg: Any) -> Dict[str, Any]:
     pkg.metadata["derived"]["daily_outcomes"].
     """
     # --- Try Analysis-by-Day first ---
-    daily_df: Optional[pd.DataFrame] = getattr(pkg, "analysis_by_day", None)
+    daily_df: Optional[pd.DataFrame] = None
+    daily_source = "analysis_by_day"
+    for attr_name, source_name in (
+        ("analysis_by_day", "analysis_by_day"),
+        ("daily", "daily"),
+        ("daily_analysis", "daily"),
+        ("analysis_daily", "daily"),
+    ):
+        candidate = getattr(pkg, attr_name, None)
+        if isinstance(candidate, pd.DataFrame) and not candidate.empty:
+            daily_df = candidate
+            daily_source = source_name
+            break
+
     if isinstance(daily_df, pd.DataFrame) and not daily_df.empty:
-        day_col = _find_col(daily_df, ["Period", "Date", "Day"])
-        np_col = _find_col(daily_df, ["Net profit", "Net Profit", "NetProfit"])
-        trades_col = _find_col(daily_df, ["Total trades", "Trades", "Total Trades", "# Trades"])
+        day_col = _find_col(daily_df, ["Period", "Date", "Day", "date"])
+        np_col = _find_col(daily_df, ["Net profit", "Net Profit", "NetProfit", "net_profit"])
+        trades_col = _find_col(
+            daily_df,
+            ["Total trades", "Trades", "Total Trades", "# Trades", "trade_count"],
+        )
 
         if day_col and np_col:
             df = daily_df.copy()
@@ -82,7 +98,7 @@ def derive_daily_outcomes_for_package(pkg: Any) -> Dict[str, Any]:
                 # If no trades column, infer trades>0 if net_profit != 0 (best-effort).
                 trades = (net_profit != 0.0).astype(int)
 
-            out: Dict[str, Any] = {"by_date": {}, "source": "analysis_by_day"}
+            out: Dict[str, Any] = {"by_date": {}, "source": daily_source}
             for d, npv, tr in zip(days, net_profit, trades):
                 if pd.isna(d):
                     continue

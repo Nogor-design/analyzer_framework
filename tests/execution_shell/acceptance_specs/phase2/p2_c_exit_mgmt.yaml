@@ -1,0 +1,121 @@
+group: "C"
+label: "Exit Management"
+
+tests:
+
+  - test_id: "P2-C01"
+    title: "EXIT_ALL while Long flattens position; pos=Flat appears in log"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: flat_pos_log
+        source: log
+        contains: "|pos=Flat|"
+        proof_weight: strong
+      - id: closed_event
+        source: outbox
+        status: CLOSED
+        proof_weight: moderate
+        optional: true
+    downgrade_rules:
+      - condition_type: event_not_matched
+        ref: closed_event
+        action: pass_unverified
+        reason: >
+          CLOSED outbox event not observed. The log pos=Flat is strong evidence
+          the position was exited; however the shell may not emit a CLOSED event
+          in all versions. Flagged PASS_UNVERIFIED until confirmed.
+    notes: >
+      The log |pos=Flat| fragment is the primary strong evidence.
+      The CLOSED outbox event is corroborating but optional — its absence
+      triggers a downgrade to PASS_UNVERIFIED to surface the gap.
+
+  - test_id: "P2-C02"
+    title: "TAKE_PARTIAL reduces position qty; log shows reduced qty"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: reduced_qty_log
+        source: log
+        # qty=N for any N less than entry_qty appears in the log raw line
+        # The test case checks the exact expected_remaining value; the spec
+        # checks that ANY qty reduction is visible in the log.
+        contains: "|qty="
+        proof_weight: strong
+      - id: partial_fill_event
+        source: outbox
+        status: PARTIAL_FILL
+        proof_weight: strong
+        optional: true
+    downgrade_rules:
+      - condition_type: event_not_matched
+        ref: partial_fill_event
+        action: pass_unverified
+        reason: >
+          PARTIAL_FILL outbox event not observed; shell may emit FILLED instead.
+          Log qty reduction is the primary evidence.
+    notes: >
+      Requires entry_qty >= 2 (test case returns SKIP otherwise).
+      The test case waits for the specific expected_remaining qty in the log;
+      the spec checks that any qty= change is visible as corroboration.
+
+  - test_id: "P2-C03"
+    title: "After partial exit, health snapshot shows stop_order still live"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: stop_attached_initial
+        source: outbox
+        status: STOP_ATTACHED
+        proof_weight: strong
+    required_state:
+      - id: health_stop_still_live
+        source: health
+        field: stop_order_live
+        op: eq
+        value: true
+        proof_weight: weak
+    notes: >
+      STOP_ATTACHED (strong) confirms initial stop was placed.
+      health.stop_order_live (weak) is indirect evidence the stop survived
+      the partial exit. These together constitute moderate overall proof.
+      The health snapshot is inherently weak because it's a point-in-time poll.
+
+  - test_id: "P2-C04"
+    title: "TAKE_PARTIAL: NT8 Positions tab shows reduced quantity (user-verified)"
+    severity: normal
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: reduced_qty_log
+        source: log
+        contains: "|qty="
+        proof_weight: strong
+    checkpoint_rules:
+      - checkpoint_label: "NT8 shows full position"
+        required: true
+        if_missing: pass_unverified
+      - checkpoint_label: "NT8 shows reduced position"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "NT8 shows full position"
+        action: pass_unverified
+        reason: "Initial full-position checkpoint not confirmed by operator"
+      - condition_type: checkpoint_missing
+        ref: "NT8 shows reduced position"
+        action: pass_unverified
+        reason: "Reduced-position checkpoint not confirmed by operator"
+    notes: >
+      Visual confirmation of NT8 UI state is the primary value of this test.
+      Without both checkpoint confirmations, the test is PASS_UNVERIFIED.
+      Not blocking_for_sim_readiness because P2-C02 and P2-C03 cover the
+      automated aspects.

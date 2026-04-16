@@ -1,0 +1,129 @@
+group: "A"
+label: "Entry / Fill Detection"
+
+tests:
+
+  - test_id: "P2-A01"
+    title: "ENTER_LONG accepted and shell transitions to EntryPending"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: accept_outbox
+        source: outbox
+        status: ACCEPTED
+        proof_weight: strong
+        # shell_mode is a top-level field on OutboxEvent
+        field: shell_mode
+        op: in
+        value: ["EntryPending", "InPosition"]
+      - id: accept_log
+        source: log
+        event_type: ACCEPT
+        proof_weight: moderate
+    notes: >
+      ACCEPTED outbox event (strong) + ACCEPT log record (moderate corroboration).
+      shell_mode must be EntryPending or InPosition on the ACCEPT event.
+      InPosition is allowed because a fast Sim fill may arrive before this check.
+
+  - test_id: "P2-A02"
+    title: "ENTER_LONG fills on Sim101; FILLED event and pos=Long in log"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: filled_outbox
+        source: outbox
+        status: FILLED
+        proof_weight: strong
+      - id: long_pos_log
+        source: log
+        contains: "|pos=Long|"
+        proof_weight: strong
+    notes: >
+      Both FILLED outbox event AND the log pos=Long header are required
+      for strong proof. Either alone would be moderate; both together are strong.
+
+  - test_id: "P2-A03"
+    title: "FILLED event detail contains required fields (order_id, qty, price, remaining_qty, pos_side)"
+    severity: high
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: filled_outbox
+        source: outbox
+        status: FILLED
+        proof_weight: strong
+      - id: filled_has_order_id
+        source: outbox
+        status: FILLED
+        contains: "order_id"
+        proof_weight: strong
+      - id: filled_has_qty
+        source: outbox
+        status: FILLED
+        contains: "qty"
+        proof_weight: strong
+      - id: filled_has_price
+        source: outbox
+        status: FILLED
+        contains: "price"
+        proof_weight: strong
+      - id: filled_has_remaining
+        source: outbox
+        status: FILLED
+        contains: "remaining_qty"
+        proof_weight: strong
+    checkpoint_rules:
+      - checkpoint_label: "NT8 position visible"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "NT8 position visible"
+        action: pass_unverified
+        reason: "NT8 UI confirmation not obtained; position state unverified by human"
+    notes: >
+      Requires Phase 2 shell change: FILLED detail must include remaining_qty and pos_side.
+      The checkpoint asks the operator to visually confirm the NT8 position.
+      Without human confirmation the test downgrades to PASS_UNVERIFIED.
+
+  - test_id: "P2-A04"
+    title: "Second ENTER_LONG while EntryPending or InPosition is gate-rejected"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: any_required
+    required_events:
+      - id: gate_rejected_outbox
+        source: outbox
+        status: REJECTED
+        proof_weight: strong
+      - id: gate_log_record
+        source: log
+        event_type: GATE
+        proof_weight: moderate
+    notes: >
+      Uses any_required: either a REJECTED outbox event or a GATE log record is
+      sufficient evidence that the shell correctly blocked the duplicate entry.
+      The outbox REJECTED event is stronger evidence than the log GATE record.
+
+  - test_id: "P2-A05"
+    title: "ENTER_SHORT fills on Sim101; FILLED event and pos=Short in log"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: filled_outbox
+        source: outbox
+        status: FILLED
+        proof_weight: strong
+      - id: short_pos_log
+        source: log
+        contains: "|pos=Short|"
+        proof_weight: strong
+    notes: "Mirror of P2-A02 for the short side."

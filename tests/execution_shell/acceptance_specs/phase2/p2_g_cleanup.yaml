@@ -1,0 +1,74 @@
+group: "G"
+label: "Cleanup / Teardown"
+
+tests:
+
+  - test_id: "P2-G01"
+    title: "EXIT_ALL flattens any remaining position (end-of-suite cleanup)"
+    severity: normal
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: flat_log
+        source: log
+        contains: "|pos=Flat|"
+        proof_weight: strong
+    notes: >
+      If already flat at test start, this trivially passes (test case returns
+      early with PASS). The spec will see pos=Flat in the bundle regardless.
+      Not blocking_for_sim_readiness — this is a housekeeping test.
+
+  - test_id: "P2-G02"
+    title: "FLATTEN_AND_DISABLE: position flat and intake disabled"
+    severity: normal
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: flat_after_fad
+        source: log
+        contains: "|pos=Flat|"
+        proof_weight: strong
+    required_state:
+      - id: intake_off_after_fad
+        source: health
+        field: intake
+        op: eq
+        value: false
+        proof_weight: weak
+        optional: true
+    downgrade_rules:
+      - condition_type: state_not_matched
+        ref: intake_off_after_fad
+        action: pass_unverified
+        reason: >
+          Health snapshot did not confirm intake=false after FLATTEN_AND_DISABLE.
+          Position appears flat from log, but intake state is unverified.
+    notes: >
+      flat log is primary evidence (strong). intake=false in health is weak
+      corroboration. Absence of health confirmation triggers PASS_UNVERIFIED.
+
+  - test_id: "P2-G03"
+    title: "NT8 Accounts tab shows zero open positions after suite teardown"
+    severity: normal
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: all_required
+    required_events:
+      - id: flat_log
+        source: log
+        contains: "|pos=Flat|"
+        proof_weight: strong
+    checkpoint_rules:
+      - checkpoint_label: "NT8 zero open positions"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "NT8 zero open positions"
+        action: pass_unverified
+        reason: "Operator did not confirm NT8 is clean and flat at suite end"
+    notes: >
+      Final visual confirmation that the Sim101 account is fully clean.
+      Not blocking_for_sim_readiness because G-suite is teardown-only.

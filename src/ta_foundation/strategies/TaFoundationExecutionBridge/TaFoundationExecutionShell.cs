@@ -108,8 +108,10 @@ namespace NinjaTrader.NinjaScript.Strategies
         private const string EntryShortSignal = "TF_ENTER_SHORT";
         private const string ExitSignal = "TF_EXIT_ALL";
         private const string PartialSignal = "TF_PARTIAL";
-        private const string LongStopSignal = "TF_STOP_LONG";
-        private const string ShortStopSignal = "TF_STOP_SHORT";
+        private const string LongStopSignal   = "TF_STOP_LONG";
+        private const string ShortStopSignal  = "TF_STOP_SHORT";
+        private const string LongTargetSignal  = "TF_TARGET_LONG";
+        private const string ShortTargetSignal = "TF_TARGET_SHORT";
 
         private readonly Queue<BridgeInstruction> pendingInstructions = new Queue<BridgeInstruction>();
         private readonly Dictionary<string, StrategyTemplate> templates = new Dictionary<string, StrategyTemplate>(StringComparer.OrdinalIgnoreCase);
@@ -132,6 +134,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double dailyRealizedPnL = 0.0;
         private double pendingStopPrice = 0.0;
         private int pendingTargetTicks = 0;
+        private int pendingStopTicks = 0;       // ticks stored at entry time; used in PlaceProtectiveOrders()
+        private bool pendingStopNeeded = false;
 
         private ShellMode shellMode = ShellMode.Idle;
 
@@ -201,21 +205,74 @@ namespace NinjaTrader.NinjaScript.Strategies
             else if (State == State.DataLoaded)
             {
                 TryRecoverPositionState();
-                LogReconciliationSnapshot("STARTUP");
-            }
-            else if (State == State.Terminated)
-            {
-                try
+
+                // ── Auto-reset intake after transient fault on clean flat restart ─────
+                // LoadPersistentState() restores signalIntakeEnabled from the state file.
+                // If the previous session ended with a heartbeat fault while flat, the
+                // saved state will have signalIntakeEnabled=false.  On a clean restart
+                // with no open position this is safe to clear automatically.
+                // A deliberate FlattenAndDisable (kill-switch) also saves intake=false,
+                // so we only auto-reset when heartbeatFaulted=true (transient condition),
+                // not when both are false (intentional disable).
+                bool positionFlat = Position == null || Position.MarketPosition == MarketPosition.Flat;
+                if (!signalIntakeEnabled && heartbeatFaulted && positionFlat)
                 {
-                    SavePersistentState();
-                }
-                catch
-                {
+                    AppendLog("STARTUP_AUTO_RESET",
+                        "intake re-enabled after heartbeat fault on clean flat restart; previous session ended with transient hb fault");
+                    signalIntakeEnabled = true;
+                    heartbeatFaulted = false;
                 }
 
-                if (FlatOnDisable)
-                    FlattenAndDisable("STRATEGY_TERMINATED");
+                // ── Startup diagnostics ───────────────────────────────────────────────
+                // Written BEFORE SHELL_READY so log sequence is: diagnostics → ready.
+                AppendLog("STARTUP_STATE", string.Format(CultureInfo.InvariantCulture,
+                    "mode={0} intake={1} hb_faulted={2} daily_lockout={3} ",
+                    "pos_side={4} pos_qty={5} template={6} pending_stop={7}",
+                    shellMode, signalIntakeEnabled, heartbeatFaulted, dailyLockout,
+                    Position != null ? Position.MarketPosition.ToString() : "Unavailable",
+                    Position != null ? Position.Quantity : 0,
+                    string.IsNullOrWhiteSpace(activeTemplate) ? "<none>" : activeTemplate,
+                    pendingStopPrice));
+
+                // Probe inbox for any waiting files — log count so we can see if
+                // stale messages are already queued at startup.
+                int inboxDepth = 0;
+                try
+                {
+                    if (Directory.Exists(InboxDirectory))
+                        inboxDepth = Directory.GetFiles(InboxDirectory, "*.json").Length;
+                }
+                catch { }
+                AppendLog("STARTUP_INBOX", string.Format(CultureInfo.InvariantCulture,
+                    "inbox_depth={0} inbox_dir={1}", inboxDepth, InboxDirectory));
+
+                LogReconciliationSnapshot("STARTUP");
+                WriteOutboxEvent("SHELL_READY", string.Format(CultureInfo.InvariantCulture,
+                    "mode={0};intake={1};hb_faulted={2};daily_lockout={3};"
+                    + "recovered_mode={4};inbox_depth={5}",
+                    shellMode, signalIntakeEnabled, heartbeatFaulted, dailyLockout,
+                    Position != null ? Position.MarketPosition.ToString() : "Unknown",
+                    inboxDepth));
             }
+           else if (State == State.Terminated)
+			{
+			    try
+			    {
+			        SavePersistentState();
+			    }
+			    catch
+			    {
+			    }
+			
+			    try
+			    {
+			        if (FlatOnDisable && Position != null && Position.MarketPosition != MarketPosition.Flat)
+			            FlattenAndDisable("STRATEGY_TERMINATED");
+			    }
+			    catch
+			    {
+			    }
+			}
         }
 
         protected override void OnBarUpdate()
@@ -227,6 +284,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
 
             RotateTradingDayIfNeeded();
+            SubmitPendingStopIfReady();
             PollBridgeFiles();
             CheckHeartbeatFault();
             DrainInstructionQueue();
@@ -273,6 +331,16 @@ namespace NinjaTrader.NinjaScript.Strategies
             {
                 AppendLog("ORDER_WORKING", string.Format(CultureInfo.InvariantCulture,
                     "name={0} id={1} qty={2} stop={3} limit={4}", order.Name, order.OrderId, quantity, stopPrice, limitPrice));
+
+                bool isStop = order.Name == LongStopSignal || order.Name == ShortStopSignal
+                          || order.OrderType == OrderType.StopMarket;
+                if (isStop)
+                {
+                    WriteOutboxEvent("STOP_WORKING", string.Format(CultureInfo.InvariantCulture,
+                        "order_id={0};signal={1};stop_price={2};qty={3};pos_side={4}",
+                        order.OrderId, order.Name, stopPrice, quantity,
+                        Position != null ? Position.MarketPosition.ToString() : "Unknown"));
+                }
             }
 
             LogReconciliationSnapshot("ORDER_UPDATE");
@@ -296,18 +364,35 @@ namespace NinjaTrader.NinjaScript.Strategies
                 price,
                 order.OrderState));
             WriteOutboxEvent("FILLED", string.Format(CultureInfo.InvariantCulture,
-                "order_id={0};signal={1};side={2};qty={3};price={4}", orderId, order.Name, marketPosition, quantity, price));
+                "order_id={0};signal={1};side={2};qty={3};price={4};remaining_qty={5};pos_side={6}",
+                orderId, order.Name, marketPosition, quantity, price,
+                Position.Quantity, Position.MarketPosition));
 
             if (order.Name == EntryLongSignal || order.Name == EntryShortSignal)
             {
-                shellMode = Position.MarketPosition == MarketPosition.Flat ? ShellMode.EntryPending : ShellMode.InPosition;
+                shellMode = ShellMode.InPosition;
                 entryBarNumber = CurrentBar;
-                EnsureProtectiveOrdersAfterEntry(price);
+                // Place stop + target immediately using the actual fill price.
+                // isLiveUntilCancelled=true keeps them alive across bars and lets
+                // us move the stop by calling ExitLong/ShortStopMarket again.
+                if (!DryRunMode)
+                    PlaceProtectiveOrders(order.Name, price, quantity);
             }
-            else if (order.Name == ExitSignal || order.Name == PartialSignal || order.Name == LongStopSignal || order.Name == ShortStopSignal)
+            else if (order.Name == ExitSignal || order.Name == PartialSignal
+                     || order.Name == LongStopSignal  || order.Name == ShortStopSignal
+                     || order.Name == LongTargetSignal || order.Name == ShortTargetSignal)
             {
                 if (Position.MarketPosition == MarketPosition.Flat)
                 {
+                    // Cancel the other bracket leg before clearing references.
+                    // LUC exit orders remain live in NT8 until explicitly cancelled.
+                    // Leaving the target alive after the stop fills (or vice versa)
+                    // causes the next ENTER_LONG with the same fromEntrySignal to be
+                    // silently dropped by NT8's bracket-conflict detection.
+                    if (order.Name == LongStopSignal || order.Name == ShortStopSignal)
+                        TryCancel(targetOrder);
+                    else if (order.Name == LongTargetSignal || order.Name == ShortTargetSignal)
+                        TryCancel(stopOrder);
                     ResetRuntimeTradeState();
                     shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
                 }
@@ -346,13 +431,22 @@ namespace NinjaTrader.NinjaScript.Strategies
             try
             {
                 payload = File.ReadAllText(path, Encoding.UTF8);
-                instruction = DeserializeJson<BridgeInstruction>(payload);
+                instruction = DeserializeInstruction(payload);
                 string rejection = ValidateInstruction(instruction);
 
                 if (!string.IsNullOrEmpty(rejection))
                 {
+                    string rejectId = instruction != null ? instruction.MessageId : "<null>";
                     AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
-                        "id={0} reason={1}", instruction == null ? "<null>" : instruction.MessageId, rejection));
+                        "id={0} reason={1}", rejectId, rejection));
+                    // Write outbox event so harness can detect early-validation rejects
+                    // (e.g. stale signal, instrument mismatch, stop-ticks cap exceeded).
+                    if (instruction != null)
+                    {
+                        lastInstructionId = instruction.MessageId;
+                        WriteOutboxEvent("REJECTED", string.Format(CultureInfo.InvariantCulture,
+                            "id={0};action={1};reason={2}", rejectId, instruction.Action ?? "?", rejection));
+                    }
                     string ignored;
                     TryMoveFile(path, RejectDirectory, out ignored);
                     return;
@@ -436,11 +530,40 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return false;
             }
 
-            if ((action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT) && Position.MarketPosition != MarketPosition.Flat)
-            {
-                reason = "already in position";
-                return false;
-            }
+            bool shellThinksInTrade =
+			    shellMode == ShellMode.EntryPending ||
+			    shellMode == ShellMode.InPosition ||
+			    shellMode == ShellMode.ExitPending;
+				
+			bool actualPositionOpen = false;
+			try
+			{
+			    actualPositionOpen = Position != null && Position.MarketPosition != MarketPosition.Flat;
+			}
+			catch
+			{
+			    actualPositionOpen = false;
+			}
+			
+			if (action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT)
+			{
+			    if (DryRunMode)
+			    {
+			        if (shellThinksInTrade)
+			        {
+			            reason = "already in position";
+			            return false;
+			        }
+			    }
+			    else
+			    {
+			        if (actualPositionOpen || shellThinksInTrade)
+			        {
+			            reason = "already in position";
+			            return false;
+			        }
+			    }
+			}
 
             return true;
         }
@@ -511,8 +634,15 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             if (!signalIntakeEnabled || dailyLockout || shellMode == ShellMode.Disabled)
             {
+                string rejectReason = !signalIntakeEnabled ? "intake_disabled"
+                    : dailyLockout ? "daily_lockout"
+                    : "shell_disabled";
                 AppendLog("REJECT", string.Format(CultureInfo.InvariantCulture,
-                    "id={0} reason=intake disabled or daily lockout", instruction.MessageId));
+                    "id={0} reason={1}", instruction.MessageId, rejectReason));
+                // Emit outbox event so the test harness can distinguish
+                // "message not seen" from "message seen but intake was off".
+                WriteOutboxEvent("REJECTED", string.Format(CultureInfo.InvariantCulture,
+                    "id={0};action={1};reason={2}", instruction.MessageId, instruction.Action, rejectReason));
                 return;
             }
 
@@ -554,6 +684,9 @@ namespace NinjaTrader.NinjaScript.Strategies
             activePositionId = string.IsNullOrWhiteSpace(instruction.PositionId) ? instruction.MessageId : instruction.PositionId;
             pendingTargetTicks = targetTicks;
             pendingStopPrice = 0.0;
+            // Store stop ticks so PlaceProtectiveOrders() can compute the stop price
+            // from the actual fill price received in OnExecutionUpdate.
+            pendingStopTicks = stopTicks;
             shellMode = ShellMode.EntryPending;
 
             if (DryRunMode)
@@ -577,16 +710,17 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
-            SetInitialTarget(desiredSide, targetTicks);
-
+            // Stop and target are placed in OnExecutionUpdate -> PlaceProtectiveOrders()
+            // once the entry fill is confirmed, using the actual fill price.
+            // Do NOT call SetStopLoss/SetProfitTarget here — mixing Set-methods with
+            // the Exit-method protective orders placed later triggers NT8's internal
+            // order-handling rules and causes one category to be silently ignored.
             if (desiredSide == MarketPosition.Long)
             {
-                pendingStopPrice = RoundPriceToTick(Close[0] - (stopTicks * TickSize));
                 EnterLong(quantity, EntryLongSignal);
             }
             else
             {
-                pendingStopPrice = RoundPriceToTick(Close[0] + (stopTicks * TickSize));
                 EnterShort(quantity, EntryShortSignal);
             }
 
@@ -671,10 +805,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                 return;
             }
 
+            // To move a live stop that was submitted via ExitLong/ShortStopMarket,
+            // simply call the same method again with the new price.  NT8 detects
+            // the existing working order for that signal name and updates its price.
+            // Using SetStopLoss() here instead would be silently ignored because an
+            // Exit-method order is already active on this position (internal handling rule).
+            int qty = Math.Abs(Position.Quantity);
             if (Position.MarketPosition == MarketPosition.Long)
-                ExitLongStopMarket(0, true, Math.Abs(Position.Quantity), newStop, LongStopSignal, EntryLongSignal);
+                stopOrder = ExitLongStopMarket(0, true, qty, newStop, LongStopSignal, EntryLongSignal);
             else if (Position.MarketPosition == MarketPosition.Short)
-                ExitShortStopMarket(0, true, Math.Abs(Position.Quantity), newStop, ShortStopSignal, EntryShortSignal);
+                stopOrder = ExitShortStopMarket(0, true, qty, newStop, ShortStopSignal, EntryShortSignal);
 
             AppendLog("MOVE_STOP", string.Format(CultureInfo.InvariantCulture,
                 "id={0} stop_price={1}", instruction.MessageId, newStop));
@@ -777,8 +917,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if ((action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT) && instruction.Quantity > MaxPositionSize)
                 return "quantity above max position size";
-            if (instruction.StopTicks > MaxStopTicksCap)
-                return "stop ticks above configured cap";
+            // stop_ticks exceeding MaxStopTicksCap is not a hard rejection.
+            // NormalizeStopTicks() already clamps to the cap at execution time.
+            // We only reject values that are obviously erroneous (> 10× the cap),
+            // e.g. accidental 5-digit entries from a misconfigured signal.
+            if (instruction.StopTicks > MaxStopTicksCap * 10)
+                return "stop ticks unreasonably large";
             if ((action == BridgeAction.MOVE_STOP) && (!instruction.StopPrice.HasValue || instruction.StopPrice.Value <= 0))
                 return "invalid stop price";
             if (dailyLockout && (action == BridgeAction.ENTER_LONG || action == BridgeAction.ENTER_SHORT))
@@ -933,32 +1077,47 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
-        private void AppendLog(string eventType, string message)
-        {
-            string line = string.Format(CultureInfo.InvariantCulture,
-                "{0:o}|{1}|instr={2}|template={3}|mode={4}|pos={5}|qty={6}|msg={7}",
-                DateTime.UtcNow,
-                eventType,
-                lastInstructionId,
-                activeTemplate,
-                shellMode,
-                Position.MarketPosition,
-                Position.Quantity,
-                message);
-
-            Print(line);
-
-            try
-            {
-                if (string.IsNullOrWhiteSpace(LogFilePath))
-                    return;
-                EnsureDirectory(Path.GetDirectoryName(LogFilePath));
-                File.AppendAllText(LogFilePath, line + Environment.NewLine, Encoding.UTF8);
-            }
-            catch
-            {
-            }
-        }
+       private void AppendLog(string eventType, string message)
+		{
+		    string posSide = "<unavailable>";
+		    int posQty = 0;
+		
+		    try
+		    {
+		        if (Position != null)
+		        {
+		            posSide = Position.MarketPosition.ToString();
+		            posQty = Position.Quantity;
+		        }
+		    }
+		    catch
+		    {
+		    }
+		
+		    string line = string.Format(CultureInfo.InvariantCulture,
+		        "{0:o}|{1}|instr={2}|template={3}|mode={4}|pos={5}|qty={6}|msg={7}",
+		        DateTime.UtcNow,
+		        eventType,
+		        lastInstructionId,
+		        activeTemplate,
+		        shellMode,
+		        posSide,
+		        posQty,
+		        message);
+		
+		    Print(line);
+		
+		    try
+		    {
+		        if (string.IsNullOrWhiteSpace(LogFilePath))
+		            return;
+		        EnsureDirectory(Path.GetDirectoryName(LogFilePath));
+		        File.AppendAllText(LogFilePath, line + Environment.NewLine, Encoding.UTF8);
+		    }
+		    catch
+		    {
+		    }
+		}
 
         private int NormalizeStopTicks(BridgeInstruction instruction, StrategyTemplate template)
         {
@@ -977,17 +1136,131 @@ namespace NinjaTrader.NinjaScript.Strategies
             return Math.Max(1, targetTicks);
         }
 
+        // NOTE: SetProfitTarget() is intentionally NOT used here.
+        // Mixing Set-methods (SetProfitTarget/SetStopLoss) with Exit-methods
+        // (ExitLongStopMarket) on the same position triggers NT8's internal
+        // order-handling rules and causes one category of orders to be silently
+        // ignored.  All protective orders on this shell use Exit-methods with
+        // isLiveUntilCancelled=true so they can be submitted once and updated
+        // (moved) by resubmitting with a new price.
+        //
+        // InitialTarget is now submitted from OnExecutionUpdate once the entry
+        // fills (see PlaceProtectiveOrders).  This stub is kept as documentation.
         private void SetInitialTarget(MarketPosition desiredSide, int targetTicks)
         {
-            if (desiredSide == MarketPosition.Long)
-                SetProfitTarget(EntryLongSignal, CalculationMode.Ticks, targetTicks);
+            // Intentionally empty — targets are placed in PlaceProtectiveOrders().
+        }
+
+        private void SubmitPendingStopIfReady()
+        {
+            // Called at the top of every OnBarUpdate as a safety-net fallback only.
+            // The primary stop+target placement happens immediately in OnExecutionUpdate
+            // via PlaceProtectiveOrders() the moment the entry fill is confirmed.
+            // This path fires only when pendingStopNeeded is still true, which means
+            // the OnExecutionUpdate placement was skipped (e.g. recovery restart).
+            //
+            // CRITICAL: ExitLong/ShortStopMarket with isLiveUntilCancelled=true is used
+            // instead of SetStopLoss().  SetStopLoss() recalculates and resubmits on
+            // every bar update and conflicts with the Exit-method target order, causing
+            // NT8 to silently discard Exit orders per its internal order handling rules.
+            // With isLiveUntilCancelled=true the stop persists across bars and is moved
+            // by calling the same Exit method again with a new price.
+            if (!pendingStopNeeded || DryRunMode)
+                return;
+            if (shellMode != ShellMode.InPosition)
+                return;
+            if (pendingStopPrice <= 0)
+                return;
+            if (Position == null || Position.MarketPosition == MarketPosition.Flat)
+                return;
+
+            int qty = Math.Abs(Position.Quantity);
+            if (Position.MarketPosition == MarketPosition.Long)
+                stopOrder = ExitLongStopMarket(0, true, qty, pendingStopPrice, LongStopSignal, EntryLongSignal);
+            else if (Position.MarketPosition == MarketPosition.Short)
+                stopOrder = ExitShortStopMarket(0, true, qty, pendingStopPrice, ShortStopSignal, EntryShortSignal);
             else
-                SetProfitTarget(EntryShortSignal, CalculationMode.Ticks, targetTicks);
+                return;
+
+            pendingStopNeeded = false;
+
+            AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
+                "pos={0} stop_price={1} qty={2} source=OnBarUpdate_fallback", Position.MarketPosition, pendingStopPrice, qty));
+            WriteOutboxEvent("STOP_ATTACHED", string.Format(CultureInfo.InvariantCulture,
+                "side={0};stop_price={1};qty={2};source=fallback",
+                Position.MarketPosition, pendingStopPrice, qty));
+        }
+
+        /// <summary>
+        /// Submits protective stop and profit-target orders immediately after an entry fills.
+        /// Called from OnExecutionUpdate with the actual fill price.
+        ///
+        /// KEY DESIGN RULE — use Exit methods only, never SetStopLoss/SetProfitTarget:
+        ///   • SetStopLoss/SetProfitTarget ("Set methods") recalculate on every bar
+        ///     and conflict with Exit-method orders already active, causing NT8 to
+        ///     silently discard them per its internal order-handling rules.
+        ///   • ExitLong/ShortStopMarket + ExitLong/ShortLimit with isLiveUntilCancelled=true
+        ///     persist across bars without resubmission.
+        ///   • To move the stop, call ExitLong/ShortStopMarket again with a new price;
+        ///     NT8 updates the working order in-place.
+        /// </summary>
+        private void PlaceProtectiveOrders(string entrySignalName, double fillPrice, int fillQty)
+        {
+            if (DryRunMode)
+                return;
+
+            bool isLong = entrySignalName == EntryLongSignal;
+
+            // Compute stop price from the stored tick distance (set in HandleEntry).
+            int stopTicks = pendingStopTicks > 0 ? pendingStopTicks : Math.Min(12, MaxStopTicksCap);
+            double stopPrice = isLong
+                ? RoundPriceToTick(fillPrice - stopTicks * TickSize)
+                : RoundPriceToTick(fillPrice + stopTicks * TickSize);
+
+            // Cap stop distance.
+            stopPrice = isLong
+                ? Math.Max(stopPrice, RoundPriceToTick(fillPrice - MaxStopTicksCap * TickSize))
+                : Math.Min(stopPrice, RoundPriceToTick(fillPrice + MaxStopTicksCap * TickSize));
+
+            pendingStopPrice = stopPrice;
+
+            // Compute target price from stored target ticks.
+            int targetTicks = pendingTargetTicks > 0 ? pendingTargetTicks : stopTicks;
+            double targetPrice = isLong
+                ? RoundPriceToTick(fillPrice + targetTicks * TickSize)
+                : RoundPriceToTick(fillPrice - targetTicks * TickSize);
+
+            string stopSignal   = isLong ? LongStopSignal   : ShortStopSignal;
+            string targetSignal = isLong ? LongTargetSignal : ShortTargetSignal;
+            string fromEntry    = isLong ? EntryLongSignal  : EntryShortSignal;
+
+            if (isLong)
+            {
+                stopOrder   = ExitLongStopMarket(0, true, fillQty, stopPrice,   stopSignal,   fromEntry);
+                targetOrder = ExitLongLimit     (0, true, fillQty, targetPrice, targetSignal, fromEntry);
+            }
+            else
+            {
+                stopOrder   = ExitShortStopMarket(0, true, fillQty, stopPrice,   stopSignal,   fromEntry);
+                targetOrder = ExitShortLimit     (0, true, fillQty, targetPrice, targetSignal, fromEntry);
+            }
+
+            pendingStopNeeded = false;
+
+            AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
+                "side={0} fill={1} stop={2} target={3} qty={4}",
+                isLong ? "Long" : "Short", fillPrice, stopPrice, targetPrice, fillQty));
+            WriteOutboxEvent("STOP_ATTACHED", string.Format(CultureInfo.InvariantCulture,
+                "side={0};fill_price={1};stop_price={2};target_price={3};qty={4}",
+                isLong ? "Long" : "Short", fillPrice, stopPrice, targetPrice, fillQty));
+            SavePersistentState();
         }
 
         private void EnsureProtectiveOrdersAfterEntry(double fillPrice)
         {
-            if (DryRunMode || Position.MarketPosition == MarketPosition.Flat)
+            // Used during recovery restarts to reattach a stop when the OnExecutionUpdate
+            // fill callback was missed.  Same Exit-method pattern as PlaceProtectiveOrders.
+            if (DryRunMode || Position == null || Position.MarketPosition == MarketPosition.Flat)
                 return;
 
             if (pendingStopPrice <= 0)
@@ -1000,15 +1273,19 @@ namespace NinjaTrader.NinjaScript.Strategies
                     "fallback protective stop applied at {0}", pendingStopPrice));
             }
 
+            int qty = Math.Abs(Position.Quantity);
             if (Position.MarketPosition == MarketPosition.Long)
-                ExitLongStopMarket(0, true, Math.Abs(Position.Quantity), pendingStopPrice, LongStopSignal, EntryLongSignal);
+                stopOrder = ExitLongStopMarket(0, true, qty, pendingStopPrice, LongStopSignal, EntryLongSignal);
             else if (Position.MarketPosition == MarketPosition.Short)
-                ExitShortStopMarket(0, true, Math.Abs(Position.Quantity), pendingStopPrice, ShortStopSignal, EntryShortSignal);
+                stopOrder = ExitShortStopMarket(0, true, qty, pendingStopPrice, ShortStopSignal, EntryShortSignal);
+
+            pendingStopNeeded = false;
 
             AppendLog("STOP_INIT", string.Format(CultureInfo.InvariantCulture,
-                "pos={0} stop_price={1}", Position.MarketPosition, pendingStopPrice));
+                "pos={0} stop_price={1} qty={2}", Position.MarketPosition, pendingStopPrice, qty));
             WriteOutboxEvent("STOP_ATTACHED", string.Format(CultureInfo.InvariantCulture,
-                "side={0};stop_price={1};qty={2}", Position.MarketPosition, pendingStopPrice, Math.Abs(Position.Quantity)));
+                "side={0};stop_price={1};qty={2};source=recovery",
+                Position.MarketPosition, pendingStopPrice, qty));
         }
 
         private bool IsValidStopForCurrentPosition(double stopPrice)
@@ -1046,9 +1323,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 entryOrder = order;
             else if (order.Name == ExitSignal || order.Name == PartialSignal)
                 exitOrder = order;
-            else if (order.Name == LongStopSignal || order.Name == ShortStopSignal)
+            else if (order.Name == LongStopSignal || order.Name == ShortStopSignal
+                     || order.OrderType == OrderType.StopMarket)
                 stopOrder = order;
-            else if (order.OrderType == OrderType.Limit)
+            else if (order.Name == LongTargetSignal || order.Name == ShortTargetSignal
+                     || order.OrderType == OrderType.Limit)
                 targetOrder = order;
         }
 
@@ -1059,7 +1338,9 @@ namespace NinjaTrader.NinjaScript.Strategies
             stopOrder = null;
             targetOrder = null;
             pendingStopPrice = 0.0;
+            pendingStopNeeded = false;
             pendingTargetTicks = 0;
+            pendingStopTicks = 0;
             activePositionId = string.Empty;
             entryBarNumber = -1;
             lastKnownPositionQuantity = 0;
@@ -1085,57 +1366,177 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
-        private void TryRecoverPositionState()
-        {
-            if (!RecoverOpenPositionOnStartup)
-                return;
+		private BridgeInstruction DeserializeInstruction(string json)
+		{
+		    if (string.IsNullOrWhiteSpace(json))
+		        return null;
+		
+		    JavaScriptSerializer serializer = new JavaScriptSerializer();
+		    Dictionary<string, object> raw = serializer.Deserialize<Dictionary<string, object>>(json);
+		
+		    if (raw == null)
+		        return null;
+		
+		    BridgeInstruction instruction = new BridgeInstruction();
+		
+		    instruction.MessageId = GetString(raw, "message_id");
+		    instruction.Timestamp = GetString(raw, "timestamp");
+		    instruction.Instrument = GetString(raw, "instrument");
+		    instruction.Timeframe = GetString(raw, "timeframe");
+		    instruction.Action = GetString(raw, "action");
+		    instruction.Side = GetString(raw, "side");
+		    instruction.TemplateName = GetString(raw, "template_name");
+		    instruction.Confidence = GetDouble(raw, "confidence", 0.0);
+		    instruction.EntryMode = GetString(raw, "entry_mode");
+		    instruction.Quantity = GetInt(raw, "quantity", 0);
+		    instruction.StopMode = GetString(raw, "stop_mode");
+		    instruction.StopTicks = GetInt(raw, "stop_ticks", 0);
+		    instruction.StopPrice = GetNullableDouble(raw, "stop_price");
+		    instruction.TargetMode = GetString(raw, "target_mode");
+		    instruction.TargetTicks = GetNullableInt(raw, "target_ticks");
+		    instruction.PartialTargetTicks = GetNullableInt(raw, "partial_target_ticks");
+		    instruction.RunnerMode = GetString(raw, "runner_mode");
+		    instruction.MaxHoldBars = GetNullableInt(raw, "max_hold_bars");
+		    instruction.ThesisId = GetString(raw, "thesis_id");
+		    instruction.Notes = GetString(raw, "notes");
+		    instruction.PositionId = GetString(raw, "position_id");
+		    instruction.ExpectedPositionState = GetString(raw, "expected_position_state");
+		    instruction.SignalExpirySeconds = GetNullableInt(raw, "signal_expiry_seconds");
+		
+		    return instruction;
+		}
+		
+		private string GetString(Dictionary<string, object> raw, string key)
+		{
+		    object value;
+		    if (!raw.TryGetValue(key, out value) || value == null)
+		        return null;
+		    return Convert.ToString(value, CultureInfo.InvariantCulture);
+		}
+		
+		private int GetInt(Dictionary<string, object> raw, string key, int defaultValue)
+		{
+		    object value;
+		    if (!raw.TryGetValue(key, out value) || value == null)
+		        return defaultValue;
+		
+		    try
+		    {
+		        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+		    }
+		    catch
+		    {
+		        return defaultValue;
+		    }
+		}
+		
+		private int? GetNullableInt(Dictionary<string, object> raw, string key)
+		{
+		    object value;
+		    if (!raw.TryGetValue(key, out value) || value == null)
+		        return null;
+		
+		    try
+		    {
+		        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+		    }
+		    catch
+		    {
+		        return null;
+		    }
+		}
+		
+		private double GetDouble(Dictionary<string, object> raw, string key, double defaultValue)
+		{
+		    object value;
+		    if (!raw.TryGetValue(key, out value) || value == null)
+		        return defaultValue;
+		
+		    try
+		    {
+		        return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+		    }
+		    catch
+		    {
+		        return defaultValue;
+		    }
+		}
+		
+		private double? GetNullableDouble(Dictionary<string, object> raw, string key)
+		{
+		    object value;
+		    if (!raw.TryGetValue(key, out value) || value == null)
+		        return null;
+		
+		    try
+		    {
+		        return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+		    }
+		    catch
+		    {
+		        return null;
+		    }
+		}
 
-            if (Position.MarketPosition == MarketPosition.Flat)
-            {
-                shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
-                LogReconciliationSnapshot("RECOVERY_FLAT");
-                return;
-            }
-
-            shellMode = ShellMode.Recovery;
-            AppendLog("RECOVERY", string.Format(CultureInfo.InvariantCulture,
-                "detected non-flat position side={0} qty={1}", Position.MarketPosition, Position.Quantity));
-
-            if (pendingStopPrice > 0 && !DryRunMode)
-            {
-                EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);
-                shellMode = ShellMode.InPosition;
-                AppendLog("RECOVERY", "protective stop restored from persisted state");
-                SavePersistentState();
-                LogReconciliationSnapshot("RECOVERY_RESTORED");
-                return;
-            }
-
-            if (!DryRunMode && RecoveryFallbackStopTicks > 0)
-            {
-                pendingStopPrice = Position.MarketPosition == MarketPosition.Long
-                    ? RoundPriceToTick(Position.AveragePrice - (RecoveryFallbackStopTicks * TickSize))
-                    : RoundPriceToTick(Position.AveragePrice + (RecoveryFallbackStopTicks * TickSize));
-                AppendLog("RECOVERY_WARN", string.Format(CultureInfo.InvariantCulture,
-                    "persisted stop missing; applying fallback stop ticks={0} stop={1}", RecoveryFallbackStopTicks, pendingStopPrice));
-                EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);
-                shellMode = ShellMode.InPosition;
-                SavePersistentState();
-                LogReconciliationSnapshot("RECOVERY_FALLBACK_STOP");
-                return;
-            }
-
-            if (FlattenIfRecoveryFails)
-            {
-                AppendLog("RECOVERY_FAIL", "persisted stop unavailable, flattening position");
-                ExitAll("RECOVERY_FAIL_FLATTEN");
-                shellMode = ShellMode.ExitPending;
-            }
-            else
-            {
-                AppendLog("RECOVERY_WARN", "position detected without persisted stop; manual inspection required");
-            }
-        }
+		private void TryRecoverPositionState()
+		{
+		    if (!RecoverOpenPositionOnStartup)
+		        return;
+		
+		    if (Position == null)
+		    {
+		        shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+		        AppendLog("RECOVERY_WARN", "Position was null during DataLoaded; skipping recovery.");
+		        LogReconciliationSnapshot("RECOVERY_POSITION_NULL");
+		        return;
+		    }
+		
+		    if (Position.MarketPosition == MarketPosition.Flat)
+		    {
+		        shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+		        LogReconciliationSnapshot("RECOVERY_FLAT");
+		        return;
+		    }
+		
+		    shellMode = ShellMode.Recovery;
+		    AppendLog("RECOVERY", string.Format(CultureInfo.InvariantCulture,
+		        "detected non-flat position side={0} qty={1}", Position.MarketPosition, Position.Quantity));
+		
+		    if (pendingStopPrice > 0 && !DryRunMode)
+		    {
+		        EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);
+		        shellMode = ShellMode.InPosition;
+		        AppendLog("RECOVERY", "protective stop restored from persisted state");
+		        SavePersistentState();
+		        LogReconciliationSnapshot("RECOVERY_RESTORED");
+		        return;
+		    }
+		
+		    if (!DryRunMode && RecoveryFallbackStopTicks > 0)
+		    {
+		        pendingStopPrice = Position.MarketPosition == MarketPosition.Long
+		            ? RoundPriceToTick(Position.AveragePrice - (RecoveryFallbackStopTicks * TickSize))
+		            : RoundPriceToTick(Position.AveragePrice + (RecoveryFallbackStopTicks * TickSize));
+		        AppendLog("RECOVERY_WARN", string.Format(CultureInfo.InvariantCulture,
+		            "persisted stop missing; applying fallback stop ticks={0} stop={1}", RecoveryFallbackStopTicks, pendingStopPrice));
+		        EnsureProtectiveOrdersAfterEntry(Position.AveragePrice);
+		        shellMode = ShellMode.InPosition;
+		        SavePersistentState();
+		        LogReconciliationSnapshot("RECOVERY_FALLBACK_STOP");
+		        return;
+		    }
+		
+		    if (FlattenIfRecoveryFails)
+		    {
+		        AppendLog("RECOVERY_FAIL", "persisted stop unavailable, flattening position");
+		        ExitAll("RECOVERY_FAIL_FLATTEN");
+		        shellMode = ShellMode.ExitPending;
+		    }
+		    else
+		    {
+		        AppendLog("RECOVERY_WARN", "position detected without persisted stop; manual inspection required");
+		    }
+		}
 
         private void LoadPersistentState()
         {
@@ -1330,63 +1731,103 @@ namespace NinjaTrader.NinjaScript.Strategies
         }
 
         private void LogReconciliationSnapshot(string reason)
-        {
-            lastHealthSnapshotUtc = DateTime.UtcNow;
-            AppendLog("HEALTH", string.Format(CultureInfo.InvariantCulture,
-                "reason={0} shell_mode={1} intake={2} heartbeat_faulted={3} daily_lockout={4} active_position_id={5} pos_side={6} pos_qty={7} avg={8} entry_order={9} stop_order={10} target_order={11} exit_order={12} pending_stop={13} pending_target_ticks={14} queue_depth={15} last_msg_utc={16:o}",
-                reason,
-                shellMode,
-                signalIntakeEnabled,
-                heartbeatFaulted,
-                dailyLockout,
-                activePositionId,
-                Position.MarketPosition,
-                Position.Quantity,
-                Position.AveragePrice,
-                entryOrder == null ? "<null>" : entryOrder.OrderId,
-                stopOrder == null ? "<null>" : stopOrder.OrderId,
-                targetOrder == null ? "<null>" : targetOrder.OrderId,
-                exitOrder == null ? "<null>" : exitOrder.OrderId,
-                pendingStopPrice,
-                pendingTargetTicks,
-                pendingInstructions.Count,
-                lastBridgeMessageUtc));
-        }
+		{
+		    lastHealthSnapshotUtc = DateTime.UtcNow;
+		
+		    string posSide = "<unavailable>";
+		    int posQty = 0;
+		    double avgPrice = 0.0;
+		
+		    try
+		    {
+		        if (Position != null)
+		        {
+		            posSide = Position.MarketPosition.ToString();
+		            posQty = Position.Quantity;
+		            avgPrice = Position.AveragePrice;
+		        }
+		    }
+		    catch
+		    {
+		    }
+		
+		    AppendLog("HEALTH", string.Format(CultureInfo.InvariantCulture,
+		        "reason={0} shell_mode={1} intake={2} heartbeat_faulted={3} daily_lockout={4} active_position_id={5} pos_side={6} pos_qty={7} avg={8} entry_order={9} stop_order={10} target_order={11} exit_order={12} pending_stop={13} pending_target_ticks={14} queue_depth={15} last_msg_utc={16:o}",
+		        reason,
+		        shellMode,
+		        signalIntakeEnabled,
+		        heartbeatFaulted,
+		        dailyLockout,
+		        activePositionId,
+		        posSide,
+		        posQty,
+		        avgPrice,
+		        entryOrder == null ? "<null>" : entryOrder.OrderId,
+		        stopOrder == null ? "<null>" : stopOrder.OrderId,
+		        targetOrder == null ? "<null>" : targetOrder.OrderId,
+		        exitOrder == null ? "<null>" : exitOrder.OrderId,
+		        pendingStopPrice,
+		        pendingTargetTicks,
+		        pendingInstructions.Count,
+		        lastBridgeMessageUtc));
+		}
 
         private void WriteOutboxEvent(string status, string detail)
-        {
-            if (!EnableOutboxEvents || string.IsNullOrWhiteSpace(OutboxDirectory))
-                return;
-
-            try
-            {
-                EnsureDirectory(OutboxDirectory);
-                string id = string.IsNullOrWhiteSpace(lastInstructionId) ? Guid.NewGuid().ToString("N") : lastInstructionId;
-                string safeStatus = string.IsNullOrWhiteSpace(status) ? "UNKNOWN" : status.Trim().ToUpperInvariant();
-                string fileName = string.Format(CultureInfo.InvariantCulture,
-                    "{0:yyyyMMdd_HHmmssfff}_{1}_{2}.evt.json",
-                    DateTime.UtcNow,
-                    safeStatus,
-                    id.Replace(":", "_").Replace("/", "_"));
-
-                string payload = string.Format(CultureInfo.InvariantCulture,
-                    "{{\"timestamp_utc\":\"{0:o}\",\"status\":\"{1}\",\"instruction_id\":\"{2}\",\"shell_mode\":\"{3}\",\"position\":\"{4}\",\"quantity\":{5},\"detail\":\"{6}\"}}",
-                    DateTime.UtcNow,
-                    safeStatus,
-                    id,
-                    shellMode,
-                    Position.MarketPosition,
-                    Position.Quantity,
-                    (detail ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\""));
-
-                WriteTextAtomically(Path.Combine(OutboxDirectory, fileName), payload);
-            }
-            catch (Exception ex)
-            {
-                AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
-                    "outbox write failed status={0} err={1}", status, ex.Message));
-            }
-        }
+		{
+		    if (!EnableOutboxEvents || string.IsNullOrWhiteSpace(OutboxDirectory))
+		        return;
+		
+		    try
+		    {
+		        EnsureDirectory(OutboxDirectory);
+		
+		        string id = string.IsNullOrWhiteSpace(lastInstructionId)
+		            ? Guid.NewGuid().ToString("N")
+		            : lastInstructionId;
+		
+		        string safeStatus = string.IsNullOrWhiteSpace(status)
+		            ? "UNKNOWN"
+		            : status.Trim().ToUpperInvariant();
+		
+		        string posSide = "<unavailable>";
+		        int posQty = 0;
+		
+		        try
+		        {
+		            if (Position != null)
+		            {
+		                posSide = Position.MarketPosition.ToString();
+		                posQty = Position.Quantity;
+		            }
+		        }
+		        catch
+		        {
+		        }
+		
+		        string fileName = string.Format(CultureInfo.InvariantCulture,
+		            "{0:yyyyMMdd_HHmmssfff}_{1}_{2}.evt.json",
+		            DateTime.UtcNow,
+		            safeStatus,
+		            id.Replace(":", "_").Replace("/", "_"));
+		
+		        string payload = string.Format(CultureInfo.InvariantCulture,
+		            "{{\"timestamp_utc\":\"{0:o}\",\"status\":\"{1}\",\"instruction_id\":\"{2}\",\"shell_mode\":\"{3}\",\"position\":\"{4}\",\"quantity\":{5},\"detail\":\"{6}\"}}",
+		            DateTime.UtcNow,
+		            safeStatus,
+		            id,
+		            shellMode,
+		            posSide,
+		            posQty,
+		            (detail ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\""));
+		
+		        WriteTextAtomically(Path.Combine(OutboxDirectory, fileName), payload);
+		    }
+		    catch (Exception ex)
+		    {
+		        AppendLog("WARN", string.Format(CultureInfo.InvariantCulture,
+		            "outbox write failed status={0} err={1}", status, ex.Message));
+		    }
+		}
 
         #region Parameters
         [NinjaScriptProperty]

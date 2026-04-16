@@ -1,0 +1,12 @@
+report:
+  title: "Daily Winner Insight"
+  output_filename: "Daily-Winner-Insight.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: daily_winner_spotlight
+    title: "Daily Winner Insight"
+    options:
+      top_n: 10
+      strip_days: 5

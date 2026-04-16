@@ -3,6 +3,27 @@ Contributing to ta_foundation
 This project is a structured analytics and reporting framework.
 Architectural consistency is more important than feature velocity.
 
+Environment Setup
+
+Use the bootstrap script instead of manually reusing an old virtualenv:
+
+```powershell
+.\scripts\bootstrap.ps1
+```
+
+That script:
+
+- creates or rebuilds `.venv` with Python 3.12 by default
+- installs the editable package plus analysis, reporting, and dev extras
+- installs Playwright Chromium for PNG card export
+- runs an environment sanity check that catches mixed compiled wheels such as `cp312` packages inside a `cp314` virtualenv
+
+If you want to validate the current environment without reinstalling anything:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\check_env.py
+```
+
 Before making changes, read:
 
 ARCHITECTURE.md

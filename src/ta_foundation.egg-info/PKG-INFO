@@ -6,3 +6,12 @@ Requires-Python: >=3.10
 Requires-Dist: pandas
 Requires-Dist: matplotlib
 Requires-Dist: pyyaml
+Provides-Extra: analysis
+Requires-Dist: numpy; extra == "analysis"
+Requires-Dist: scipy; extra == "analysis"
+Requires-Dist: scikit-learn; extra == "analysis"
+Requires-Dist: pyarrow; extra == "analysis"
+Provides-Extra: reporting
+Requires-Dist: playwright; extra == "reporting"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"

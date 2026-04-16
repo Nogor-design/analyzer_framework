@@ -1,0 +1,11 @@
+report:
+  title: Ares Deployment Card
+  output_filename: Ares-Deployment-Card.html
+
+sections:
+  - id: deployment_board_poster
+    options:
+      board_text_path: ./deployment_board_input.txt
+      as_of_date: "2026-04-15"
+      strip_days: 5
+      timeframe_label: 1-MINUTE

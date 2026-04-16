@@ -17,7 +17,13 @@ from ta_foundation.reports.html.sections.run_executive_profile_cards import (
 )
 from ta_foundation.reports.html.sections.run_card_catalog import render_run_card_catalog
 from ta_foundation.reports.html.sections.daily_leaderboard_cards import render_daily_leaderboard_cards
+from ta_foundation.reports.html.sections.daily_winner_spotlight import render_daily_winner_spotlight
+from ta_foundation.reports.html.sections.deployment_board_insight import render_deployment_board_insight
+from ta_foundation.reports.html.sections.deployment_board_gods import render_deployment_board_gods
+from ta_foundation.reports.html.sections.deployment_board_poster import render_deployment_board_poster
 from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
+from ta_foundation.reports.html.sections.strategy_momentum_board import render_strategy_momentum_board
+from ta_foundation.reports.html.sections.strategy_session_momentum_board import render_strategy_session_momentum_board
 from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
     render_trades_intraday_pnl_by_day,
 )
@@ -464,10 +470,40 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Daily Leaders (Session Winners)",
         render_fn=render_daily_leaderboard_cards,
     ),
+    "daily_winner_spotlight": SectionDef(
+        id="daily_winner_spotlight",
+        default_title="Daily Winner Insight",
+        render_fn=render_daily_winner_spotlight,
+    ),
+    "deployment_board_insight": SectionDef(
+        id="deployment_board_insight",
+        default_title="Deployment Board Insight",
+        render_fn=render_deployment_board_insight,
+    ),
+    "deployment_board_gods": SectionDef(
+        id="deployment_board_gods",
+        default_title="Deployment Board Pantheon",
+        render_fn=render_deployment_board_gods,
+    ),
+    "deployment_board_poster": SectionDef(
+        id="deployment_board_poster",
+        default_title="Ares Deployment Card",
+        render_fn=render_deployment_board_poster,
+    ),
     "weekly_leaderboard_cards": SectionDef(
         id="weekly_leaderboard_cards",
         default_title="Weekly Leaders",
         render_fn=render_weekly_leaderboard_cards,
+    ),
+    "strategy_momentum_board": SectionDef(
+        id="strategy_momentum_board",
+        default_title="Strategy Momentum Board",
+        render_fn=render_strategy_momentum_board,
+    ),
+    "strategy_session_momentum_board": SectionDef(
+        id="strategy_session_momentum_board",
+        default_title="Strategy Session Momentum Board",
+        render_fn=render_strategy_session_momentum_board,
     ),
     "trades_intraday_pnl_by_day": SectionDef(
         id="trades_intraday_pnl_by_day",

@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
+from ta_foundation.reports.text.export_summary_text import export_summary_text
+from ta_foundation.reports.text.export_strategy_momentum_text import export_strategy_momentum_text
+from ta_foundation.reports.text.export_strategy_session_momentum_text import export_strategy_session_momentum_text
+from ta_foundation.reports.text.export_daily_winner_text import export_daily_winner_text
+from ta_foundation.reports.text.export_deployment_board_text import export_deployment_board_text
+from ta_foundation.reports.text.export_weekly_leaderboard_text import export_weekly_leaderboard_text
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
@@ -588,6 +594,118 @@ def main() -> int:
 
             print(f"Wrote: {out_path}")
 
+            # Write a condensed plain-text summary alongside the HTML report.
+            # This file is small and LLM-friendly — paste it directly into any
+            # AI chat to discuss the run results without loading the full HTML.
+            try:
+                txt_path = out_path.with_suffix(".txt")
+                export_summary_text(result.packages, txt_path, title=cfg.title)
+                print(f"Wrote: {txt_path}")
+            except Exception as _txt_exc:
+                print(f"[ta_foundation] WARNING: text summary export failed — {_txt_exc}")
+
+            # Write a condensed plain-text weekly leaderboard summary.
+            # Options are pulled from the weekly_leaderboard_cards section in the
+            # report config so the text matches what the card shows exactly.
+            try:
+                weekly_opts: dict = {}
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "weekly_leaderboard_cards":
+                        weekly_opts = sec.get("options") or {}
+                        break
+                weekly_txt_path = out_path.with_name(
+                    out_path.stem + "_weekly_leaderboard.txt"
+                )
+                export_weekly_leaderboard_text(
+                    result.packages,
+                    weekly_txt_path,
+                    options=weekly_opts,
+                    title=cfg.title,
+                )
+                print(f"Wrote: {weekly_txt_path}")
+            except Exception as _wk_exc:
+                print(f"[ta_foundation] WARNING: weekly leaderboard text export failed — {_wk_exc}")
+
+            try:
+                momentum_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "strategy_momentum_board":
+                        momentum_opts = sec.get("options") or {}
+                        break
+                if momentum_opts is not None:
+                    momentum_txt_path = out_path.with_name(
+                        out_path.stem + "_strategy_momentum.txt"
+                    )
+                    export_strategy_momentum_text(
+                        result.packages,
+                        momentum_txt_path,
+                        options=momentum_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {momentum_txt_path}")
+            except Exception as _mom_exc:
+                print(f"[ta_foundation] WARNING: strategy momentum text export failed — {_mom_exc}")
+
+            try:
+                session_momentum_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "strategy_session_momentum_board":
+                        session_momentum_opts = sec.get("options") or {}
+                        break
+                if session_momentum_opts is not None:
+                    session_momentum_txt_path = out_path.with_name(
+                        out_path.stem + "_strategy_session_momentum.txt"
+                    )
+                    export_strategy_session_momentum_text(
+                        result.packages,
+                        session_momentum_txt_path,
+                        options=session_momentum_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {session_momentum_txt_path}")
+            except Exception as _sess_exc:
+                print(f"[ta_foundation] WARNING: strategy session momentum text export failed — {_sess_exc}")
+
+            try:
+                daily_winner_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "daily_winner_spotlight":
+                        daily_winner_opts = sec.get("options") or {}
+                        break
+                if daily_winner_opts is not None:
+                    daily_winner_txt_path = out_path.with_name(
+                        out_path.stem + "_daily_winner.txt"
+                    )
+                    export_daily_winner_text(
+                        result.packages,
+                        daily_winner_txt_path,
+                        options=daily_winner_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {daily_winner_txt_path}")
+            except Exception as _daily_exc:
+                print(f"[ta_foundation] WARNING: daily winner text export failed — {_daily_exc}")
+
+            try:
+                deployment_board_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") in {"deployment_board_insight", "deployment_board_gods", "deployment_board_poster"}:
+                        deployment_board_opts = sec.get("options") or {}
+                        break
+                if deployment_board_opts is not None:
+                    deployment_board_txt_path = out_path.with_name(
+                        out_path.stem + "_deployment_board.txt"
+                    )
+                    export_deployment_board_text(
+                        result.packages,
+                        deployment_board_txt_path,
+                        options=deployment_board_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {deployment_board_txt_path}")
+            except Exception as _deploy_exc:
+                print(f"[ta_foundation] WARNING: deployment board text export failed - {_deploy_exc}")
+
             written_reports.append({
                 "output_filename": output_filename,
                 "output_path": str(out_path),
@@ -619,9 +737,15 @@ def main() -> int:
 
         cards_dir = Path(args.exec_cards_dir) if args.exec_cards_dir else (out_dir / "cards")
 
-        res = export_exec_cards_to_png(first_report_path, cards_dir)
-
-        print(f"[ta_foundation] Exported {len(res.exported)} exec cards to: {res.output_dir}")
+        try:
+            res = export_exec_cards_to_png(first_report_path, cards_dir)
+            print(f"[ta_foundation] Exported {len(res.exported)} exec cards to: {res.output_dir}")
+            if res.skipped:
+                for msg in res.skipped:
+                    print(f"[ta_foundation] WARNING skipped card: {msg}")
+        except Exception as exc:
+            print(f"[ta_foundation] WARNING: exec-card PNG export failed — {exc}")
+            print("[ta_foundation] The HTML report was still written successfully.")
 
     # --------------------------------------------------------
     # WRITE MANIFEST

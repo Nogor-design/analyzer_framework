@@ -1,0 +1,10 @@
+report:
+  title: Deployment Board Pantheon
+  output_filename: Deployment-Board-Pantheon.html
+
+sections:
+  - id: deployment_board_gods
+    options:
+      board_text_path: ./deployment_board_input.txt
+      as_of_date: "2026-04-15"
+      strip_days: 5

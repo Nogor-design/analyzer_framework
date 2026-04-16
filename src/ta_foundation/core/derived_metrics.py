@@ -10,31 +10,14 @@ from ta_foundation.reports.html.embed import file_to_base64_data_uri
 from ta_foundation.core.model import AnalysisPackage
 
 
-# Instrument inference mapping from run_id / bot name tokens (case-insensitive)
-TOKEN_TO_SYMBOL = [
-    ("gassious", "NG"),
-    ("gass", "NG"),
-    ("oily", "CL"),
-    ("oil", "CL"),
-    ("slate", "RTY"),
-    ("granit", "YM"),
-    ("iron", "ES"),
-    ("brass", "MNQ"),
-    ("gold", "GC"),
-    ("bronze", "NQ"),
-]
-
-# Tick values in USD
-TICK_VALUE_USD = {
-    "NQ": 5.0,
-    "MNQ": 0.5,
-    "ES": 12.5,
-    "RTY": 5.0,
-    "CL": 10.0,
-    "NG": 10.0,
-    "GC": 10.0,
-    "YM": 5.0,  # not provided explicitly; add if you want it different
-}
+# Instrument inference and tick values are now owned by core/run_name_parser.py.
+# These aliases keep any external code that imported from derived_metrics working.
+from ta_foundation.core.run_name_parser import (
+    TOKEN_TO_SYMBOL,
+    TICK_VALUE_USD,
+    parse_run_name,
+    infer_instrument_from_run_id,  # re-export the shim
+)
 
 def _to_bool(x: Any) -> Optional[bool]:
     if x is None:
@@ -177,21 +160,7 @@ def attach_detail_chart_images(pkg: AnalysisPackage, folder: Path) -> None:
             if "summery_image_uri" in derived:
                 break
 
-def infer_instrument_from_run_id(run_id: str) -> Tuple[str, float, str]:
-    """
-    Infer futures symbol and tick value from run_id using your mapping rules.
-    Default = NQ.
-
-    Returns: (symbol, tick_value_usd, source)
-    """
-    rid = (run_id or "").lower()
-
-    for token, sym in TOKEN_TO_SYMBOL:
-        if token in rid:
-            return sym, float(TICK_VALUE_USD.get(sym, 0.0)), f"token:{token}"
-
-    # Default
-    return "NQ", float(TICK_VALUE_USD["NQ"]), "default"
+# infer_instrument_from_run_id is imported from run_name_parser above.
 
 
 def _settings_map(pkg: AnalysisPackage) -> Dict[str, Any]:
@@ -235,7 +204,8 @@ def compute_and_attach_derived_metrics(packages: Dict[str, AnalysisPackage]) -> 
     for run_id, pkg in (packages or {}).items():
         sm = _settings_map(pkg)
 
-        symbol, tick_value, source = infer_instrument_from_run_id(run_id)
+        run_info = parse_run_name(run_id)
+        symbol, tick_value, source = run_info.market, run_info.tick_value, run_info.instrument_source
 
         profit_stop = _to_float(sm.get("profitstop"))  # dollars
         loss_stop = _to_float(sm.get("lossstop"))      # dollars
@@ -287,6 +257,10 @@ def compute_and_attach_derived_metrics(packages: Dict[str, AnalysisPackage]) -> 
             "instrument": symbol,
             "tick_value_usd": tick_value,
             "instrument_source": source,
+            # Logical strategy name: for new dash-suffix names this strips the
+            # market code (e.g. "CoilingAresFireB-NQ" → "CoilingAresFireB").
+            # For legacy names it equals run_id unchanged.
+            "strategy_name": run_info.strategy_name,
 
             "profit_stop_usd": profit_stop,
             "loss_stop_usd": loss_stop,

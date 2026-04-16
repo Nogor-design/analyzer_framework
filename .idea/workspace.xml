@@ -4,8 +4,113 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="New Strategy shell added">
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed shell strat">
+      <change afterPath="$PROJECT_DIR$/deployment_board_input.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_daily_winner.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_deployment_board.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_deployment_board_gods.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_deployment_board_poster.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_momentum.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/report_session_momentum.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/core/run_name_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/daily_winner_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/deployment_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/daily_winner_spotlight.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/deployment_board_gods.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/deployment_board_insight.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/deployment_board_poster.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/strategy_momentum_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/strategy_session_momentum_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/momentum_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/session_momentum_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_daily_winner_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_deployment_board_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_strategy_momentum_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_strategy_session_momentum_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_summary_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/text/export_weekly_leaderboard_text.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMaster/templates/sampleTemplate.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/PantheonMasterBotV01TesterV2/optimizations/PantheonMasterBotV01TesterV2_Optimization.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/advanced_order_handling.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/advanced_order_handling.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/logs/execution_shell.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/ninjascript_template/SampleTemplate.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/state/shell_state.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/large_candle_excursion/test_signal_candle_context.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/ma_structure/tst.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/analysis/test_large_candle_excursion.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/core/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/core/test_run_name_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/marketdata/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/marketdata/test_resample.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/parsers/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/tests/parsers/test_optimization_csv.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/RUNBOOK.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/RUNBOOK_PHASE2.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_a_entry_fill.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_b_stop_mgmt.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_c_exit_mgmt.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_d_conflict.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_e_recovery.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_f_heartbeat.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/acceptance_specs/phase2/p2_g_cleanup.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/acceptance_evaluator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/acceptance_result.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/acceptance_spec_loader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/acceptance_spec_models.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/assertions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/bridge_io.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/checkpoint.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/health_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/log_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/message_factory.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/outbox_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/report_writer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/state_parser.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/a_contract_validation.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/b_dryrun_statemachine.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/base.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/c_heartbeat.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/d_sequencing.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases/e_persistence_recovery.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/base_phase2.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_a_entry_fill.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_b_stop_mgmt.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_c_exit_mgmt.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_d_conflict.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_e_recovery.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_f_heartbeat.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/bridge_test_harness/test_cases_phase2/p2_g_cleanup.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/run_bridge_tests.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/run_minimal_sim_tests.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/run_phase2_tests.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/test_config.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_daily_winner_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_deployment_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_exec_profile_support.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_strategy_momentum_board.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_strategy_session_momentum_board.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CONTRIBUTING.md" beforeDir="false" afterPath="$PROJECT_DIR$/CONTRIBUTING.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/PKG-INFO" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/PKG-INFO" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/requires.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/requires.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/daily_outcomes.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/daily_outcomes.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/derived_metrics.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/derived_metrics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/core/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/export_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/export_cards.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_session_timeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_session_timeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_wlr_strip.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/_wlr_strip.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/run_executive_profile_cards.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -49,25 +154,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.test_anchor_interaction_diagnostics.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_orchestrator.executor&quot;: &quot;Run&quot;,
-    &quot;Python.tst.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;CandleDiscovery&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;D:/Backup/projects/PythonProject/ta_foundation&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;PyConsoleConfigurable.Python Console&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config.executor": "Debug",
+    "Python.test_anchor_interaction_diagnostics.executor": "Run",
+    "Python.test_orchestrator.executor": "Run",
+    "Python.tst.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "CandleDiscovery",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation",
+    "settings.editor.selected.configurable": "PyConsoleConfigurable.Python Console"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;ChangesTree.GroupingKeys&quot;: [
-      &quot;directory&quot;
+  "keyToStringList": {
+    "ChangesTree.GroupingKeys": [
+      "directory"
     ]
   }
-}</component>
+}]]></component>
   <component name="PyConsoleOptionsProvider">
     <option name="myPythonConsoleState">
       <console-settings module-name="ta_foundation" is-module-sdk="true" working-directory="$PROJECT_DIR$">
@@ -180,14 +285,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1769280226995</updated>
-    </task>
-    <task id="LOCAL-00001" summary="Adding missing files">
-      <option name="closed" value="true" />
-      <created>1769358720360</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1769358720360</updated>
     </task>
     <task id="LOCAL-00002" summary="Adding missing files">
       <option name="closed" value="true" />
@@ -573,7 +670,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775842883118</updated>
     </task>
-    <option name="localTasksCounter" value="50" />
+    <task id="LOCAL-00050" summary="Fixed shell strat">
+      <option name="closed" value="true" />
+      <created>1775850290185</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1775850290186</updated>
+    </task>
+    <option name="localTasksCounter" value="51" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -600,7 +705,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="new debug report for exit strategies" />
     <MESSAGE value="new exit_policy_simulation.py" />
     <MESSAGE value="exit_policy_simulation_debug improved" />
     <MESSAGE value=" exit policy sim updated again" />
@@ -625,6 +729,7 @@
     <MESSAGE value="New candle discovery" />
     <MESSAGE value="New candle discovery Report added" />
     <MESSAGE value="New Strategy shell added" />
-    <option name="LAST_COMMIT_MESSAGE" value="New Strategy shell added" />
+    <MESSAGE value="Fixed shell strat" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed shell strat" />
   </component>
 </project>

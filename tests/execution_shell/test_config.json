@@ -1,0 +1,51 @@
+{
+  "_comment": "NT8 bridge test harness configuration. All paths must match what the NT8 strategy is configured to use.",
+
+  "bridge_root": "C:/ta_foundation/bridge",
+
+  "log_filename": "execution_shell.log",
+  "state_filename": "shell_state.json",
+  "processed_ids_filename": "processed_ids.log",
+
+  "instrument": "NQ 06-26",
+
+  "assertion_timeout_seconds": 10,
+
+  "heartbeat_timeout_seconds": 20,
+  "stale_signal_seconds": 8,
+
+  "skip_groups": [],
+
+  "_skip_groups_note": "Set to ['C'] to skip heartbeat tests (C-01/C-02) which disable intake and take 30+ seconds.",
+
+  "report_output_dir": "test_reports",
+
+  "phase2": {
+    "_comment": "Phase 2 settings: requires DryRunMode=false, Sim101 account, live ticks.",
+    "sim_account": "Sim101",
+    "entry_qty": 1,
+    "default_stop_ticks": 50,
+    "default_target_ticks": 200,
+    "move_stop_ticks": 10,
+    "partial_qty": 1,
+    "fill_wait_seconds": 30,
+    "stop_attach_wait_seconds": 15,
+    "post_flat_settle_seconds": 1.5,
+    "show_checkpoints": true,
+    "_bracket_note": "50-tick stop stays within the runner template cap and shell max stop cap; 200-tick target keeps targets from firing during lifecycle tests.",
+    "_settle_note": "post_flat_settle_seconds: brief pause after flat-confirmation so NT8 finishes bracket-cancel I/O before next entry.",
+    "_entry_qty_note": "Set entry_qty >= 2 to enable partial-exit tests (P2-C02, P2-C03, P2-C04).",
+    "_fill_wait_note": "Increase fill_wait_seconds if the Sim fills are slow on replay.",
+    "_checkpoints_note": "Set show_checkpoints=false for fully unattended runs (SEMI_AUTOMATED steps auto-pass)."
+  },
+
+  "_notes": [
+    "bridge_root must match InboxDirectory parent in NT8 strategy parameters.",
+    "Phase 1: NT8 strategy must have DryRunMode=true and EnableOutboxEvents=true.",
+    "Phase 2: NT8 strategy must have DryRunMode=false, EnableOutboxEvents=true, Account=Sim101.",
+    "Run during market hours when the chart receives live ticks.",
+    "Heartbeat tests (Phase 1 Group C, Phase 2 Group F) run last -- restart strategy after.",
+    "Adjust heartbeat_timeout_seconds to match HeartbeatTimeoutSeconds in NT8.",
+    "Phase 2 shell changes required: SHELL_READY event, enriched FILLED/STOP_ATTACHED, STOP_WORKING event."
+  ]
+}
