@@ -182,6 +182,10 @@ src/ta_foundation/parsers/ninjatrader/tick_last_txt.py
 src/ta_foundation/parsers/ninjatrader/trades_csv.py
 src/ta_foundation/plots/daily_scoreboard.py
 src/ta_foundation/reports/__init__.py
+src/ta_foundation/reports/daily_winner_board.py
+src/ta_foundation/reports/deployment_board.py
+src/ta_foundation/reports/momentum_board.py
+src/ta_foundation/reports/session_momentum_board.py
 src/ta_foundation/reports/html/__init__.py
 src/ta_foundation/reports/html/builder.py
 src/ta_foundation/reports/html/comparison_report.py
@@ -207,6 +211,10 @@ src/ta_foundation/reports/html/sections/candle_discovery_ranking.py
 src/ta_foundation/reports/html/sections/comparison_overview.py
 src/ta_foundation/reports/html/sections/daily_leaderboard_cards.py
 src/ta_foundation/reports/html/sections/daily_scoreboard.py
+src/ta_foundation/reports/html/sections/daily_winner_spotlight.py
+src/ta_foundation/reports/html/sections/deployment_board_gods.py
+src/ta_foundation/reports/html/sections/deployment_board_insight.py
+src/ta_foundation/reports/html/sections/deployment_board_poster.py
 src/ta_foundation/reports/html/sections/drawdown_curve.py
 src/ta_foundation/reports/html/sections/equity_curve.py
 src/ta_foundation/reports/html/sections/exit_policy_simulation.py
@@ -300,6 +308,8 @@ src/ta_foundation/reports/html/sections/strategy_discovery_signal_simulation.py
 src/ta_foundation/reports/html/sections/strategy_discovery_signal_validation.py
 src/ta_foundation/reports/html/sections/strategy_discovery_unified.py
 src/ta_foundation/reports/html/sections/strategy_discovery_validation.py
+src/ta_foundation/reports/html/sections/strategy_momentum_board.py
+src/ta_foundation/reports/html/sections/strategy_session_momentum_board.py
 src/ta_foundation/reports/html/sections/test_anchor_interaction_diagnostics.py
 src/ta_foundation/reports/html/sections/test_anchor_interaction_tp_sl_spec.py
 src/ta_foundation/reports/html/sections/test_anchor_tp_sl_recommendations.py
@@ -309,6 +319,10 @@ src/ta_foundation/reports/html/sections/trade_pattern_audit.py
 src/ta_foundation/reports/html/sections/trades_intraday_pnl_by_day.py
 src/ta_foundation/reports/html/sections/weekly_leaderboard_cards.py
 src/ta_foundation/reports/text/__init__.py
+src/ta_foundation/reports/text/export_daily_winner_text.py
+src/ta_foundation/reports/text/export_deployment_board_text.py
+src/ta_foundation/reports/text/export_strategy_momentum_text.py
+src/ta_foundation/reports/text/export_strategy_session_momentum_text.py
 src/ta_foundation/reports/text/export_summary_text.py
 src/ta_foundation/reports/text/export_weekly_leaderboard_text.py
 src/ta_foundation/strategies/TaFoundationExecutionBridge/python_sender_example.py
@@ -344,3 +358,8 @@ src/ta_foundation/tests/reports/html/sections/test_regime_parameter_recommendati
 src/ta_foundation/utils/__init__.py
 src/ta_foundation/utils/kpi.py
 src/ta_foundation/utils/parsing.py
+tests/test_daily_winner_board.py
+tests/test_deployment_board.py
+tests/test_exec_profile_support.py
+tests/test_strategy_momentum_board.py
+tests/test_strategy_session_momentum_board.py

@@ -130,6 +130,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private bool signalIntakeEnabled = true;
         private bool heartbeatFaulted = false;
         private bool dailyLockout = false;
+        private bool resumeIntakeWhenFlatAfterHeartbeatFault = false;
 
         private double dailyRealizedPnL = 0.0;
         private double pendingStopPrice = 0.0;
@@ -394,7 +395,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                     else if (order.Name == LongTargetSignal || order.Name == ShortTargetSignal)
                         TryCancel(stopOrder);
                     ResetRuntimeTradeState();
-                    shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+                    if (!TryAutoResumeIntakeAfterFlatTradeCompletion())
+                        shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
                 }
                 else
                 {
@@ -872,6 +874,12 @@ namespace NinjaTrader.NinjaScript.Strategies
                 else
                 {
                     signalIntakeEnabled = false;
+                    resumeIntakeWhenFlatAfterHeartbeatFault =
+                        Position != null && Position.MarketPosition != MarketPosition.Flat;
+                    if (resumeIntakeWhenFlatAfterHeartbeatFault)
+                    {
+                        AppendLog("HEARTBEAT_HOLD", "intake disabled until current position is flat");
+                    }
                     SavePersistentState();
                 }
 
@@ -1344,6 +1352,27 @@ namespace NinjaTrader.NinjaScript.Strategies
             activePositionId = string.Empty;
             entryBarNumber = -1;
             lastKnownPositionQuantity = 0;
+        }
+
+        private bool TryAutoResumeIntakeAfterFlatTradeCompletion()
+        {
+            if (!resumeIntakeWhenFlatAfterHeartbeatFault)
+                return false;
+            if (dailyLockout)
+                return false;
+            if (Position != null && Position.MarketPosition != MarketPosition.Flat)
+                return false;
+
+            signalIntakeEnabled = true;
+            heartbeatFaulted = false;
+            resumeIntakeWhenFlatAfterHeartbeatFault = false;
+            lastBridgeMessageUtc = DateTime.UtcNow;
+            shellMode = ShellMode.Idle;
+
+            AppendLog("FLAT_AUTO_RESET",
+                "intake re-enabled after trade completed flat following heartbeat fault");
+            SavePersistentState();
+            return true;
         }
 
         private void EnforceTimeBasedManagement()

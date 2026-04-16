@@ -15,6 +15,46 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 DENVER_TZ = ZoneInfo("America/Denver")
+DEFAULT_EXPIRY_SECONDS = 60
+
+TEMPLATE_DEFAULTS = {
+    "runner_reversal_template": {
+        "stop_mode": "signal_extreme_capped",
+        "stop_ticks": 42,
+        "target_mode": "partial_then_runner",
+        "target_ticks": 72,
+        "partial_target_ticks": 18,
+        "runner_mode": "trail_structure",
+        "max_hold_bars": 20,
+    },
+    "expansion_reversal_template": {
+        "stop_mode": "signal_extreme_capped",
+        "stop_ticks": 30,
+        "target_mode": "fixed_ticks",
+        "target_ticks": 24,
+        "partial_target_ticks": 18,
+        "runner_mode": "trail_structure",
+        "max_hold_bars": 20,
+    },
+    "scalp_reversal_template": {
+        "stop_mode": "tight_signal_extreme_capped",
+        "stop_ticks": 28,
+        "target_mode": "fixed_ticks",
+        "target_ticks": 14,
+        "partial_target_ticks": None,
+        "runner_mode": "none",
+        "max_hold_bars": 6,
+    },
+    "hybrid_reversal_template": {
+        "stop_mode": "signal_extreme_capped",
+        "stop_ticks": 42,
+        "target_mode": "partial_then_runner",
+        "target_ticks": 48,
+        "partial_target_ticks": 16,
+        "runner_mode": "trail_structure",
+        "max_hold_bars": 20,
+    },
+}
 
 
 @dataclass
@@ -38,8 +78,7 @@ def choose_template(decision: ResearchDecision) -> str:
 
 def build_signal(decision: ResearchDecision) -> dict:
     template_name = choose_template(decision)
-    stop_ticks = 42 if template_name == "runner_reversal_template" else 30
-    target_ticks = 72 if template_name == "runner_reversal_template" else 24
+    template_defaults = TEMPLATE_DEFAULTS[template_name]
 
     return {
         "message_id": str(uuid.uuid4()),
@@ -52,16 +91,17 @@ def build_signal(decision: ResearchDecision) -> dict:
         "confidence": round(decision.confidence, 3),
         "entry_mode": "market",
         "quantity": 1,
-        "stop_mode": "signal_extreme_capped",
-        "stop_ticks": stop_ticks,
+        "stop_mode": template_defaults["stop_mode"],
+        "stop_ticks": template_defaults["stop_ticks"],
         "stop_price": None,
-        "target_mode": "partial_then_runner" if template_name == "runner_reversal_template" else "fixed_ticks",
-        "target_ticks": target_ticks,
-        "partial_target_ticks": 18,
-        "runner_mode": "trail_structure",
-        "max_hold_bars": 20,
+        "target_mode": template_defaults["target_mode"],
+        "target_ticks": template_defaults["target_ticks"],
+        "partial_target_ticks": template_defaults["partial_target_ticks"],
+        "runner_mode": template_defaults["runner_mode"],
+        "max_hold_bars": template_defaults["max_hold_bars"],
         "thesis_id": decision.thesis_id,
         "notes": f"auto-generated from early_path={decision.early_path}",
+        "signal_expiry_seconds": DEFAULT_EXPIRY_SECONDS,
     }
 
 
