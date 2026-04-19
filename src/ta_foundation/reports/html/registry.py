@@ -21,6 +21,7 @@ from ta_foundation.reports.html.sections.daily_winner_spotlight import render_da
 from ta_foundation.reports.html.sections.deployment_board_insight import render_deployment_board_insight
 from ta_foundation.reports.html.sections.deployment_board_gods import render_deployment_board_gods
 from ta_foundation.reports.html.sections.deployment_board_poster import render_deployment_board_poster
+from ta_foundation.reports.html.sections.strategy_parameter_matrix import render_strategy_parameter_matrix
 from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
 from ta_foundation.reports.html.sections.strategy_momentum_board import render_strategy_momentum_board
 from ta_foundation.reports.html.sections.strategy_session_momentum_board import render_strategy_session_momentum_board
@@ -489,6 +490,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="deployment_board_poster",
         default_title="Ares Deployment Card",
         render_fn=render_deployment_board_poster,
+    ),
+    "strategy_parameter_matrix": SectionDef(
+        id="strategy_parameter_matrix",
+        default_title="Executive Parameter Matrix",
+        render_fn=render_strategy_parameter_matrix,
     ),
     "weekly_leaderboard_cards": SectionDef(
         id="weekly_leaderboard_cards",

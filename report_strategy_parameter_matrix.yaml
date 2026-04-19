@@ -1,0 +1,8 @@
+report:
+  title: Executive Parameter Matrix
+  output_filename: Executive-Parameter-Matrix.html
+
+sections:
+  - id: strategy_parameter_matrix
+    options:
+      sort_by: run_id

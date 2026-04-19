@@ -104,6 +104,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
     public class TaFoundationExecutionShell : Strategy
     {
+        private const int StartupRecoveryGraceSeconds = 10;
         private const string EntryLongSignal = "TF_ENTER_LONG";
         private const string EntryShortSignal = "TF_ENTER_SHORT";
         private const string ExitSignal = "TF_EXIT_ALL";
@@ -122,6 +123,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private DateTime lastPollUtc = DateTime.MinValue;
         private DateTime currentTradingDay = Core.Globals.MinDate;
         private DateTime lastHealthSnapshotUtc = DateTime.MinValue;
+        private DateTime startupRecoveryDeadlineUtc = DateTime.MinValue;
 
         private string activeTemplate = string.Empty;
         private string lastInstructionId = string.Empty;
@@ -131,6 +133,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         private bool heartbeatFaulted = false;
         private bool dailyLockout = false;
         private bool resumeIntakeWhenFlatAfterHeartbeatFault = false;
+        private bool pendingStartupRecovery = false;
 
         private double dailyRealizedPnL = 0.0;
         private double pendingStopPrice = 0.0;
@@ -178,7 +181,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 FlatOnDisable = true;
                 OneTradeAtATime = true;
                 DryRunMode = true;
-                RecoverOpenPositionOnStartup = true;
+                RecoverOpenPositionOnStartup = false;
                 FlattenIfRecoveryFails = true;
                 PersistProcessedIds = true;
                 ProcessedIdsRetainCount = 5000;
@@ -215,13 +218,18 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // A deliberate FlattenAndDisable (kill-switch) also saves intake=false,
                 // so we only auto-reset when heartbeatFaulted=true (transient condition),
                 // not when both are false (intentional disable).
-                bool positionFlat = Position == null || Position.MarketPosition == MarketPosition.Flat;
+                bool recoverableOpenState = HasRecoverableOpenState();
+                bool positionFlat = Position != null
+                    ? Position.MarketPosition == MarketPosition.Flat
+                    : !recoverableOpenState;
                 if (!signalIntakeEnabled && heartbeatFaulted && positionFlat)
                 {
                     AppendLog("STARTUP_AUTO_RESET",
                         "intake re-enabled after heartbeat fault on clean flat restart; previous session ended with transient hb fault");
                     signalIntakeEnabled = true;
                     heartbeatFaulted = false;
+                    shellMode = ShellMode.Idle;
+                    lastBridgeMessageUtc = DateTime.MinValue;
                 }
 
                 // ── Startup diagnostics ───────────────────────────────────────────────
@@ -280,6 +288,8 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             if (BarsInProgress != 0)
                 return;
+
+            ContinueStartupRecoveryIfNeeded();
 
             if (CurrentBar < BarsRequiredToTrade)
                 return;
@@ -1354,6 +1364,39 @@ namespace NinjaTrader.NinjaScript.Strategies
             lastKnownPositionQuantity = 0;
         }
 
+        private bool HasRecoverableOpenState()
+        {
+            if (!RecoverOpenPositionOnStartup)
+                return false;
+
+            return !string.IsNullOrWhiteSpace(activePositionId)
+                || pendingStopPrice > 0
+                || pendingTargetTicks > 0
+                || shellMode == ShellMode.InPosition
+                || shellMode == ShellMode.ExitPending
+                || shellMode == ShellMode.Recovery;
+        }
+
+        private void ContinueStartupRecoveryIfNeeded()
+        {
+            if (!pendingStartupRecovery)
+                return;
+
+            TryRecoverPositionState();
+        }
+
+        private bool IsStartupRecoveryGraceActive()
+        {
+            return startupRecoveryDeadlineUtc != DateTime.MinValue
+                && DateTime.UtcNow < startupRecoveryDeadlineUtc;
+        }
+
+        private void BeginStartupRecoveryWindow()
+        {
+            if (startupRecoveryDeadlineUtc == DateTime.MinValue)
+                startupRecoveryDeadlineUtc = DateTime.UtcNow.AddSeconds(StartupRecoveryGraceSeconds);
+        }
+
         private bool TryAutoResumeIntakeAfterFlatTradeCompletion()
         {
             if (!resumeIntakeWhenFlatAfterHeartbeatFault)
@@ -1510,10 +1553,46 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private void TryRecoverPositionState()
 		{
 		    if (!RecoverOpenPositionOnStartup)
+		    {
+		        pendingStartupRecovery = false;
+		        startupRecoveryDeadlineUtc = DateTime.MinValue;
+		        if (Position == null || Position.MarketPosition == MarketPosition.Flat)
+		        {
+		            ResetRuntimeTradeState();
+		            shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+		        }
 		        return;
+		    }
 		
 		    if (Position == null)
 		    {
+		        if (HasRecoverableOpenState())
+		        {
+		            bool startingRecoveryWait = startupRecoveryDeadlineUtc == DateTime.MinValue;
+		            BeginStartupRecoveryWindow();
+		            pendingStartupRecovery = true;
+		            shellMode = ShellMode.Recovery;
+		            if (IsStartupRecoveryGraceActive())
+		            {
+		                if (startingRecoveryWait)
+		                {
+		                    AppendLog("RECOVERY_WAIT", string.Format(CultureInfo.InvariantCulture,
+		                        "Position was null during startup; deferring recovery for up to {0} seconds.",
+		                        StartupRecoveryGraceSeconds));
+		                    LogReconciliationSnapshot("RECOVERY_POSITION_PENDING");
+		                }
+		                return;
+		            }
+
+		            AppendLog("RECOVERY_FAIL", "Position remained unavailable beyond startup recovery grace window; manual inspection required.");
+		            signalIntakeEnabled = false;
+		            SavePersistentState();
+		            LogReconciliationSnapshot("RECOVERY_TIMEOUT");
+		            return;
+		        }
+		
+		        pendingStartupRecovery = false;
+		        startupRecoveryDeadlineUtc = DateTime.MinValue;
 		        shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
 		        AppendLog("RECOVERY_WARN", "Position was null during DataLoaded; skipping recovery.");
 		        LogReconciliationSnapshot("RECOVERY_POSITION_NULL");
@@ -1522,11 +1601,37 @@ namespace NinjaTrader.NinjaScript.Strategies
 		
 		    if (Position.MarketPosition == MarketPosition.Flat)
 		    {
+		        if (HasRecoverableOpenState())
+		        {
+		            bool startingRecoveryWait = startupRecoveryDeadlineUtc == DateTime.MinValue;
+		            BeginStartupRecoveryWindow();
+		            pendingStartupRecovery = true;
+		            shellMode = ShellMode.Recovery;
+		            if (IsStartupRecoveryGraceActive())
+		            {
+		                if (startingRecoveryWait)
+		                    LogReconciliationSnapshot("RECOVERY_FLAT_WAIT");
+		                return;
+		            }
+
+		            AppendLog("RECOVERY_FAIL", "Position remained flat beyond startup recovery grace window; manual inspection required.");
+		            signalIntakeEnabled = false;
+		            SavePersistentState();
+		            LogReconciliationSnapshot("RECOVERY_TIMEOUT");
+		            return;
+		        }
+
+		        pendingStartupRecovery = false;
+		        startupRecoveryDeadlineUtc = DateTime.MinValue;
+		        ResetRuntimeTradeState();
 		        shellMode = signalIntakeEnabled ? ShellMode.Idle : ShellMode.Disabled;
+		        SavePersistentState();
 		        LogReconciliationSnapshot("RECOVERY_FLAT");
 		        return;
 		    }
 		
+		    pendingStartupRecovery = false;
+		    startupRecoveryDeadlineUtc = DateTime.MinValue;
 		    shellMode = ShellMode.Recovery;
 		    AppendLog("RECOVERY", string.Format(CultureInfo.InvariantCulture,
 		        "detected non-flat position side={0} qty={1}", Position.MarketPosition, Position.Quantity));

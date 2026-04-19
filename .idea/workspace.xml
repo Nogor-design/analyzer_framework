@@ -4,10 +4,24 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Fixed shell strat">
-      <change afterPath="$PROJECT_DIR$/resetEnv.md" afterDir="false" />
+    <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Passed run tests">
+      <change afterPath="$PROJECT_DIR$/report_strategy_parameter_matrix.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/cli/bridge_operator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/cli/soak_monitor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/executive_parameter_matrix.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/sections/strategy_parameter_matrix.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationMinuteBarExporter.cs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/bridge_sender.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/real_strategy_loop.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/execution_shell/test_python_strategy_loop.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_bridge_operator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_soak_monitor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tests/test_strategy_parameter_matrix.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation.egg-info/SOURCES.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/cli/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/reports/html/registry.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/TaFoundationExecutionShell.cs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/python_sender_example.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/TaFoundationExecutionBridge/python_sender_example.py" afterDir="false" />
     </list>
@@ -52,25 +66,25 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.config.executor&quot;: &quot;Debug&quot;,
-    &quot;Python.test_anchor_interaction_diagnostics.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test_orchestrator.executor&quot;: &quot;Run&quot;,
-    &quot;Python.tst.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;CandleDiscovery&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;D:/Backup/projects/PythonProject/ta_foundation&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;PyConsoleConfigurable.Python Console&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.config.executor": "Debug",
+    "Python.test_anchor_interaction_diagnostics.executor": "Run",
+    "Python.test_orchestrator.executor": "Run",
+    "Python.tst.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "CandleDiscovery",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "D:/Backup/projects/PythonProject/ta_foundation",
+    "settings.editor.selected.configurable": "PyConsoleConfigurable.Python Console"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;ChangesTree.GroupingKeys&quot;: [
-      &quot;directory&quot;
+  "keyToStringList": {
+    "ChangesTree.GroupingKeys": [
+      "directory"
     ]
   }
-}</component>
+}]]></component>
   <component name="PyConsoleOptionsProvider">
     <option name="myPythonConsoleState">
       <console-settings module-name="ta_foundation" is-module-sdk="true" working-directory="$PROJECT_DIR$">
@@ -183,14 +197,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1769280226995</updated>
-    </task>
-    <task id="LOCAL-00002" summary="Adding missing files">
-      <option name="closed" value="true" />
-      <created>1769360127103</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1769360127103</updated>
     </task>
     <task id="LOCAL-00003" summary="Adding missing files">
       <option name="closed" value="true" />
@@ -576,7 +582,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775850290186</updated>
     </task>
-    <option name="localTasksCounter" value="51" />
+    <task id="LOCAL-00051" summary="Passed run tests">
+      <option name="closed" value="true" />
+      <created>1776356708715</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1776356708715</updated>
+    </task>
+    <option name="localTasksCounter" value="52" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -603,7 +617,6 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="new exit_policy_simulation.py" />
     <MESSAGE value="exit_policy_simulation_debug improved" />
     <MESSAGE value=" exit policy sim updated again" />
     <MESSAGE value=" New policy sim" />
@@ -628,6 +641,7 @@
     <MESSAGE value="New candle discovery Report added" />
     <MESSAGE value="New Strategy shell added" />
     <MESSAGE value="Fixed shell strat" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed shell strat" />
+    <MESSAGE value="Passed run tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="Passed run tests" />
   </component>
 </project>

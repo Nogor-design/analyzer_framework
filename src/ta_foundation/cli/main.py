@@ -11,6 +11,7 @@ from ta_foundation.reports.text.export_strategy_momentum_text import export_stra
 from ta_foundation.reports.text.export_strategy_session_momentum_text import export_strategy_session_momentum_text
 from ta_foundation.reports.text.export_daily_winner_text import export_daily_winner_text
 from ta_foundation.reports.text.export_deployment_board_text import export_deployment_board_text
+from ta_foundation.reports.text.export_strategy_parameter_matrix_text import export_strategy_parameter_matrix_text
 from ta_foundation.reports.text.export_weekly_leaderboard_text import export_weekly_leaderboard_text
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
@@ -665,6 +666,26 @@ def main() -> int:
                     print(f"Wrote: {session_momentum_txt_path}")
             except Exception as _sess_exc:
                 print(f"[ta_foundation] WARNING: strategy session momentum text export failed — {_sess_exc}")
+
+            try:
+                parameter_matrix_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "strategy_parameter_matrix":
+                        parameter_matrix_opts = sec.get("options") or {}
+                        break
+                if parameter_matrix_opts is not None:
+                    parameter_matrix_txt_path = out_path.with_name(
+                        out_path.stem + "_strategy_parameter_matrix.txt"
+                    )
+                    export_strategy_parameter_matrix_text(
+                        result.packages,
+                        parameter_matrix_txt_path,
+                        options=parameter_matrix_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {parameter_matrix_txt_path}")
+            except Exception as _param_exc:
+                print(f"[ta_foundation] WARNING: strategy parameter matrix text export failed â€” {_param_exc}")
 
             try:
                 daily_winner_opts: dict | None = None
