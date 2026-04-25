@@ -7,6 +7,31 @@ from ta_foundation.reports.html.sections.large_candle_excursion_downstream_commo
     info_box,
     section_title,
 )
+from ta_foundation.strategies.LargeCandleReversal.generate_nt8_template import (
+    IMPLEMENTED_ONSETS,
+    canonical_session_label,
+)
+
+
+_NOT_IMPLEMENTED_BADGE = (
+    '<span style="background:#6c757d;color:#fff;padding:2px 6px;'
+    'border-radius:3px;font-size:10px;margin-left:6px" '
+    'title="The C# LargeCandleReversal strategy does not implement detection '
+    'for this onset condition — templates built from this card would take zero trades.">'
+    'NOT IMPLEMENTED — cannot trade</span>'
+)
+
+
+def _canon_session_or_raw(label: str) -> str:
+    """Translate legacy/truncated research session labels to the canonical
+    label used by the C# strategy's AllowSession* inputs.  Any label that
+    cannot be canonicalised is passed through unchanged so the renderer
+    never crashes on a stray string, but is suffixed with a warning so it
+    is visible in the digest."""
+    try:
+        return canonical_session_label(label)
+    except ValueError:
+        return f"{label} (UNMAPPED)"
 
 _BEHAVIOR_BADGE = {
     "scalp":               ('<span style="background:#28a745;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px">SCALP</span>',   "#d4edda"),
@@ -36,6 +61,10 @@ _FRAGILITY_BADGE = {
     "neighbor_instability":('<span style="background:#6f42c1;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">UNSTABLE</span>'),
     "rapid_edge_decay":    ('<span style="background:#e83e8c;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">EDGE DECAY</span>'),
     "no_plateau":          ('<span style="background:#dc3545;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">NO PLATEAU</span>'),
+    "micro_scalp_artifact":('<span style="background:#111;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">MICRO SCALP</span>'),
+    "time_instability":    ('<span style="background:#795548;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">TIME SPLIT</span>'),
+    "friction-risky":      ('<span style="background:#fd7e14;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">FRICTION RISKY</span>'),
+    "friction-invalid":    ('<span style="background:#111;color:#fff;padding:2px 5px;border-radius:3px;font-size:10px;margin-right:3px">FRICTION INVALID</span>'),
 }
 
 _KV_STYLE    = "font-size:12px;margin:3px 0;color:#333"
@@ -93,6 +122,36 @@ def _render_session_table(session_table: List[Dict[str, Any]]) -> str:
     )
 
 
+def _render_fine_curve(points: List[Dict[str, Any]]) -> str:
+    if not points:
+        return ""
+    cells = []
+    for p in points:
+        wr = p.get("win_rate")
+        wr_pct = float(wr) * 100.0 if wr is not None else 0.0
+        bg = "#d4edda" if wr_pct >= 60.0 else ("#fff3cd" if wr_pct >= 50.0 else "#f8d7da")
+        cells.append(
+            f'<span style="display:inline-block;background:{bg};border:1px solid #dee2e6;'
+            f'padding:3px 5px;margin:0 3px 3px 0;border-radius:3px;font-size:10px">'
+            f'{float(p.get("target_pct", 0)):.0f}%: {wr_pct:.1f}%</span>'
+        )
+    return '<div style="margin-top:5px">' + "".join(cells) + "</div>"
+
+
+def _render_time_splits(values: List[Any]) -> str:
+    if not values:
+        return ""
+    cells = []
+    for i, raw in enumerate(values, 1):
+        wr = float(raw)
+        bg = "#d4edda" if wr >= 60.0 else ("#fff3cd" if wr >= 50.0 else "#f8d7da")
+        cells.append(
+            f'<span style="display:inline-block;background:{bg};border:1px solid #dee2e6;'
+            f'padding:3px 5px;margin:0 3px 3px 0;border-radius:3px;font-size:10px">S{i}: {wr:.1f}%</span>'
+        )
+    return '<div style="margin-top:5px">' + "".join(cells) + "</div>"
+
+
 def _render_card(card: Dict[str, Any]) -> str:
     bt = card.get("metrics", {}).get("behavior_type", "mixed (limited data)")
     badge, card_bg = _BEHAVIOR_BADGE.get(bt, _BEHAVIOR_BADGE.get("mixed (limited data)", _BEHAVIOR_BADGE["unknown"]))
@@ -114,6 +173,8 @@ def _render_card(card: Dict[str, Any]) -> str:
     score_str = f"{float(score):.4f}" if score is not None else "?"
     plateau_w = int(metrics.get("plateau_width") or 0)
     curve_st  = metrics.get("curve_stability", "")
+    target_label = metrics.get("target_stability_label")
+    time_label = metrics.get("time_stability_label")
 
     promo_level = promo.get("level", "observation")
     promo_badge = _PROMOTION_BADGE.get(promo_level, _PROMOTION_BADGE["observation"])
@@ -132,10 +193,22 @@ def _render_card(card: Dict[str, Any]) -> str:
         f'padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif">'
     )
 
-    # Header row
+    # Header row — tag unimplemented onsets so the reader never thinks a
+    # NOT-IMPLEMENTED row is a viable candidate.  The onset is pulled from the
+    # card (either top-level "onset_condition" or inside "conditions").
+    onset_raw = (
+        card.get("onset_condition")
+        or cond.get("onset_condition")
+        or ""
+    )
+    not_implemented = (
+        str(onset_raw or "").strip().lower() not in (IMPLEMENTED_ONSETS | {"", "none", "unknown"})
+    )
+    onset_badge = _NOT_IMPLEMENTED_BADGE if not_implemented else ""
+
     html += (
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        f'<span style="font-size:14px;font-weight:bold;color:#2c3e50">#{card["rank"]} — {card.get("setup_definition","")}</span>'
+        f'<span style="font-size:14px;font-weight:bold;color:#2c3e50">#{card["rank"]} — {card.get("setup_definition","")}{onset_badge}</span>'
         f'<span>{badge}</span>'
         f'</div>'
     )
@@ -172,6 +245,10 @@ def _render_card(card: Dict[str, Any]) -> str:
         f'<span style="font-size:13px"><b>Score:</b> {score_str}</span>'
         f'<span style="font-size:13px"><b>Plateau:</b> {plateau_w} steps</span>'
     )
+    if target_label:
+        html += f'<span style="font-size:13px"><b>Target Stability:</b> {target_label}</span>'
+    if time_label:
+        html += f'<span style="font-size:13px"><b>Time Stability:</b> {time_label}</span>'
     epd = tradab.get("events_per_day")
     if epd is not None:
         html += f'<span style="font-size:13px"><b>Events/day:</b> {epd:.1f}</span>'
@@ -203,11 +280,22 @@ def _render_card(card: Dict[str, Any]) -> str:
     html += _kv("Stable Target Range", targets.get("stable_range"))
     html += _kv("Peak Target %",       f"{targets.get('peak_target_pct'):.0f}%" if targets.get("peak_target_pct") is not None else None)
     html += _kv("Expectancy (ticks)",  metrics.get("expectancy_ticks"))
+    html += _kv("Target Ticks",        metrics.get("gross_target_ticks"))
+    html += _kv("Friction Cost",       metrics.get("estimated_round_trip_cost_ticks"))
+    html += _kv("Net Target",          metrics.get("net_target_after_friction_ticks"))
+    html += _kv("Net Exp After Friction", metrics.get("net_expectancy_after_friction_ticks"))
+    html += _kv("Friction Viability",  metrics.get("friction_viability"))
     html += _kv("Edge Decay Penalty",  f"{float(metrics.get('edge_decay_penalty', 0)):.2f}" if metrics.get("edge_decay_penalty") is not None else None)
+    html += _kv("Neighbor Stability",  f"{float(metrics.get('neighbor_target_stability', 0)):.2f}" if metrics.get("neighbor_target_stability") is not None else None)
+    html += _kv("Time Stability",      f"{float(metrics.get('target_time_stability', 0)):.2f}" if metrics.get("target_time_stability") is not None else None)
+    html += _render_fine_curve(targets.get("fine_target_curve") or [])
+    html += _render_time_splits(targets.get("focus_time_split_win_rates") or [])
 
     best_sess = sess.get("best_sessions") or []
     if best_sess:
-        html += _kv("Best Sessions", ", ".join(best_sess))
+        # Canonical labels keep the digest and the NT8 AllowSession*
+        # properties in lockstep — no more "power_hour, ny_pre" truncations.
+        html += _kv("Best Sessions", ", ".join(_canon_session_or_raw(s) for s in best_sess))
 
     session_table = sess.get("session_table") or []
     if session_table:

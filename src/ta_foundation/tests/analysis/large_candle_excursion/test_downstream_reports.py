@@ -225,6 +225,56 @@ def test_findings_neighbor_time_split_and_tradability_present() -> None:
     assert "constructed_strategies" in sce
 
 
+def test_findings_penalizes_tiny_targets_after_friction() -> None:
+    payload = _source_payload()
+    payload["trade_analysis"]["trade_combo_results"].append(
+        {
+            "trade_mode": "reverse",
+            "direction": 1,
+            "tf_minutes": 1,
+            "lookback": 10,
+            "basis": "range",
+            "threshold_mode": "multiplier",
+            "threshold_value": 1.5,
+            "window_minutes": 10,
+            "target_percent": 10,
+            "candle_bucket": "25-50",
+            "n_events": 220,
+            "n_wins": 209,
+            "win_rate": 95.0,
+            "avg_target_ticks": 1.5,
+            "median_target_ticks": 1.5,
+            "avg_trade_fav_ticks": 2.5,
+            "median_trade_fav_ticks": 2.5,
+            "avg_trade_adv_ticks": 6.0,
+            "median_trade_adv_ticks": 6.0,
+        }
+    )
+
+    findings = build_large_candle_excursion_findings(
+        payload,
+        {
+            "enabled": True,
+            "friction": {
+                "commission_per_trade": 4.0,
+                "tick_value": 5.0,
+                "slippage_ticks_per_side": 1,
+                "additional_buffer_ticks": 0,
+                "min_target_ticks": 6,
+                "min_net_target_ticks": 2,
+                "min_post_friction_rr": 0.25,
+                "filter_mode": "penalize",
+            },
+        },
+    )
+
+    tiny = next(r for r in findings["top_discoveries"] if r.get("target_percent") == 10)
+    assert tiny["friction_viability"] == "friction-invalid"
+    assert tiny["net_target_after_friction_ticks"] < 0
+    assert findings["top_discoveries"][0]["target_percent"] != 10
+    assert findings["friction_viability_summary"]["friction_invalid"] >= 1
+
+
 def test_discovery_stages_and_diagnostics() -> None:
     discovery = build_large_candle_excursion_discovery(_source_payload(), {"enabled": True})
     assert discovery["enabled"] is True

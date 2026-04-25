@@ -31,6 +31,9 @@ def _table(rows: List[Dict[str, Any]]) -> str:
         + hdr("OOS Fail%")
         + hdr("IS Runner%")
         + hdr("OOS Runner%")
+        + hdr("Target Hit%")
+        + hdr("Net Exp(t)")
+        + hdr("Friction")
         + hdr("IS MFE/MAE")
         + hdr("OOS MFE/MAE")
         + hdr("Runner Δpp")
@@ -56,6 +59,9 @@ def _table(rows: List[Dict[str, Any]]) -> str:
             + cell(_fmt(oos_m.get("fail_rate")))
             + cell(_fmt(is_m.get("runner_rate")))
             + cell(_fmt(oos_m.get("runner_rate")))
+            + cell(_fmt(oos_m.get("target_hit_rate")))
+            + cell(_fmt(oos_m.get("net_expectancy_after_friction_ticks"), 2))
+            + cell(str(oos_m.get("friction_viability", "â€”")))
             + cell(_fmt(is_m.get("mfe_mae"), 2))
             + cell(_fmt(oos_m.get("mfe_mae"), 2))
             + cell(_fmt(d.get("runner_rate_delta_pp"), 2))
@@ -77,6 +83,7 @@ def _list_block(title: str, rows: List[Dict[str, Any]]) -> str:
         html += (
             f"<li><b>{r.get('candidate_name')}</b> | label={r.get('validation_label')} | "
             f"OOS fail={_fmt(oos.get('fail_rate'))}% | OOS runner={_fmt(oos.get('runner_rate'))}% | "
+            f"net_exp={_fmt(oos.get('net_expectancy_after_friction_ticks'), 2)}t | friction={oos.get('friction_viability')} | "
             f"stability={_fmt(r.get('stability_score'), 3)}</li>"
         )
     html += "</ul>"

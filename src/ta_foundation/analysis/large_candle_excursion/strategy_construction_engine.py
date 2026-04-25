@@ -30,6 +30,11 @@ DEFAULT_STRATEGY_CONSTRUCTION_CONFIG: Dict[str, Any] = {
         "code_next_min": 0.80,
         "watchlist_min": 0.58,
     },
+    "friction_penalties": {
+        "friction-risky": 0.08,
+        "friction-invalid": 0.25,
+        "weak_net_expectancy": 0.06,
+    },
     "max_strategies": 8,
 }
 
@@ -136,6 +141,8 @@ def _build_strategy_card(
     oos_runner = _sf(oos.get("runner_rate"), 0.0)
     oos_fail = _sf(oos.get("fail_rate"), 100.0)
     oos_expansion = _sf(oos.get("expansion_rate"), 0.0)
+    friction_flag = str(oos.get("friction_viability") or "friction-viable")
+    net_exp = _sf(oos.get("net_expectancy_after_friction_ticks"), 0.0)
 
     name_prefix = {
         "runner_reversal": "Explosive Start Reversal Runner",
@@ -254,6 +261,10 @@ def _build_strategy_card(
         warnings.append("Uncapped stop requirement exceeded max-stop profile; cap can reduce edge retention.")
     if archetype == "runner_reversal":
         warnings.append("Runner logic may be sensitive to slippage and high-impact news conditions.")
+    if friction_flag == "friction-risky":
+        warnings.append("OOS edge is friction-risky; require paper fills near modeled slippage before live use.")
+    if friction_flag == "friction-invalid":
+        warnings.append("OOS edge fails configured friction filters; do not promote without a wider practical target.")
 
     nt8_notes = {
         "event_definition": "OnBarClose detect qualified large-candle reversal + context filters",
@@ -282,9 +293,16 @@ def _build_strategy_card(
         + _sf(weights.get("management_complexity"), 0.08) * management_complexity
         + _sf(weights.get("automation_feasibility"), 0.10) * automation_feasibility
     )
+    fp = cfg.get("friction_penalties") or {}
+    friction_penalty = _sf(fp.get(friction_flag), 0.0)
+    if net_exp <= 0:
+        friction_penalty += _sf(fp.get("weak_net_expectancy"), 0.06)
+    deployment_score -= friction_penalty
     deployment_score = round(_clip01(deployment_score), 4)
 
     readiness = _deployment_bucket(deployment_score, cfg.get("ranking_thresholds") or {})
+    if friction_flag == "friction-invalid":
+        readiness = "discard"
 
     return {
         "strategy_name": strategy_name,
@@ -300,6 +318,17 @@ def _build_strategy_card(
         "profit_taking_logic": profit_taking,
         "session_rules": session_rules,
         "risk_position_logic": risk_position_logic,
+        "live_friction": {
+            "target_percent": oos.get("target_percent"),
+            "target_hit_rate": oos.get("target_hit_rate"),
+            "gross_target_ticks": oos.get("gross_target_ticks"),
+            "estimated_round_trip_cost_ticks": oos.get("estimated_round_trip_cost_ticks"),
+            "net_target_after_friction_ticks": oos.get("net_target_after_friction_ticks"),
+            "net_expectancy_after_friction_ticks": oos.get("net_expectancy_after_friction_ticks"),
+            "post_friction_rr": oos.get("post_friction_rr"),
+            "friction_viability": friction_flag,
+            "friction_penalty": round(friction_penalty, 4),
+        },
         "failure_mode_warnings": warnings,
         "ninjatrader_translation_notes": nt8_notes,
         "management_mode": management_mode,
@@ -379,6 +408,14 @@ def compute_strategy_construction_engine(findings_payload: Dict[str, Any], cfg: 
 
     for c in input_candidates:
         label = str(c.get("validation_label") or "")
+        if (c.get("out_of_sample") or {}).get("friction_viability") == "friction-invalid":
+            rejected.append({
+                "candidate_name": c.get("candidate_name"),
+                "validation_label": label,
+                "reason": "friction_invalid",
+                "details": "Candidate failed configured post-friction target, expectancy, or reward/risk filters.",
+            })
+            continue
         if label in accepted:
             considered.append(c)
             continue
@@ -426,6 +463,8 @@ def compute_strategy_construction_engine(findings_payload: Dict[str, Any], cfg: 
                     "source_type": c.get("source_type"),
                     "validation_label": c.get("validation_label"),
                     "oos_n": (c.get("out_of_sample") or {}).get("n"),
+                    "friction_viability": (c.get("out_of_sample") or {}).get("friction_viability"),
+                    "net_expectancy_after_friction_ticks": (c.get("out_of_sample") or {}).get("net_expectancy_after_friction_ticks"),
                 }
                 for c in considered
             ],

@@ -1,0 +1,327 @@
+You are a top-tier quantitative trading systems architect, senior software reviewer, and hedge-fund-grade research infrastructure designer.
+
+You are now being asked to do a **critical architecture and migration review** of my actual project.
+
+Your job is not to design from scratch in a vacuum.
+Your job is to examine what I already have, compare it to the target design principles for building real statistical edge in day trading, and tell me:
+
+* what parts of my current system are useful
+* what parts are dangerous or misleading
+* what should be kept
+* what should be modified
+* what should be removed
+* how to evolve the current architecture into a better one with the least wasted effort
+
+You must think like a senior architect brought into an existing trading research codebase at a serious firm.
+
+You are not here to flatter the project.
+You are here to perform a hard, practical review and produce a migration plan.
+
+---
+
+## CONTEXT
+
+My real goal is to build a system that can help discover, validate, and maintain **statistically defensible edge** in day trading.
+
+The current direction has evolved.
+I no longer want a vague “AI traders talking to each other” system unless it clearly contributes to real edge discovery and validation.
+
+The target principles are:
+
+* deterministic quant logic in the critical path
+* realistic simulation and backtesting
+* rigorous validation
+* strong risk controls
+* reproducibility
+* persistent storage of research and results
+* AI/LLMs only where they add real leverage and do not corrupt the signal/execution/risk path
+
+I already have an existing project and supporting documents.
+I want you to inspect them and tell me how they fit into this better target design.
+
+---
+
+## WHAT YOU WILL REVIEW
+
+I will provide:
+
+* my existing project/codebase
+* architecture and design documents
+* notes on current direction
+* possibly previous strategy/execution components and analysis modules
+
+You should inspect the code and documents directly before giving recommendations.
+
+---
+
+## YOUR TASK
+
+Perform a **deep architecture review of the existing project**, comparing it to the goal of building a real statistical edge research/trading system.
+
+---
+
+## IMPORTANT REVIEW QUESTIONS
+
+### 1. Current System Inventory
+
+Inspect the codebase and identify:
+
+* the major modules/components that already exist
+* what each appears to do
+* what parts are relevant to:
+
+  * data ingestion
+  * market analysis
+  * backtesting
+  * execution
+  * simulation
+  * reporting
+  * persistence
+  * strategy logic
+  * orchestration
+  * AI/LLM integration
+
+Do not assume intent from names only.
+Infer function from actual code structure where possible.
+
+---
+
+### 2. Reuse Assessment
+
+For each major part of the existing system, determine:
+
+* keep as-is
+* keep but refactor
+* repurpose
+* isolate behind interface
+* deprecate
+* remove
+
+I want you to be explicit.
+
+For each component, explain:
+
+* why it is useful or not useful
+* whether it aligns with the goal of real edge discovery
+* whether it risks introducing false confidence
+* whether it belongs in research, simulation, execution, reporting, or should be removed entirely
+
+---
+
+### 3. Fit Against Ideal Architecture
+
+Compare the current project to the kind of system that should exist if the goal is:
+
+**discovering and validating statistical edge in day trading**
+
+Evaluate whether the current codebase has or lacks:
+
+* point-in-time data handling
+* deterministic signal generation
+* realistic simulation
+* cost/slippage modeling
+* walk-forward/out-of-sample validation
+* statistical validation gates
+* strategy versioning
+* experiment tracking
+* persistent research memory / DB
+* deterministic risk controls
+* clean separation between research and execution
+* appropriate use of LLMs
+* excessive complexity or agent overhead
+
+---
+
+### 4. Critical Architecture Problems
+
+Identify the most serious structural issues in the current project.
+
+Examples of the kind of issues I want you to look for:
+
+* architecture built around narratives instead of testable metrics
+* execution code mixed with research logic
+* backtest assumptions that are too optimistic
+* strategy code that cannot be reproduced or versioned cleanly
+* AI in places it should not be
+* file-based workflows that should be DB-backed
+* modules whose names suggest edge but actually produce reporting only
+* components that create complexity without increasing rigor
+
+Tell me the highest-risk problems first.
+
+---
+
+### 5. Practical Migration Strategy
+
+Do NOT recommend a fantasy rewrite unless absolutely necessary.
+
+Instead, design an incremental migration path:
+
+* what can be kept now
+* what should be stabilized first
+* what interfaces should be added
+* what should be wrapped instead of rewritten
+* what should be split apart
+* what should be retired in place
+* what new components need to be introduced
+
+I want a plan that uses as much of the existing work as is reasonable, while still moving toward the correct architecture.
+
+---
+
+### 6. Target Architecture Mapping
+
+Create a mapping from:
+
+**current project components** → **target future system roles**
+
+Example categories:
+
+* Data Foundation
+* Quant Research Engine
+* Strategy Definition / Registry
+* Backtest / Simulation Engine
+* Statistical Validation
+* Execution Layer
+* Risk Engine
+* Reporting / Narrative Layer
+* Persistence / DB Layer
+* AI Research Assistant Layer
+
+Show how existing modules can map into these target roles, or note when there is no good fit.
+
+---
+
+### 7. AI/LLM Role Review
+
+Inspect where AI/LLM logic currently exists or is planned.
+
+Then answer:
+
+* where should LLMs stay
+* where should LLMs be reduced
+* where should LLMs be removed entirely
+* where could LLMs still add leverage without compromising rigor
+
+Be direct.
+If parts of the project are “AI theater” rather than edge-building infrastructure, say so plainly.
+
+---
+
+### 8. Persistence / Database Review
+
+I want research, reports, decisions, and experiment history to be persisted so agents or users can query them later.
+
+Review the current project and tell me:
+
+* what persistence exists now
+* whether it is sufficient
+* what should move into a DB
+* what should remain as artifacts/files
+* what should be versioned
+* what should be queryable later
+* whether the current project structure is compatible with adding a DB cleanly
+
+Recommend a practical persistence model.
+
+---
+
+### 9. Build Order Recommendation
+
+Given the current codebase, give me the best implementation order from here.
+
+I want:
+
+* what to build first
+* what to postpone
+* what not to build yet
+* what to validate before scaling complexity
+
+This build order must be grounded in the existing project, not a greenfield fantasy.
+
+---
+
+### 10. Final Recommendation
+
+At the end, answer this plainly:
+
+**If you were responsible for evolving this existing codebase into a serious day trading research and validation system, what exact path would you take?**
+
+---
+
+## IMPORTANT INSTRUCTIONS
+
+* Be critical, direct, and practical
+* Do not assume the current architecture is good just because it exists
+* Do not optimize for preserving code if the design is wrong
+* Do optimize for preserving useful infrastructure where reasonable
+* Favor rigor over novelty
+* Favor simple deterministic systems over elaborate AI orchestration
+* Distinguish clearly between:
+
+  * real edge infrastructure
+  * useful tooling
+  * reporting-only layers
+  * architecture that should be removed
+
+If parts of the current project are valuable but in the wrong place, say how to reposition them.
+If a rewrite is truly necessary for a subsystem, explain why.
+
+---
+
+## OUTPUT FORMAT
+
+Structure your response exactly like this:
+
+1. Executive Summary
+
+   * What the current project is strongest at
+   * What the current project is weakest at
+   * Overall recommendation
+
+2. Current System Inventory
+
+   * Major components and what they do
+
+3. Reuse / Refactor / Remove Assessment
+
+   * Component-by-component recommendations
+
+4. Critical Architecture Gaps
+
+   * What is missing for real edge discovery and validation
+
+5. Current-to-Target Architecture Mapping
+
+   * Map existing modules into the correct future architecture
+
+6. AI / LLM Role Recommendations
+
+   * Keep / reduce / remove / repurpose
+
+7. Persistence and DB Recommendations
+
+   * What to store, how to store it, and where the current system falls short
+
+8. Migration Plan
+
+   * Incremental path from current system to better system
+
+9. Strict Build Order
+
+   * What to do first, second, third
+
+10. Final Verdict
+
+* If you were taking over this project, what would you actually do?
+
+---
+
+## FINAL INSTRUCTION
+
+Do not answer from theory alone.
+
+First inspect the actual codebase and documents I provide.
+Then ground your recommendations in what is really there.
+
+Your job is to help me evolve the current project into the strongest practical version of a real day trading edge research system — using what is useful, rejecting what is weak, and being honest about both.

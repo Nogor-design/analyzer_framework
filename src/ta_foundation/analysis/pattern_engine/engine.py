@@ -940,19 +940,6 @@ def run_pattern_sweep(
             events_df = pd.DataFrame()
 
 
-    # ---------------------------------------------------------
-    # Optional: trade intake model (to avoid treating every raw signal as a trade)
-    # ---------------------------------------------------------
-    events_exec_df = events_df
-    intake_diag: Dict[str, Any] = {}
-    try:
-        mc_cfg2 = options.get("monte_carlo", {}) or {}
-        intake_cfg = mc_cfg2.get("intake", {}) or {}
-        seed = int(mc_cfg2.get("seed", 7))
-        events_exec_df, intake_diag = apply_trade_intake_model(events_df, intake_cfg=intake_cfg, seed=seed)
-    except Exception as e:
-        intake_diag = {"enabled": False, "issue": f"intake_exception: {type(e).__name__}: {e}"}
-        events_exec_df = events_df
     return {
         "patterns_df": patterns_df,
         "signals_df": signals_df,

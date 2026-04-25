@@ -54,6 +54,16 @@ DEFAULT_TRADE_CONFIG: Dict[str, Any] = {
     "target": {
         "mode": "percent_of_signal_candle",
         "percents": [25, 50, 75, 100, 125],
+        "fine_sweep": {
+            "enabled": False,
+            "percents": [],
+        },
+        "time_split_validation": {
+            "enabled": False,
+            "n_splits": 3,
+            "min_events_per_split": 10,
+            "stable_drop_pp": 8.0,
+        },
     },
     "stop": {
         "enabled": False,
@@ -120,6 +130,78 @@ def assign_candle_bucket(size_ticks: float, buckets: List) -> str:
             if lo <= size_ticks < float(hi):
                 return f"{int(lo)}-{int(hi)}"
     return "other"
+
+
+def _target_percents_from_config(trade_cfg: Dict[str, Any]) -> List[float]:
+    """Return the broad target grid plus any configured fine sweep values."""
+    target_cfg = trade_cfg.get("target", {}) or {}
+    values = list(target_cfg.get("percents", [25, 50, 75, 100, 125]) or [])
+
+    fine_cfg = target_cfg.get("fine_sweep", {}) or {}
+    if fine_cfg.get("enabled", False):
+        values.extend(fine_cfg.get("percents", []) or [])
+
+    out: List[float] = []
+    seen = set()
+    for raw in values:
+        try:
+            val = float(raw)
+        except Exception:
+            continue
+        key = round(val, 8)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(val)
+    return sorted(out)
+
+
+def _time_split_metrics(grp: pd.DataFrame, split_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    if not split_cfg.get("enabled", False) or "dt" not in grp.columns:
+        return {}
+
+    n_splits = max(2, int(split_cfg.get("n_splits", 3)))
+    min_per = max(1, int(split_cfg.get("min_events_per_split", 10)))
+    stable_drop_pp = max(0.01, float(split_cfg.get("stable_drop_pp", 8.0)))
+
+    ordered = grp.sort_values("dt").reset_index(drop=True)
+    if len(ordered) < n_splits * min_per:
+        return {
+            "time_split_available": False,
+            "time_split_reason": f"insufficient events for {n_splits} splits",
+        }
+
+    split_rows: List[Dict[str, Any]] = []
+    split_indices = np.array_split(np.arange(len(ordered)), n_splits)
+    for i, idx in enumerate(split_indices, 1):
+        part = ordered.iloc[idx]
+        n = int(len(part))
+        wins = int(part["win"].sum()) if n else 0
+        wr = round((wins / n) * 100.0, 3) if n else 0.0
+        split_rows.append({"split": i, "n_events": n, "n_wins": wins, "win_rate": wr})
+
+    wrs = [float(r["win_rate"]) for r in split_rows if int(r["n_events"]) >= min_per]
+    if len(wrs) < n_splits:
+        return {
+            "time_split_available": False,
+            "time_split_reason": "one or more splits below minimum events",
+            "time_split_results": split_rows,
+        }
+
+    max_wr = max(wrs)
+    min_wr = min(wrs)
+    max_drop_pp = max_wr - min_wr
+    stability = 1.0 - min(max_drop_pp / (stable_drop_pp * 2.0), 1.0)
+
+    return {
+        "time_split_available": True,
+        "time_split_results": split_rows,
+        "time_split_win_rates": [round(w, 3) for w in wrs],
+        "time_split_min_win_rate": round(min_wr, 3),
+        "time_split_max_win_rate": round(max_wr, 3),
+        "time_split_max_drop_pp": round(max_drop_pp, 3),
+        "time_split_stability": round(stability, 4),
+    }
 
 
 def trade_direction(signal_direction: int, trade_mode: str) -> str:
@@ -192,7 +274,9 @@ def compute_trade_outcomes(
         }
 
     signal_basis     = trade_cfg.get("signal_candle_basis", "range")
-    target_percents  = [float(p) for p in trade_cfg.get("target", {}).get("percents", [25, 50, 75, 100, 125])]
+    target_percents  = _target_percents_from_config(trade_cfg)
+    target_cfg        = trade_cfg.get("target", {}) or {}
+    split_cfg         = target_cfg.get("time_split_validation", {}) or {}
     stop_cfg         = trade_cfg.get("stop", {})
     stop_enabled     = bool(stop_cfg.get("enabled", False))
     stop_percents    = [float(p) for p in stop_cfg.get("percents", [50])] if stop_enabled else [None]
@@ -339,11 +423,16 @@ def compute_trade_outcomes(
             "median_trade_adv_ticks":_sr(grp["trade_adv_ticks"].median()),
         }
         if stop_enabled and "first_hit" in grp.columns:
+            if "stop_ticks" in grp.columns:
+                rec["avg_stop_ticks"] = _sr(grp["stop_ticks"].dropna().mean())
+                rec["median_stop_ticks"] = _sr(grp["stop_ticks"].dropna().median())
             rec["n_target_first"] = int((grp["first_hit"] == "target").sum())
             rec["n_stop_first"]   = int((grp["first_hit"] == "stop").sum())
             rec["n_neither"]      = int((grp["first_hit"] == "neither").sum())
             if "stop_hit" in grp.columns:
                 rec["n_stop_hit"] = int(grp["stop_hit"].fillna(False).astype(bool).sum())
+
+        rec.update(_time_split_metrics(grp, split_cfg))
 
         combo_results.append(rec)
 

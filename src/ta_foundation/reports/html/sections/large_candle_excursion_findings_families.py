@@ -33,7 +33,11 @@ _FRAGILITY_BADGE = {
     "suspicious_strength":  '<span style="background:#fd7e14;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">SUSPECT WR</span>',
     "no_plateau":           '<span style="background:#dc3545;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">NO PLATEAU</span>',
     "rapid_edge_decay":     '<span style="background:#e83e8c;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">EDGE DECAY</span>',
+    "micro_scalp_artifact": '<span style="background:#111;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">MICRO SCALP</span>',
+    "time_instability":     '<span style="background:#795548;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">TIME SPLIT</span>',
     "many_variants":        '<span style="background:#6f42c1;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">MANY VARIANTS</span>',
+    "friction-risky":       '<span style="background:#fd7e14;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">FRICTION RISKY</span>',
+    "friction-invalid":     '<span style="background:#111;color:#fff;padding:2px 4px;border-radius:3px;font-size:10px;margin-right:3px">FRICTION INVALID</span>',
 }
 
 
@@ -64,12 +68,20 @@ def _render_family_row(rank: int, fam: Dict[str, Any]) -> str:
     variants    = int(fam.get("variant_count") or 0)
     plateau     = int(fam.get("plateau_width") or 0)
     edp         = _safe_float(fam.get("edge_decay_penalty"), 0.0)
+    nts         = _safe_float(fam.get("neighbor_target_stability"), 0.0)
+    tts         = _safe_float(fam.get("target_time_stability"), 0.0)
+    target_lbl  = fam.get("target_stability_label") or ""
 
     best_wr     = _safe_float(best.get("win_rate"), 0.0)
     best_n      = int(best.get("n_events") or 0)
     best_tgt    = int(_safe_float(best.get("target_percent"), 0))
     best_window = best.get("window_minutes", "?")
     best_def    = best.get("setup_definition", "")
+    gross_tgt   = _safe_float(fam.get("gross_target_ticks"), _safe_float(best.get("gross_target_ticks"), 0.0))
+    cost_ticks  = _safe_float(fam.get("estimated_round_trip_cost_ticks"), _safe_float(best.get("estimated_round_trip_cost_ticks"), 0.0))
+    net_tgt     = _safe_float(fam.get("net_target_after_friction_ticks"), _safe_float(best.get("net_target_after_friction_ticks"), 0.0))
+    net_exp     = _safe_float(fam.get("net_expectancy_after_friction_ticks"), _safe_float(best.get("net_expectancy_after_friction_ticks"), 0.0))
+    friction    = fam.get("friction_viability") or best.get("friction_viability") or ""
 
     behavior_badge  = _BEHAVIOR_BADGE.get(bt, _BEHAVIOR_BADGE.get("mixed", ""))
     stability_badge = _STABILITY_BADGE.get(cs, "")
@@ -92,11 +104,18 @@ def _render_family_row(rank: int, fam: Dict[str, Any]) -> str:
         f'<td style="padding:8px 6px;font-size:12px;text-align:right">{avg_score:.4f}</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:right">{best_wr:.1f}%</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:right">{best_n}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{gross_tgt:.2f}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{cost_ticks:.2f}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{net_tgt:.2f}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{net_exp:.2f}</td>'
+        f'<td style="padding:8px 6px;font-size:11px;text-align:center">{friction}</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:center">{behavior_badge}</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:center">{stability_badge}</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:right">{plateau}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{nts:.2f}</td>'
+        f'<td style="padding:8px 6px;font-size:12px;text-align:right">{tts:.2f}</td>'
         f'<td style="padding:8px 6px;font-size:12px;text-align:right">{edp:.2f}</td>'
-        f'<td style="padding:8px 6px;font-size:11px">{flag_html}</td>'
+        f'<td style="padding:8px 6px;font-size:11px">{target_lbl}<div>{flag_html}</div></td>'
         f'</tr>'
     )
 
@@ -120,6 +139,9 @@ def render_large_candle_excursion_findings_families(ctx: dict) -> str:
     n_str  = sum(1 for f in families if (f.get("best_variant") or {}).get("_promotion_level") == "strategy-test-ready")
     n_cand = sum(1 for f in families if (f.get("best_variant") or {}).get("_promotion_level") == "candidate")
     n_obs  = len(families) - n_str - n_cand
+    n_fv   = sum(1 for f in families if f.get("friction_viability") == "friction-viable")
+    n_fr   = sum(1 for f in families if f.get("friction_viability") == "friction-risky")
+    n_fi   = sum(1 for f in families if f.get("friction_viability") == "friction-invalid")
 
     html = '<div style="font-family:Arial,sans-serif">'
     html += section_title("Top Setup Families")
@@ -150,6 +172,11 @@ def render_large_candle_excursion_findings_families(ctx: dict) -> str:
         '</div>'
     )
 
+    html += (
+        '<p style="font-size:12px;color:#444;margin:0 0 10px">'
+        f"Friction viability among shown families: {n_fv} viable, {n_fr} risky, {n_fi} invalid.</p>"
+    )
+
     # Table
     th_style = "padding:6px 6px;background:#343a40;color:#fff;font-size:11px;text-align:left;white-space:nowrap"
     html += (
@@ -164,9 +191,16 @@ def render_large_candle_excursion_findings_families(ctx: dict) -> str:
         f'<th style="{th_style};text-align:right">Avg Score</th>'
         f'<th style="{th_style};text-align:right">Best WR</th>'
         f'<th style="{th_style};text-align:right">Best N</th>'
+        f'<th style="{th_style};text-align:right">Target(t)</th>'
+        f'<th style="{th_style};text-align:right">Cost(t)</th>'
+        f'<th style="{th_style};text-align:right">NetTarget</th>'
+        f'<th style="{th_style};text-align:right">NetExp</th>'
+        f'<th style="{th_style};text-align:center">Friction</th>'
         f'<th style="{th_style};text-align:center">Behavior</th>'
         f'<th style="{th_style};text-align:center">Curve</th>'
         f'<th style="{th_style};text-align:right">Plateau</th>'
+        f'<th style="{th_style};text-align:right">Nbr Stable</th>'
+        f'<th style="{th_style};text-align:right">Time Stable</th>'
         f'<th style="{th_style};text-align:right">Edge Decay</th>'
         f'<th style="{th_style}">Flags</th>'
         '</tr></thead>'

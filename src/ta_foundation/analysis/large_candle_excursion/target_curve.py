@@ -19,7 +19,7 @@ Behavior classification
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -30,6 +30,10 @@ class TargetPoint:
     target_pct: float       # e.g. 25.0, 50.0, 75.0, 100.0 …
     win_rate: float         # 0.0 – 1.0
     n_events: int           # sample size at this target
+    time_split_win_rates: List[float] = field(default_factory=list)
+    time_split_stability: Optional[float] = None
+    time_split_max_drop_pp: Optional[float] = None
+    time_split_available: bool = False
 
 
 @dataclass
@@ -46,6 +50,17 @@ class TargetCurveMetrics:
     monotonicity: float = 0.0                  # fraction of adjacent pairs where WR declines (0–1)
     plateau_width: int = 0                     # number of consecutive steps within tolerance of peak
     stable_target_range: Tuple[float, float] = (0.0, 0.0)   # (lo_pct, hi_pct) plateau band
+    fine_target_curve: List[TargetPoint] = field(default_factory=list)
+    fine_plateau_width: int = 0
+    fine_stable_target_range: Tuple[float, float] = (0.0, 0.0)
+    neighbor_target_stability: float = 0.0
+    neighbor_target_drops: Dict[str, dict] = field(default_factory=dict)
+    target_time_stability: float = 0.5
+    focus_time_split_win_rates: List[float] = field(default_factory=list)
+    focus_time_split_max_drop_pp: Optional[float] = None
+    time_stability_label: str = "unknown"
+    target_stability_label: str = "unknown"
+    micro_scalp_artifact: bool = False
 
     # Derived behavior
     behavior_type: str = "unknown"             # "scalp" | "runner" | "mixed"
@@ -67,6 +82,14 @@ def compute_target_curve_metrics(
     scalp_max_target_pct: float = 50.0,        # peak target% threshold for "scalp"
     scalp_min_edge_decay: float = 0.20,        # minimum edge decay fraction for "scalp"
     edge_decay_full_penalty_pp: float = 50.0,  # pp decay that gives maximum penalty
+    fine_sweep_targets: Optional[List[float]] = None,
+    focus_target_pct: float = 20.0,
+    stable_neighbor_drop_pp: float = 3.0,
+    micro_scalp_max_target_pct: float = 25.0,
+    micro_scalp_max_plateau_width: int = 1,
+    micro_scalp_min_edge_decay_penalty: float = 0.70,
+    stable_time_split_stability: float = 0.65,
+    fragile_time_split_stability: float = 0.40,
 ) -> TargetCurveMetrics:
     """
     Derive curve-level metrics from an ordered list of TargetPoints.
@@ -108,16 +131,8 @@ def compute_target_curve_metrics(
     tol = plateau_tolerance / 100.0          # convert pp → fraction
     threshold = peak_win_rate - tol
 
-    # Find the widest consecutive run above threshold
-    best_run: List[TargetPoint] = []
-    current_run: List[TargetPoint] = []
-    for p in pts:
-        if p.win_rate >= threshold:
-            current_run.append(p)
-            if len(current_run) > len(best_run):
-                best_run = list(current_run)
-        else:
-            current_run = []
+    peak_idx = pts.index(peak)
+    best_run = _connected_plateau_run(pts, peak_idx, threshold)
 
     plateau_width = len(best_run)
     if best_run:
@@ -144,6 +159,86 @@ def compute_target_curve_metrics(
     full_penalty_frac = max(edge_decay_full_penalty_pp / 100.0, 0.01)
     edge_decay_penalty = min(max(edge_decay, 0.0), full_penalty_frac) / full_penalty_frac
 
+    fine_targets = {round(float(t), 8) for t in (fine_sweep_targets or [])}
+    fine_pts = [p for p in pts if round(float(p.target_pct), 8) in fine_targets] if fine_targets else []
+    fine_plateau_width = 0
+    fine_stable_target_range = (peak_target_pct, peak_target_pct)
+    neighbor_drops: Dict[str, dict] = {}
+    neighbor_stability = 0.5
+    target_time_stability = 0.5
+    focus_time_split_win_rates: List[float] = []
+    focus_time_split_max_drop_pp: Optional[float] = None
+    time_stability_label = "unknown"
+    target_label = "stable_plateau" if plateau_width >= plateau_min_width else ("narrow_fragile_optimum" if plateau_width <= 1 else "moderate_plateau")
+
+    if fine_pts:
+        fine_peak = max(fine_pts, key=lambda p: p.win_rate)
+        fine_threshold = fine_peak.win_rate - tol
+        fine_peak_idx = fine_pts.index(fine_peak)
+        fine_run = _connected_plateau_run(fine_pts, fine_peak_idx, fine_threshold)
+        fine_plateau_width = len(fine_run)
+        if fine_run:
+            fine_stable_target_range = (fine_run[0].target_pct, fine_run[-1].target_pct)
+
+        center_idx = min(
+            range(len(fine_pts)),
+            key=lambda i: (abs(fine_pts[i].target_pct - focus_target_pct), -fine_pts[i].win_rate),
+        )
+        center = fine_pts[center_idx]
+        target_time_stability = center.time_split_stability if center.time_split_stability is not None else 0.5
+        focus_time_split_win_rates = list(center.time_split_win_rates or [])
+        focus_time_split_max_drop_pp = center.time_split_max_drop_pp
+        neighbor_refs = []
+        if center_idx > 0:
+            neighbor_refs.append(("left", fine_pts[center_idx - 1]))
+        if center_idx + 1 < len(fine_pts):
+            neighbor_refs.append(("right", fine_pts[center_idx + 1]))
+
+        drops = []
+        for side, p in neighbor_refs:
+            drop_pp = max(0.0, (center.win_rate - p.win_rate) * 100.0)
+            drops.append(drop_pp)
+            neighbor_drops[side] = {
+                "target_pct": p.target_pct,
+                "win_rate": round(p.win_rate, 4),
+                "drop_from_focus_pp": round(drop_pp, 3),
+            }
+
+        if drops:
+            avg_drop_pp = sum(drops) / len(drops)
+            neighbor_stability = 1.0 - min(avg_drop_pp / max(stable_neighbor_drop_pp * 2.0, 0.01), 1.0)
+
+        if fine_plateau_width >= 3 and neighbor_stability >= 0.70:
+            target_label = "stable_plateau"
+        elif fine_plateau_width <= 1 or neighbor_stability < 0.45:
+            target_label = "narrow_fragile_optimum"
+        else:
+            target_label = "moderate_plateau"
+    else:
+        target_time_stability = peak.time_split_stability if peak.time_split_stability is not None else 0.5
+        focus_time_split_win_rates = list(peak.time_split_win_rates or [])
+        focus_time_split_max_drop_pp = peak.time_split_max_drop_pp
+        if plateau_width >= plateau_min_width:
+            neighbor_stability = 1.0
+        elif plateau_width <= 1:
+            neighbor_stability = 0.35
+        else:
+            neighbor_stability = 0.55
+
+    if target_time_stability >= stable_time_split_stability:
+        time_stability_label = "time_stable"
+    elif target_time_stability < fragile_time_split_stability:
+        time_stability_label = "time_fragile"
+    else:
+        time_stability_label = "time_moderate"
+
+    active_plateau_width = fine_plateau_width if fine_pts else plateau_width
+    micro_scalp_artifact = (
+        peak_target_pct <= micro_scalp_max_target_pct
+        and active_plateau_width <= micro_scalp_max_plateau_width
+        and edge_decay_penalty >= micro_scalp_min_edge_decay_penalty
+    )
+
     return TargetCurveMetrics(
         setup_key=setup_key,
         points=pts,
@@ -153,6 +248,17 @@ def compute_target_curve_metrics(
         monotonicity=monotonicity,
         plateau_width=plateau_width,
         stable_target_range=stable_target_range,
+        fine_target_curve=fine_pts,
+        fine_plateau_width=fine_plateau_width,
+        fine_stable_target_range=fine_stable_target_range,
+        neighbor_target_stability=neighbor_stability,
+        neighbor_target_drops=neighbor_drops,
+        target_time_stability=target_time_stability,
+        focus_time_split_win_rates=focus_time_split_win_rates,
+        focus_time_split_max_drop_pp=focus_time_split_max_drop_pp,
+        time_stability_label=time_stability_label,
+        target_stability_label=target_label,
+        micro_scalp_artifact=micro_scalp_artifact,
         behavior_type=behavior_type,
         plateau_score=plateau_score,
         edge_decay_penalty=edge_decay_penalty,
@@ -184,9 +290,21 @@ def build_target_curves(
     scalp_max_tgt      = float(cfg.get("scalp_max_target_pct",        50.0))
     scalp_min_decay    = float(cfg.get("scalp_min_edge_decay",        0.20))
     decay_full_pp      = float(cfg.get("edge_decay_full_penalty_pp",  50.0))
+    fine_cfg           = cfg.get("fine_sweep", {}) or {}
+    fine_targets       = (fine_cfg.get("target_percents", fine_cfg.get("percents", [])) or []) if fine_cfg.get("enabled", False) else []
+    focus_target_pct   = float(fine_cfg.get("focus_target_pct", 20.0))
+    stable_drop_pp     = float(fine_cfg.get("stable_neighbor_drop_pp", plateau_tolerance))
+    micro_max_tgt      = float(fine_cfg.get("micro_scalp_max_target_pct", 25.0))
+    micro_max_width    = int(fine_cfg.get("micro_scalp_max_plateau_width", 1))
+    micro_min_decay    = float(fine_cfg.get("micro_scalp_min_edge_decay_penalty", 0.70))
+    time_cfg           = cfg.get("time_split_validation", {}) or {}
+    stable_time        = float(time_cfg.get("stable_time_split_stability", 0.65))
+    fragile_time       = float(time_cfg.get("fragile_time_split_stability", 0.40))
+    time_drop_pp       = float(time_cfg.get("stable_drop_pp", 8.0))
 
     # Accumulate (n_wins, n_events) per (setup_key, target_pct)
     agg: Dict[Tuple[str, float], Tuple[int, int]] = {}
+    split_agg: Dict[Tuple[str, float], Dict[int, List[int]]] = {}
     setup_keys_ordered: Dict[str, None] = {}   # ordered set
 
     for row in (trade_combo_results or []):
@@ -198,6 +316,13 @@ def build_target_curves(
         cell_key = (key, tpct)
         prev_wins, prev_n = agg.get(cell_key, (0, 0))
         agg[cell_key] = (prev_wins + n_wins, prev_n + n_events)
+        for split in row.get("time_split_results") or []:
+            idx = int(split.get("split") or 0)
+            if idx <= 0:
+                continue
+            bucket = split_agg.setdefault(cell_key, {}).setdefault(idx, [0, 0])
+            bucket[0] += int(split.get("n_wins") or 0)
+            bucket[1] += int(split.get("n_events") or 0)
         setup_keys_ordered[key] = None
 
     curves: Dict[str, TargetCurveMetrics] = {}
@@ -210,7 +335,16 @@ def build_target_curves(
         for tpct in target_pcts:
             wins, n = agg[(setup_key, tpct)]
             wr = wins / n if n > 0 else 0.0
-            points.append(TargetPoint(target_pct=tpct, win_rate=wr, n_events=n))
+            split_metrics = _combined_time_split_metrics(split_agg.get((setup_key, tpct), {}), time_drop_pp)
+            points.append(TargetPoint(
+                target_pct=tpct,
+                win_rate=wr,
+                n_events=n,
+                time_split_win_rates=split_metrics["win_rates"],
+                time_split_stability=split_metrics["stability"],
+                time_split_max_drop_pp=split_metrics["max_drop_pp"],
+                time_split_available=split_metrics["available"],
+            ))
 
         curves[setup_key] = compute_target_curve_metrics(
             points,
@@ -220,6 +354,14 @@ def build_target_curves(
             scalp_max_target_pct=scalp_max_tgt,
             scalp_min_edge_decay=scalp_min_decay,
             edge_decay_full_penalty_pp=decay_full_pp,
+            fine_sweep_targets=[float(t) for t in fine_targets],
+            focus_target_pct=focus_target_pct,
+            stable_neighbor_drop_pp=stable_drop_pp,
+            micro_scalp_max_target_pct=micro_max_tgt,
+            micro_scalp_max_plateau_width=micro_max_width,
+            micro_scalp_min_edge_decay_penalty=micro_min_decay,
+            stable_time_split_stability=stable_time,
+            fragile_time_split_stability=fragile_time,
         )
 
     return curves
@@ -236,6 +378,41 @@ def _make_setup_key(row: dict) -> str:
     tf = row.get("tf_minutes", "?")
     wm = row.get("window_minutes", "?")
     return f"{tm}|{dr}|{cb}|tf{tf}m|w{wm}m"
+
+
+def _connected_plateau_run(points: List[TargetPoint], center_idx: int, threshold: float) -> List[TargetPoint]:
+    if not points:
+        return []
+    lo = hi = center_idx
+    while lo > 0 and points[lo - 1].win_rate >= threshold:
+        lo -= 1
+    while hi + 1 < len(points) and points[hi + 1].win_rate >= threshold:
+        hi += 1
+    return points[lo : hi + 1]
+
+
+def _combined_time_split_metrics(split_counts: Dict[int, List[int]], stable_drop_pp: float = 8.0) -> Dict[str, Any]:
+    if not split_counts:
+        return {"available": False, "win_rates": [], "stability": None, "max_drop_pp": None}
+
+    wrs: List[float] = []
+    for idx in sorted(split_counts):
+        wins, n = split_counts[idx]
+        if n <= 0:
+            continue
+        wrs.append(round((wins / n) * 100.0, 3))
+
+    if len(wrs) < 2:
+        return {"available": False, "win_rates": wrs, "stability": None, "max_drop_pp": None}
+
+    max_drop_pp = max(wrs) - min(wrs)
+    stability = 1.0 - min(max_drop_pp / max(stable_drop_pp * 2.0, 0.01), 1.0)
+    return {
+        "available": True,
+        "win_rates": wrs,
+        "stability": round(stability, 4),
+        "max_drop_pp": round(max_drop_pp, 3),
+    }
 
 
 def top_setups_by_peak_wr(
@@ -262,7 +439,15 @@ def curve_to_dict(c: TargetCurveMetrics) -> dict:
     return {
         "setup_key": c.setup_key,
         "points": [
-            {"target_pct": p.target_pct, "win_rate": round(p.win_rate, 4), "n_events": p.n_events}
+            {
+                "target_pct": p.target_pct,
+                "win_rate": round(p.win_rate, 4),
+                "n_events": p.n_events,
+                "time_split_win_rates": p.time_split_win_rates,
+                "time_split_stability": p.time_split_stability,
+                "time_split_max_drop_pp": p.time_split_max_drop_pp,
+                "time_split_available": p.time_split_available,
+            }
             for p in c.points
         ],
         "peak_target_pct": c.peak_target_pct,
@@ -271,6 +456,28 @@ def curve_to_dict(c: TargetCurveMetrics) -> dict:
         "monotonicity": round(c.monotonicity, 4),
         "plateau_width": c.plateau_width,
         "stable_target_range": list(c.stable_target_range),
+        "fine_target_curve": [
+            {
+                "target_pct": p.target_pct,
+                "win_rate": round(p.win_rate, 4),
+                "n_events": p.n_events,
+                "time_split_win_rates": p.time_split_win_rates,
+                "time_split_stability": p.time_split_stability,
+                "time_split_max_drop_pp": p.time_split_max_drop_pp,
+                "time_split_available": p.time_split_available,
+            }
+            for p in c.fine_target_curve
+        ],
+        "fine_plateau_width": c.fine_plateau_width,
+        "fine_stable_target_range": list(c.fine_stable_target_range),
+        "neighbor_target_stability": round(c.neighbor_target_stability, 4),
+        "neighbor_target_drops": c.neighbor_target_drops,
+        "target_time_stability": round(c.target_time_stability, 4),
+        "focus_time_split_win_rates": c.focus_time_split_win_rates,
+        "focus_time_split_max_drop_pp": c.focus_time_split_max_drop_pp,
+        "time_stability_label": c.time_stability_label,
+        "target_stability_label": c.target_stability_label,
+        "micro_scalp_artifact": c.micro_scalp_artifact,
         "behavior_type": c.behavior_type,
         "plateau_score": round(c.plateau_score, 4),
         "edge_decay_penalty": round(c.edge_decay_penalty, 4),

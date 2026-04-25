@@ -23,7 +23,7 @@ def render_large_candle_excursion_discovery_broad_scan(ctx: dict) -> str:
     if not rows:
         return info_box("Broad scan ran, but no candidates passed filters.", color="#f8f9fa", border="#dee2e6")
 
-    headers = ["Setup", "Mode", "TF", "Bucket", "Target%", "Events", "Win%", "Score"]
+    headers = ["Setup", "Mode", "TF", "Bucket", "Target%", "Target(t)", "Cost(t)", "NetTarget", "NetExp", "Friction", "Events", "Win%", "Score"]
     hdr_row = "".join(hdr(h) for h in headers)
     body = []
     for r in rows:
@@ -34,6 +34,11 @@ def render_large_candle_excursion_discovery_broad_scan(ctx: dict) -> str:
             + cell(f"{r.get('tf_minutes', '—')}m")
             + cell(str(r.get("candle_bucket", "—")))
             + cell(fmt(r.get("target_percent"), 0, "%"))
+            + cell(fmt(r.get("gross_target_ticks"), 2))
+            + cell(fmt(r.get("estimated_round_trip_cost_ticks"), 2))
+            + cell(fmt(r.get("net_target_after_friction_ticks"), 2))
+            + cell(fmt(r.get("net_expectancy_after_friction_ticks"), 2))
+            + cell(str(r.get("friction_viability") or "---"))
             + cell(str(r.get("n_events", 0)))
             + cell(fmt(r.get("win_rate"), 1, "%"))
             + cell(fmt(r.get("composite_score"), 3), bg="#e8f5e9", bold=True)

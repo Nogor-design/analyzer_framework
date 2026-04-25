@@ -45,7 +45,10 @@ from ta_foundation.analysis.large_candle_excursion.signal_candle_context import 
     DEFAULT_TREND_STATE_CONTEXT,
     DEFAULT_EXHAUSTION_CONTEXT,
 )
-from ta_foundation.analysis.large_candle_excursion.context_stats import compute_context_analysis
+from ta_foundation.analysis.large_candle_excursion.context_stats import (
+    compute_context_analysis,
+    compute_time_segment_analysis,
+)
 from ta_foundation.analysis.large_candle_excursion.session_classifier import add_session_bucket_to_events
 from ta_foundation.analysis.large_candle_excursion.target_curve import build_target_curves, curves_to_dict
 
@@ -105,6 +108,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "scalp_max_target_pct":       50.0,  # peak target% at/below which "scalp" applies
         "scalp_min_edge_decay":       0.20,  # minimum WR decay fraction for "scalp"
         "edge_decay_full_penalty_pp": 50.0,  # pp decay that maxes out edge_decay_penalty
+        "fine_sweep": {
+            "enabled": False,
+            "target_percents": [],
+            "focus_target_pct": 20.0,
+            "stable_neighbor_drop_pp": 3.0,
+            "micro_scalp_max_target_pct": 25.0,
+            "micro_scalp_max_plateau_width": 1,
+            "micro_scalp_min_edge_decay_penalty": 0.70,
+        },
+        "time_split_validation": {
+            "enabled": False,
+            "stable_drop_pp": 8.0,
+            "stable_time_split_stability": 0.65,
+            "fragile_time_split_stability": 0.40,
+        },
     },
 
     "volume_context":           DEFAULT_VOL_CONTEXT,
@@ -286,6 +304,12 @@ def _event_to_record(row: pd.Series, use_tick_data: bool) -> Dict[str, Any]:
         "prev_direction_bucket", "streak_bucket", "engulf_bucket",
         "directional_context_label",
         "prev_direction", "same_as_prev", "direction_streak",
+        # volume / structure / volatility raw features
+        "candle_volume", "avg_volume", "relative_volume", "vol_bucket",
+        "upper_wick_ticks", "lower_wick_ticks",
+        "body_to_range_ratio", "upper_wick_to_range_ratio", "lower_wick_to_range_ratio",
+        "close_position_in_range", "close_pos_bucket", "body_range_bucket", "wick_bucket",
+        "range_as_atr", "avg_range", "range_vs_avg_range", "atr_bucket", "range_avg_bucket",
         # MA/VWAP
         "ma100_location_bucket", "ma200_location_bucket", "vwap_location_bucket",
         "ma100_ext_bucket", "ma200_ext_bucket", "vwap_ext_bucket",
@@ -419,9 +443,13 @@ def run_large_candle_excursion(
         exhaustion_cfg.get("enabled", False)
     )
 
+    # Time segment analysis config — pre-computed so the inner loop can gate correctly
+    time_seg_cfg: Dict  = cfg.get("time_segment_analysis", {})
+    run_time_seg: bool  = bool(time_seg_cfg.get("enabled", False))
+
     combo_results:  List[Dict] = []
     all_events:     List[Dict] = []
-    all_fwd_dfs:    List       = []        # collected for trade analysis + context
+    all_fwd_dfs:    List       = []        # collected for trade analysis + context + time segments
     n_combinations_run: int    = 0
 
     for tf in timeframes:
@@ -488,8 +516,8 @@ def run_large_candle_excursion(
             if fwd_df is None or fwd_df.empty:
                 continue
 
-            # Collect for trade analysis + context stats
-            if run_trade_analysis or any_context:
+            # Collect for trade analysis, context stats, and time segment analysis
+            if run_trade_analysis or any_context or run_time_seg:
                 all_fwd_dfs.append(fwd_df)
 
             # Optionally append tick-path metrics
@@ -564,6 +592,15 @@ def run_large_candle_excursion(
             exhaustion_cfg=exhaustion_cfg,
         )
 
+    # Time segment analysis — user-defined overlapping windows
+    time_segment_result: Dict = {"enabled": False}
+    if run_time_seg and combined_fwd is not None:
+        time_segment_result = compute_time_segment_analysis(
+            combined_fwd,
+            time_seg_cfg,
+            trade_cfg=trade_cfg if run_trade_analysis else None,
+        )
+
     print(
         f"[large_candle_excursion] {n_combinations_run} combos run, "
         f"{len(combo_results)} results, {len(all_events)} events sampled."
@@ -584,6 +621,8 @@ def run_large_candle_excursion(
         result["target_curves"] = target_curves_result
     if any_context:
         result["context_analysis"] = context_analysis_result
+    if run_time_seg:
+        result["time_segment_analysis"] = time_segment_result
     return result
 
 

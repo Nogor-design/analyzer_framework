@@ -11,7 +11,13 @@ Requires-Dist: numpy; extra == "analysis"
 Requires-Dist: scipy; extra == "analysis"
 Requires-Dist: scikit-learn; extra == "analysis"
 Requires-Dist: pyarrow; extra == "analysis"
+Provides-Extra: prediction
+Requires-Dist: anthropic>=0.90.0; extra == "prediction"
 Provides-Extra: reporting
 Requires-Dist: playwright; extra == "reporting"
+Provides-Extra: persistence
+Requires-Dist: duckdb; extra == "persistence"
+Provides-Extra: web
+Requires-Dist: flask; extra == "web"
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"

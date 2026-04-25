@@ -8,6 +8,7 @@ from ta_foundation.reports.html.sections.large_candle_excursion_findings_interac
 from ta_foundation.reports.html.sections.large_candle_excursion_recursive_edge_search import render_large_candle_excursion_recursive_edge_search
 from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_engine import render_large_candle_excursion_edge_validation_engine
 from ta_foundation.reports.html.sections.large_candle_excursion_strategy_construction_engine import render_large_candle_excursion_strategy_construction_engine
+from ta_foundation.reports.html.sections.large_candle_excursion_regime_findings_explainer import render_large_candle_excursion_regime_findings_explainer
 
 
 def test_findings_section_renders_payload() -> None:
@@ -56,6 +57,78 @@ def test_findings_interaction_section_renders_attempted_candidates() -> None:
     html = render_large_candle_excursion_findings_interactions({"packages": {"run1": pkg}, "options": {}})
     assert "Attempted Interaction Candidates" in html
     assert "low sample size" in html
+
+
+def test_regime_findings_explainer_defines_top_interactions() -> None:
+    pkg = AnalysisPackage(
+        run_id="run1",
+        metadata={
+            "derived": {
+                "large_candle_excursion_findings": {
+                    "enabled": True,
+                    "has_source": True,
+                    "config": {
+                        "reversal_decision_engine": {
+                            "early_path": {
+                                "explosive_min_fav_2bar_pct": 45.0,
+                                "explosive_max_adv_2bar_pct": 20.0,
+                            }
+                        }
+                    },
+                    "regime_discovery": {
+                        "onset_path_interaction_analysis": {
+                            "tradeable_regime_candidate_ledger": [
+                                {
+                                    "candidate_name": "first_large_after_failed_continuation x explosive_start",
+                                    "onset_condition": "first_large_after_failed_continuation",
+                                    "early_path_condition": "explosive_start",
+                                    "candidate_action": "scalp",
+                                    "n": 42,
+                                    "win_rate": 61.0,
+                                    "fail_rate": 18.0,
+                                    "runner_rate": 12.0,
+                                    "expectancy_ticks": 4.5,
+                                    "cluster_participation_rate": 30.0,
+                                    "median_decay_minutes": 25.0,
+                                    "confidence_label": "research_candidate",
+                                }
+                            ],
+                            "interaction_matrix": [
+                                {
+                                    "onset_condition": "first_large_after_failed_continuation",
+                                    "early_path_condition": "explosive_start",
+                                    "avg_mfe_pct": 55.0,
+                                    "avg_mae_pct": 22.0,
+                                }
+                            ],
+                            "edge_decomposition_table": [
+                                {
+                                    "onset_condition": "first_large_after_failed_continuation",
+                                    "early_path_condition": "explosive_start",
+                                    "interpretation": "interaction adds signal",
+                                }
+                            ],
+                            "live_decision_readiness_screen": [
+                                {
+                                    "onset_condition": "first_large_after_failed_continuation",
+                                    "early_path_condition": "explosive_start",
+                                    "live_actionability_label": "management_rule_only",
+                                    "leakage_warning": "Uses early post-entry bars.",
+                                }
+                            ],
+                        }
+                    },
+                }
+            }
+        },
+    )
+
+    html = render_large_candle_excursion_regime_findings_explainer({"packages": {"run1": pkg}, "options": {"top_n": 1}})
+
+    assert "Regime Findings Explainer" in html
+    assert "not a fixed tick threshold" in html
+    assert "Favorable reversal movement in the first two bars is at least 45.0%" in html
+    assert "ticks = signal_candle_size_ticks" in html
 
 
 def test_discovery_chain_section_renders_attempted_when_none_passed() -> None:

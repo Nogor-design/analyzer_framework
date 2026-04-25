@@ -66,6 +66,19 @@ DEFAULT_EDGE_VALIDATION_CONFIG: Dict[str, Any] = {
     "handoff": {
         "max_candidates": 8,
     },
+    "friction": {
+        "commission_per_trade": 0.0,
+        "tick_value": 5.0,
+        "slippage_ticks_per_side": 0.0,
+        "additional_buffer_ticks": 0.0,
+        "target_percent": 25.0,
+        "min_target_ticks": 0.0,
+        "min_net_target_ticks": 0.0,
+        "min_post_friction_rr": 0.0,
+        "risky_net_expectancy_ticks": 0.0,
+        "risky_cost_to_target_ratio": 0.35,
+        "risky_post_friction_rr": 0.0,
+    },
 }
 
 
@@ -91,6 +104,23 @@ def _sf(v: Any, d: float = 0.0) -> float:
 
 def _safe_div(a: float, b: float) -> float:
     return a / b if b else 0.0
+
+
+def _friction_cost_ticks(cfg: Dict[str, Any]) -> float:
+    fcfg = cfg.get("friction") or {}
+    tick_value = _sf(fcfg.get("tick_value"), 0.0)
+    commission_ticks = _sf(fcfg.get("commission_per_trade"), 0.0) / tick_value if tick_value > 0 else 0.0
+    slippage_ticks = max(0.0, _sf(fcfg.get("slippage_ticks_per_side"), 0.0)) * 2.0
+    buffer_ticks = max(0.0, _sf(fcfg.get("additional_buffer_ticks"), 0.0))
+    return commission_ticks + slippage_ticks + buffer_ticks
+
+
+def _target_pct_for_candidate(candidate: Dict[str, Any], cfg: Dict[str, Any]) -> float:
+    filters = candidate.get("filters") or {}
+    target = _sf(filters.get("target_percent"), 0.0)
+    if target <= 0:
+        target = _sf((cfg.get("friction") or {}).get("target_percent"), 25.0)
+    return max(1.0, target)
 
 
 def _to_bool(v: Any) -> bool:
@@ -169,6 +199,9 @@ def _normalize_events(events_sample: List[Dict[str, Any]], decision_cfg: Optiona
             "session": ev.get("session_bucket") or "unknown",
             "basis": ev.get("basis") or "unknown",
             "target_percent": _sf(ev.get("target_percent"), 0.0),
+            "size_ticks": round(size, 3),
+            "mfe_ticks": round(mfe_ticks, 3),
+            "mae_ticks": round(mae_ticks, 3),
             "trend_state": ev.get("trend_alignment_label") or "unknown",
             "vwap_stretch_bucket": ev.get("vwap_ext_bucket") or ev.get("vwap_signed_bucket") or "unknown",
             "key_level_interaction": ev.get("level_interaction_label") or "unknown",
@@ -190,7 +223,7 @@ def _normalize_events(events_sample: List[Dict[str, Any]], decision_cfg: Optiona
     return out
 
 
-def _compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _compute_metrics(rows: List[Dict[str, Any]], target_pct: float = 25.0, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     n = len(rows)
     if n <= 0:
         return {
@@ -201,7 +234,13 @@ def _compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
             "runner_rate": 0.0,
             "avg_mfe": 0.0,
             "avg_mae": 0.0,
+            "avg_size_ticks": 0.0,
+            "avg_mfe_ticks": 0.0,
+            "avg_mae_ticks": 0.0,
+            "target_percent": round(float(target_pct), 3),
+            "target_hit_rate": 0.0,
             "mfe_mae": None,
+            **_friction_metrics(0.0, 0.0, 0.0, 0.0, cfg or {}),
         }
     fail_rate = round(sum(1 for r in rows if r["is_fail"]) * 100.0 / n, 1)
     scalp_rate = round(sum(1 for r in rows if r["is_scalp"]) * 100.0 / n, 1)
@@ -209,8 +248,12 @@ def _compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     runner_rate = round(sum(1 for r in rows if r["is_runner"]) * 100.0 / n, 1)
     avg_mfe = round(sum(_sf(r.get("mfe_pct"), 0.0) for r in rows) / n, 3)
     avg_mae = round(sum(_sf(r.get("mae_pct"), 0.0) for r in rows) / n, 3)
+    avg_size_ticks = round(sum(_sf(r.get("size_ticks"), 0.0) for r in rows) / n, 3)
+    avg_mfe_ticks = round(sum(_sf(r.get("mfe_ticks"), 0.0) for r in rows) / n, 3)
+    avg_mae_ticks = round(sum(_sf(r.get("mae_ticks"), 0.0) for r in rows) / n, 3)
+    target_hit_rate = round(sum(1 for r in rows if _sf(r.get("mfe_pct"), 0.0) >= target_pct) * 100.0 / n, 1)
     mfe_mae = round(_safe_div(avg_mfe, avg_mae), 4) if avg_mae > 0 else None
-    return {
+    out = {
         "n": n,
         "fail_rate": fail_rate,
         "scalp_rate": scalp_rate,
@@ -218,7 +261,57 @@ def _compute_metrics(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "runner_rate": runner_rate,
         "avg_mfe": avg_mfe,
         "avg_mae": avg_mae,
+        "avg_size_ticks": avg_size_ticks,
+        "avg_mfe_ticks": avg_mfe_ticks,
+        "avg_mae_ticks": avg_mae_ticks,
+        "target_percent": round(float(target_pct), 3),
+        "target_hit_rate": target_hit_rate,
         "mfe_mae": mfe_mae,
+    }
+    out.update(_friction_metrics(avg_size_ticks, avg_mae_ticks, target_pct, target_hit_rate, cfg or {}))
+    return out
+
+
+def _friction_metrics(avg_size_ticks: float, risk_ticks: float, target_pct: float, hit_rate_pct: float, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    fcfg = cfg.get("friction") or {}
+    cost_ticks = _friction_cost_ticks(cfg)
+    gross_target = avg_size_ticks * target_pct / 100.0
+    net_target = gross_target - cost_ticks
+    risk = max(0.0, risk_ticks)
+    win_rate = max(0.0, min(1.0, hit_rate_pct / 100.0))
+    gross_expectancy = (win_rate * gross_target) - ((1.0 - win_rate) * risk)
+    net_expectancy = gross_expectancy - cost_ticks
+    post_rr = net_target / risk if risk > 0 else None
+
+    invalid: List[str] = []
+    if _sf(fcfg.get("min_target_ticks"), 0.0) > 0 and gross_target < _sf(fcfg.get("min_target_ticks"), 0.0):
+        invalid.append("target_below_min_practical")
+    if _sf(fcfg.get("min_net_target_ticks"), 0.0) > 0 and net_target < _sf(fcfg.get("min_net_target_ticks"), 0.0):
+        invalid.append("net_target_below_min")
+    if _sf(fcfg.get("min_post_friction_rr"), 0.0) > 0 and (post_rr is None or post_rr < _sf(fcfg.get("min_post_friction_rr"), 0.0)):
+        invalid.append("post_friction_rr_below_min")
+
+    cost_ratio = cost_ticks / gross_target if gross_target > 0 else 1.0
+    risky: List[str] = []
+    if net_expectancy <= _sf(fcfg.get("risky_net_expectancy_ticks"), 0.0):
+        risky.append("weak_net_expectancy")
+    if gross_target > 0 and cost_ratio >= _sf(fcfg.get("risky_cost_to_target_ratio"), 0.35):
+        risky.append("friction_large_vs_target")
+    if _sf(fcfg.get("risky_post_friction_rr"), 0.0) > 0 and (post_rr is None or post_rr < _sf(fcfg.get("risky_post_friction_rr"), 0.0)):
+        risky.append("weak_post_friction_rr")
+
+    flag = "friction-invalid" if invalid else ("friction-risky" if risky else "friction-viable")
+    return {
+        "gross_target_ticks": round(gross_target, 3),
+        "estimated_round_trip_cost_ticks": round(cost_ticks, 3),
+        "net_target_after_friction_ticks": round(net_target, 3),
+        "gross_expectancy_ticks": round(gross_expectancy, 3),
+        "net_expectancy_after_friction_ticks": round(net_expectancy, 3),
+        "post_friction_rr": round(post_rr, 4) if post_rr is not None else None,
+        "friction_cost_to_target_ratio": round(cost_ratio, 4),
+        "friction_viability": flag,
+        "friction_invalid_reasons": invalid,
+        "friction_risky_reasons": risky,
     }
 
 
@@ -327,7 +420,7 @@ def _split_rows(rows: List[Dict[str, Any]], cfg: Dict[str, Any]) -> Tuple[List[D
     }
 
 
-def _multi_period(rows: List[Dict[str, Any]], periods: int) -> List[Dict[str, Any]]:
+def _multi_period(rows: List[Dict[str, Any]], periods: int, target_pct: float = 25.0, cfg: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     if periods <= 1 or not rows:
         return []
     n = len(rows)
@@ -339,7 +432,7 @@ def _multi_period(rows: List[Dict[str, Any]], periods: int) -> List[Dict[str, An
         sub = rows[start:end]
         if not sub:
             continue
-        m = _compute_metrics(sub)
+        m = _compute_metrics(sub, target_pct=target_pct, cfg=cfg)
         out.append({
             "period": i + 1,
             "label": ["early", "middle", "late"][i] if periods == 3 else f"period_{i + 1}",
@@ -347,6 +440,9 @@ def _multi_period(rows: List[Dict[str, Any]], periods: int) -> List[Dict[str, An
             "runner_rate": m.get("runner_rate", 0.0),
             "fail_rate": m.get("fail_rate", 0.0),
             "mfe_mae": m.get("mfe_mae"),
+            "target_hit_rate": m.get("target_hit_rate"),
+            "net_expectancy_after_friction_ticks": m.get("net_expectancy_after_friction_ticks"),
+            "friction_viability": m.get("friction_viability"),
         })
     return out
 
@@ -406,6 +502,8 @@ def _classify(rec: Dict[str, Any], baseline: Dict[str, Any], cfg: Dict[str, Any]
     delta = rec.get("deltas") or {}
     is_s = rec.get("in_sample") or {}
     oos_s = rec.get("out_of_sample") or {}
+    if oos_s.get("friction_viability") == "friction-invalid":
+        return "friction_invalid"
     runner_drop = max(0.0, _sf(delta.get("runner_rate_delta_pp"), 0.0) * -1.0)
     fail_inc = max(0.0, _sf(delta.get("fail_rate_delta_pp"), 0.0))
     oos_vs_base_runner = _sf(oos_s.get("runner_rate"), 0.0) - _sf(baseline.get("runner_rate"), 0.0)
@@ -457,9 +555,10 @@ def compute_edge_validation_engine(
         return {"enabled": True, "message": "no reversal events available for validation", "validated_candidates": []}
 
     is_rows, oos_rows, split_meta = _split_rows(rows, merged)
-    baseline_is = _compute_metrics(is_rows)
-    baseline_oos = _compute_metrics(oos_rows)
-    baseline_all = _compute_metrics(rows)
+    baseline_target_pct = _sf((merged.get("friction") or {}).get("target_percent"), 25.0)
+    baseline_is = _compute_metrics(is_rows, target_pct=baseline_target_pct, cfg=merged)
+    baseline_oos = _compute_metrics(oos_rows, target_pct=baseline_target_pct, cfg=merged)
+    baseline_all = _compute_metrics(rows, target_pct=baseline_target_pct, cfg=merged)
 
     parent_lookup = {
         (r.get("group_key") or {}).get("early_path_class"): r
@@ -471,8 +570,9 @@ def compute_edge_validation_engine(
     for c in candidates:
         is_sub = _slice_by_filters(is_rows, c.get("filters") or {})
         oos_sub = _slice_by_filters(oos_rows, c.get("filters") or {})
-        is_m = _compute_metrics(is_sub)
-        oos_m = _compute_metrics(oos_sub)
+        target_pct = _target_pct_for_candidate(c, merged)
+        is_m = _compute_metrics(is_sub, target_pct=target_pct, cfg=merged)
+        oos_m = _compute_metrics(oos_sub, target_pct=target_pct, cfg=merged)
 
         family_filters = {
             "trade_mode": (c.get("filters") or {}).get("trade_mode", "reverse"),
@@ -481,7 +581,7 @@ def compute_edge_validation_engine(
             "candle_bucket": (c.get("filters") or {}).get("candle_bucket"),
         }
         family_filters = {k: v for k, v in family_filters.items() if v is not None}
-        fam_oos = _compute_metrics(_slice_by_filters(oos_rows, family_filters))
+        fam_oos = _compute_metrics(_slice_by_filters(oos_rows, family_filters), target_pct=target_pct, cfg=merged)
 
         early_path = (c.get("filters") or {}).get("early_path_class")
         parent_baseline = parent_lookup.get(early_path) if early_path else None
@@ -516,6 +616,8 @@ def compute_edge_validation_engine(
             "period_stability": _multi_period(
                 _slice_by_filters(rows, c.get("filters") or {}),
                 int((((merged.get("split") or {}).get("multi_period") or {}).get("periods", 3))),
+                target_pct=target_pct,
+                cfg=merged,
             ),
         }
         rec["stability_score"] = _stability_score(rec, _sf(baseline_oos.get("runner_rate"), 0.0), merged)
@@ -528,6 +630,7 @@ def compute_edge_validation_engine(
     acceptable = [r for r in validated if r.get("validation_label") == "acceptable_degradation"]
     fragile = [r for r in validated if r.get("validation_label") == "fragile_edge"]
     overfit = [r for r in validated if r.get("validation_label") == "likely_overfit"]
+    friction_invalid = [r for r in validated if r.get("validation_label") == "friction_invalid"]
 
     handoff: List[Dict[str, Any]] = []
     for rec in (stable + acceptable)[: int((merged.get("handoff") or {}).get("max_candidates", 8))]:
@@ -557,7 +660,7 @@ def compute_edge_validation_engine(
         "runner_first_candidates_still_runner_first": [r.get("candidate_name") for r in validated if _sf((r.get("out_of_sample") or {}).get("runner_rate"), 0.0) >= 50.0][:5],
         "low_failure_in_oos": [r.get("candidate_name") for r in validated if _sf((r.get("out_of_sample") or {}).get("fail_rate"), 100.0) <= 8.0][:5],
         "strong_mfe_mae_in_oos": [r.get("candidate_name") for r in validated if _sf((r.get("out_of_sample") or {}).get("mfe_mae"), 0.0) >= 1.25][:5],
-        "elite_but_collapsed_oos": [r.get("candidate_name") for r in overfit if r.get("source_type") in ("elite_setup", "decision_rule")][:5],
+        "elite_but_collapsed_oos": [r.get("candidate_name") for r in (overfit + friction_invalid) if r.get("source_type") in ("elite_setup", "decision_rule")][:5],
         "explosive_start_survival_oos": any((r.get("filters") or {}).get("early_path_class") == "explosive_start" and r.get("validation_label") in ("stable_edge", "acceptable_degradation") for r in validated),
         "orderly_start_survival_oos": any((r.get("filters") or {}).get("early_path_class") == "orderly_start" and r.get("validation_label") in ("stable_edge", "acceptable_degradation") for r in validated),
         "session_specific_survival_oos": [r.get("candidate_name") for r in stable if "session" in (r.get("filters") or {})][:5],
@@ -591,6 +694,7 @@ def compute_edge_validation_engine(
         "stable_candidates": stable,
         "degrading_candidates": acceptable + fragile,
         "likely_overfit_candidates": overfit,
+        "friction_invalid_candidates": friction_invalid,
         "insufficient_oos_candidates": [r for r in validated if r.get("validation_label") == "insufficient_oos_data"],
         "validation_leaderboard": validated[: int((merged.get("leaderboard") or {}).get("top_n", 12))],
         "research_conclusions": {
@@ -598,7 +702,7 @@ def compute_edge_validation_engine(
             "degraded": [r.get("candidate_name") for r in acceptable + fragile],
             "likely_overfit": [r.get("candidate_name") for r in overfit],
             "paper_test_next": [h.get("candidate") for h in handoff if h.get("practical_recommendation") == "paper_test_ready"],
-            "discard": [r.get("candidate_name") for r in overfit],
+            "discard": [r.get("candidate_name") for r in overfit + friction_invalid],
         },
         "strategy_handoff": handoff,
         "validation_questions": questions,

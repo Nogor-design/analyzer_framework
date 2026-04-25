@@ -24,7 +24,12 @@ def render_large_candle_excursion_discovery_summary(ctx: dict) -> str:
     html += "<ul>"
     if s.get("strongest_broad_scan"):
         b = s["strongest_broad_scan"]
-        html += f"<li>Strongest broad-scan: {b.get('setup_definition')} (score={b.get('composite_score')}, N={b.get('n_events')}, WR={b.get('win_rate')}%).</li>"
+        html += (
+            f"<li>Strongest broad-scan: {b.get('setup_definition')} "
+            f"(score={b.get('composite_score')}, N={b.get('n_events')}, WR={b.get('win_rate')}%, "
+            f"target={b.get('gross_target_ticks')}t, cost={b.get('estimated_round_trip_cost_ticks')}t, "
+            f"net_exp={b.get('net_expectancy_after_friction_ticks')}t, {b.get('friction_viability')}).</li>"
+        )
     if s.get("strongest_refined"):
         r = s["strongest_refined"]
         html += f"<li>Strongest refinement: {r.get('child_setup')} (Δscore={r.get('score_delta_vs_parent')}).</li>"
@@ -34,5 +39,11 @@ def render_large_candle_excursion_discovery_summary(ctx: dict) -> str:
     if cautions:
         for c in cautions:
             html += f"<li><strong>Caution:</strong> {c}</li>"
+    fs = data.get("friction_viability_summary") or {}
+    if fs:
+        html += (
+            f"<li><strong>Friction viability:</strong> {fs.get('friction_viable', 0)} viable, "
+            f"{fs.get('friction_risky', 0)} risky, {fs.get('friction_invalid', 0)} invalid final discoveries.</li>"
+        )
     html += "</ul></div>"
     return html

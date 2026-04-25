@@ -11,7 +11,7 @@ from .cluster import build_pattern_clusters
 from .discovery import compute_market_discovery
 from .engine import run_pattern_sweep
 from .io import attach_artifact_ref, deep_copy_json_safe, df_to_parquet, pattern_engine_run_dir
-from .monte_carlo import run_prop_monte_carlo, run_prop_monte_carlo_regime
+from ta_foundation.analysis.prop_evaluation.simulation import run_prop_monte_carlo, run_prop_monte_carlo_regime
 from .robustness_cv import compute_purged_walkforward_cv
 from .trade_pattern_audit import compute_trade_pattern_audit
 

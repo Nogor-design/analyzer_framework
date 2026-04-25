@@ -11,5 +11,14 @@ pyarrow
 [dev]
 pytest
 
+[persistence]
+duckdb
+
+[prediction]
+anthropic>=0.90.0
+
 [reporting]
 playwright
+
+[web]
+flask

@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from ta_foundation.strategies.TaFoundationExecutionBridge.execution_runtime_client import (
+    ExecutionRuntimeClient,
+    RuntimeEndpoint,
+    build_command,
+)
+
 def _resolve_bridge_timezone():
     try:
         return ZoneInfo("America/Denver")
@@ -185,3 +191,43 @@ def send_message(inbox: Path, payload: dict) -> Path:
         json.dump(payload, handle, indent=2)
     tmp_path.replace(final_path)
     return final_path
+
+
+def submit_payload(
+    payload: dict,
+    *,
+    endpoint: RuntimeEndpoint | None = None,
+    client: ExecutionRuntimeClient | None = None,
+) -> dict:
+    managed_client = client or ExecutionRuntimeClient(endpoint=endpoint)
+    owns_client = client is None
+    try:
+        managed_client.send_command(build_command(payload))
+    finally:
+        if owns_client:
+            managed_client.close()
+    return build_command(payload)
+
+
+def submit_signal(
+    decision: ResearchDecision,
+    *,
+    template_dir: Path | None = None,
+    endpoint: RuntimeEndpoint | None = None,
+    client: ExecutionRuntimeClient | None = None,
+) -> dict:
+    payload = build_signal(decision, template_dir=template_dir)
+    submit_payload(payload, endpoint=endpoint, client=client)
+    return payload
+
+
+def publish_heartbeat(
+    instrument: str,
+    *,
+    signal_expiry_seconds: int = DEFAULT_EXPIRY_SECONDS,
+    endpoint: RuntimeEndpoint | None = None,
+    client: ExecutionRuntimeClient | None = None,
+) -> dict:
+    payload = build_heartbeat(instrument, signal_expiry_seconds=signal_expiry_seconds)
+    submit_payload(payload, endpoint=endpoint, client=client)
+    return payload

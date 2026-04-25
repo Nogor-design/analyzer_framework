@@ -5,7 +5,7 @@ report:
 anchor_interaction:
   enabled: true
   instrument: NQ
-  contract: "03-26"
+  contract: "06-26"
   timeframe: "1m"
   anchors:
     - { family: EMA, length: 100, source: close }
@@ -29,7 +29,7 @@ sections:
   - id: anchor_interaction_tp_sl_spec
   - id: anchor_tp_sl_recommendations
     options:
-      run_ids: [ "BronzeApolloGod","BronzeAphroditeSmog" ]
+      run_ids: [ "CoilingAresFireBV2-NQ","RisingAthenaFireBV3-NQ" ]
       show_candidate_grid: true
       show_trade_alignment: true
       max_rows_per_run: 20

@@ -7,12 +7,14 @@ from typing import Any, Optional
 
 from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.reports.text.export_summary_text import export_summary_text
+from ta_foundation.reports.text.export_large_candle_regime_summary import export_large_candle_regime_summary
 from ta_foundation.reports.text.export_strategy_momentum_text import export_strategy_momentum_text
 from ta_foundation.reports.text.export_strategy_session_momentum_text import export_strategy_session_momentum_text
 from ta_foundation.reports.text.export_daily_winner_text import export_daily_winner_text
 from ta_foundation.reports.text.export_deployment_board_text import export_deployment_board_text
 from ta_foundation.reports.text.export_strategy_parameter_matrix_text import export_strategy_parameter_matrix_text
 from ta_foundation.reports.text.export_weekly_leaderboard_text import export_weekly_leaderboard_text
+from ta_foundation.reports.text.export_strategy_blueprints_json import export_strategy_blueprints_json
 from ta_foundation.core.registry import ParserRegistry, read_header_sample
 from ta_foundation.core.pipeline import ingest_folder, derive_run_id
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
@@ -134,6 +136,9 @@ def main() -> int:
     ap.add_argument("--no-tick-data", action="store_true",
                     help="Skip loading tick data files (and cache). "
                          "Use when only minute bars are needed (e.g. LCR/candle/MA/BB discovery).")
+    ap.add_argument("--db-path", default=None,
+                    help="Path to DuckDB experiment registry file. "
+                         "When provided, validation results are persisted automatically.")
 
     args = ap.parse_args()
 
@@ -460,6 +465,7 @@ def main() -> int:
                 packages=result.packages,
                 market=result.market,
                 options=sd_config,
+                db_path=args.db_path,
             )
             print("[ta_foundation] Strategy Discovery complete.")
         except Exception as e:
@@ -604,6 +610,24 @@ def main() -> int:
                 print(f"Wrote: {txt_path}")
             except Exception as _txt_exc:
                 print(f"[ta_foundation] WARNING: text summary export failed — {_txt_exc}")
+
+            try:
+                lce_summary_path = out_path.with_name(
+                    out_path.stem + "_executive_summary.md"
+                )
+                if export_large_candle_regime_summary(result.packages, lce_summary_path, title=cfg.title):
+                    print(f"Wrote: {lce_summary_path}")
+            except Exception as _lce_sum_exc:
+                print(f"[ta_foundation] WARNING: large-candle executive summary export failed - {_lce_sum_exc}")
+
+            try:
+                blueprints_path = out_path.with_name(
+                    out_path.stem + "_blueprints.json"
+                )
+                if export_strategy_blueprints_json(result.packages, blueprints_path, title=cfg.title):
+                    print(f"Wrote: {blueprints_path}")
+            except Exception as _bp_exc:
+                print(f"[ta_foundation] WARNING: strategy blueprints JSON export failed - {_bp_exc}")
 
             # Write a condensed plain-text weekly leaderboard summary.
             # Options are pulled from the weekly_leaderboard_cards section in the

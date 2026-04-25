@@ -51,6 +51,8 @@ def _strategy_table(rows: List[Dict[str, Any]]) -> str:
         + hdr("Source Candidate")
         + hdr("Archetype")
         + hdr("Deployment Score")
+        + hdr("Net Exp(t)")
+        + hdr("Friction")
         + hdr("Complexity")
         + hdr("Paper-Test Priority")
         + hdr("Automation")
@@ -64,6 +66,8 @@ def _strategy_table(rows: List[Dict[str, Any]]) -> str:
             + cell(str(r.get("source_candidate", "—")))
             + cell(str(r.get("archetype", "—")))
             + cell(_fmt(r.get("deployment_score"), 3))
+            + cell(_fmt((r.get("live_friction") or {}).get("net_expectancy_after_friction_ticks"), 2))
+            + cell(str((r.get("live_friction") or {}).get("friction_viability", "---")))
             + cell(str(r.get("complexity_level", "—")))
             + cell(str(r.get("paper_test_priority", "—")))
             + cell(str(r.get("automation_readiness", "—")))
@@ -83,6 +87,7 @@ def _card(s: Dict[str, Any]) -> str:
     early = s.get("early_management_logic") or {}
     pt = s.get("profit_taking_logic") or {}
     nt8 = s.get("ninjatrader_translation_notes") or {}
+    friction = s.get("live_friction") or {}
     warnings = s.get("failure_mode_warnings") or []
     return (
         '<div style="border:1px solid #dee2e6;border-radius:4px;padding:10px;margin:8px 0;font-size:12px;color:#333">'
@@ -94,6 +99,7 @@ def _card(s: Dict[str, Any]) -> str:
         f"<b>Stop:</b> {stop}<br/>"
         f"<b>Early management:</b> {early}<br/>"
         f"<b>Targets / exit:</b> {pt}<br/>"
+        f"<b>Live friction:</b> {friction}<br/>"
         f"<b>Session rules:</b> {s.get('session_rules')}<br/>"
         f"<b>Risk / position:</b> {s.get('risk_position_logic')}<br/>"
         f"<b>Warnings:</b> {warnings}<br/>"

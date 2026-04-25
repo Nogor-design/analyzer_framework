@@ -120,6 +120,7 @@ def run_strategy_discovery(
     packages: Dict[str, Any],
     market: Any,
     options: Dict[str, Any],
+    db_path: Optional[str] = None,
 ) -> None:
     """
     Main entry point. Called by cli/main.py.
@@ -212,13 +213,29 @@ def run_strategy_discovery(
         except Exception as exc:
             discovery_block["mae_mfe_profile"] = {"error": str(exc)}
 
-        # Validation
+        # Pre-compute regime breakdown so dispersion_count can gate validation
+        from .evaluation import compute_evaluation_metrics, compute_regime_breakdown
+        from .validation import apply_cost_model as _apply_cost_model
+        pre_regime_breakdown: Dict[str, Any] = {}
+        pre_regime_dispersion: Optional[int] = None
+        if bars_with_regime is not None and trades is not None and len(trades) > 0:
+            try:
+                cost_norm_pre = _apply_cost_model(trades, cost_model)
+                pre_regime_breakdown = compute_regime_breakdown(cost_norm_pre, bars_with_regime)
+                pre_regime_dispersion = len(pre_regime_breakdown)
+            except Exception:
+                pass
+
+        # Validation (regime dispersion auto-wired from pre-computed breakdown)
         validation_result = None
         try:
             validation_result = run_validation(
                 trades if trades is not None else pd.DataFrame(),
                 wf_config=wf_config,
                 cost_model=cost_model,
+                db_path=db_path,
+                regime_dispersion_count=pre_regime_dispersion,
+                regime_breakdown=pre_regime_breakdown if pre_regime_breakdown else None,
             )
             # Store JSON-safe summary in metadata; keep DataFrame in assets
             validation_safe = _make_json_safe(validation_result.to_dict())
@@ -233,14 +250,14 @@ def run_strategy_discovery(
                 assets.setdefault("strategy_discovery", {})
                 assets["strategy_discovery"]["bars_with_regime"] = bars_with_regime
 
-        # Evaluation
+        # Evaluation (full metrics; regime breakdown already computed above)
         try:
-            from .evaluation import compute_evaluation_metrics, compute_regime_breakdown
             cost_norm_trades = validation_result.cost_normalized if validation_result is not None else None
             if cost_norm_trades is not None and len(cost_norm_trades) > 0:
                 eval_metrics = compute_evaluation_metrics(cost_norm_trades)
-                # regime breakdown requires bars_with_regime
-                if bars_with_regime is not None:
+                if pre_regime_breakdown:
+                    eval_metrics["by_regime"] = pre_regime_breakdown
+                elif bars_with_regime is not None:
                     eval_metrics["by_regime"] = compute_regime_breakdown(cost_norm_trades, bars_with_regime)
                 discovery_block["evaluation"] = _make_json_safe(eval_metrics)
             else:

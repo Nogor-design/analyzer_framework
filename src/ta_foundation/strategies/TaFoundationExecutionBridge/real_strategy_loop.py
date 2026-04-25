@@ -22,10 +22,14 @@ from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLas
 from ta_foundation.strategies.TaFoundationExecutionBridge.bridge_sender import (
     DEFAULT_EXPIRY_SECONDS,
     ResearchDecision,
-    build_heartbeat,
     build_signal,
     default_template_dir,
-    send_message,
+    publish_heartbeat,
+    submit_payload,
+)
+from ta_foundation.strategies.TaFoundationExecutionBridge.execution_runtime_client import (
+    ExecutionRuntimeClient,
+    RuntimeEndpoint,
 )
 
 
@@ -193,6 +197,8 @@ class LoopConfig:
     market_data_file: Path
     instrument: str = "NQ 06-26"
     account_name: str = "Sim101"
+    runtime_host: str = "127.0.0.1"
+    runtime_port: int = 8766
     timeframe: str = "1m"
     template_dir: Path = field(default_factory=default_template_dir)
     poll_interval_seconds: float = 1.0
@@ -330,10 +336,14 @@ class StrategyLoop:
         self.process_id = os.getpid()
         self.stop_requested = False
         self.summary_stop_reason: str | None = None
+        self.runtime_client = ExecutionRuntimeClient(
+            endpoint=RuntimeEndpoint(host=config.runtime_host, port=config.runtime_port)
+        )
 
     def run(self) -> None:
         iteration = 0
         try:
+            self.runtime_client.ensure_connected()
             while True:
                 self.step()
                 if self.stop_requested:
@@ -344,6 +354,7 @@ class StrategyLoop:
                     return
                 time.sleep(self.config.poll_interval_seconds)
         finally:
+            self.runtime_client.close()
             self._write_summary()
 
     def step(self) -> None:
@@ -517,14 +528,14 @@ class StrategyLoop:
             )
             return
         else:
-            path = send_message(self.paths.inbox, payload)
+            submit_payload(payload, client=self.runtime_client)
             self._log(
                 "INFO",
                 "signal_sent "
                 f"message_id={message_id} thesis_id={candidate.thesis_id} "
                 f"side={candidate.side} bar_dt={candidate.bar_dt.isoformat()} "
                 f"ema20={candidate.ema_value:.2f} ema_slope={candidate.ema_slope:.4f} "
-                f"body={candidate.body_size:.2f} avg_body={candidate.average_body_size:.2f} path={path}",
+                f"body={candidate.body_size:.2f} avg_body={candidate.average_body_size:.2f} transport=socket",
             )
 
         self.last_send_bar_dt = candidate.bar_dt
@@ -613,13 +624,8 @@ class StrategyLoop:
         snapshot: ShellSnapshot | None,
         now: datetime,
     ) -> tuple[LoopState | None, str | None]:
-        required_dirs = [self.paths.inbox, self.paths.archive, self.paths.rejected, self.paths.outbox, self.paths.state]
-        missing = [path for path in required_dirs if not path.exists()]
-        if missing:
-            return self._soft_hold(f"bridge_paths_missing paths={','.join(str(path) for path in missing)}")
-
         if snapshot is None:
-            return self._soft_hold("shell_state_unreadable")
+            return self._soft_hold("runtime_state_unavailable")
 
         if self.config.market_data_stale_seconds > 0 and self.config.market_data_file.exists():
             market_file_age_seconds = (
@@ -662,24 +668,8 @@ class StrategyLoop:
         if signal is None:
             return
 
-        archive_path = self.paths.archive / f"{signal.message_id}.json"
-        rejected_path = self.paths.rejected / f"{signal.message_id}.json"
-        if archive_path.exists() and not signal.archived:
-            signal.archived = True
-            self._log("INFO", f"archive_observed message_id={signal.message_id} path={archive_path}")
-        if rejected_path.exists() and not signal.rejected:
-            signal.rejected = True
-            self._log("WARN", f"rejected_observed message_id={signal.message_id} path={rejected_path}")
-            self.session_reject_count += 1
-            self._start_cooldown(
-                reason=f"rejected:{signal.message_id}",
-                anchor_bar_dt=signal.bar_dt,
-                cooldown_bars=self.config.cooldown_bars_after_reject,
-            )
-            return
-
         for event in self._read_new_outbox_events():
-            if str(event.get("instruction_id") or "") != signal.message_id:
+            if str(event.get("instruction_id") or event.get("signal_id") or "") != signal.message_id:
                 if signal.filled:
                     self._capture_exit_fill(signal, event)
                 continue
@@ -710,36 +700,31 @@ class StrategyLoop:
             if elapsed < self.config.heartbeat_interval_seconds:
                 return False
 
-        payload = build_heartbeat(
+        payload = publish_heartbeat(
             instrument=self.config.instrument,
             signal_expiry_seconds=self.config.signal_expiry_seconds,
+            client=self.runtime_client,
         )
-        path = send_message(self.paths.inbox, payload)
         self.last_heartbeat_sent_at = now
-        self._log("INFO", f"heartbeat_sent message_id={payload['message_id']} path={path}")
+        self._log("INFO", f"heartbeat_sent message_id={payload['message_id']} transport=socket")
         return False
 
     def _read_shell_snapshot(self) -> ShellSnapshot | None:
-        path = self.paths.shell_state
-        if not path.exists():
-            return None
-        try:
-            raw = json.loads(_read_text_shared(path, encoding="utf-8-sig"))
-        except (json.JSONDecodeError, OSError):
+        raw = self.runtime_client.latest_state_snapshot()
+        if not raw:
             return None
 
-        stat = path.stat()
         return ShellSnapshot(
-            signal_intake_enabled=bool(raw.get("SignalIntakeEnabled", True)),
-            heartbeat_faulted=bool(raw.get("HeartbeatFaulted", False)),
-            daily_lockout=bool(raw.get("DailyLockout", False)),
-            shell_mode=str(raw.get("ShellMode") or ""),
-            position_id=str(raw.get("PositionId") or ""),
-            last_bridge_message_utc=self._parse_iso_datetime(raw.get("LastBridgeMessageUtc")),
-            last_health_snapshot_utc=self._parse_iso_datetime(raw.get("LastHealthSnapshotUtc")),
-            active_template=str(raw.get("ActiveTemplate") or ""),
-            last_instruction_id=str(raw.get("LastInstructionId") or ""),
-            state_mtime_utc=datetime.fromtimestamp(stat.st_mtime, timezone.utc).replace(tzinfo=None),
+            signal_intake_enabled=bool(raw.get("intake_enabled", True)),
+            heartbeat_faulted=bool(raw.get("heartbeat_faulted", False)),
+            daily_lockout=bool(raw.get("daily_lockout", False)),
+            shell_mode=str(raw.get("runtime_state") or ""),
+            position_id=str(raw.get("position_id") or ""),
+            last_bridge_message_utc=self._parse_iso_datetime(raw.get("timestamp")),
+            last_health_snapshot_utc=self._parse_iso_datetime(raw.get("timestamp")),
+            active_template=str((raw.get("details") or {}).get("active_template") or ""),
+            last_instruction_id=str(raw.get("signal_id") or ""),
+            state_mtime_utc=self._parse_iso_datetime(raw.get("timestamp")),
         )
 
     def _read_loop_control(self) -> LoopControl:
@@ -769,18 +754,16 @@ class StrategyLoop:
         return matched
 
     def _read_new_outbox_events(self) -> list[dict]:
-        if not self.paths.outbox.exists():
-            return []
         matched: list[dict] = []
-        for path in sorted(self.paths.outbox.glob("*.evt.json")):
-            if path.name in self.processed_outbox_files:
-                continue
-            self.processed_outbox_files.add(path.name)
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8-sig"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            payload["_source_name"] = path.name
+        for event in self.runtime_client.drain_events():
+            payload = dict(event.payload)
+            payload["status"] = str(payload.get("event") or "")
+            payload["instruction_id"] = str(payload.get("signal_id") or "")
+            detail = payload.get("details") or {}
+            if isinstance(detail, dict):
+                payload["detail"] = ";".join(f"{key}={value}" for key, value in detail.items() if value not in {None, ""})
+            else:
+                payload["detail"] = str(detail)
             matched.append(payload)
         return matched
 
@@ -1185,6 +1168,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--market-data-file", required=True, help="Path to the NT-exported minute-bar file, e.g. NQ 06-26.Last.txt")
     parser.add_argument("--instrument", default="NQ 06-26")
     parser.add_argument("--account", default="Sim101")
+    parser.add_argument("--runtime-host", default="127.0.0.1")
+    parser.add_argument("--runtime-port", type=int, default=8766)
     parser.add_argument("--timeframe", default="1m")
     parser.add_argument("--template-dir", default=None)
     parser.add_argument("--poll-seconds", type=float, default=1.0)
@@ -1224,6 +1209,8 @@ def loop_config_from_args(args: argparse.Namespace) -> LoopConfig:
         market_data_file=Path(args.market_data_file),
         instrument=args.instrument,
         account_name=args.account,
+        runtime_host=args.runtime_host,
+        runtime_port=args.runtime_port,
         timeframe=args.timeframe,
         template_dir=Path(args.template_dir) if args.template_dir else default_template_dir(),
         poll_interval_seconds=args.poll_seconds,

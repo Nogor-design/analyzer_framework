@@ -29,6 +29,36 @@ from ta_foundation.analysis.large_candle_excursion.strategy_construction_engine 
     compute_strategy_construction_engine,
     DEFAULT_STRATEGY_CONSTRUCTION_CONFIG,
 )
+from ta_foundation.analysis.large_candle_excursion.regime_discovery import (
+    compute_regime_discovery,
+    DEFAULT_REGIME_DISCOVERY_CONFIG,
+)
+from ta_foundation.analysis.large_candle_excursion.strategy_blueprint_exporter import (
+    compute_strategy_blueprint_exporter,
+    DEFAULT_BLUEPRINT_EXPORTER_CONFIG,
+)
+
+DEFAULT_FRICTION_CONFIG: Dict[str, Any] = {
+    "commission_per_trade": 0.0,       # round-trip commission in account currency
+    "tick_value": 5.0,                 # currency value per tick; used to convert commission to ticks
+    "slippage_ticks_per_side": 0.0,
+    "additional_buffer_ticks": 0.0,
+    "min_target_ticks": 0.0,
+    "min_net_target_ticks": 0.0,
+    "min_post_friction_rr": 0.0,
+    "filter_mode": "penalize",         # penalize | reject
+    "risky_net_expectancy_ticks": 0.0,
+    "risky_cost_to_target_ratio": 0.35,
+    "risky_post_friction_rr": 0.0,
+    "penalties": {
+        "invalid_setup": 0.25,
+        "risky_setup": 0.08,
+        "target_shortfall": 0.10,
+        "net_expectancy_weak": 0.14,
+        "post_friction_rr_weak": 0.10,
+        "cost_ratio": 0.08,
+    },
+}
 
 
 DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
@@ -40,6 +70,17 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
         "require_min_win_rate": 0.50,
         "penalize_low_sample": True,
         "penalize_complexity": True,
+        "curve_penalties": {
+            "enabled": True,
+            "plateau_width_lte": 1,
+            "plateau_penalty": 0.08,
+            "edge_decay_penalty_weight": 0.12,
+            "high_edge_decay_threshold": 0.70,
+            "high_edge_decay_extra_penalty": 0.06,
+            "micro_scalp_artifact_penalty": 0.06,
+            "min_time_stability": 0.45,
+            "time_instability_penalty": 0.06,
+        },
     },
     # Scoring weights — must sum to ≤ 1.0 (sparse_penalty is subtracted separately)
     "scoring_weights": {
@@ -61,6 +102,7 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
         "enabled": False,
         "penalty_per_session_pct": 0.05,  # score penalty applied if only 1 session dominates
     },
+    "friction": DEFAULT_FRICTION_CONFIG,
     # Promotion ladder thresholds
     "promotion": {
         "candidate": {
@@ -98,8 +140,8 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     "neighbor_analysis": {
         "enabled": True,
         "top_setups": 6,
-        "max_neighbors": 6,
-        "target_neighbor_values": [15, 25, 35, 50],
+        "max_neighbors": 8,
+        "target_neighbor_values": [10, 15, 20, 25, 30, 35, 40],
     },
     "time_split": {
         "enabled": True,
@@ -125,6 +167,7 @@ DEFAULT_FINDINGS_CONFIG: Dict[str, Any] = {
     "edge_validation_engine": DEFAULT_EDGE_VALIDATION_CONFIG,
     # Strategy construction engine — converts validated edges into execution-ready strategy definitions
     "strategy_construction_engine": DEFAULT_STRATEGY_CONSTRUCTION_CONFIG,
+    "regime_discovery": DEFAULT_REGIME_DISCOVERY_CONFIG,
 }
 
 DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
@@ -165,8 +208,9 @@ DEFAULT_DISCOVERY_CONFIG: Dict[str, Any] = {
         "enabled": True,
         "top_setups": 10,
         "max_neighbors": 8,
-        "target_neighbor_values": [15, 25, 35, 50],
+        "target_neighbor_values": [10, 15, 20, 25, 30, 35, 40],
     },
+    "friction": DEFAULT_FRICTION_CONFIG,
     "output": {"include_diagnostics": True, "top_n_final_discoveries": 25},
 }
 
@@ -201,6 +245,123 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _friction_cost_ticks(friction_cfg: Optional[Dict[str, Any]]) -> float:
+    cfg = _deep_merge(DEFAULT_FRICTION_CONFIG, friction_cfg or {})
+    commission = max(0.0, _safe_float(cfg.get("commission_per_trade"), 0.0))
+    tick_value = _safe_float(cfg.get("tick_value"), 0.0)
+    commission_ticks = commission / tick_value if tick_value > 0 else 0.0
+    slippage_ticks = max(0.0, _safe_float(cfg.get("slippage_ticks_per_side"), 0.0)) * 2.0
+    buffer_ticks = max(0.0, _safe_float(cfg.get("additional_buffer_ticks"), 0.0))
+    return commission_ticks + slippage_ticks + buffer_ticks
+
+
+def _friction_metrics_for_combo(c: Dict[str, Any], friction_cfg: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    cfg = _deep_merge(DEFAULT_FRICTION_CONFIG, friction_cfg or {})
+    gross_target = _safe_float(c.get("avg_target_ticks"), 0.0)
+    cost_ticks = _friction_cost_ticks(cfg)
+    net_target = gross_target - cost_ticks
+    wr = _safe_float(c.get("win_rate"), 0.0) / 100.0
+
+    risk_ticks = _safe_float(c.get("avg_stop_ticks"), 0.0)
+    if risk_ticks <= 0:
+        risk_ticks = _safe_float(c.get("median_trade_adv_ticks"), 0.0)
+    if risk_ticks <= 0:
+        risk_ticks = _safe_float(c.get("avg_trade_adv_ticks"), 0.0)
+
+    gross_expectancy = (wr * gross_target) - ((1.0 - wr) * risk_ticks)
+    net_expectancy = gross_expectancy - cost_ticks
+    post_rr = net_target / risk_ticks if risk_ticks > 0 else None
+
+    min_target = max(0.0, _safe_float(cfg.get("min_target_ticks"), 0.0))
+    min_net_target = max(0.0, _safe_float(cfg.get("min_net_target_ticks"), 0.0))
+    min_rr = max(0.0, _safe_float(cfg.get("min_post_friction_rr"), 0.0))
+    invalid_reasons: List[str] = []
+    if min_target > 0 and gross_target < min_target:
+        invalid_reasons.append("target_below_min_practical")
+    if min_net_target > 0 and net_target < min_net_target:
+        invalid_reasons.append("net_target_below_min")
+    if min_rr > 0 and (post_rr is None or post_rr < min_rr):
+        invalid_reasons.append("post_friction_rr_below_min")
+
+    cost_ratio = cost_ticks / gross_target if gross_target > 0 else 1.0
+    risky_reasons: List[str] = []
+    if net_expectancy <= _safe_float(cfg.get("risky_net_expectancy_ticks"), 0.0):
+        risky_reasons.append("weak_net_expectancy")
+    if gross_target > 0 and cost_ratio >= _safe_float(cfg.get("risky_cost_to_target_ratio"), 0.35):
+        risky_reasons.append("friction_large_vs_target")
+    risky_rr = _safe_float(cfg.get("risky_post_friction_rr"), 0.0)
+    if risky_rr > 0 and (post_rr is None or post_rr < risky_rr):
+        risky_reasons.append("weak_post_friction_rr")
+
+    if invalid_reasons:
+        flag = "friction-invalid"
+    elif risky_reasons:
+        flag = "friction-risky"
+    else:
+        flag = "friction-viable"
+
+    return {
+        "gross_target_ticks": round(gross_target, 3),
+        "estimated_round_trip_cost_ticks": round(cost_ticks, 3),
+        "net_target_after_friction_ticks": round(net_target, 3),
+        "gross_expectancy_ticks": round(gross_expectancy, 3),
+        "net_expectancy_after_friction_ticks": round(net_expectancy, 3),
+        "risk_ticks_for_rr": round(risk_ticks, 3) if risk_ticks > 0 else None,
+        "post_friction_rr": round(post_rr, 4) if post_rr is not None else None,
+        "friction_cost_to_target_ratio": round(cost_ratio, 4),
+        "friction_viability": flag,
+        "friction_invalid_reasons": invalid_reasons,
+        "friction_risky_reasons": risky_reasons,
+    }
+
+
+def _friction_penalty(rec: Dict[str, Any], friction_cfg: Optional[Dict[str, Any]]) -> float:
+    cfg = _deep_merge(DEFAULT_FRICTION_CONFIG, friction_cfg or {})
+    weights = cfg.get("penalties") or {}
+    penalty = 0.0
+
+    flag = str(rec.get("friction_viability") or "")
+    if flag == "friction-invalid":
+        penalty += _safe_float(weights.get("invalid_setup"), 0.25)
+    elif flag == "friction-risky":
+        penalty += _safe_float(weights.get("risky_setup"), 0.08)
+
+    gross_target = _safe_float(rec.get("gross_target_ticks"), 0.0)
+    min_target = _safe_float(cfg.get("min_target_ticks"), 0.0)
+    if min_target > 0 and gross_target < min_target:
+        penalty += _safe_float(weights.get("target_shortfall"), 0.10) * _clamp01((min_target - gross_target) / min_target)
+
+    net_exp = _safe_float(rec.get("net_expectancy_after_friction_ticks"), 0.0)
+    weak_floor = _safe_float(cfg.get("risky_net_expectancy_ticks"), 0.0)
+    if net_exp <= weak_floor:
+        penalty += _safe_float(weights.get("net_expectancy_weak"), 0.14) * _clamp01((weak_floor - net_exp + 1.0) / 8.0)
+
+    min_rr = _safe_float(cfg.get("min_post_friction_rr"), 0.0)
+    rr = rec.get("post_friction_rr")
+    if min_rr > 0 and (rr is None or _safe_float(rr, -999.0) < min_rr):
+        rr_v = 0.0 if rr is None else max(0.0, _safe_float(rr, 0.0))
+        penalty += _safe_float(weights.get("post_friction_rr_weak"), 0.10) * _clamp01((min_rr - rr_v) / min_rr)
+
+    penalty += _safe_float(weights.get("cost_ratio"), 0.08) * _clamp01(_safe_float(rec.get("friction_cost_to_target_ratio"), 0.0))
+    return round(penalty, 6)
+
+
+def _friction_viability_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    counts = {"friction-viable": 0, "friction-risky": 0, "friction-invalid": 0, "unknown": 0}
+    for r in rows or []:
+        flag = str(r.get("friction_viability") or "unknown")
+        counts[flag if flag in counts else "unknown"] += 1
+    total = sum(counts.values())
+    return {
+        "total": total,
+        "friction_viable": counts["friction-viable"],
+        "friction_risky": counts["friction-risky"],
+        "friction_invalid": counts["friction-invalid"],
+        "unknown": counts["unknown"],
+        "viable_pct": round(100.0 * counts["friction-viable"] / total, 1) if total else 0.0,
+    }
+
+
 def _extract_lce(source: Optional[Dict[str, Any]]) -> Tuple[Dict[str, Any], Optional[str]]:
     if not source:
         return {}, "source analytics missing"
@@ -217,7 +378,12 @@ def _extract_time_value(event: Dict[str, Any]) -> str:
     return ""
 
 
-def _build_trade_candidates(lce: Dict[str, Any], min_events: int, min_win_rate_pct: float) -> List[Dict[str, Any]]:
+def _build_trade_candidates(
+    lce: Dict[str, Any],
+    min_events: int,
+    min_win_rate_pct: float,
+    friction_cfg: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     ta = lce.get("trade_analysis") or {}
     combos = ta.get("trade_combo_results") or []
     if not combos:
@@ -235,8 +401,15 @@ def _build_trade_candidates(lce: Dict[str, Any], min_events: int, min_win_rate_p
         avg_fav = _safe_float(c.get("avg_trade_fav_ticks"))
         avg_adv = _safe_float(c.get("avg_trade_adv_ticks"))
         expectancy_ticks = avg_fav - avg_adv
+        friction_metrics = _friction_metrics_for_combo(c, friction_cfg)
+        if (
+            str((_deep_merge(DEFAULT_FRICTION_CONFIG, friction_cfg or {})).get("filter_mode", "penalize")).lower() == "reject"
+            and friction_metrics.get("friction_viability") == "friction-invalid"
+        ):
+            continue
         rec = {
             **c,
+            **friction_metrics,
             "expectancy_ticks": round(expectancy_ticks, 3),
             "win_rate_frac": round(wr / 100.0, 6),
             "setup_definition": (
@@ -251,6 +424,12 @@ def _build_trade_candidates(lce: Dict[str, Any], min_events: int, min_win_rate_p
                 "avg_adverse_excursion": c.get("avg_trade_adv_ticks"),
                 "median_adverse_excursion": c.get("median_trade_adv_ticks"),
                 "expectancy_ticks": round(expectancy_ticks, 3),
+                "gross_target_ticks": friction_metrics["gross_target_ticks"],
+                "estimated_round_trip_cost_ticks": friction_metrics["estimated_round_trip_cost_ticks"],
+                "net_target_after_friction_ticks": friction_metrics["net_target_after_friction_ticks"],
+                "net_expectancy_after_friction_ticks": friction_metrics["net_expectancy_after_friction_ticks"],
+                "post_friction_rr": friction_metrics["post_friction_rr"],
+                "friction_viability": friction_metrics["friction_viability"],
             },
         }
         out.append(rec)
@@ -281,12 +460,25 @@ def _neighbor_stability(candidates: List[Dict[str, Any]], row: Dict[str, Any]) -
     return _clamp01(1.0 - avg_diff / 25.0)
 
 
+def _curve_for_record(rec: Dict[str, Any], curves: Dict[str, Any]) -> Dict[str, Any]:
+    mode   = rec.get("trade_mode", "")
+    direc  = rec.get("direction", "")
+    bucket = rec.get("candle_bucket", "")
+    tf     = rec.get("tf_minutes")
+    window = rec.get("window_minutes")
+    setup_key = f"{mode}|{direc}|{bucket}|tf{tf}m|w{window}m"
+    return curves.get(setup_key) or {}
+
+
 def _score_candidates(
     candidates: List[Dict[str, Any]],
     penalize_low_sample: bool,
     penalize_complexity: bool,
     scoring_weights: Optional[Dict[str, float]] = None,
     min_sample_thresholds: Optional[Dict[str, Any]] = None,
+    curves: Optional[Dict[str, Any]] = None,
+    curve_penalties: Optional[Dict[str, Any]] = None,
+    friction_cfg: Optional[Dict[str, Any]] = None,
 ) -> List[ScoredSetup]:
     w = scoring_weights or {}
     w_wr   = float(w.get("win_rate",         0.40))
@@ -297,12 +489,15 @@ def _score_candidates(
 
     st = min_sample_thresholds or {}
     sparse_below = float(st.get("sparse_penalty_below", 80))
+    curves = curves or {}
+    cp = curve_penalties or {}
+    penalize_curve = bool(cp.get("enabled", True))
 
     scored: List[ScoredSetup] = []
     for c in candidates:
         wr = _safe_float(c.get("win_rate"), 0.0) / 100.0
         n = max(1.0, _safe_float(c.get("n_events"), 1.0))
-        expectancy = _safe_float(c.get("expectancy_ticks"), 0.0)
+        expectancy = _safe_float(c.get("net_expectancy_after_friction_ticks"), _safe_float(c.get("expectancy_ticks"), 0.0))
         exp_score = _clamp01((expectancy + 8.0) / 20.0)
         sample_score = _clamp01(math.log10(n) / 2.5)
         stability = _neighbor_stability(candidates, c)
@@ -319,6 +514,28 @@ def _score_candidates(
         if penalize_low_sample and n < sparse_below:
             sparse_penalty = (sparse_below - n) / (sparse_below * 2.5)
 
+        curve = _curve_for_record(c, curves)
+        plateau_width = int(curve.get("fine_plateau_width") or curve.get("plateau_width") or 0)
+        edge_decay_penalty = _safe_float(curve.get("edge_decay_penalty"), 0.0)
+        neighbor_target_stability = _safe_float(curve.get("neighbor_target_stability"), stability)
+        target_time_stability = _safe_float(curve.get("target_time_stability"), 0.5)
+        target_stability_label = str(curve.get("target_stability_label") or "")
+        time_stability_label = str(curve.get("time_stability_label") or "")
+        micro_scalp_artifact = bool(curve.get("micro_scalp_artifact", False))
+
+        curve_penalty = 0.0
+        if penalize_curve and curve:
+            if plateau_width <= int(cp.get("plateau_width_lte", 1)):
+                curve_penalty += float(cp.get("plateau_penalty", 0.08))
+            curve_penalty += edge_decay_penalty * float(cp.get("edge_decay_penalty_weight", 0.12))
+            if edge_decay_penalty >= float(cp.get("high_edge_decay_threshold", 0.70)):
+                curve_penalty += float(cp.get("high_edge_decay_extra_penalty", 0.06))
+            if micro_scalp_artifact:
+                curve_penalty += float(cp.get("micro_scalp_artifact_penalty", 0.06))
+            if target_time_stability < float(cp.get("min_time_stability", 0.45)):
+                curve_penalty += float(cp.get("time_instability_penalty", 0.06))
+
+        friction_penalty = _friction_penalty(c, friction_cfg)
         score = (
             w_wr   * wr
             + w_samp * sample_score
@@ -326,15 +543,27 @@ def _score_candidates(
             + w_stab * stability
             + w_simp * simplicity
             - sparse_penalty
+            - curve_penalty
+            - friction_penalty
         )
         score = round(score, 6)
 
         scored_row = dict(c)
         scored_row["composite_score"] = score
+        scored_row["expectancy_score_input_ticks"] = round(expectancy, 4)
         scored_row["stability_score"] = round(stability, 4)
         scored_row["sample_score"] = round(sample_score, 4)
         scored_row["simplicity_score"] = round(simplicity, 4)
         scored_row["sparse_penalty"] = round(sparse_penalty, 4)
+        scored_row["curve_penalty"] = round(curve_penalty, 4)
+        scored_row["friction_penalty"] = round(friction_penalty, 4)
+        scored_row["curve_plateau_width"] = plateau_width
+        scored_row["curve_edge_decay_penalty"] = round(edge_decay_penalty, 4)
+        scored_row["neighbor_target_stability"] = round(neighbor_target_stability, 4)
+        scored_row["target_time_stability"] = round(target_time_stability, 4)
+        scored_row["target_stability_label"] = target_stability_label
+        scored_row["time_stability_label"] = time_stability_label
+        scored_row["micro_scalp_artifact"] = micro_scalp_artifact
         scored.append(ScoredSetup(record=scored_row, score=score))
 
     scored.sort(key=lambda s: (-s.score, -_safe_float(s.record.get("n_events"), 0.0)))
@@ -463,7 +692,7 @@ def _setup_match_key(row: Dict[str, Any]) -> Tuple[Any, ...]:
 def _neighbor_analysis(candidates: List[Dict[str, Any]], top_rows: List[Dict[str, Any]], cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     if not cfg.get("enabled", True):
         return []
-    target_values = [int(v) for v in (cfg.get("target_neighbor_values") or [15, 25, 35, 50])]
+    target_values = [int(v) for v in (cfg.get("target_neighbor_values") or [10, 15, 20, 25, 30, 35, 40])]
     max_neighbors = int(cfg.get("max_neighbors", 6))
     out: List[Dict[str, Any]] = []
     for row in top_rows[: int(cfg.get("top_setups", 6))]:
@@ -482,6 +711,7 @@ def _neighbor_analysis(candidates: List[Dict[str, Any]], top_rows: List[Dict[str
             hit = by_target.get(int(t))
             if not hit:
                 continue
+            wr_delta = round(_safe_float(hit.get("win_rate")) - _safe_float(row.get("win_rate")), 3)
             rows.append(
                 {
                     "target_percent": t,
@@ -489,10 +719,26 @@ def _neighbor_analysis(candidates: List[Dict[str, Any]], top_rows: List[Dict[str
                     "win_rate": hit.get("win_rate"),
                     "score": hit.get("composite_score"),
                     "delta_vs_main": round(_safe_float(hit.get("composite_score")) - _safe_float(row.get("composite_score")), 6),
+                    "win_rate_delta_vs_main": wr_delta,
+                    "neighbor_target_stability": hit.get("neighbor_target_stability"),
+                    "target_time_stability": hit.get("target_time_stability"),
+                    "target_stability_label": hit.get("target_stability_label"),
+                    "time_stability_label": hit.get("time_stability_label"),
+                    "micro_scalp_artifact": hit.get("micro_scalp_artifact"),
                 }
             )
-        rows.sort(key=lambda r: abs(int(r["target_percent"]) - curr_target))
-        out.append({"setup_definition": row.get("setup_definition"), "main_target_percent": curr_target, "neighbors": rows})
+        rows.sort(key=lambda r: int(r["target_percent"]))
+        out.append({
+            "setup_definition": row.get("setup_definition"),
+            "main_target_percent": curr_target,
+            "plateau_width": row.get("curve_plateau_width"),
+            "neighbor_target_stability": row.get("neighbor_target_stability"),
+            "target_time_stability": row.get("target_time_stability"),
+            "target_stability_label": row.get("target_stability_label"),
+            "time_stability_label": row.get("time_stability_label"),
+            "micro_scalp_artifact": row.get("micro_scalp_artifact"),
+            "neighbors": rows,
+        })
     return out
 
 
@@ -745,13 +991,14 @@ def _classify_behavior_from_candidates(
     return "mixed (limited data)"
 
 
-def _classify_curve_stability(plateau_width: int, edge_decay_penalty: float) -> str:
+def _classify_curve_stability(plateau_width: int, edge_decay_penalty: float, neighbor_stability: Optional[float] = None) -> str:
     """Return stable / moderate / fragile classification for a setup's target curve."""
-    if plateau_width >= 3 and edge_decay_penalty <= 0.40:
+    ns = 0.5 if neighbor_stability is None else neighbor_stability
+    if plateau_width >= 3 and edge_decay_penalty <= 0.40 and ns >= 0.65:
         return "stable"
-    if plateau_width >= 2 or edge_decay_penalty <= 0.60:
+    if plateau_width >= 2 and edge_decay_penalty <= 0.60 and ns >= 0.45:
         return "moderate"
-    if plateau_width < 1:
+    if plateau_width <= 1:
         return "fragile (no plateau)"
     return "fragile"
 
@@ -863,8 +1110,9 @@ def _classify_promotion_level(
     """Classify promotion level: observation / candidate / strategy-test-ready."""
     score    = _safe_float(rec.get("composite_score"), 0.0)
     n        = int(rec.get("n_events") or 0)
-    plateau  = int(curve.get("plateau_width") or 0)
+    plateau  = int(curve.get("fine_plateau_width") or curve.get("plateau_width") or 0)
     edp      = _safe_float(curve.get("edge_decay_penalty"), 1.0)
+    friction_viability = str(rec.get("friction_viability") or "friction-viable")
 
     str_rdy = promo_cfg.get("strategy_test_ready") or {}
     cand    = promo_cfg.get("candidate") or {}
@@ -875,6 +1123,7 @@ def _classify_promotion_level(
         and n >= int(str_rdy.get("min_n", 120))
         and plateau >= int(str_rdy.get("min_plateau", 2))
         and edp <= float(str_rdy.get("max_edge_decay_penalty", 0.50))
+        and friction_viability == "friction-viable"
         and "low_sample" not in fragility_flags
     ):
         return {"level": "strategy-test-ready", "reason": f"score={score:.3f}, N={n}, plateau={plateau}, edge_decay={edp:.2f}"}
@@ -885,6 +1134,7 @@ def _classify_promotion_level(
         and n >= int(cand.get("min_n", 80))
         and plateau >= int(cand.get("min_plateau", 2))
         and edp <= float(cand.get("max_edge_decay_penalty", 0.80))
+        and friction_viability != "friction-invalid"
     ):
         reasons = []
         if score < float(str_rdy.get("min_score", 0.57)):
@@ -893,6 +1143,8 @@ def _classify_promotion_level(
             reasons.append(f"N={n} < {str_rdy.get('min_n', 120)}")
         if edp > float(str_rdy.get("max_edge_decay_penalty", 0.50)):
             reasons.append(f"edge_decay={edp:.2f} > {str_rdy.get('max_edge_decay_penalty', 0.50)}")
+        if friction_viability != "friction-viable":
+            reasons.append(f"friction={friction_viability}")
         return {"level": "candidate", "reason": "needs: " + "; ".join(reasons) if reasons else "meets candidate thresholds"}
 
     # Observation
@@ -905,6 +1157,8 @@ def _classify_promotion_level(
         obs_reasons.append(f"plateau={plateau}")
     if edp > float(cand.get("max_edge_decay_penalty", 0.80)):
         obs_reasons.append(f"high edge_decay={edp:.2f}")
+    if friction_viability != "friction-viable":
+        obs_reasons.append(friction_viability)
     return {"level": "observation", "reason": "insufficient: " + "; ".join(obs_reasons) if obs_reasons else "below thresholds"}
 
 
@@ -942,9 +1196,11 @@ def _group_into_families(
         setup_key = f"{mode}|{direc}|{bucket}|tf{tf}m|w{window}m"
         curve = curves.get(setup_key) or {}
         bt = _classify_behavior_from_candidates(best, curves, all_ranked)
-        plateau = int(curve.get("plateau_width") or 0)
+        plateau = int(curve.get("fine_plateau_width") or curve.get("plateau_width") or 0)
         edp = _safe_float(curve.get("edge_decay_penalty"), 1.0)
-        curve_stability = _classify_curve_stability(plateau, edp)
+        neighbor_stability = _safe_float(curve.get("neighbor_target_stability"), 0.5)
+        time_stability = _safe_float(curve.get("target_time_stability"), 0.5)
+        curve_stability = _classify_curve_stability(plateau, edp, neighbor_stability)
 
         # Fragility across family
         family_flags: List[str] = []
@@ -954,10 +1210,16 @@ def _group_into_families(
             family_flags.append("low_sample")
         if wr_best >= suspicious_wr and n_best < suspicious_n:
             family_flags.append("suspicious_strength")
-        if plateau < 1:
+        if plateau <= 1:
             family_flags.append("no_plateau")
         if edp > 0.70:
             family_flags.append("rapid_edge_decay")
+        if bool(curve.get("micro_scalp_artifact", False)):
+            family_flags.append("micro_scalp_artifact")
+        if time_stability < 0.45:
+            family_flags.append("time_instability")
+        if str(best.get("friction_viability") or "") in {"friction-risky", "friction-invalid"}:
+            family_flags.append(str(best.get("friction_viability")))
         if len(members) > 5:
             family_flags.append("many_variants")
 
@@ -974,6 +1236,17 @@ def _group_into_families(
             "behavior_type": bt,
             "plateau_width": plateau,
             "edge_decay_penalty": round(edp, 3),
+            "neighbor_target_stability": round(neighbor_stability, 3),
+            "target_time_stability": round(time_stability, 3),
+            "target_stability_label": curve.get("target_stability_label"),
+            "time_stability_label": curve.get("time_stability_label"),
+            "micro_scalp_artifact": bool(curve.get("micro_scalp_artifact", False)),
+            "gross_target_ticks": best.get("gross_target_ticks"),
+            "estimated_round_trip_cost_ticks": best.get("estimated_round_trip_cost_ticks"),
+            "net_target_after_friction_ticks": best.get("net_target_after_friction_ticks"),
+            "net_expectancy_after_friction_ticks": best.get("net_expectancy_after_friction_ticks"),
+            "post_friction_rr": best.get("post_friction_rr"),
+            "friction_viability": best.get("friction_viability"),
             "curve_stability": curve_stability,
             "fragility_flags": family_flags,
         })
@@ -1084,6 +1357,15 @@ def _build_rich_executive_summary(
     if n_str > 0 or n_cand > 0:
         summary.append(f"Promotion ladder: {n_str} strategy-test-ready, {n_cand} candidate families.")
 
+    friction_summary = _friction_viability_summary([f.get("best_variant") or {} for f in families])
+    if friction_summary.get("total", 0) > 0:
+        summary.append(
+            "Friction viability across top families: "
+            f"{friction_summary['friction_viable']} viable, "
+            f"{friction_summary['friction_risky']} risky, "
+            f"{friction_summary['friction_invalid']} invalid."
+        )
+
     # Robustness vs fragility
     n_stable  = sum(1 for f in families if f.get("curve_stability") == "stable")
     n_fragile = sum(1 for f in families if "fragile" in (f.get("curve_stability") or ""))
@@ -1190,6 +1472,11 @@ def _build_why_narrative(
     if "neighbor_instability" in fragility_flags:
         parts.append("⚠ Parameter sensitivity detected — test neighboring values.")
 
+    if "friction-risky" in fragility_flags:
+        parts.append("Live friction materially weakens the edge; require cleaner execution before use.")
+    if "friction-invalid" in fragility_flags:
+        parts.append("Fails configured friction filters; treat as non-actionable until target/risk improves.")
+
     return " ".join(parts)
 
 
@@ -1239,11 +1526,16 @@ def _build_strategy_cards(
 
         # Behavior type — never "unknown"
         behavior_type     = _classify_behavior_from_candidates(rec, curves, _all_ranked)
-        plateau_width     = int(curve.get("plateau_width") or 0)
-        stable_range      = curve.get("stable_target_range") or [None, None]
+        plateau_width     = int(curve.get("fine_plateau_width") or curve.get("plateau_width") or 0)
+        stable_range      = curve.get("fine_stable_target_range") or curve.get("stable_target_range") or [None, None]
         peak_target_pct   = curve.get("peak_target_pct")
         edge_decay_penalty = _safe_float(curve.get("edge_decay_penalty"), 0.0)
-        curve_stability   = _classify_curve_stability(plateau_width, edge_decay_penalty)
+        neighbor_target_stability = _safe_float(curve.get("neighbor_target_stability"), 0.5)
+        target_time_stability = _safe_float(curve.get("target_time_stability"), 0.5)
+        target_stability_label = curve.get("target_stability_label")
+        time_stability_label = curve.get("time_stability_label")
+        micro_scalp_artifact = bool(curve.get("micro_scalp_artifact", False))
+        curve_stability   = _classify_curve_stability(plateau_width, edge_decay_penalty, neighbor_target_stability)
 
         if stable_range and stable_range[0] is not None and stable_range[1] is not None:
             stable_range_str = f"{stable_range[0]:.0f}%\u2013{stable_range[1]:.0f}%"
@@ -1266,8 +1558,14 @@ def _build_strategy_cards(
             fragility_flags.append("neighbor_instability")
         if edge_decay_penalty > 0.70:
             fragility_flags.append("rapid_edge_decay")
-        if plateau_width < 1:
+        if plateau_width <= 1:
             fragility_flags.append("no_plateau")
+        if micro_scalp_artifact:
+            fragility_flags.append("micro_scalp_artifact")
+        if target_time_stability < 0.45:
+            fragility_flags.append("time_instability")
+        if str(rec.get("friction_viability") or "") in {"friction-risky", "friction-invalid"}:
+            fragility_flags.append(str(rec.get("friction_viability")))
 
         # Promotion level
         promotion = _classify_promotion_level(rec, curve, fragility_flags, promo_cfg or {})
@@ -1309,7 +1607,18 @@ def _build_strategy_cards(
                 "composite_score":  rec.get("composite_score"),
                 "plateau_width":    plateau_width,
                 "curve_stability":  curve_stability,
+                "neighbor_target_stability": neighbor_target_stability,
+                "target_time_stability": target_time_stability,
+                "target_stability_label": target_stability_label,
+                "time_stability_label": time_stability_label,
+                "micro_scalp_artifact": micro_scalp_artifact,
                 "expectancy_ticks": rec.get("expectancy_ticks"),
+                "gross_target_ticks": rec.get("gross_target_ticks"),
+                "estimated_round_trip_cost_ticks": rec.get("estimated_round_trip_cost_ticks"),
+                "net_target_after_friction_ticks": rec.get("net_target_after_friction_ticks"),
+                "net_expectancy_after_friction_ticks": rec.get("net_expectancy_after_friction_ticks"),
+                "post_friction_rr": rec.get("post_friction_rr"),
+                "friction_viability": rec.get("friction_viability"),
                 "edge_decay_penalty": edge_decay_penalty,
                 "stability_score":  rec.get("stability_score"),
                 "sample_score":     rec.get("sample_score"),
@@ -1319,6 +1628,10 @@ def _build_strategy_cards(
                 "stable_range":       stable_range_str,
                 "peak_target_pct":    peak_target_pct,
                 "raw_stable_range":   stable_range,
+                "fine_target_curve":   curve.get("fine_target_curve") or [],
+                "neighbor_target_drops": curve.get("neighbor_target_drops") or {},
+                "focus_time_split_win_rates": curve.get("focus_time_split_win_rates") or [],
+                "focus_time_split_max_drop_pp": curve.get("focus_time_split_max_drop_pp"),
             },
             "session_context": {
                 "best_sessions": best_sessions,
@@ -1370,8 +1683,10 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     top_n_cards  = int((cfg.get("output") or {}).get("top_n_strategy_cards", 10))
     scoring_w    = cfg.get("scoring_weights") or {}
     sample_thr   = cfg.get("min_sample_thresholds") or {}
+    friction_cfg  = cfg.get("friction") or {}
+    curves = (source.get("target_curves") or {}).get("curves") or {}
 
-    candidates = _build_trade_candidates(source, min_events=min_events, min_win_rate_pct=min_wr)
+    candidates = _build_trade_candidates(source, min_events=min_events, min_win_rate_pct=min_wr, friction_cfg=friction_cfg)
 
     # Build scoring formula description from active weights
     w_wr   = float(scoring_w.get("win_rate",          0.40))
@@ -1381,7 +1696,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     w_simp = float(scoring_w.get("simplicity",        0.05))
     formula_str = (
         f"{w_wr}*win_rate + {w_samp}*sample_score + {w_exp}*expectancy_score "
-        f"+ {w_stab}*stability + {w_simp}*simplicity - sparse_penalty"
+        f"+ {w_stab}*stability + {w_simp}*simplicity - sparse_penalty - curve_penalty - friction_penalty"
     )
 
     if not candidates:
@@ -1404,6 +1719,9 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         penalize_complexity=bool((cfg.get("ranking") or {}).get("penalize_complexity", True)),
         scoring_weights=scoring_w,
         min_sample_thresholds=sample_thr,
+        curves=curves,
+        curve_penalties=(cfg.get("ranking") or {}).get("curve_penalties") or {},
+        friction_cfg=friction_cfg,
     )
 
     all_ranked = [r.record for r in ranked]
@@ -1416,14 +1734,8 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     raw_interactions = ((context.get("interactions") or {}).get("vol_x_size") or [])
     interaction_diag = _evaluate_interaction_candidates(raw_interactions, cfg.get("interactions") or {})
 
-    # Setup families
-    curves = (source.get("target_curves") or {}).get("curves") or {}
     promo_cfg  = cfg.get("promotion") or {}
     family_cfg = cfg.get("family_grouping") or {}
-    families = _group_into_families(
-        all_ranked, curves, sample_thr,
-        top_n_families=int(family_cfg.get("top_n_families", 20)),
-    )
 
     # Annotate all_ranked records with promotion level (used by families section)
     for rec in all_ranked:
@@ -1436,13 +1748,17 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         curve = curves.get(setup_key) or {}
         n  = int(rec.get("n_events") or 0)
         wr = _safe_float(rec.get("win_rate"), 0.0)
-        edp = _safe_float(curve.get("edge_decay_penalty"), 1.0)
-        plateau = int(curve.get("plateau_width") or 0)
         flags: List[str] = []
         fragility_low_v = int(sample_thr.get("fragility_low", 60))
         if n < fragility_low_v:
             flags.append("low_sample")
         rec["_promotion_level"] = _classify_promotion_level(rec, curve, flags, promo_cfg).get("level", "observation")
+
+    # Setup families
+    families = _group_into_families(
+        all_ranked, curves, sample_thr,
+        top_n_families=int(family_cfg.get("top_n_families", 20)),
+    )
 
     # Reversal size analysis — large-move probability, runner potential, session breakdown
     events_sample = source.get("events_sample") or []
@@ -1463,7 +1779,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     )
 
     # Rich executive summary
-    neighbor = _neighbor_analysis(all_ranked, [r for r in [top_cont, top_rev] if r], cfg.get("neighbor_analysis") or {})
+    neighbor = _neighbor_analysis(all_ranked, top, cfg.get("neighbor_analysis") or {})
     for nb in neighbor:
         deltas = [abs(_safe_float(r.get("delta_vs_main"))) for r in (nb.get("neighbors") or []) if r.get("delta_vs_main") is not None]
         if deltas and (sum(deltas) / len(deltas)) <= 0.03:
@@ -1488,7 +1804,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         window = rec.get("window_minutes")
         setup_key = f"{mode}|{direc}|{bucket}|tf{tf}m|w{window}m"
         curve = curves.get(setup_key) or {}
-        plateau = int(curve.get("plateau_width") or 0)
+        plateau = int(curve.get("fine_plateau_width") or curve.get("plateau_width") or 0)
         edp = _safe_float(curve.get("edge_decay_penalty"), 0.0)
         if n < fragility_low_v:
             fragility.append({"type": "low_sample", "severity": "high", "setup": rec.get("setup_definition"), "details": f"Only {n} events"})
@@ -1504,7 +1820,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
                 "setup": rec.get("setup_definition"),
                 "details": f"Low neighbor stability ({st:.2f})",
             })
-        if plateau < 1:
+        if plateau <= 1:
             fragility.append({
                 "type": "no_plateau", "severity": "high",
                 "setup": rec.get("setup_definition"),
@@ -1515,6 +1831,32 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
                 "type": "rapid_edge_decay", "severity": "medium",
                 "setup": rec.get("setup_definition"),
                 "details": f"High edge decay penalty ({edp:.2f})",
+            })
+        if bool(curve.get("micro_scalp_artifact", False)):
+            fragility.append({
+                "type": "micro_scalp_artifact", "severity": "high",
+                "setup": rec.get("setup_definition"),
+                "details": "Fine target sweep suggests a low-target single-point scalp artifact",
+            })
+        time_stability = _safe_float(curve.get("target_time_stability"), 0.5)
+        if time_stability < 0.45:
+            fragility.append({
+                "type": "time_instability", "severity": "high",
+                "setup": rec.get("setup_definition"),
+                "details": f"Fine target edge is unstable across time splits ({time_stability:.2f})",
+            })
+        friction_flag = str(rec.get("friction_viability") or "")
+        if friction_flag == "friction-invalid":
+            fragility.append({
+                "type": "friction_invalid", "severity": "high",
+                "setup": rec.get("setup_definition"),
+                "details": "; ".join(rec.get("friction_invalid_reasons") or ["fails configured friction filters"]),
+            })
+        elif friction_flag == "friction-risky":
+            fragility.append({
+                "type": "friction_risky", "severity": "medium",
+                "setup": rec.get("setup_definition"),
+                "details": "; ".join(rec.get("friction_risky_reasons") or ["weak after estimated live friction"]),
             })
 
     # Family-specific next tests
@@ -1534,6 +1876,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         cfg=recursive_cfg,
     )
     validation_cfg = _deep_merge(DEFAULT_EDGE_VALIDATION_CONFIG, cfg.get("edge_validation_engine") or {})
+    validation_cfg["friction"] = _deep_merge(validation_cfg.get("friction") or {}, cfg.get("friction") or {})
     edge_validation_result = compute_edge_validation_engine(
         findings_payload={
             "config": cfg,
@@ -1548,6 +1891,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
     strategy_construction_cfg = _deep_merge(DEFAULT_STRATEGY_CONSTRUCTION_CONFIG, cfg.get("strategy_construction_engine") or {})
     strategy_construction_result = compute_strategy_construction_engine(
         findings_payload={
+            "config": cfg,
             "edge_validation_engine": edge_validation_result,
             "reversal_decision_engine": reversal_decision_engine_result,
             "elite_reversal_setup_extractor": elite_reversal_setup_result,
@@ -1556,6 +1900,45 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         },
         cfg=strategy_construction_cfg,
     )
+    regime_discovery_cfg = _deep_merge(DEFAULT_REGIME_DISCOVERY_CONFIG, cfg.get("regime_discovery") or {})
+    regime_discovery_result = compute_regime_discovery(events_sample, regime_discovery_cfg)
+
+    blueprint_cfg = _deep_merge(DEFAULT_BLUEPRINT_EXPORTER_CONFIG, cfg.get("strategy_blueprint_exporter") or {})
+    blueprint_exporter_result = compute_strategy_blueprint_exporter(
+        findings_payload={
+            "config": cfg,
+            "regime_discovery": regime_discovery_result,
+            "edge_validation_engine": edge_validation_result,
+            "strategy_construction_engine": strategy_construction_result,
+            "reversal_decision_engine": reversal_decision_engine_result,
+        },
+        events_sample=events_sample,
+        upstream_config=source.get("config") or {},
+        cfg=blueprint_cfg,
+    )
+
+    # Cross-link blueprint_id back into each constructed_strategies[*].strategy_spec
+    # so the human-facing cards reference the machine-readable blueprint.
+    if isinstance(strategy_construction_result, dict) and isinstance(strategy_construction_result.get("constructed_strategies"), list):
+        bps_by_pair = {
+            (bp.get("provenance", {}).get("onset_condition"), bp.get("provenance", {}).get("early_path_condition")): bp.get("blueprint_id")
+            for bp in (blueprint_exporter_result.get("blueprints") or [])
+        }
+        for s in strategy_construction_result["constructed_strategies"]:
+            ctx = (s.get("eligible_market_context") or {})
+            early_path = ctx.get("early_path_class")
+            src_cand = str(s.get("source_candidate") or "")
+            match_id = None
+            for (onset, ep), bp_id in bps_by_pair.items():
+                if not onset:
+                    continue
+                if onset in src_cand or (early_path and str(ep) == str(early_path)):
+                    match_id = bp_id
+                    break
+            if match_id:
+                spec = s.get("strategy_spec") or {}
+                spec["blueprint_id"] = match_id
+                s["strategy_spec"] = spec
 
     split_cfg = cfg.get("time_split") or {}
     split_rows = []
@@ -1579,7 +1962,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "config": cfg,
         "scoring_methodology": {
             "formula": formula_str,
-            "components": ["win_rate", "sample_size", "expectancy_ticks", "neighbor_stability", "simplicity", "sparse_penalty"],
+            "components": ["win_rate", "sample_size", "net_expectancy_after_friction_ticks", "neighbor_stability", "simplicity", "sparse_penalty", "friction_penalty"],
             "weights": {"win_rate": w_wr, "sample_score": w_samp, "expectancy_score": w_exp, "stability": w_stab, "simplicity": w_simp},
         },
         "executive_summary": summary,
@@ -1590,6 +1973,7 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "strongest_interactions": interaction_diag.get("passed") or [],
         "interaction_diagnostics": interaction_diag,
         "neighbor_analysis": neighbor,
+        "friction_viability_summary": _friction_viability_summary(top),
         "time_split_robustness": split_rows,
         "fragility_warnings": fragility,
         "next_tests": deduped_tests,
@@ -1601,11 +1985,16 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
         "recursive_edge_search": recursive_edge_search_result,
         "edge_validation_engine": edge_validation_result,
         "strategy_construction_engine": strategy_construction_result,
+        "regime_discovery": regime_discovery_result,
+        "strategy_blueprint_exporter": blueprint_exporter_result,
         "diagnostics": {
             "n_candidates_screened": len(candidates),
             "n_ranked": len(ranked),
             "n_top": len(top),
             "n_families": len(families),
+            "friction_viable_top": _friction_viability_summary(top).get("friction_viable", 0),
+            "friction_risky_top": _friction_viability_summary(top).get("friction_risky", 0),
+            "friction_invalid_top": _friction_viability_summary(top).get("friction_invalid", 0),
             "interaction_attempted": interaction_diag.get("n_attempted", 0),
             "interaction_passed": interaction_diag.get("n_passed", 0),
             "n_context_conditioned": len(context_conditioned_setups),
@@ -1614,6 +2003,8 @@ def build_large_candle_excursion_findings(source_lce: Optional[Dict[str, Any]], 
             "recursive_promoted": len(recursive_edge_search_result.get("best_promoted_branches") or []),
             "edge_validated_candidates": len(edge_validation_result.get("validated_candidates") or []),
             "strategies_constructed": len(strategy_construction_result.get("constructed_strategies") or []),
+            "regime_discovery_events": regime_discovery_result.get("n_events", 0),
+            "strategy_blueprints": len(blueprint_exporter_result.get("blueprints") or []),
         },
     }
 
@@ -1795,9 +2186,10 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
     refinement_cfg = ((cfg.get("stages") or {}).get("refinement") or {})
     chain_cfg = ((cfg.get("stages") or {}).get("interaction_chaining") or {})
     robust_cfg = ((cfg.get("stages") or {}).get("robustness_validation") or {})
+    friction_cfg = cfg.get("friction") or {}
 
-    base = _build_trade_candidates(source, min_events=min_events, min_win_rate_pct=min_wr)
-    ranked = _score_candidates(base, penalize_low_sample=True, penalize_complexity=True)
+    base = _build_trade_candidates(source, min_events=min_events, min_win_rate_pct=min_wr, friction_cfg=friction_cfg)
+    ranked = _score_candidates(base, penalize_low_sample=True, penalize_complexity=True, friction_cfg=friction_cfg)
     broad_keep = int(broad_cfg.get("top_n_to_keep", 50))
     broad_candidates = [r.record for r in ranked[:broad_keep]]
 
@@ -1865,6 +2257,12 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
         cautions.append("Some top candidates show weak neighbor stability; treat as fragile until validated out-of-sample.")
     if any(not bool(s.get("available")) for s in time_split_rows):
         cautions.append("Time split robustness is limited when sampled trade events are sparse.")
+    friction_summary = _friction_viability_summary(final_rows)
+    if friction_summary.get("friction_invalid", 0) or friction_summary.get("friction_risky", 0):
+        cautions.append(
+            f"Friction screen: {friction_summary['friction_viable']} viable, "
+            f"{friction_summary['friction_risky']} risky, {friction_summary['friction_invalid']} invalid final discoveries."
+        )
 
     summary = {
         "strongest_broad_scan": broad_candidates[0] if broad_candidates else None,
@@ -1899,6 +2297,7 @@ def build_large_candle_excursion_discovery(source_lce: Optional[Dict[str, Any]],
         "interaction_chaining": chaining,
         "robustness_validation": {"candidates": robust_rows, "time_splits": time_split_rows},
         "neighbor_analysis": neighbor,
+        "friction_viability_summary": friction_summary,
         "final_discoveries": final_rows,
         "diagnostics": diagnostics,
         "next_steps": next_steps,

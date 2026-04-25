@@ -21,8 +21,17 @@ analysis = [
   "scikit-learn",
   "pyarrow",
 ]
+prediction = [
+  "anthropic>=0.90.0",
+]
 reporting = [
   "playwright",
+]
+persistence = [
+  "duckdb",
+]
+web = [
+  "flask",
 ]
 dev = [
   "pytest",

@@ -82,7 +82,7 @@ def render_large_candle_excursion_target_curves(ctx: dict) -> str:
 
     html += '<table style="border-collapse:collapse;width:100%;font-size:12px">'
     html += "<thead><tr>"
-    for h in ["Setup", "Behavior", "Peak WR", "Peak Target %", "Stable Range", "Plateau W", "Edge Decay", "Sparkline"]:
+    for h in ["Setup", "Behavior", "Peak WR", "Peak Target %", "Stable Range", "Fine Plateau", "Nbr Stable", "Time Stable", "Target Stability", "Edge Decay", "Sparkline"]:
         html += hdr(h)
     html += "</tr></thead><tbody>"
 
@@ -91,15 +91,21 @@ def render_large_candle_excursion_target_curves(ctx: dict) -> str:
         bg = _BEHAVIOR_COLOR.get(bt, "#fff")
         peak_wr = float(c.get("peak_win_rate", 0)) * 100.0
         peak_t = c.get("peak_target_pct")
-        stable = c.get("stable_target_range") or [None, None]
+        stable = c.get("fine_stable_target_range") or c.get("stable_target_range") or [None, None]
         stable_str = (
             f"{stable[0]:.0f}%–{stable[1]:.0f}%"
             if stable[0] is not None and stable[1] is not None
             else "—"
         )
         edge_decay = float(c.get("edge_decay", 0)) * 100.0
-        pw = c.get("plateau_width", 0)
-        spark = _sparkline(c.get("points") or [])
+        pw = c.get("fine_plateau_width") or c.get("plateau_width", 0)
+        nts = c.get("neighbor_target_stability")
+        tts = c.get("target_time_stability")
+        target_label = c.get("target_stability_label") or ""
+        if c.get("micro_scalp_artifact"):
+            target_label += " / micro-scalp"
+        time_label = c.get("time_stability_label") or ""
+        spark = _sparkline(c.get("fine_target_curve") or c.get("points") or [])
 
         setup_key = c.get("setup_key", "")
         # Make setup key more readable: replace | with thin spaces
@@ -112,6 +118,9 @@ def render_large_candle_excursion_target_curves(ctx: dict) -> str:
         html += cell(fmt(peak_t, digits=0, suffix="%"), bg=bg)
         html += cell(stable_str, bg=bg)
         html += cell(str(pw), bg=bg)
+        html += cell(fmt(nts, digits=3), bg=bg)
+        html += cell(f"{fmt(tts, digits=3)} {time_label}".strip(), bg=bg)
+        html += cell(target_label, bg=bg)
         html += cell(f"{edge_decay:.1f} pp", bg=bg)
         html += cell(f'<span style="letter-spacing:2px;font-size:14px">{spark}</span>', bg=bg)
         html += "</tr>"

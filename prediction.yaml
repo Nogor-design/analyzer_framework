@@ -1,0 +1,47 @@
+# prediction.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Daily prediction config for ta_foundation.
+# Run after NY close:
+#   python -m ta_foundation.prediction.run_prediction --config prediction.yaml
+#
+# Set ANTHROPIC_API_KEY in your environment before running.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Instrument ────────────────────────────────────────────────────────────────
+instrument: NQ          # Instrument root (NQ, ES, MNQ, MES, ...)
+contract: "06-26"       # NinjaTrader format MM-YY (e.g. 06-26 = June 2026). Update each rollover.
+
+# ── Market data ───────────────────────────────────────────────────────────────
+# Directory that MarketDataStore uses — the same folder you export minute bars
+# and tick data into from NinjaTrader.
+market_data: D:/MarketData
+
+# ── Economic calendar ─────────────────────────────────────────────────────────
+# ForexFactory CSV export. Omit or leave blank to skip event risk scoring.
+# Download from: https://www.forexfactory.com/calendar (Export button)
+#calendar: D:/economicCalendar/ff_calendar_thisweek.csv
+
+# ── Prediction store ──────────────────────────────────────────────────────────
+# Where predictions and outcomes are persisted as JSONL.
+# Structure: <output_dir>/<instrument>/<contract>/predictions.jsonl
+output_dir: .ta_artifacts/predictions
+
+# ── Claude model ──────────────────────────────────────────────────────────────
+# claude-opus-4-7  — most capable, adaptive thinking (recommended)
+# claude-sonnet-4-6 — faster/cheaper for testing
+model: claude-opus-4-7
+
+# ── Learning context ──────────────────────────────────────────────────────────
+# How many historical analogue sessions to include as few-shot examples.
+# Range 3–10. More = richer context, slightly longer prompt.
+n_similar: 5
+
+# ── Dry run ───────────────────────────────────────────────────────────────────
+# Set to true to use the statistical_stub_agent (no Claude API call).
+# Useful for testing the pipeline or validating market data connectivity.
+dry_run: true
+
+# ── asof (optional) ───────────────────────────────────────────────────────────
+# Override the prediction date. Defaults to today (Denver time).
+# Useful for back-filling missed days or testing on past sessions.
+asof: "2026-04-05"

@@ -1,0 +1,183 @@
+report:
+  title: "Large Candle Excursion Findings Digest"
+  output_filename: "large_candle_excursion_findings_digest.html"
+  timezone: "America/Denver"
+
+large_candle_excursion:
+  enabled: true
+  timeframes: [1, 2, 3, 5]
+  min_events: 20
+
+  candle_size:
+    average_lookbacks: [5, 10, 20]
+    threshold_mode: multiplier
+    threshold_multipliers: [1.5, 2.0, 2.5]
+
+  forward_window:
+    minutes: [5, 10, 20, 30, 60]
+
+  trade_analysis:
+    enabled: true
+    target:
+      percents: [20, 25, 50, 100, 125, 200]
+      fine_sweep:
+        enabled: true
+        percents: [10, 15, 20, 25, 30, 35, 40]
+      time_split_validation:
+        enabled: true
+        n_splits: 3
+        min_events_per_split: 10
+        stable_drop_pp: 8.0
+
+  target_curves:
+    enabled: true
+    fine_sweep:
+      enabled: true
+      target_percents: [10, 15, 20, 25, 30, 35, 40]
+
+  session_analysis:
+    enabled: true
+  volume_context:
+    enabled: true
+  candle_structure_context:
+    enabled: true
+  volatility_context:
+    enabled: true
+  directional_context:
+    enabled: true
+    streak_lookback: 3
+  ma_vwap_context:
+    enabled: true
+    ma_periods: [100, 200, 300]
+    include_vwap: true
+  key_level_context:
+    enabled: true
+    level_types: [prior_day_high, prior_day_low, prior_day_close,
+                  session_high, session_low, overnight_high, overnight_low,
+                  vwap, ma100, ma200]
+  trend_state_context:
+    enabled: true
+    slope_lookback: 5
+    ma_periods: [100, 200]
+  exhaustion_context:
+    enabled: true
+
+large_candle_excursion_findings:
+  enabled: true
+  source_report: large_candle_excursion
+  min_events: 30
+
+  reversal_decision_engine:
+    enabled: true
+    forward_window_minutes: 30
+    outcome_thresholds:
+      failed_reversal_max_adv_pct: 10.0
+      micro_bounce_max_adv_pct: 25.0
+      scalp_reversal_max_adv_pct: 50.0
+      expansion_reversal_min_adv_pct: 50.0
+      strong_runner_min_adv_pct: 100.0
+    early_path:
+      explosive_min_fav_2bar_pct: 45.0
+      explosive_max_adv_2bar_pct: 20.0
+      orderly_min_fav_2bar_pct: 25.0
+      orderly_max_adv_2bar_pct: 35.0
+      weak_max_fav_2bar_pct: 15.0
+      weak_min_adv_2bar_pct: 35.0
+      midpoint_reclaim_bars: 2
+      rebreak_bars: 2
+
+  regime_discovery:
+    enabled: true
+    forward_window_minutes: 30
+    win_target_pct: 50.0
+    min_events: 30
+    cluster_detection:
+      min_consecutive_wins: 2
+      max_time_gap_minutes: 45
+      min_expectancy_ticks: 0.0
+    onset_detection:
+      quiet_lookback_minutes: 60
+      quiet_max_prior_signals: 1
+      lookahead_minutes: 60
+      lookahead_signals: 10
+      min_n: 5
+      vwap_stretch_atr: 0.75
+      volume_multiple: 2.5
+      direction_streak_min: 3
+      range_expansion_multiple: 1.5
+      failed_continuation_lookback_signals: 3
+      follow_through_max_signals_to_cluster: 3
+      follow_through_min_cluster_length: 2
+      too_broad_coverage_pct: 65.0
+      high_overlap_pct: 65.0
+      exclusive_overlap_max_pct: 35.0
+    onset_path_interactions:
+      min_n: 5
+      strong_min_n: 20
+      candidate_min_n: 30
+      candidate_min_unique_days: 5
+      runner_reversal_pct: 100.0
+      failure_reversal_pct: 25.0
+      scalp_reversal_pct: 50.0
+      expansion_reversal_pct: 50.0
+      top_filter_n: 5
+      matrix_top_n: 40
+      stability_top_n: 20
+      hold_min_expectancy_ticks: 0.0
+      hold_max_fail_rate: 35.0
+      hold_min_cluster_participation: 25.0
+      scalp_min_expectancy_ticks: 0.0
+      flip_watch_min_failure_rate: 40.0
+      shutdown_max_expectancy_ticks: 0.0
+      shutdown_min_fail_rate: 45.0
+      max_session_concentration_pct: 75.0
+      min_time_split_stability: 0.45
+      require_incremental_lift: true
+      min_incremental_expectancy_lift_ticks: 0.0
+      min_incremental_cluster_lift_pp: 3.0
+    failure_to_flip:
+      failure_max_reversal_pct: 25.0
+      flip_min_continuation_pct: 50.0
+      count_rebreak_as_flip: false
+      min_n: 5
+    decay_detection:
+      rolling_window_signals: 5
+      win_density_drop_below: 0.50
+      mae_rise_multiple: 1.35
+      early_favorable_drop_ratio: 0.70
+      cleanliness_drop_points: 15.0
+      expectancy_drop_ticks: 0.0
+      slow_favorable_minutes: 20.0
+      failed_reversals_allowed: 1
+      min_signature_n: 2
+
+  edge_validation_engine:
+    enabled: true
+  strategy_construction_engine:
+    enabled: true
+  recursive_edge_search:
+    enabled: false
+  elite_reversal_setup_extractor:
+    enabled: true
+    top_n: 5
+    min_n: 25
+
+  output:
+    top_n_discoveries: 12
+    top_n_strategy_cards: 5
+    include_executive_summary: true
+    include_fragility_warnings: true
+    include_suggested_next_tests: true
+    max_next_tests: 8
+
+sections:
+  - id: large_candle_excursion_findings_executive_summary
+  - id: large_candle_excursion_regime_findings_explainer
+    title: "Regime Findings Explained"
+    options:
+      top_n: 8
+  - id: large_candle_excursion_strategy_cards
+    options:
+      top_n: 5
+  - id: large_candle_excursion_findings_next_tests
+  - id: large_candle_excursion_findings_methodology

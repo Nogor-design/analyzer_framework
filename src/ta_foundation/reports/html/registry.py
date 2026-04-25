@@ -256,6 +256,9 @@ from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_
 from ta_foundation.reports.html.sections.large_candle_excursion_strategy_construction_engine import (
     render_large_candle_excursion_strategy_construction_engine,
 )
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_blueprints import (
+    render_large_candle_excursion_strategy_blueprints,
+)
 from ta_foundation.reports.html.sections.large_candle_excursion_signal_context import (
     render_large_candle_excursion_signal_context,
 )
@@ -277,8 +280,17 @@ from ta_foundation.reports.html.sections.large_candle_excursion_target_curves im
 from ta_foundation.reports.html.sections.large_candle_excursion_session_context import (
     render_large_candle_excursion_session_context,
 )
+from ta_foundation.reports.html.sections.large_candle_excursion_time_segments import (
+    render_large_candle_excursion_time_segments,
+)
 from ta_foundation.reports.html.sections.large_candle_excursion_strategy_cards import (
     render_large_candle_excursion_strategy_cards,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_regime_discovery import (
+    render_large_candle_excursion_regime_discovery,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_regime_findings_explainer import (
+    render_large_candle_excursion_regime_findings_explainer,
 )
 from ta_foundation.reports.html.sections.large_candle_excursion_discovery_summary import (
     render_large_candle_excursion_discovery_summary,
@@ -951,6 +963,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Large Candle Excursion Findings — Strategy Construction Engine",
         render_fn=render_large_candle_excursion_strategy_construction_engine,
     ),
+    "large_candle_excursion_strategy_blueprints": SectionDef(
+        id="large_candle_excursion_strategy_blueprints",
+        default_title="Large Candle Excursion Findings — Strategy Blueprints",
+        render_fn=render_large_candle_excursion_strategy_blueprints,
+    ),
     "large_candle_excursion_target_curves": SectionDef(
         id="large_candle_excursion_target_curves",
         default_title="Large Candle Excursion — Target Curve Analysis",
@@ -960,6 +977,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_session_context",
         default_title="Large Candle Excursion — Session Context",
         render_fn=render_large_candle_excursion_session_context,
+    ),
+    "large_candle_excursion_time_segments": SectionDef(
+        id="large_candle_excursion_time_segments",
+        default_title="Large Candle Excursion — Time Segment Analysis",
+        render_fn=render_large_candle_excursion_time_segments,
     ),
     "large_candle_excursion_signal_context": SectionDef(
         id="large_candle_excursion_signal_context",
@@ -990,6 +1012,16 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_strategy_cards",
         default_title="Large Candle Excursion — Strategy Cards",
         render_fn=render_large_candle_excursion_strategy_cards,
+    ),
+    "large_candle_excursion_regime_discovery": SectionDef(
+        id="large_candle_excursion_regime_discovery",
+        default_title="Large Candle Excursion Findings - Regime Discovery",
+        render_fn=render_large_candle_excursion_regime_discovery,
+    ),
+    "large_candle_excursion_regime_findings_explainer": SectionDef(
+        id="large_candle_excursion_regime_findings_explainer",
+        default_title="Large Candle Excursion - Regime Findings Explainer",
+        render_fn=render_large_candle_excursion_regime_findings_explainer,
     ),
     "large_candle_excursion_discovery_summary": SectionDef(
         id="large_candle_excursion_discovery_summary",

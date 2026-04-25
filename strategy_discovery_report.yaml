@@ -38,7 +38,7 @@ report:
 pattern_engine:
   enabled: false
   instrument: "NQ"
-  contract: "03-26"
+  contract: "06-26"
   timeframe: "5m"
   tick_size: 0.25
   horizons: [10, 20, 40]      # outcome windows (bars) for win/MAE/MFE computation
@@ -48,7 +48,7 @@ pattern_engine:
   # The resulting signal corpus feeds Signal Entry Discovery with zero execution bias.
   market_discovery:
     instrument: "NQ"
-    contract: "03-26"
+    contract: "06-26"
     timeframe: "5m"
     # start: "2025-01-01"   # optional date filter
     # end:   "2026-03-28"
@@ -157,7 +157,7 @@ strategy_discovery:
   # contract: null = auto-select the latest available contract.
   # --------------------------------------------------------------------------
   instrument: "NQ"
-  contract: "03-26"       # pin to a specific contract, e.g. "03-26"; null = auto
+  contract: "06-26"       # pin to a specific contract, e.g. "03-26"; null = auto
   timeframe: "5m"         # timeframe for regime + exit-policy ATR computation
   tick_size: 0.25         # NQ tick size (MNQ = 0.25, ES = 0.25, CL = 0.01)
 

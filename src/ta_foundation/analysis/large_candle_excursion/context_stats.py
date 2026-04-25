@@ -643,3 +643,151 @@ def compute_context_analysis(
     result["diagnostics"] = diagnostics
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Time segment analysis
+# ---------------------------------------------------------------------------
+
+def compute_time_segment_analysis(
+    combined_fwd: pd.DataFrame,
+    segments_cfg: Dict[str, Any],
+    trade_cfg: Optional[Dict] = None,
+) -> Dict[str, Any]:
+    """
+    Compute per-segment excursion and trade statistics for user-defined time windows.
+
+    Each segment independently filters events by time-of-day, so windows may overlap.
+
+    Parameters
+    ----------
+    combined_fwd  : enriched forward-excursion DataFrame
+    segments_cfg  : time_segment_analysis config block (segments list, timezone, min_events)
+    trade_cfg     : optional trade_analysis config (for target_pct and signal basis)
+
+    Returns
+    -------
+    JSON-safe dict stored under result["time_segment_analysis"].
+    """
+    if combined_fwd is None or combined_fwd.empty:
+        return {"enabled": False}
+
+    segments = segments_cfg.get("segments") or []
+    if not segments:
+        return {"enabled": False, "reason": "no segments configured"}
+
+    tz = segments_cfg.get("timezone", "America/New_York")
+    min_events = int(segments_cfg.get("min_events", 15))
+
+    deduped = _deduplicate_events(combined_fwd)
+    if deduped.empty or "dt" not in deduped.columns:
+        return {"enabled": False, "reason": "dt column missing or no events"}
+
+    # Convert to target timezone for time-of-day filtering
+    dt_series = pd.to_datetime(deduped["dt"])
+    try:
+        if dt_series.dt.tz is not None:
+            tz_dt = dt_series.dt.tz_convert(tz)
+        else:
+            tz_dt = dt_series.dt.tz_localize("UTC").dt.tz_convert(tz)
+        total_min = (tz_dt.dt.hour * 60 + tz_dt.dt.minute).values
+    except Exception as e:
+        return {"enabled": False, "reason": f"timezone conversion failed: {e}"}
+
+    # Trade settings
+    trade_enabled = bool((trade_cfg or {}).get("enabled", False))
+    target_pcts = [float(p) for p in (trade_cfg or {}).get("target", {}).get("percents", [50])]
+    primary_tgt_pct = target_pcts[0] if target_pcts else 50.0
+    signal_basis = (trade_cfg or {}).get("signal_candle_basis", "range")
+    sig_col = "size_ticks" if signal_basis == "range" else "body_ticks"
+    if sig_col not in deduped.columns:
+        sig_col = next((c for c in ("size_ticks", "body_ticks") if c in deduped.columns), None)
+    include_trade = trade_enabled and sig_col is not None
+
+    pop_trade = _agg_trade(deduped, sig_col, primary_tgt_pct) if include_trade and sig_col else {}
+    baseline_cont_wr: Optional[float] = pop_trade.get("cont_win_rate")
+    baseline_rev_wr: Optional[float] = pop_trade.get("rev_win_rate")
+
+    def _parse_hhmm(s: str) -> Optional[int]:
+        try:
+            parts = str(s).strip().split(":")
+            return int(parts[0]) * 60 + int(parts[1])
+        except Exception:
+            return None
+
+    segment_results: List[Dict] = []
+
+    for seg in segments:
+        label = str(seg.get("label", "unnamed"))
+        start_min = _parse_hhmm(seg.get("start", "00:00"))
+        end_min = _parse_hhmm(seg.get("end", "24:00"))
+        if start_min is None or end_min is None:
+            continue
+
+        # Handle midnight-crossing windows (e.g. 22:00–02:00)
+        if end_min <= start_min:
+            mask = (total_min >= start_min) | (total_min < end_min)
+        else:
+            mask = (total_min >= start_min) & (total_min < end_min)
+
+        seg_df = deduped[mask].copy()
+        n = len(seg_df)
+
+        rec: Dict[str, Any] = {
+            "label": label,
+            "start": seg.get("start", ""),
+            "end": seg.get("end", ""),
+            "n_events": n,
+        }
+
+        if n < min_events:
+            rec["skipped"] = True
+            rec["skip_reason"] = f"only {n} events (min_events={min_events})"
+            segment_results.append(rec)
+            continue
+
+        rec["skipped"] = False
+        rec.update(_agg_excursion(seg_df))
+
+        if include_trade and sig_col:
+            trade_data = _agg_trade(seg_df, sig_col, primary_tgt_pct)
+            rec.update(trade_data)
+            rec["cont_lift_pp"] = _lift_vs_baseline(trade_data.get("cont_win_rate"), baseline_cont_wr)
+            rec["rev_lift_pp"] = _lift_vs_baseline(trade_data.get("rev_win_rate"), baseline_rev_wr)
+
+        if "candle_bucket" in seg_df.columns:
+            rec["by_candle_bucket"] = _bucket_rows(
+                seg_df, "candle_bucket", sig_col or "size_ticks",
+                primary_tgt_pct, include_trade, baseline_cont_wr, baseline_rev_wr,
+            )
+
+        if "session_bucket" in seg_df.columns:
+            rec["by_session_bucket"] = _bucket_rows(
+                seg_df, "session_bucket", sig_col or "size_ticks",
+                primary_tgt_pct, include_trade, baseline_cont_wr, baseline_rev_wr,
+            )
+
+        if "direction" in seg_df.columns:
+            by_dir: List[Dict] = []
+            for dir_val, grp in seg_df.groupby("direction", sort=False):
+                dr: Dict[str, Any] = {"direction": "Bull" if int(dir_val) == 1 else "Bear"}
+                dr.update(_agg_excursion(grp))
+                if include_trade and sig_col:
+                    dr.update(_agg_trade(grp, sig_col, primary_tgt_pct))
+                by_dir.append(dr)
+            rec["by_direction"] = by_dir
+
+        segment_results.append(rec)
+
+    return {
+        "enabled": True,
+        "timezone": tz,
+        "n_segments": len(segment_results),
+        "primary_target_pct": primary_tgt_pct,
+        "population_baseline": {
+            "cont_win_rate": baseline_cont_wr,
+            "rev_win_rate": baseline_rev_wr,
+            "n_events": len(deduped),
+        },
+        "segments": segment_results,
+    }
