@@ -195,6 +195,18 @@ sections:
 #      timeline_show_summary: true
 #####Exec cards ####################################################
 #
+####PREDICTION
+  - id: horizon_overview
+    options:
+      store_dir: .ta_artifacts/horizon
+      instrument: NQ
+      contract: "06-26"
+      min_samples_cell: 5
+      min_samples_edge: 20
+      min_samples_calibration: 20
+      drift_recent_n: 50
+      top_n_edge: 20
+
 #profit_factor
 #total_net_profit
 #  - id: run_card_catalog

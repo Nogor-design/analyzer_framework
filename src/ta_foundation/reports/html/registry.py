@@ -316,6 +316,9 @@ from ta_foundation.reports.html.sections.large_candle_excursion_discovery_next_s
 from ta_foundation.reports.html.sections.large_candle_excursion_discovery_methodology import (
     render_large_candle_excursion_discovery_methodology,
 )
+from ta_foundation.reports.html.sections.horizon_overview import (
+    render_horizon_overview,
+)
 
 # Shared overview renderer reused for breakout, pullback, level
 def _make_generic_overview(discovery_key: str, title_label: str, accent: str):
@@ -1062,6 +1065,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="large_candle_excursion_discovery_methodology",
         default_title="Large Candle Excursion Discovery — Methodology",
         render_fn=render_large_candle_excursion_discovery_methodology,
+    ),
+    "horizon_overview": SectionDef(
+        id="horizon_overview",
+        default_title="Horizon Prediction Overview",
+        render_fn=render_horizon_overview,
     ),
 # render_pattern_engine_diagnostics
 }
