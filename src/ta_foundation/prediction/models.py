@@ -363,6 +363,12 @@ class SimilarContext:
                 "levels_score": round(o.levels_score, 4),
                 "breakout_score": round(o.breakout_score, 4),
                 "regime_label": o.regime_label,
+                # Per-label touch outcomes — needed by the statistical stub
+                # to derive an empirical touch_probability per level.
+                "levels_touched": [
+                    {"label": lv.label, "was_touched": lv.was_touched}
+                    for lv in o.levels_touched
+                ],
             }
         return {
             "target_date": self.target_date,

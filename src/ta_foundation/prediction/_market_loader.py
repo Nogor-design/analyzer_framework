@@ -10,7 +10,17 @@ def load_market_store(
     instrument: str,
     contract: str,
     allowed_instruments: list[tuple[str, str]] | None = None,
+    *,
+    load_ticks: bool = True,
 ):
+    """
+    Parse minute bars (and optionally ticks) for the requested
+    `(instrument, contract)` from `market_data_dir`.
+
+    `load_ticks=False` skips the `Tick.Last.txt` files entirely. Tick data
+    is large (hundreds of MB to several GB per contract) and not needed by
+    the daily or horizon prediction agents — both work off resampled bars.
+    """
     from ta_foundation.marketdata.store import MarketDataStore
     from ta_foundation.parsers.ninjatrader.minute_bars_last_txt import MinuteBarsLastTxtParser
     from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
@@ -44,8 +54,11 @@ def load_market_store(
             if art.df is not None and not art.df.empty:
                 market.ingest_artifact(art)
                 loaded_bars = True
-                date_range = f"  [{art.df['dt'].min().date()} → {art.df['dt'].max().date()}]"
+                date_range = f"  [{art.df['dt'].min().date()} -> {art.df['dt'].max().date()}]"
                 print(f"Loaded bars:  {path.name}  ({len(art.df)} rows){date_range}", file=sys.stderr)
+            continue
+
+        if not load_ticks:
             continue
 
         if tick_parser.can_parse(path, header):

@@ -1,47 +1,94 @@
 # prediction.yaml
-# ─────────────────────────────────────────────────────────────────────────────
-# Daily prediction config for ta_foundation.
+# -----------------------------------------------------------------------------
+# Prediction config for ta_foundation.
 # Run after NY close:
 #   python -m ta_foundation.prediction.run_prediction --config prediction.yaml
 #
-# Set ANTHROPIC_API_KEY in your environment before running.
-# ─────────────────────────────────────────────────────────────────────────────
+# Set ANTHROPIC_API_KEY in your environment before running (only needed when
+# `mode` includes `daily` and `dry_run` is false).
+# -----------------------------------------------------------------------------
 
-# ── Instrument ────────────────────────────────────────────────────────────────
+# -- Instrument ---------------------------------------------------------------
 instrument: NQ          # Instrument root (NQ, ES, MNQ, MES, ...)
 contract: "06-26"       # NinjaTrader format MM-YY (e.g. 06-26 = June 2026). Update each rollover.
 
-# ── Market data ───────────────────────────────────────────────────────────────
+# -- Market data --------------------------------------------------------------
 # Directory that MarketDataStore uses — the same folder you export minute bars
 # and tick data into from NinjaTrader.
 market_data: D:/MarketData
 
-# ── Economic calendar ─────────────────────────────────────────────────────────
+# Tick files (`* Tick.Last.txt`) are huge (often 100s of MB to several GB per
+# contract) and not used by either the daily or horizon agents. Leave this
+# false unless you are running pattern-engine or tick-driven analyses.
+load_ticks: false
+
+# -- Mode ---------------------------------------------------------------------
+# horizon: calibrated multi-agent horizon system (recommended)
+# daily:   legacy single-day forecast (uncalibrated stub or Claude)
+# both:    run both back-to-back
+mode: horizon
+
+# After making today's prediction, also auto-score every persisted prediction
+# whose outcome is now measurable (horizon end / target session has closed).
+# This closes the learning loop so calibration stats / reports stay current
+# without a separate scoring pass.
+catchup: true
+
+# -- Horizon mode -------------------------------------------------------------
+# Timeframe and horizon (in candles) for the next-N-candles forecast.
+horizon_timeframe: "5m"
+horizon_candles: 3
+
+# Operator-tunable deployment policy. Loader is permissive — leave a section
+# out to fall back to dataclass defaults.
+horizon:
+  cost_model:
+    fixed_points_per_side: 0.50    # commission + spread mid-cross, in points
+    slippage_atr_per_side: 0.05    # variable slippage, scaled by prior_atr
+    spread_points: 0.0
+  abstention:
+    min_sample_size: 20            # raw analogue count
+    min_effective_sample_size: 8.0
+    max_fallback_level: 1          # 0=full conditioning, 1=session-or-regime, 2=unfiltered
+    min_confidence: 0.40
+    regime_blacklist: []
+    session_blacklist: []
+    honor_agent_abstain: true
+  tradable_zone:
+    min_confidence: 0.55
+    min_expected_edge_atr: 0.05
+    min_effective_sample_size: 8.0
+    allow_neutral_argmax: false
+    kelly_cap: 0.25                # quarter-Kelly cap on size fraction
+    min_size_fraction: 0.0
+
+# -- Economic calendar (daily mode only) --------------------------------------
 # ForexFactory CSV export. Omit or leave blank to skip event risk scoring.
 # Download from: https://www.forexfactory.com/calendar (Export button)
 #calendar: D:/economicCalendar/ff_calendar_thisweek.csv
 
-# ── Prediction store ──────────────────────────────────────────────────────────
+# -- Prediction store ---------------------------------------------------------
 # Where predictions and outcomes are persisted as JSONL.
-# Structure: <output_dir>/<instrument>/<contract>/predictions.jsonl
+# Daily   -> <output_dir>/<instrument>/<contract>/predictions.jsonl
+# Horizon -> <output_dir>/horizon/<instrument>/<contract>/horizon_predictions.jsonl
 output_dir: .ta_artifacts/predictions
 
-# ── Claude model ──────────────────────────────────────────────────────────────
-# claude-opus-4-7  — most capable, adaptive thinking (recommended)
-# claude-sonnet-4-6 — faster/cheaper for testing
+# -- Daily mode (legacy) ------------------------------------------------------
+# Claude model for the daily-mode LLM agent. Ignored when mode=horizon.
+# claude-opus-4-7  - most capable, adaptive thinking (recommended)
+# claude-sonnet-4-6 - faster/cheaper for testing
 model: claude-opus-4-7
 
-# ── Learning context ──────────────────────────────────────────────────────────
 # How many historical analogue sessions to include as few-shot examples.
-# Range 3–10. More = richer context, slightly longer prompt.
+# Range 3-10. More = richer context, slightly longer prompt.
 n_similar: 5
 
-# ── Dry run ───────────────────────────────────────────────────────────────────
-# Set to true to use the statistical_stub_agent (no Claude API call).
-# Useful for testing the pipeline or validating market data connectivity.
+# Set to true to use the statistical_stub_agent in daily mode (no Claude API
+# call). Useful for testing the pipeline. Note: this agent is uncalibrated;
+# prefer mode=horizon for production.
 dry_run: true
 
-# ── asof (optional) ───────────────────────────────────────────────────────────
+# -- asof (optional) ----------------------------------------------------------
 # Override the prediction date. Defaults to today (Denver time).
 # Useful for back-filling missed days or testing on past sessions.
 asof: "2026-04-05"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 
 from ta_foundation.analysis.economic_calendar import EconomicCalendar
@@ -210,6 +211,7 @@ def statistical_stub_agent(context: Dict[str, Any]) -> Dict[str, Any]:
     """
     similar = context.get("similar_contexts") or []
     scored_similar = [s for s in similar if s.get("outcome")]
+    n = len(scored_similar)
 
     # Trend direction: plurality vote from similar outcomes
     direction_votes: Dict[str, int] = {}
@@ -218,28 +220,44 @@ def statistical_stub_agent(context: Dict[str, Any]) -> Dict[str, Any]:
         direction_votes[d] = direction_votes.get(d, 0) + 1
     if direction_votes:
         trend_dir = max(direction_votes, key=lambda d: direction_votes[d])
-        agreement = direction_votes[trend_dir] / len(scored_similar)
+        agreement = direction_votes[trend_dir] / n
     else:
         trend_dir = "neutral"
         agreement = 0.5
 
-    # Trending vs chop
-    trending_count = sum(1 for s in scored_similar if s["outcome"].get("actual_is_trending"))
-    is_trending = trending_count > len(scored_similar) / 2 if scored_similar else False
-    chop_conf = trending_count / len(scored_similar) if scored_similar else 0.5
+    # Trending vs chop — both derived from one source so they're consistent:
+    # chop_confidence = 1 − trending_fraction. With no data we report 0.5 for
+    # chop_confidence (uncertain) and is_trending=False (no positive evidence).
+    if n > 0:
+        trending_count = sum(1 for s in scored_similar if s["outcome"].get("actual_is_trending"))
+        trending_fraction = trending_count / n
+        is_trending = trending_fraction > 0.5
+        chop_conf = 1.0 - trending_fraction
+    else:
+        is_trending = False
+        chop_conf = 0.5
 
-    # Predicted range: use similar outcomes if available, else ATR-based
+    # Predicted range — anchored at the prior-day close, scaled by a
+    # session-typical multiplier. Default is ±1.0 ATR (≈ 2×ATR total range,
+    # close to typical NQ session range). When the agent expects a breakout
+    # day we widen further; trending days widen modestly. The previous
+    # ±0.5×ATR (1×ATR total) was unrealistically tight.
     fv = context.get("multitf_features", {}).get("feature_values", {})
     atr = float(fv.get("tf15m_atr") or fv.get("tf60m_atr") or 10.0)
     levels = context.get("daily_levels", {})
     pdc = (levels.get("prior_day") or {}).get("close") or 0.0
 
-    pred_high = pdc + 0.5 * atr if pdc else atr
-    pred_low = pdc - 0.5 * atr if pdc else 0.0
-
-    # Breakout probability: fraction of similar days with breakout
     breakout_count = sum(1 for s in scored_similar if s["outcome"].get("breakout_occurred"))
-    breakout_prob = breakout_count / len(scored_similar) if scored_similar else 0.3
+    breakout_prob = breakout_count / n if n > 0 else 0.3
+
+    range_mult = 1.0
+    if breakout_prob > 0.6:
+        range_mult *= 1.5
+    if is_trending:
+        range_mult *= 1.25
+
+    pred_high = pdc + range_mult * atr if pdc else range_mult * atr
+    pred_low = pdc - range_mult * atr if pdc else 0.0
 
     breakout_dirs: Dict[str, int] = {}
     for s in scored_similar:
@@ -248,19 +266,28 @@ def statistical_stub_agent(context: Dict[str, Any]) -> Dict[str, Any]:
             breakout_dirs[bd] = breakout_dirs.get(bd, 0) + 1
     breakout_dir = max(breakout_dirs, key=lambda d: breakout_dirs[d]) if breakout_dirs else "none"
 
-    # Key levels: pass through daily levels with default touch_probability
-    key_levels = []
+    # Key levels — emit each daily level with the correct level_type and an
+    # empirical touch_probability shrunk toward a distance-from-PDC prior.
+    # Per-label hit counts come from the similar contexts' levels_touched.
+    label_touches = _collect_label_touches(scored_similar)
+    key_levels: List[Dict[str, Any]] = []
     dl = context.get("daily_levels") or {}
-    for label, price in _extract_level_prices(dl):
-        if price is not None:
-            key_levels.append({
-                "price": price,
-                "label": label,
-                "level_type": "pivot" if "pivot" in label.lower() or label in ("pp",) else "support",
-                "touch_probability": 0.5,
-            })
+    for label, price, level_type in _extract_level_prices(dl):
+        if price is None:
+            continue
+        touched, total = label_touches.get(label, (0, 0))
+        touch_prob = _empirical_touch_probability(
+            price=price, pdc=pdc, atr=atr,
+            touched=touched, total=total,
+        )
+        key_levels.append({
+            "price": price,
+            "label": label,
+            "level_type": level_type,
+            "touch_probability": touch_prob,
+            "sample_size": total,
+        })
 
-    n_similar = len(scored_similar)
     mean_sim = (
         sum(s.get("similarity_score", 0) for s in similar) / len(similar) if similar else 0.0
     )
@@ -277,7 +304,7 @@ def statistical_stub_agent(context: Dict[str, Any]) -> Dict[str, Any]:
         "event_risk_score": float(context.get("event_proximity", {}).get("event_risk_score") or 0.0),
         "key_levels": key_levels[:8],  # limit to top 8
         "reasoning": (
-            f"Statistical stub: based on {n_similar} similar historical contexts "
+            f"Statistical stub: based on {n} similar historical contexts "
             f"(mean similarity {mean_sim:.2f}). "
             f"Trend vote: {trend_dir} ({agreement:.0%}), "
             f"{'trending' if is_trending else 'chop'} expected, "
@@ -287,21 +314,84 @@ def statistical_stub_agent(context: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract_level_prices(daily_levels: Dict[str, Any]):
-    """Yield (label, price) pairs from a DailyLevels.as_dict() output."""
+    """
+    Yield (label, price, level_type) tuples from a DailyLevels.as_dict() output.
+
+    level_type follows VALID_LEVEL_TYPES = {"support", "resistance", "pivot", "magnet"}.
+    Resistance: pd_high, R1/R2, cam_R3/R4. Support: pd_low, S1/S2, cam_S3/S4.
+    Pivot: pd_close, PP.
+    """
     pd_levels = daily_levels.get("prior_day") or {}
+    pd_type = {"high": "resistance", "low": "support", "close": "pivot"}
     for k in ("high", "low", "close"):
         v = pd_levels.get(k)
         if v:
-            yield f"pd_{k}", float(v)
+            yield f"pd_{k}", float(v), pd_type[k]
 
     pivots = daily_levels.get("pivots") or {}
+    pivot_type = {"pp": "pivot", "r1": "resistance", "r2": "resistance", "s1": "support", "s2": "support"}
     for k in ("pp", "r1", "s1", "r2", "s2"):
         v = pivots.get(k)
         if v:
-            yield k.upper(), float(v)
+            yield k.upper(), float(v), pivot_type[k]
 
     cam = daily_levels.get("camarilla") or {}
+    cam_type = {"r3": "resistance", "r4": "resistance", "s3": "support", "s4": "support"}
     for k in ("r4", "s4", "r3", "s3"):
         v = cam.get(k)
         if v:
-            yield f"cam_{k.upper()}", float(v)
+            yield f"cam_{k.upper()}", float(v), cam_type[k]
+
+
+def _collect_label_touches(scored_similar: List[Dict[str, Any]]) -> Dict[str, tuple]:
+    """
+    From the similar-context outcomes, return {label: (touched_count, total_count)}.
+
+    Each similar's `outcome["levels_touched"]` is a list of LevelOutcome dicts.
+    Older serializations may omit the field entirely; treat as empty.
+    """
+    counts: Dict[str, list] = {}
+    for s in scored_similar:
+        levels = (s.get("outcome") or {}).get("levels_touched") or []
+        for lv in levels:
+            label = str(lv.get("label") or "")
+            if not label:
+                continue
+            entry = counts.setdefault(label, [0, 0])
+            entry[1] += 1
+            if lv.get("was_touched"):
+                entry[0] += 1
+    return {k: (v[0], v[1]) for k, v in counts.items()}
+
+
+def _empirical_touch_probability(
+    *,
+    price: float,
+    pdc: float,
+    atr: float,
+    touched: int,
+    total: int,
+    prior_strength: float = 3.0,
+) -> float:
+    """
+    Beta-Binomial shrinkage of empirical hit rate toward a distance-based prior.
+
+    Prior: levels close to the prior-day close are more likely to be touched.
+    Specifically, P_prior ≈ exp(-d / atr) where d = |price - pdc| in points.
+    With atr=10 and a level 5 points away, prior ≈ 0.61. With a level 30 points
+    away, prior ≈ 0.05. When pdc or atr is missing, the prior collapses to 0.5.
+
+    Shrinkage strength `prior_strength` is treated as pseudo-observations of
+    the prior, so empirical evidence dominates once total ≫ prior_strength.
+    """
+    if pdc and atr > 0:
+        distance = abs(float(price) - float(pdc))
+        prior = float(np.exp(-distance / max(atr, 1e-6)))
+        prior = max(0.05, min(0.95, prior))
+    else:
+        prior = 0.5
+
+    n = max(0, int(total))
+    k = max(0, int(touched))
+    posterior = (k + prior_strength * prior) / (n + prior_strength)
+    return float(max(0.0, min(1.0, posterior)))
