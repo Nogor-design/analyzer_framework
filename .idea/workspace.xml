@@ -5,24 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="25f0092f-9416-42c7-a707-7563989647ee" name="Changes" comment="Learning loop for prediction">
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/Test.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_adv2bar_20_40pct_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_adv2bar_lt_20pct_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_explosive_start_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_fav2bar_ge_35pct_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_midpoint_reclaim_yes_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_orderly_start_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_failed_continuation_x_rebreak_no_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_after_session_range_break_x_midpoint_reclaim_yes_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_at_key_level_with_extended_vwap_stretch_x_explosive_start_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/first_large_at_key_level_with_extended_vwap_stretch_x_rebreak_no_1m.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/ta_foundation/strategies/LargeCandleReversal/templates/skipped_blueprints.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/AI_REPO_INDEX.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/AI_WORKFLOW.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/prediction.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/prediction.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/prediction/_market_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/prediction/_market_loader.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/prediction/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/prediction/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/prediction/orchestrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/prediction/orchestrator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ta_foundation/prediction/run_prediction.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/ta_foundation/prediction/run_prediction.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/report.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/report.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
