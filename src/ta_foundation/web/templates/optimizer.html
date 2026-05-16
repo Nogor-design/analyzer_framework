@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Optimizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pill { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
+    .pill-fixed { background: #1f2937; color: #9ca3af; }
+    .pill-opt { background: #1e3a8a; color: #93c5fd; }
+    .pill-warn { background: #78350f; color: #fcd34d; }
+    .group-row td { background: #1f2937; color: #d1d5db; font-weight: 600; font-size: 12px; }
+    input[type="text"], input[type="number"], select {
+      background: #111827; border: 1px solid #374151; color: #f3f4f6;
+      border-radius: 4px; padding: 2px 6px; font-size: 12px;
+    }
+    input:focus, select:focus { outline: 1px solid #f59e0b; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .chunk-row { border-bottom: 1px solid #1f2937; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <span class="text-amber-400 font-bold text-lg">Optimizer</span>
+    <span class="text-gray-500 text-sm">/ NinjaTrader plan preview</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions" class="btn-ghost px-3 py-1.5 rounded">Sessions</a>
+    <span class="text-gray-500">
+      session <span id="session-id-display" class="font-mono text-gray-300">{{ session_id }}</span>
+    </span>
+  </div>
+</header>
+
+<main class="flex-1 max-w-6xl mx-auto w-full p-6 space-y-6">
+
+  <!-- Strategy + seed picker -->
+  <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <div class="text-amber-400 font-semibold mb-2 text-sm">1. Strategy &amp; seed template</div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Strategy</label>
+        <select id="strategy-select" class="w-full">
+          <option value="">— pick a strategy —</option>
+        </select>
+        <div id="strategy-info" class="text-xs text-gray-500 mt-1"></div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Seed template (optional)</label>
+        <select id="seed-select" class="w-full" disabled>
+          <option value="">— none —</option>
+        </select>
+        <div id="seed-info" class="text-xs text-gray-500 mt-1"></div>
+      </div>
+    </div>
+    <div class="grid grid-cols-3 gap-4 mt-3">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Label</label>
+        <input id="session-label" type="text" class="w-full" placeholder="e.g. Pantheon NQ broad" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Contract / instrument</label>
+        <input id="instrument" type="text" class="w-full" value="NQ" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Market suffix</label>
+        <input id="market-suffix" type="text" class="w-full" value="NQ" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Parameter table -->
+  <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">2. Parameters</div>
+      <div class="text-xs text-gray-500" id="param-summary"></div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-800">
+            <th class="py-1 pr-2">Name</th>
+            <th class="py-1 pr-2">Type</th>
+            <th class="py-1 pr-2">Mode</th>
+            <th class="py-1 pr-2">Fixed value</th>
+            <th class="py-1 pr-2">Min</th>
+            <th class="py-1 pr-2">Max</th>
+            <th class="py-1 pr-2">Increment</th>
+            <th class="py-1 pr-2">Steps</th>
+            <th class="py-1 pr-2">Range</th>
+          </tr>
+        </thead>
+        <tbody id="param-table"><tr><td colspan="9" class="text-gray-600 py-2">Load a strategy first.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Guardrails + chunking -->
+  <section class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+    <div class="text-amber-400 font-semibold mb-2 text-sm">3. Guardrails &amp; chunking</div>
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max drawdown ($)</label>
+        <input id="gr-max-dd" type="number" class="w-full" placeholder="e.g. 2500" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min trades</label>
+        <input id="gr-min-trades" type="number" class="w-full" placeholder="e.g. 10" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min % days traded</label>
+        <input id="gr-min-pct-days" type="number" step="0.1" class="w-full" placeholder="e.g. 20" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min profit factor</label>
+        <input id="gr-min-pf" type="number" step="0.1" class="w-full" placeholder="e.g. 1.5" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min net profit ($)</label>
+        <input id="gr-min-np" type="number" class="w-full" placeholder="optional" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max trades/day</label>
+        <input id="gr-max-tpd" type="number" class="w-full" placeholder="optional" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max combinations / chunk</label>
+        <input id="ch-max-combo" type="number" class="w-full" value="5000" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max runtime / chunk (min)</label>
+        <input id="ch-max-runtime" type="number" class="w-full" placeholder="optional" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Keep best rows / chunk</label>
+        <input id="ch-keep-best" type="number" class="w-full" value="500" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Actions -->
+  <section class="flex items-center gap-3">
+    <button id="save-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Save session</button>
+    <button id="preview-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-semibold">Preview plan</button>
+    <button id="matches-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Check for prior runs</button>
+    <span id="status-line" class="text-xs text-gray-500"></span>
+  </section>
+
+  <!-- Matching prior sessions -->
+  <section id="matches-section" class="bg-gray-900 border border-amber-700 rounded-lg p-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">Matching prior sessions</div>
+      <div class="text-xs text-gray-500" id="matches-hash"></div>
+    </div>
+    <div class="text-xs text-gray-400 mb-2">
+      Sessions below ran the same strategy, seed, parameter ranges, and guardrails.
+      Inspect their decision state before launching another full run.
+    </div>
+    <ul id="matches-list" class="text-xs text-gray-300 space-y-1"></ul>
+  </section>
+
+  <!-- Plan preview -->
+  <section id="plan-section" class="bg-gray-900 border border-gray-800 rounded-lg p-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">4. Plan preview</div>
+      <div class="text-xs text-gray-500" id="plan-summary"></div>
+    </div>
+    <div id="plan-warnings" class="text-xs text-amber-300 mb-2"></div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-800">
+            <th class="py-1 pr-2">Chunk</th>
+            <th class="py-1 pr-2">Combinations</th>
+            <th class="py-1 pr-2">Optimized parameters</th>
+          </tr>
+        </thead>
+        <tbody id="plan-table"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Template generation + naming -->
+  <section id="generate-section" class="bg-gray-900 border border-gray-800 rounded-lg p-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">5. Generate templates</div>
+      <div class="text-xs text-gray-500" id="generate-summary"></div>
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-3">
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Optimizer type (override)</label>
+        <input id="gen-optimizer-type" type="text" class="w-full" placeholder="optional, e.g. NinjaTrader.NinjaScript.Optimizers.CustomMultiObjectiveOptimizer" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Optimization fitness (override)</label>
+        <input id="gen-fitness" type="text" class="w-full" placeholder="optional" />
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="generate-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-semibold">Generate optimizer XMLs</button>
+      <button id="rename-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Run template-namer</button>
+      <span id="generate-status" class="text-xs text-gray-500"></span>
+    </div>
+    <div id="generated-paths" class="mt-3 text-xs text-gray-300 pathish"></div>
+    <pre id="rename-stdout" class="mt-3 text-xs text-gray-500 bg-black/30 p-2 rounded pathish hidden"></pre>
+  </section>
+
+  <!-- Run on NinjaTrader -->
+  <section id="run-section" class="bg-gray-900 border border-gray-800 rounded-lg p-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">6. Run on NinjaTrader</div>
+      <div class="text-xs text-gray-500" id="run-summary"></div>
+    </div>
+    <div class="text-xs text-gray-400 mb-2">
+      Drops <span class="font-mono">C:\temp\nt8_command.json</span> for the batch AddOn.
+      NinjaTrader must already be running with the AddOn loaded; results land under
+      <span class="font-mono">&lt;session&gt;/nt_output/</span>.
+    </div>
+    <div class="flex items-center gap-3 mb-3">
+      <button id="run-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-semibold">Run on NinjaTrader</button>
+      <button id="run-cancel-btn" class="btn-ghost px-3 py-1.5 rounded text-xs" disabled>Cancel</button>
+      <span id="run-status-line" class="text-xs text-gray-500"></span>
+    </div>
+    <div class="w-full bg-gray-800 rounded h-2 mb-2 overflow-hidden">
+      <div id="run-progress-bar" class="h-full bg-amber-400" style="width: 0%"></div>
+    </div>
+    <div id="run-progress-text" class="text-xs text-gray-400 mb-2">No run started.</div>
+    <div id="run-current" class="text-xs text-gray-500 mb-2"></div>
+    <div id="run-error" class="text-xs text-red-400 mb-2 hidden"></div>
+    <div id="run-finished" class="text-xs text-gray-600 pathish"></div>
+  </section>
+
+  <!-- Results -->
+  <section id="results-section" class="bg-gray-900 border border-gray-800 rounded-lg p-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-amber-400 font-semibold text-sm">7. Results</div>
+      <div class="flex items-center gap-3">
+        <button id="results-refresh-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Refresh results</button>
+        <div class="text-xs text-gray-500" id="results-summary"></div>
+      </div>
+    </div>
+    <div id="results-notes" class="text-xs text-gray-500 mb-3"></div>
+    <div id="batch-summary" class="grid grid-cols-3 gap-2 mb-3"></div>
+    <div class="text-xs text-gray-400 mb-1">Top rows passing available guardrails</div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-800">
+            <th class="py-1 pr-2">Batch</th>
+            <th class="py-1 pr-2">Score</th>
+            <th class="py-1 pr-2">Net</th>
+            <th class="py-1 pr-2">PF</th>
+            <th class="py-1 pr-2">DD</th>
+            <th class="py-1 pr-2">Trades</th>
+            <th class="py-1 pr-2">Win %</th>
+            <th class="py-1 pr-2">Parameters</th>
+          </tr>
+        </thead>
+        <tbody id="results-table"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const SESSION_ID = "{{ session_id }}";
+let STRATEGY_DETAIL = null;
+let PARAMS = [];   // current parameter config rows for UI
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (msg) => { $("status-line").textContent = msg || ""; };
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
+function isGenericInstrument(value) {
+  const text = String(value || "").trim();
+  return !text || (!/\s/.test(text) && !/\d{2}-\d{2}/.test(text));
+}
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  }
+  return res.json();
+}
+
+async function loadStrategies() {
+  const data = await fetchJSON("/api/optimizer/strategies");
+  const sel = $("strategy-select");
+  for (const s of (data.strategies || [])) {
+    const opt = document.createElement("option");
+    opt.value = s.strategy_id;
+    opt.textContent = `${s.strategy_id} (${s.parameter_count} params, ${s.seed_template_count} templates)`;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadStrategyDetail(strategyId) {
+  if (!strategyId) {
+    STRATEGY_DETAIL = null;
+    renderParameterTable();
+    return;
+  }
+  setStatus("Loading strategy…");
+  STRATEGY_DETAIL = await fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}`);
+  $("strategy-info").textContent = STRATEGY_DETAIL.cs_path;
+  // Populate seed templates
+  const seedSel = $("seed-select");
+  seedSel.innerHTML = '<option value="">— none —</option>';
+  for (const t of (STRATEGY_DETAIL.seed_templates || [])) {
+    const opt = document.createElement("option");
+    opt.value = t.path;
+    opt.textContent = `${t.name} (${t.mode}, ${t.estimated_combinations} combos)`;
+    opt.dataset.template = JSON.stringify(t);
+    seedSel.appendChild(opt);
+  }
+  seedSel.disabled = (STRATEGY_DETAIL.seed_templates || []).length === 0;
+  // Seed PARAMS from .cs metadata as all-fixed by default
+  PARAMS = (STRATEGY_DETAIL.parameters || []).map((p) => ({
+    name: p.name,
+    type_name: p.type_name,
+    mode: "fixed",
+    fixed_value: p.default,
+    minimum: p.range_min ?? "",
+    maximum: p.range_max ?? "",
+    increment: defaultIncrement(p.type_name),
+    _group: p.group_name || "",
+    _display: p.display_name || p.name,
+  }));
+  renderParameterTable();
+  setStatus("");
+}
+
+function defaultIncrement(typeName) {
+  const t = (typeName || "").toLowerCase();
+  if (t === "double") return 0.1;
+  if (t === "bool" || t === "boolean") return 1;
+  return 1;
+}
+
+function onSeedSelected(path) {
+  const seedSel = $("seed-select");
+  const opt = seedSel.options[seedSel.selectedIndex];
+  if (!opt || !opt.dataset.template) return;
+  // For Phase 1, just show seed metadata; deep merge of seed values into PARAMS
+  // is a Phase 2 concern (it needs to read the seed's current strategy values).
+  try {
+    const t = JSON.parse(opt.dataset.template);
+    const templateInstrument = String(t.instrument_or_instrument_list || "").trim();
+    if (templateInstrument && isGenericInstrument($("instrument").value)) {
+      $("instrument").value = templateInstrument;
+    }
+    $("seed-info").innerHTML = `mode <span class="pill pill-fixed">${t.mode}</span>` +
+      ` &nbsp;contract: <span class="text-gray-300">${escapeHtml(templateInstrument || "(none)")}</span>` +
+      ` &nbsp;swept: <span class="text-gray-300">${(t.swept_parameter_names || []).join(", ") || "(none)"}</span>`;
+  } catch (e) { /* ignore */ }
+}
+
+function renderParameterTable() {
+  const tbody = $("param-table");
+  tbody.innerHTML = "";
+  if (!PARAMS.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-gray-600 py-2">Load a strategy first.</td></tr>';
+    $("param-summary").textContent = "";
+    return;
+  }
+  // Group rows
+  const groups = new Map();
+  for (let i = 0; i < PARAMS.length; i++) {
+    const g = PARAMS[i]._group || "(ungrouped)";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(i);
+  }
+  for (const [groupName, idxs] of groups) {
+    const groupRow = document.createElement("tr");
+    groupRow.className = "group-row";
+    groupRow.innerHTML = `<td colspan="9" class="px-2 py-1">${groupName}</td>`;
+    tbody.appendChild(groupRow);
+    for (const i of idxs) tbody.appendChild(makeParamRow(i));
+  }
+  updateParamSummary();
+}
+
+function makeParamRow(i) {
+  const p = PARAMS[i];
+  const tr = document.createElement("tr");
+  tr.className = "border-b border-gray-800";
+  const rangeText = (p.minimum !== "" && p.minimum != null) || (p.maximum !== "" && p.maximum != null)
+    ? `[${p.minimum ?? "−∞"}, ${p.maximum ?? "+∞"}]`
+    : "(no [Range])";
+  const isBool = (p.type_name || "").toLowerCase() === "bool";
+  const optimizing = p.mode === "optimize";
+
+  // Cell content depends on mode. When fixed, only fixed_value matters and
+  // min/max/increment are hidden as "—". When optimizing, fixed_value is
+  // hidden and min/max/increment drive the sweep. Booleans in optimize mode
+  // are pinned to false..true / step 1 and shown as static labels.
+  const fixedCell = optimizing
+    ? '<span class="text-gray-600">&mdash;</span>'
+    : (isBool
+        ? `<select data-idx="${i}" data-field="fixed_value">
+             <option value="false" ${String(p.fixed_value).toLowerCase() !== 'true' ? 'selected' : ''}>false</option>
+             <option value="true"  ${String(p.fixed_value).toLowerCase() === 'true' ? 'selected' : ''}>true</option>
+           </select>`
+        : `<input data-idx="${i}" data-field="fixed_value" type="text" value="${p.fixed_value ?? ''}" class="w-24" />`);
+
+  let minCell, maxCell, incCell;
+  if (!optimizing) {
+    minCell = maxCell = incCell = '<span class="text-gray-600">&mdash;</span>';
+  } else if (isBool) {
+    minCell = '<span class="text-gray-400">false</span>';
+    maxCell = '<span class="text-gray-400">true</span>';
+    incCell = '<span class="text-gray-400">1</span>';
+  } else {
+    minCell = `<input data-idx="${i}" data-field="minimum" type="text" value="${p.minimum ?? ''}" class="w-20" />`;
+    maxCell = `<input data-idx="${i}" data-field="maximum" type="text" value="${p.maximum ?? ''}" class="w-20" />`;
+    incCell = `<input data-idx="${i}" data-field="increment" type="text" value="${p.increment ?? ''}" class="w-20" />`;
+  }
+
+  tr.innerHTML = `
+    <td class="py-1 pr-2 font-mono text-gray-200">${p.name}</td>
+    <td class="py-1 pr-2 text-gray-500">${p.type_name}</td>
+    <td class="py-1 pr-2">
+      <select data-idx="${i}" data-field="mode">
+        <option value="fixed" ${p.mode === "fixed" ? "selected" : ""}>fixed</option>
+        <option value="optimize" ${p.mode === "optimize" ? "selected" : ""}>optimize</option>
+      </select>
+    </td>
+    <td class="py-1 pr-2">${fixedCell}</td>
+    <td class="py-1 pr-2">${minCell}</td>
+    <td class="py-1 pr-2">${maxCell}</td>
+    <td class="py-1 pr-2">${incCell}</td>
+    <td class="py-1 pr-2 text-gray-300" data-steps="${i}">${optimizing ? estimateSteps(p) : 1}</td>
+    <td class="py-1 pr-2 text-gray-600">${rangeText}</td>
+  `;
+  return tr;
+}
+
+function estimateSteps(p) {
+  if (p.mode !== "optimize") return 1;
+  const t = (p.type_name || "").toLowerCase();
+  if (t === "bool" || t === "boolean") return 2;
+  const min = parseFloat(p.minimum);
+  const max = parseFloat(p.maximum);
+  const inc = parseFloat(p.increment);
+  if (!isFinite(min) || !isFinite(max) || !isFinite(inc) || inc <= 0) return 1;
+  if (max < min) return 0;
+  return Math.floor((max - min) / inc) + 1;
+}
+
+function updateParamSummary() {
+  const opt = PARAMS.filter((p) => p.mode === "optimize");
+  let combo = 1;
+  for (const p of opt) combo *= Math.max(1, estimateSteps(p));
+  $("param-summary").textContent =
+    `${opt.length} optimized · ${PARAMS.length - opt.length} fixed · ~${combo.toLocaleString()} combinations`;
+}
+
+$("param-table").addEventListener("change", (e) => {
+  const idx = e.target.dataset.idx;
+  const field = e.target.dataset.field;
+  if (idx == null || !field) return;
+  const p = PARAMS[idx];
+  p[field] = e.target.value;
+  if (field === "mode") {
+    // Auto-seed sweep range/increment when flipping to optimize so the user
+    // does not have to type anything for bool params and gets sensible
+    // defaults for numeric params.
+    if (p.mode === "optimize") {
+      const t = (p.type_name || "").toLowerCase();
+      if (t === "bool" || t === "boolean") {
+        p.minimum = false;
+        p.maximum = true;
+        p.increment = 1;
+      } else {
+        if (p.minimum === "" || p.minimum == null) p.minimum = p.fixed_value ?? "";
+        if (p.maximum === "" || p.maximum == null) p.maximum = p.fixed_value ?? "";
+        if (p.increment === "" || p.increment == null) p.increment = defaultIncrement(p.type_name);
+      }
+    }
+    renderParameterTable();
+  } else {
+    const stepsCell = document.querySelector(`[data-steps="${idx}"]`);
+    if (stepsCell) stepsCell.textContent = p.mode === "optimize" ? estimateSteps(p) : 1;
+    updateParamSummary();
+  }
+});
+
+$("strategy-select").addEventListener("change", (e) => loadStrategyDetail(e.target.value));
+$("seed-select").addEventListener("change", (e) => onSeedSelected(e.target.value));
+
+function collectSessionPayload() {
+  return {
+    label: $("session-label").value || "",
+    strategy_id: $("strategy-select").value || "",
+    seed_template_path: $("seed-select").value || "",
+    instrument: $("instrument").value || "",
+    market_suffix: $("market-suffix").value || "",
+    parameters: PARAMS.map((p) => {
+      const t = (p.type_name || "").toLowerCase();
+      const isBool = t === "bool" || t === "boolean";
+      if (p.mode === "optimize") {
+        if (isBool) {
+          return {
+            name: p.name, type_name: p.type_name, mode: "optimize",
+            fixed_value: null,
+            minimum: false, maximum: true, increment: 1,
+          };
+        }
+        return {
+          name: p.name, type_name: p.type_name, mode: "optimize",
+          fixed_value: null,
+          minimum: castValue(p.minimum, p.type_name),
+          maximum: castValue(p.maximum, p.type_name),
+          increment: castValue(p.increment, p.type_name),
+        };
+      }
+      return {
+        name: p.name, type_name: p.type_name, mode: "fixed",
+        fixed_value: castValue(p.fixed_value, p.type_name),
+        minimum: null, maximum: null, increment: null,
+      };
+    }),
+    guardrails: {
+      max_drawdown_dollars: numOrNull($("gr-max-dd").value),
+      min_trades: numOrNull($("gr-min-trades").value),
+      min_percent_days_traded: numOrNull($("gr-min-pct-days").value),
+      min_profit_factor: numOrNull($("gr-min-pf").value),
+      min_net_profit: numOrNull($("gr-min-np").value),
+      max_trades_per_day: numOrNull($("gr-max-tpd").value),
+    },
+    chunking: {
+      max_combinations_per_chunk: parseInt($("ch-max-combo").value || "5000", 10),
+      max_runtime_minutes_per_chunk: numOrNull($("ch-max-runtime").value),
+      keep_best_results: parseInt($("ch-keep-best").value || "500", 10),
+    },
+  };
+}
+
+function castValue(raw, typeName) {
+  if (raw === "" || raw == null) return null;
+  const t = (typeName || "").toLowerCase();
+  if (t === "bool" || t === "boolean") {
+    if (raw === true || raw === false) return raw;
+    return String(raw).toLowerCase() === "true";
+  }
+  if (t === "int" || t === "double") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : raw;
+  }
+  return raw;
+}
+
+function numOrNull(raw) {
+  if (raw === "" || raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+$("save-btn").addEventListener("click", async () => {
+  setStatus("Saving…");
+  try {
+    await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`, {
+      method: "PATCH",
+      body: JSON.stringify(collectSessionPayload()),
+    });
+    setStatus("Saved");
+  } catch (e) {
+    setStatus(`Save failed: ${e.message}`);
+  }
+});
+
+$("matches-btn").addEventListener("click", async () => {
+  setStatus("Checking for matching prior sessions…");
+  try {
+    await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`, {
+      method: "PATCH",
+      body: JSON.stringify(collectSessionPayload()),
+    });
+    const data = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/matches`);
+    const section = $("matches-section");
+    const list = $("matches-list");
+    list.innerHTML = "";
+    $("matches-hash").textContent = `plan_hash ${data.plan_hash}`;
+    const matches = data.matches || [];
+    if (!matches.length) {
+      section.classList.remove("hidden");
+      list.innerHTML = '<li class="text-gray-500">No matching prior sessions.</li>';
+      setStatus("No matches.");
+      return;
+    }
+    for (const m of matches) {
+      const li = document.createElement("li");
+      li.innerHTML =
+        `<a href="/optimizer/sessions/${encodeURIComponent(m.session_id)}/resume" class="text-amber-300 hover:underline">` +
+        `${escapeHtml(m.label || m.session_id)}</a> — ${escapeHtml(m.decision_state || 'no_package')} ` +
+        `${m.final_validation_status ? '· final ' + escapeHtml(m.final_validation_status) : ''} ` +
+        `${m.final_recommendation_count ? '· ' + m.final_recommendation_count + ' recs' : ''} ` +
+        `· updated ${escapeHtml(m.updated_at || '')}`;
+      list.appendChild(li);
+    }
+    section.classList.remove("hidden");
+    setStatus(`${matches.length} match${matches.length === 1 ? '' : 'es'} found`);
+  } catch (e) {
+    setStatus(`Match check failed: ${e.message}`);
+  }
+});
+
+$("preview-btn").addEventListener("click", async () => {
+  setStatus("Building plan…");
+  try {
+    const data = await fetchJSON(
+      `/api/optimizer/sessions/${SESSION_ID}/plan/preview`,
+      { method: "POST", body: JSON.stringify(collectSessionPayload()) }
+    );
+    renderPlan(data.plan);
+    setStatus("Plan ready");
+  } catch (e) {
+    setStatus(`Plan failed: ${e.message}`);
+  }
+});
+
+function renderPlan(plan) {
+  $("plan-section").classList.remove("hidden");
+  $("generate-section").classList.remove("hidden");
+  $("plan-summary").textContent =
+    `${plan.chunks.length} chunks · ${plan.combination_estimate.toLocaleString()} combos · keep ${plan.keep_best_results || 500}/chunk · hash ${plan.plan_hash}`;
+  const warnings = plan.warnings || [];
+  $("plan-warnings").innerHTML = warnings.map((w) => `<span class="pill pill-warn mr-1">${w}</span>`).join("");
+  const tbody = $("plan-table");
+  tbody.innerHTML = "";
+  for (const chunk of plan.chunks) {
+    const optText = chunk.optimized.map((p) => {
+      if ((p.type_name || "").toLowerCase().startsWith("bool")) {
+        return `${p.name} {bool}`;
+      }
+      return `${p.name} ${p.minimum}..${p.maximum} step ${p.increment} (${p.step_count})`;
+    }).join(" · ");
+    const tr = document.createElement("tr");
+    tr.className = "chunk-row";
+    tr.innerHTML = `
+      <td class="py-1 pr-2 font-mono text-gray-300">${chunk.chunk_id}</td>
+      <td class="py-1 pr-2 text-gray-300">${chunk.combination_count.toLocaleString()}</td>
+      <td class="py-1 pr-2 text-gray-400">${optText || "(no sweeps)"}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+$("generate-btn").addEventListener("click", async () => {
+  $("generate-status").textContent = "Generating…";
+  try {
+    const body = {
+      optimizer_type: $("gen-optimizer-type").value || null,
+      optimization_fitness: $("gen-fitness").value || null,
+    };
+    const data = await fetchJSON(
+      `/api/optimizer/sessions/${SESSION_ID}/templates/generate`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    const templates = data.templates || [];
+    $("generate-summary").textContent = `${templates.length} templates → ${data.output_dir}`;
+    $("generated-paths").innerHTML = templates.map((t) =>
+      `<div><span class="text-gray-500">${t.chunk_id}:</span> ${t.path} <span class="text-gray-600">(${t.combination_count.toLocaleString()} combos)</span></div>`
+    ).join("");
+    $("generate-status").textContent = "Done";
+    $("run-section").classList.remove("hidden");
+  } catch (e) {
+    $("generate-status").textContent = `Failed: ${e.message}`;
+  }
+});
+
+// --- Run on NinjaTrader -------------------------------------------------
+
+let RUN_POLL_TIMER = null;
+
+function describeRunState(state) {
+  switch (state) {
+    case "requested": return "Command sent · waiting for AddOn to pick up";
+    case "running":   return "Running on NinjaTrader";
+    case "finished":  return "Finished";
+    case "stale":     return "No new files in 5+ min — check NinjaTrader";
+    case "cancelled": return "Cancelled";
+    default:          return state || "";
+  }
+}
+
+function renderRunStatus(status) {
+  if (!status) {
+    $("run-progress-text").textContent = "No run started.";
+    $("run-progress-bar").style.width = "0%";
+    $("run-current").textContent = "";
+    $("run-error").classList.add("hidden");
+    $("run-finished").textContent = "";
+    $("run-cancel-btn").disabled = true;
+    return;
+  }
+  const pct = status.total > 0 ? Math.round(100 * status.completed / status.total) : 0;
+  $("run-progress-bar").style.width = pct + "%";
+  $("run-progress-text").textContent =
+    `${status.completed} / ${status.total} templates · ${pct}% · ${describeRunState(status.state)}`;
+  $("run-current").textContent = status.current_template
+    ? `Current: ${status.current_template}`
+    : "";
+  if (status.last_error) {
+    $("run-error").textContent = `Last error: ${status.last_error}`;
+    $("run-error").classList.remove("hidden");
+  } else {
+    $("run-error").classList.add("hidden");
+  }
+  const finished = status.finished_templates || [];
+  if (finished.length) {
+    $("run-finished").innerHTML = `Finished: ${finished.map((n) => `<span class="text-gray-400">${n}</span>`).join(", ")}`;
+  } else {
+    $("run-finished").textContent = "";
+  }
+  const src = status.source === "heartbeat" ? "live AddOn heartbeat" : "folder watch";
+  const ageBits = (status.heartbeat_age_seconds != null)
+    ? ` · last update ${Math.round(status.heartbeat_age_seconds)}s ago`
+    : "";
+  $("run-summary").textContent = `run ${status.run_id} · ${src}${ageBits}`;
+  const terminal = ["finished", "cancelled"].includes(status.state);
+  $("run-cancel-btn").disabled = terminal;
+  if (terminal && RUN_POLL_TIMER) {
+    clearInterval(RUN_POLL_TIMER);
+    RUN_POLL_TIMER = null;
+  }
+  if (status.state === "finished") {
+    loadResults();
+  }
+}
+
+async function pollRunStatusOnce() {
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/run/status`);
+    renderRunStatus(data.status);
+  } catch (e) {
+    $("run-status-line").textContent = `Status error: ${e.message}`;
+  }
+}
+
+function startRunPolling() {
+  if (RUN_POLL_TIMER) clearInterval(RUN_POLL_TIMER);
+  pollRunStatusOnce();
+  RUN_POLL_TIMER = setInterval(pollRunStatusOnce, 2000);
+}
+
+$("run-btn").addEventListener("click", async () => {
+  $("run-status-line").textContent = "Sending command…";
+  try {
+    const data = await fetchJSON(
+      `/api/optimizer/sessions/${SESSION_ID}/run`,
+      { method: "POST", body: "{}" }
+    );
+    $("run-status-line").textContent = `Run ${data.run.run_id} requested`;
+    startRunPolling();
+  } catch (e) {
+    $("run-status-line").textContent = `Run failed: ${e.message}`;
+  }
+});
+
+$("run-cancel-btn").addEventListener("click", async () => {
+  $("run-status-line").textContent = "Cancelling…";
+  try {
+    await fetchJSON(
+      `/api/optimizer/sessions/${SESSION_ID}/run/cancel`,
+      { method: "POST", body: "{}" }
+    );
+    $("run-status-line").textContent =
+      "Cancelled in TA Foundation. Click CANCEL on the NinjaTrader batch panel to stop the running template.";
+    pollRunStatusOnce();
+  } catch (e) {
+    $("run-status-line").textContent = `Cancel failed: ${e.message}`;
+  }
+});
+
+async function loadResults() {
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/results?top_n=25`);
+    renderResults(data.results);
+  } catch (e) {
+    $("results-section").classList.remove("hidden");
+    $("results-summary").textContent = `Results unavailable: ${e.message}`;
+  }
+}
+
+function fmtMoney(v) {
+  if (v == null || !isFinite(Number(v))) return "";
+  return Number(v).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function fmtNum(v, digits=2) {
+  if (v == null || !isFinite(Number(v))) return "";
+  return Number(v).toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function renderResults(results) {
+  if (!results) return;
+  $("results-section").classList.remove("hidden");
+  $("results-summary").textContent =
+    `${results.row_count.toLocaleString()} rows · ${results.batch_count} batches · ${results.parse_warnings} parse warnings`;
+  $("results-notes").innerHTML = (results.notes || []).map((n) => `<span class="pill pill-fixed mr-1">${escHtml(n)}</span>`).join("");
+  $("batch-summary").innerHTML = (results.batches || []).map((b) => `
+    <div class="border border-gray-800 rounded p-2 bg-gray-950">
+      <div class="font-mono text-gray-300">${escHtml(b.batch_id)}</div>
+      <div class="text-gray-500">rows ${b.successfully_parsed_rows}/${b.row_count}</div>
+      <div class="text-gray-400">best PF ${fmtNum(b.best_profit_factor)} · best net ${fmtMoney(b.best_net_profit)} · low DD ${fmtMoney(b.lowest_drawdown)}</div>
+    </div>
+  `).join("");
+  const rows = results.guardrail_rows || [];
+  $("results-table").innerHTML = rows.length ? rows.map((r) => `
+    <tr class="border-b border-gray-800">
+      <td class="py-1 pr-2 font-mono text-gray-300">${escHtml(r.batch_id || "")}</td>
+      <td class="py-1 pr-2 text-gray-400">${fmtNum(r.optimizer_score, 0)}</td>
+      <td class="py-1 pr-2 text-gray-200">${fmtMoney(r.total_net_profit)}</td>
+      <td class="py-1 pr-2 text-gray-200">${fmtNum(r.profit_factor)}</td>
+      <td class="py-1 pr-2 text-gray-200">${fmtMoney(r.drawdown_abs)}</td>
+      <td class="py-1 pr-2 text-gray-200">${fmtNum(r.total_trades, 0)}</td>
+      <td class="py-1 pr-2 text-gray-200">${fmtNum(r.percent_profitable)}</td>
+      <td class="py-1 pr-2 text-gray-500 pathish">${escHtml(shortParams(r.parameters || ""))}</td>
+    </tr>
+  `).join("") : '<tr><td colspan="8" class="text-gray-600 py-2">No rows passed the available guardrails.</td></tr>';
+}
+
+function shortParams(text) {
+  const s = String(text || "");
+  return s.length > 240 ? s.slice(0, 240) + "..." : s;
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+$("results-refresh-btn").addEventListener("click", loadResults);
+
+$("rename-btn").addEventListener("click", async () => {
+  $("generate-status").textContent = "Running template-namer…";
+  $("rename-stdout").classList.add("hidden");
+  try {
+    const data = await fetchJSON(
+      `/api/optimizer/sessions/${SESSION_ID}/templates/rename`,
+      { method: "POST", body: JSON.stringify({ market: $("market-suffix").value || "NQ" }) }
+    );
+    const r = data.result || {};
+    $("generate-status").textContent = `template-namer rc=${r.returncode} · ${r.output_files.length} files`;
+    const lines = [];
+    if (r.stdout) lines.push("--- stdout ---", r.stdout);
+    if (r.stderr) lines.push("--- stderr ---", r.stderr);
+    if (r.output_files && r.output_files.length) {
+      lines.push("--- outputs ---", ...r.output_files);
+    }
+    $("rename-stdout").textContent = lines.join("\n");
+    $("rename-stdout").classList.remove("hidden");
+  } catch (e) {
+    $("generate-status").textContent = `Failed: ${e.message}`;
+  }
+});
+
+// Boot
+(async function init() {
+  try {
+    await loadStrategies();
+    const existing = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`);
+    const doc = existing.session || {};
+    if (doc.strategy_id) {
+      $("strategy-select").value = doc.strategy_id;
+      await loadStrategyDetail(doc.strategy_id);
+      if (doc.seed_template_path) $("seed-select").value = doc.seed_template_path;
+      onSeedSelected(doc.seed_template_path || "");
+    }
+    if (doc.label) $("session-label").value = doc.label;
+    if (doc.instrument) $("instrument").value = doc.instrument;
+    if (doc.seed_template_path) onSeedSelected(doc.seed_template_path || "");
+    if (doc.market_suffix) $("market-suffix").value = doc.market_suffix;
+    if (doc.parameters && doc.parameters.length) {
+      // Merge persisted parameter config onto the freshly-loaded catalog rows
+      const byName = new Map(doc.parameters.map((p) => [p.name, p]));
+      for (const row of PARAMS) {
+        const saved = byName.get(row.name);
+        if (!saved) continue;
+        row.mode = saved.mode || row.mode;
+        if (saved.fixed_value != null) row.fixed_value = saved.fixed_value;
+        if (saved.minimum != null) row.minimum = saved.minimum;
+        if (saved.maximum != null) row.maximum = saved.maximum;
+        if (saved.increment != null) row.increment = saved.increment;
+      }
+      renderParameterTable();
+    }
+    const gr = doc.guardrails || {};
+    if (gr.max_drawdown_dollars != null) $("gr-max-dd").value = gr.max_drawdown_dollars;
+    if (gr.min_trades != null) $("gr-min-trades").value = gr.min_trades;
+    if (gr.min_percent_days_traded != null) $("gr-min-pct-days").value = gr.min_percent_days_traded;
+    if (gr.min_profit_factor != null) $("gr-min-pf").value = gr.min_profit_factor;
+    if (gr.min_net_profit != null) $("gr-min-np").value = gr.min_net_profit;
+    if (gr.max_trades_per_day != null) $("gr-max-tpd").value = gr.max_trades_per_day;
+    const ch = doc.chunking || {};
+    if (ch.max_combinations_per_chunk) $("ch-max-combo").value = ch.max_combinations_per_chunk;
+    if (ch.max_runtime_minutes_per_chunk != null) $("ch-max-runtime").value = ch.max_runtime_minutes_per_chunk;
+    if (ch.keep_best_results != null) $("ch-keep-best").value = ch.keep_best_results;
+    if (existing.plan) renderPlan(existing.plan);
+    // Resume run status if a run.json already exists for this session.
+    try {
+      const runData = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/run/status`);
+      if (runData.status) {
+        $("run-section").classList.remove("hidden");
+        renderRunStatus(runData.status);
+        if (!["finished", "cancelled"].includes(runData.status.state)) {
+          startRunPolling();
+        }
+      }
+    } catch (_) { /* no run yet — fine */ }
+  } catch (e) {
+    setStatus(`Init error: ${e.message}`);
+  }
+})();
+</script>
+
+</body>
+</html>

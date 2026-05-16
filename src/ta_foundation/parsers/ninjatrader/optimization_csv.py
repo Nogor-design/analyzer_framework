@@ -13,8 +13,12 @@ from ta_foundation.utils.parsing import parse_money, parse_float, parse_int
 # Scalar coercion helpers
 # ---------------------------------------------------------------------------
 
-_BOOL_TRUE  = frozenset({"true", "yes", "1"})
-_BOOL_FALSE = frozenset({"false", "no", "0"})
+# Only literal True/False text gets coerced to bool. "1" and "0" must remain
+# integers because NT's optimization output uses them as numeric parameter
+# values (e.g. Contracts=1, ProfitStop=10000). Coercing them to bool corrupts
+# downstream rendering of numeric params.
+_BOOL_TRUE  = frozenset({"true", "yes"})
+_BOOL_FALSE = frozenset({"false", "no"})
 
 
 def _is_blank(x: Any) -> bool:

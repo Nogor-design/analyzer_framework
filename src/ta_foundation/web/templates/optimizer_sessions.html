@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Optimizer Sessions</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .session-row { transition: border-color 0.15s; }
+    .session-row:hover { border-color: #f59e0b; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .pill-active { background: #064e3b; color: #34d399; }
+    .pill-strategy { background: #1f2937; color: #9ca3af; }
+    .pill-state-blocked { background: #7f1d1d; color: #fecaca; }
+    .pill-state-no_results, .pill-state-no_guardrail_candidates { background: #92400e; color: #fed7aa; }
+    .pill-state-needs_phase2_run, .pill-state-needs_phase3_run,
+    .pill-state-needs_phase3_run_then_oos_dates,
+    .pill-state-needs_final_backtest_run,
+    .pill-state-needs_fixed_backtest_validation { background: #1e3a8a; color: #93c5fd; }
+    .pill-state-candidate_ready_for_operator_review { background: #064e3b; color: #34d399; }
+    .pill-state-settings_contract_warning,
+    .pill-state-final_review_inconclusive { background: #78350f; color: #fcd34d; }
+    .pill-state-none { background: #1f2937; color: #6b7280; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <span class="text-amber-400 font-bold text-lg">Optimizer</span>
+    <span class="text-gray-500 text-sm">/ Sessions</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer" class="btn-ghost px-3 py-1.5 rounded">Back to current session</a>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6">
+  <div class="flex items-baseline justify-between mb-4">
+    <h1 class="text-2xl font-bold">Saved Sessions</h1>
+    <span class="text-xs text-gray-500">{{ sessions|length }} session{% if sessions|length != 1 %}s{% endif %}</span>
+  </div>
+  <p class="text-gray-400 text-sm mb-6">
+    Each session is one NinjaTrader optimization workspace. The decision state shows where the package is along the
+    phase&nbsp;1 &rarr; phase&nbsp;2 &rarr; phase&nbsp;3 &rarr; final&nbsp;Backtest &rarr; operator review chain. Resume to switch the active session, then continue from <code>/optimizer</code>.
+  </p>
+
+  {% if not sessions %}
+    <div class="p-8 border border-dashed border-gray-700 rounded text-center text-gray-400">
+      <div class="text-base mb-2">No sessions yet.</div>
+      <a href="/optimizer" class="btn-primary px-4 py-1.5 rounded inline-block no-underline">Start a new session</a>
+    </div>
+  {% else %}
+    <div class="flex flex-col gap-3">
+      {% for s in sessions %}
+        {% set state = s.decision_state or 'none' %}
+        <div class="session-row border border-gray-800 rounded p-4 flex items-start gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-base font-semibold text-gray-100">
+                {{ s.label or "(unlabeled)" }}
+              </span>
+              {% if s.session_id == active_session_id %}
+                <span class="pill pill-active">Active</span>
+              {% endif %}
+              <span class="pill pill-strategy">{{ s.strategy_id or "?" }}</span>
+              <span class="pill pill-state-{{ state }}">{{ state }}</span>
+              {% if s.final_validation_status %}
+                <span class="pill pill-state-candidate_ready_for_operator_review">final: {{ s.final_validation_status }}</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-gray-500 mt-1 pathish">id {{ s.session_id }}</div>
+            <div class="text-xs text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Instrument: <span class="text-gray-200">{{ s.instrument or "?" }}</span></span>
+              <span>Chunks: <span class="text-gray-200">{{ s.chunk_count }}</span></span>
+              <span>Phase 2: <span class="text-gray-200">{{ s.phase2_template_count }}</span></span>
+              <span>Phase 3: <span class="text-gray-200">{{ s.phase3_template_count }}</span></span>
+              <span>Final: <span class="text-gray-200">{{ s.final_template_count }}</span></span>
+              <span>Final recs: <span class="text-gray-200">{{ s.final_recommendation_count }}</span></span>
+              <span>Updated: <span class="text-gray-200">{{ s.updated_at }}</span></span>
+            </div>
+            {% if s.seed_template_path %}
+              <div class="text-xs text-gray-600 mt-2 pathish">seed: {{ s.seed_template_path }}</div>
+            {% endif %}
+          </div>
+          <div class="flex flex-col gap-2 items-stretch min-w-[160px]">
+            <a href="/optimizer/sessions/{{ s.session_id }}/resume"
+               class="btn-primary px-3 py-1.5 rounded text-sm font-semibold text-center no-underline">Resume</a>
+            <button type="button" data-session-id="{{ s.session_id }}"
+                    class="btn-ghost px-3 py-1.5 rounded text-xs clone-btn">Clone &amp; refine</button>
+            <button type="button" data-session-id="{{ s.session_id }}"
+                    class="btn-ghost px-3 py-1.5 rounded text-xs delete-btn">Delete</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+
+<script>
+document.querySelectorAll(".delete-btn").forEach((btn) => {
+  btn.addEventListener("click", async (event) => {
+    const sid = event.currentTarget.dataset.sessionId;
+    if (!sid) return;
+    if (!confirm("Delete session " + sid + "? This cannot be undone.")) return;
+    const res = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid), { method: "DELETE" });
+    if (res.ok) {
+      window.location.reload();
+    } else {
+      alert("Delete failed: " + res.status);
+    }
+  });
+});
+
+document.querySelectorAll(".clone-btn").forEach((btn) => {
+  btn.addEventListener("click", async (event) => {
+    const sid = event.currentTarget.dataset.sessionId;
+    if (!sid) return;
+    const res = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/clone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      alert("Clone failed: " + res.status);
+      return;
+    }
+    const body = await res.json();
+    const newSid = body.session && body.session.session_id;
+    if (newSid) {
+      window.location.href = "/optimizer/sessions/" + encodeURIComponent(newSid) + "/resume";
+    } else {
+      window.location.reload();
+    }
+  });
+});
+</script>
+
+</body>
+</html>
