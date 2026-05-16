@@ -1045,6 +1045,37 @@ def create_app() -> "Flask":
             active_session_id=active,
         )
 
+    @app.route("/optimizer/sessions/<session_id>")
+    def optimizer_session_detail_page(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_results import (
+            OptimizerResultsError,
+            load_optimizer_results,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            from flask import abort
+            return abort(404)
+        doc = session.load_document()
+        plan = session.load_plan()
+        summary = session.summary()
+        # Try to add the latest parsed row count for pipeline-state display.
+        try:
+            results = load_optimizer_results(session, top_n=1)
+            summary["row_count"] = results.row_count
+        except OptimizerResultsError:
+            summary["row_count"] = 0
+        # Include the deployment package dir if it exists.
+        pkg_dir = session.directory / "deployment_package"
+        summary["package_dir"] = str(pkg_dir) if pkg_dir.exists() else None
+        return render_template(
+            "optimizer_session_detail.html",
+            session=doc.to_dict(),
+            plan=plan,
+            summary=summary,
+        )
+
     @app.route("/optimizer/sessions/<session_id>/resume")
     def optimizer_session_resume(session_id: str):
         from flask import redirect

@@ -76,7 +76,9 @@
                 <span class="pill pill-state-candidate_ready_for_operator_review">final: {{ s.final_validation_status }}</span>
               {% endif %}
             </div>
-            <div class="text-xs text-gray-500 mt-1 pathish">id {{ s.session_id }}</div>
+            <div class="text-xs text-gray-500 mt-1 pathish">
+              <a href="/optimizer/sessions/{{ s.session_id }}" class="hover:text-amber-300">id {{ s.session_id }}</a>
+            </div>
             <div class="text-xs text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
               <span>Instrument: <span class="text-gray-200">{{ s.instrument or "?" }}</span></span>
               <span>Chunks: <span class="text-gray-200">{{ s.chunk_count }}</span></span>

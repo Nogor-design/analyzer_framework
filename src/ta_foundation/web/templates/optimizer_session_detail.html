@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Optimizer Session</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .pill-state { background: #1f2937; color: #93c5fd; }
+    .pill-state-candidate_ready_for_operator_review { background: #064e3b; color: #34d399; }
+    .pill-state-blocked, .pill-state-no_results, .pill-state-no_guardrail_candidates { background: #7f1d1d; color: #fecaca; }
+    .pill-state-settings_contract_warning, .pill-state-final_review_inconclusive { background: #78350f; color: #fcd34d; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    th { color: #6b7280; text-align: left; font-weight: 500; }
+    td { padding: 2px 8px 2px 0; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <span class="text-amber-400 font-bold text-lg">Optimizer</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions/{{ session.session_id }}/resume"
+       class="btn-primary px-3 py-1.5 rounded text-sm font-semibold no-underline">Resume</a>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+
+  <section class="card">
+    <div class="flex items-baseline gap-3 mb-3 flex-wrap">
+      <h1 class="text-xl font-bold">{{ session.label or "(unlabeled session)" }}</h1>
+      {% if summary.decision_state %}
+        <span class="pill pill-state-{{ summary.decision_state }}">{{ summary.decision_state }}</span>
+      {% endif %}
+      {% if summary.final_validation_status %}
+        <span class="pill pill-state-candidate_ready_for_operator_review">final: {{ summary.final_validation_status }}</span>
+      {% endif %}
+    </div>
+    <table class="text-xs">
+      <tr><th>Strategy</th><td>{{ session.strategy_id or "?" }}</td></tr>
+      <tr><th>Instrument</th><td>{{ session.instrument or "?" }}</td></tr>
+      <tr><th>Seed template</th><td class="pathish">{{ session.seed_template_path or "(none)" }}</td></tr>
+      <tr><th>Backtest seed</th><td class="pathish">{{ session.backtest_seed_template_path or "(falls back to seed)" }}</td></tr>
+      <tr><th>OOS window</th><td>{{ session.oos_from_date or "(seed)" }} to {{ session.oos_to_date or "(seed)" }}</td></tr>
+      <tr><th>Created</th><td>{{ session.created_at }}</td></tr>
+      <tr><th>Updated</th><td>{{ session.updated_at }}</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Plan</h2>
+    {% if plan %}
+      <div class="text-xs text-gray-300 mb-2">
+        {{ plan.chunks|length }} chunks · {{ plan.combination_estimate or 0 }} combinations · plan_hash <span class="font-mono">{{ plan.plan_hash or "" }}</span>
+      </div>
+      <ul class="text-xs text-gray-400 list-disc list-inside">
+        {% for c in plan.chunks %}
+          <li>{{ c.chunk_id }} — {{ c.combination_count or 0 }} combos
+            {% if c.optimized %} ({{ c.optimized|length }} swept){% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="text-xs text-gray-500">No plan saved.</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Parameters</h2>
+    {% if session.parameters %}
+      <table class="text-xs w-full">
+        <thead>
+          <tr>
+            <th class="pr-3">Name</th><th class="pr-3">Type</th><th class="pr-3">Mode</th>
+            <th class="pr-3">Fixed</th><th class="pr-3">Min</th><th class="pr-3">Max</th><th class="pr-3">Inc</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in session.parameters %}
+          <tr class="border-b border-gray-800 text-gray-300">
+            <td class="font-mono">{{ p.name }}</td>
+            <td class="text-gray-500">{{ p.type_name }}</td>
+            <td class="{% if p.mode == 'optimize' %}text-blue-300{% else %}text-gray-400{% endif %}">{{ p.mode }}</td>
+            <td>{{ p.fixed_value if p.mode == 'fixed' else '—' }}</td>
+            <td>{{ p.minimum if p.mode == 'optimize' else '—' }}</td>
+            <td>{{ p.maximum if p.mode == 'optimize' else '—' }}</td>
+            <td>{{ p.increment if p.mode == 'optimize' else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-xs text-gray-500">No parameters set.</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Guardrails &amp; chunking</h2>
+    <div class="grid grid-cols-2 gap-x-6 text-xs">
+      <div>
+        <table>
+          <tr><th>Max drawdown ($)</th><td>{{ session.guardrails.max_drawdown_dollars }}</td></tr>
+          <tr><th>Min trades</th><td>{{ session.guardrails.min_trades }}</td></tr>
+          <tr><th>Min % days traded</th><td>{{ session.guardrails.min_percent_days_traded }}</td></tr>
+          <tr><th>Min profit factor</th><td>{{ session.guardrails.min_profit_factor }}</td></tr>
+          <tr><th>Min net profit</th><td>{{ session.guardrails.min_net_profit }}</td></tr>
+          <tr><th>Max trades/day</th><td>{{ session.guardrails.max_trades_per_day }}</td></tr>
+        </table>
+      </div>
+      <div>
+        <table>
+          <tr><th>Max combos/chunk</th><td>{{ session.chunking.max_combinations_per_chunk }}</td></tr>
+          <tr><th>Max runtime/chunk</th><td>{{ session.chunking.max_runtime_minutes_per_chunk }}</td></tr>
+          <tr><th>Keep best results</th><td>{{ session.chunking.keep_best_results }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Pipeline state</h2>
+    <table class="text-xs">
+      <tr><th>Phase-1 parsed rows</th><td>{{ summary.row_count or 0 }}</td></tr>
+      <tr><th>Phase 2 templates</th><td>{{ summary.phase2_template_count or 0 }}</td></tr>
+      <tr><th>Phase 3 templates</th><td>{{ summary.phase3_template_count or 0 }}</td></tr>
+      <tr><th>Final Backtest templates</th><td>{{ summary.final_template_count or 0 }}</td></tr>
+      <tr><th>Final recommendations</th><td>{{ summary.final_recommendation_count or 0 }}</td></tr>
+    </table>
+    {% if summary.package_dir %}
+      <div class="mt-3 text-xs text-gray-400 pathish">Deployment package: {{ summary.package_dir }}</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Actions</h2>
+    <div class="flex flex-wrap gap-3">
+      <a href="/optimizer/sessions/{{ session.session_id }}/resume" class="btn-primary px-3 py-1.5 rounded text-xs no-underline">Resume to configure / run</a>
+      <button id="clone-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Clone &amp; refine</button>
+      <button id="rebuild-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Rebuild deployment package</button>
+      <button id="delete-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Delete</button>
+    </div>
+    <div id="action-status" class="text-xs text-gray-500 mt-2"></div>
+  </section>
+
+</main>
+
+<script>
+const SID = "{{ session.session_id }}";
+const $ = (id) => document.getElementById(id);
+
+$("clone-btn").addEventListener("click", async () => {
+  $("action-status").textContent = "Cloning…";
+  const r = await fetch("/api/optimizer/sessions/" + SID + "/clone", {
+    method: "POST", headers: {"Content-Type":"application/json"}, body: "{}",
+  });
+  if (!r.ok) { $("action-status").textContent = "Clone failed: " + r.status; return; }
+  const body = await r.json();
+  const newSid = body.session && body.session.session_id;
+  if (newSid) window.location.href = "/optimizer/sessions/" + newSid + "/resume";
+});
+
+$("rebuild-btn").addEventListener("click", async () => {
+  $("action-status").textContent = "Rebuilding deployment package…";
+  const r = await fetch("/api/optimizer/sessions/" + SID + "/deployment-package", {
+    method: "POST", headers: {"Content-Type":"application/json"}, body: "{}",
+  });
+  if (!r.ok) { $("action-status").textContent = "Rebuild failed: " + r.status; return; }
+  const body = await r.json();
+  $("action-status").textContent =
+    "State: " + (body.package && body.package.decision_state || "?") +
+    " — phase2=" + (body.package && body.package.phase2_refinement_template_count || 0) +
+    " phase3=" + (body.package && body.package.phase3_risk_template_count || 0) +
+    " final=" + (body.package && body.package.final_backtest_template_count || 0) +
+    " recs=" + (body.package && body.package.final_recommendation_count || 0);
+});
+
+$("delete-btn").addEventListener("click", async () => {
+  if (!confirm("Delete session " + SID + "? This cannot be undone.")) return;
+  const r = await fetch("/api/optimizer/sessions/" + SID, { method: "DELETE" });
+  if (r.ok) window.location.href = "/optimizer/sessions";
+  else $("action-status").textContent = "Delete failed: " + r.status;
+});
+</script>
+
+</body>
+</html>
