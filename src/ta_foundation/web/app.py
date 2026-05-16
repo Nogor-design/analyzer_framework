@@ -1230,6 +1230,76 @@ def create_app() -> "Flask":
         return jsonify({"result": result.to_dict()})
 
     @app.route(
+        "/api/optimizer/sessions/<session_id>/refine",
+        methods=["POST"],
+    )
+    def api_optimizer_session_refine(session_id: str):
+        from ta_foundation.web.optimizer_refine import (
+            OptimizerRefineError,
+            refine_from_rows,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        source = get_session(session_id)
+        if source is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("run_ids") or []
+        if not isinstance(run_ids, list) or not run_ids:
+            return jsonify({"error": "run_ids must be a non-empty list"}), 400
+        try:
+            new_session, summary = refine_from_rows(
+                source, run_ids, label=payload.get("label"),
+            )
+        except OptimizerRefineError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({
+            "session": new_session.load_document().to_dict(),
+            "summary": summary.to_dict(),
+        })
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recommendations",
+        methods=["GET"],
+    )
+    def api_optimizer_session_recommendations(session_id: str):
+        """Return the final-review recommendations + full evaluated rows
+        so the detail page can render a row-selection table for refine."""
+        from ta_foundation.web.optimizer_session import get_session
+        import json as _json
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        review_dir = (
+            session.directory
+            / "deployment_package"
+            / "final_backtest_handoff"
+            / "final_backtest_review"
+        )
+        if not review_dir.exists():
+            return jsonify({"recommendations": [], "evaluated": [], "review_dir": None})
+        recs_path = review_dir / "recommendations.json"
+        eval_path = review_dir / "evaluated_candidates.json"
+        recs: list[dict] = []
+        evaluated: list[dict] = []
+        if recs_path.exists():
+            try:
+                recs = _json.loads(recs_path.read_text(encoding="utf-8")).get("recommendations") or []
+            except Exception:
+                recs = []
+        if eval_path.exists():
+            try:
+                evaluated = _json.loads(eval_path.read_text(encoding="utf-8")).get("rows") or []
+            except Exception:
+                evaluated = []
+        return jsonify({
+            "recommendations": recs,
+            "evaluated": evaluated,
+            "review_dir": str(review_dir),
+        })
+
+    @app.route(
         "/api/optimizer/sessions/<session_id>/clone",
         methods=["POST"],
     )

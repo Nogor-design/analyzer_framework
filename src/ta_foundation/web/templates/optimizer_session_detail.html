@@ -144,6 +144,42 @@
     {% endif %}
   </section>
 
+  <section id="recs-section" class="card hidden">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="text-amber-400 font-semibold text-sm">Final recommendations</h2>
+      <span class="text-xs text-gray-500" id="recs-summary"></span>
+    </div>
+    <div class="text-xs text-gray-400 mb-3">
+      Select one or more rows below and click <b>Refine selected rows</b> to spawn a new session with parameter
+      ranges tightened around the selected lineage. Bool params become fixed at the majority value; numeric
+      params sweep min..max with a small widening around observed values.
+    </div>
+    <div class="overflow-x-auto">
+      <table class="text-xs w-full">
+        <thead>
+          <tr class="border-b border-gray-700 text-gray-500">
+            <th class="pr-3"><input type="checkbox" id="recs-select-all" /></th>
+            <th class="pr-3">Run</th>
+            <th class="pr-3">Mode</th>
+            <th class="pr-3">Bucket</th>
+            <th class="pr-3 text-right">Score</th>
+            <th class="pr-3 text-right">PF</th>
+            <th class="pr-3 text-right">Net</th>
+            <th class="pr-3 text-right">DD</th>
+            <th class="pr-3 text-right">Trades</th>
+            <th class="pr-3 text-right">% days</th>
+            <th class="pr-3">Shape</th>
+          </tr>
+        </thead>
+        <tbody id="recs-tbody"></tbody>
+      </table>
+    </div>
+    <div class="flex items-center gap-3 mt-3">
+      <button id="refine-btn" class="btn-primary px-3 py-1.5 rounded text-xs font-semibold">Refine selected rows</button>
+      <span id="refine-status" class="text-xs text-gray-500"></span>
+    </div>
+  </section>
+
   <section class="card">
     <h2 class="text-amber-400 font-semibold text-sm mb-2">Actions</h2>
     <div class="flex flex-wrap gap-3">
@@ -193,6 +229,84 @@ $("delete-btn").addEventListener("click", async () => {
   if (r.ok) window.location.href = "/optimizer/sessions";
   else $("action-status").textContent = "Delete failed: " + r.status;
 });
+
+// Final recommendations + row-level refinement.
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  })[c]);
+}
+function fmt(v, digits) {
+  if (v == null || v === "") return "";
+  if (typeof v === "number") return digits == null ? v : v.toFixed(digits);
+  return String(v);
+}
+
+(async function loadRecommendations() {
+  try {
+    const data = await (await fetch("/api/optimizer/sessions/" + SID + "/recommendations")).json();
+    const rows = data.evaluated || [];
+    const recs = data.recommendations || [];
+    if (!rows.length && !recs.length) return;
+    $("recs-section").classList.remove("hidden");
+    $("recs-summary").textContent =
+      rows.length + " evaluated · " + recs.length + " recommended";
+
+    // Prefer evaluated rows for selection (they include full param values).
+    // Mark which run_ids are in the recommendation set so we can highlight.
+    const recIds = new Set(recs.map((r) => r.run_id));
+    const tbody = $("recs-tbody");
+    tbody.innerHTML = "";
+    for (const row of rows) {
+      const isRec = recIds.has(row.run_id);
+      const tr = document.createElement("tr");
+      tr.className = "border-b border-gray-800";
+      const shape = [row.slow_ma_family, row.risk_shape, row.direction].filter(Boolean).join(", ");
+      tr.innerHTML = `
+        <td><input type="checkbox" class="rec-check" data-run="${escapeHtml(row.run_id)}"
+              ${isRec ? "checked" : ""} /></td>
+        <td class="font-mono ${isRec ? "text-amber-300" : "text-gray-300"}">${escapeHtml(row.run_id)}
+            ${row.status === "pass" ? "" : '<span class="text-gray-600 ml-1">[' + escapeHtml(row.status) + ']</span>'}
+        </td>
+        <td class="text-gray-400">${escapeHtml(row.mode || "")}</td>
+        <td class="text-gray-400">${escapeHtml(row.session_bucket || "")}</td>
+        <td class="text-right">${fmt(row.score, 1)}</td>
+        <td class="text-right">${fmt(row.profit_factor, 2)}</td>
+        <td class="text-right">${fmt(row.total_net_profit, 0)}</td>
+        <td class="text-right">${fmt(row.max_drawdown, 0)}</td>
+        <td class="text-right">${fmt(row.trades, 0)}</td>
+        <td class="text-right">${fmt(row.percent_days_traded, 1)}</td>
+        <td class="text-gray-500">${escapeHtml(shape)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    $("recs-select-all").addEventListener("change", (e) => {
+      document.querySelectorAll(".rec-check").forEach((cb) => { cb.checked = e.target.checked; });
+    });
+
+    $("refine-btn").addEventListener("click", async () => {
+      const runIds = Array.from(document.querySelectorAll(".rec-check"))
+        .filter((cb) => cb.checked).map((cb) => cb.dataset.run);
+      if (!runIds.length) { $("refine-status").textContent = "Select at least one row."; return; }
+      $("refine-status").textContent = "Spawning refined session…";
+      const res = await fetch("/api/optimizer/sessions/" + SID + "/refine", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ run_ids: runIds }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        $("refine-status").textContent = "Refine failed: " + res.status + " " + body;
+        return;
+      }
+      const body = await res.json();
+      const newSid = body.session && body.session.session_id;
+      if (newSid) window.location.href = "/optimizer/sessions/" + newSid;
+    });
+  } catch (e) {
+    /* if the review folder doesn't exist yet the section just stays hidden */
+  }
+})();
 </script>
 
 </body>
