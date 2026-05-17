@@ -47,6 +47,23 @@ ARTIFACT_SUFFIXES: tuple[str, ...] = (
     "_Summery.png",    # typo image variant
 )
 
+# Bare artifact filenames used by the folder-based layout, where each run
+# lives in its own subfolder (e.g. ``output/<run_id>/Trades.csv``).
+# When a path's filename matches one of these, the run_id is the parent
+# folder name rather than a stripped prefix of the filename.
+BARE_ARTIFACT_NAMES: frozenset[str] = frozenset({
+    "Trades.csv",
+    "Analysis.csv",
+    "Summary.csv",
+    "Summery.csv",   # tolerate the same typo variant as the legacy layout
+    "Settings.csv",
+})
+
+
+def is_bare_artifact_name(filename: str) -> bool:
+    """True if *filename* uses the folder-based bare naming convention."""
+    return filename in BARE_ARTIFACT_NAMES
+
 
 def strip_artifact_suffix(filename: str) -> str:
     """
@@ -67,6 +84,18 @@ def strip_artifact_suffix(filename: str) -> str:
             return filename[: -len(suffix)]
     # Fallback: strip file extension only (preserves existing pipeline.py behaviour)
     return Path(filename).stem
+
+
+def derive_run_id_from_path(path: Path) -> str:
+    """
+    Resolve a run_id from a full file path, supporting both layouts:
+
+    * Folder-based:   ``.../<run_id>/Trades.csv``  → parent folder name
+    * Suffix-based:   ``.../<run_id>_Trades.csv``  → stripped prefix
+    """
+    if is_bare_artifact_name(path.name):
+        return path.parent.name
+    return strip_artifact_suffix(path.name)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

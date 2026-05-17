@@ -12,7 +12,7 @@ class NinjaTraderTradesCsvParser:
     kind = "trades"
 
     def can_parse(self, path: Path, header: str) -> bool:
-        name_ok = path.name.endswith("_Trades.csv")
+        name_ok = path.name.endswith("_Trades.csv") or path.name == "Trades.csv"
         # lightweight signature check
         sig_ok = ("Trade number" in header and "Entry time" in header and "Exit time" in header)
         return name_ok and sig_ok

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Optional
@@ -9,6 +10,10 @@ from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.reports.text.export_summary_text import export_summary_text
 from ta_foundation.reports.text.export_large_candle_regime_summary import export_large_candle_regime_summary
 from ta_foundation.reports.text.export_strategy_momentum_text import export_strategy_momentum_text
+from ta_foundation.reports.text.export_strategy_lifecycle_text import (
+    export_strategy_lifecycle_json,
+    export_strategy_lifecycle_text,
+)
 from ta_foundation.reports.text.export_strategy_session_momentum_text import export_strategy_session_momentum_text
 from ta_foundation.reports.text.export_daily_winner_text import export_daily_winner_text
 from ta_foundation.reports.text.export_deployment_board_text import export_deployment_board_text
@@ -53,6 +58,8 @@ from ta_foundation.analysis.large_candle_excursion.downstream_reports import (
     build_large_candle_excursion_discovery,
     build_large_candle_excursion_findings,
 )
+from ta_foundation.web.discovery_summary import write_sidecar_for_run
+from ta_foundation.web.conditional_promotion import generate_conditional_probe_yamls
 
 
 
@@ -120,7 +127,52 @@ def _find_pattern_engine_config(cfgs):
     return None
 
 
+def _find_discovery_instrument(cfgs) -> str:
+    for cfg in cfgs:
+        raw = getattr(cfg, "raw", None)
+        if isinstance(raw, dict):
+            discovery = raw.get("discovery")
+            if isinstance(discovery, dict):
+                instrument = str(discovery.get("instrument") or "").strip()
+                if instrument:
+                    return instrument
+    return ""
+
+
+def _select_bars_1m_from_market(market: Any, preferred_root: str = ""):
+    """Return 1-minute bars, preferring the YAML discovery instrument."""
+    minute_bars = getattr(market, "minute_bars", None) or {}
+    if not minute_bars:
+        return None
+
+    preferred = str(preferred_root or "").strip().upper()
+    if preferred:
+        merged = [
+            df for (root, contract), df in minute_bars.items()
+            if str(root).upper() == preferred and contract == ""
+        ]
+        if merged:
+            return merged[0]
+        specific = [
+            df for (root, _contract), df in minute_bars.items()
+            if str(root).upper() == preferred
+        ]
+        if specific:
+            return specific[0]
+
+    merged_any = [df for (_root, contract), df in minute_bars.items() if contract == ""]
+    if merged_any:
+        return merged_any[0]
+    all_bars = list(minute_bars.values())
+    return all_bars[0] if all_bars else None
+
+
 def main() -> int:
+    import sys
+    if any(arg == "--shadow-pass" for arg in sys.argv[1:]):
+        return _shadow_pass_main(sys.argv[1:])
+    if any(arg == "--shadow-health" for arg in sys.argv[1:]):
+        return _shadow_health_main(sys.argv[1:])
 
     ap = argparse.ArgumentParser()
 
@@ -139,8 +191,74 @@ def main() -> int:
     ap.add_argument("--db-path", default=None,
                     help="Path to DuckDB experiment registry file. "
                          "When provided, validation results are persisted automatically.")
+    ap.add_argument("--hypothesis-id", default=None,
+                    help="Pre-registered hypothesis ID. When provided, the report-config "
+                         "YAML must contain a 'pre_registration:' block whose hypothesis_id "
+                         "matches and whose params hash matches the ledger row. The run "
+                         "aborts with a non-zero exit code on drift "
+                         "(see docs/designs/agentic_phase_a_foundation.md A.3).")
+    ap.add_argument("--ledger-db", default=None,
+                    help="Path to research ledger SQLite file (default: "
+                         ".ta_artifacts/research_ledger.db). Only consulted when "
+                         "--hypothesis-id is provided.")
+    ap.add_argument("--override-graveyard", default=None,
+                    help="Override a graveyard-registry refusal with a written reason. "
+                         "Required when the probe-identity hash near-matches an entry in "
+                         "<output>/_graveyard_registry.json. The reason is logged to the "
+                         "graveyard record for audit. Free-form, but should explain what "
+                         "differs about the new run (e.g. 'wider-stop-budget-different-hypothesis').")
+    ap.add_argument("--skip-registry", action="store_true",
+                    help="Skip both the pre-run graveyard refusal check and the post-run "
+                         "probe-registry update. Use for one-shot scripts or tests; never "
+                         "in normal operation.")
 
     args = ap.parse_args()
+
+    # ----- Pre-registration drift check (fail fast before any heavy work) ----
+    if args.hypothesis_id:
+        if not args.report_config:
+            print("[ta_foundation] --hypothesis-id requires --report-config "
+                  "pointing to a YAML with a 'pre_registration:' block.")
+            return 2
+        from ta_foundation.research_ledger import (
+            DEFAULT_DB_PATH,
+            check_yaml_file,
+            get_repository,
+        )
+        ledger_db = Path(args.ledger_db) if args.ledger_db else DEFAULT_DB_PATH
+        report_yaml_path = Path(args.report_config)
+        if not report_yaml_path.is_file():
+            print(f"[ta_foundation] --report-config not found: {report_yaml_path}")
+            return 2
+        repo = get_repository(ledger_db)
+        try:
+            report = check_yaml_file(repo, report_yaml_path, required=True)
+        except ValueError as exc:
+            print(f"[ta_foundation] Pre-registration block malformed: {exc}")
+            return 2
+        if report is None or not report.ok:
+            reason = report.reason if report else "no pre_registration block"
+            print(f"[ta_foundation] Pre-registration drift check FAILED: {reason}")
+            repo.journal(
+                role="cli",
+                tool_name="pre_registration_drift_check",
+                inputs={
+                    "hypothesis_id": args.hypothesis_id,
+                    "report_config": str(args.report_config),
+                },
+                output_summary=reason if report else "missing block",
+                duration_ms=0,
+                error="drift" if report and not report.ok else "missing_block",
+            )
+            return 3
+        if report.hypothesis_id != args.hypothesis_id:
+            print(f"[ta_foundation] --hypothesis-id={args.hypothesis_id!r} does not match "
+                  f"YAML pre_registration.hypothesis_id={report.hypothesis_id!r}")
+            return 3
+        print(f"[ta_foundation] Pre-registration check OK for {report.hypothesis_id} "
+              f"(params_hash={report.yaml_params_hash[:12] if report.yaml_params_hash else '?'})")
+
+    run_start_ts = time.monotonic()
 
     in_dir = Path(args.input)
     out_dir = Path(args.output)
@@ -184,6 +302,70 @@ def main() -> int:
     cfgs = load_report_configs(cfg_path)
 
     print(f"[ta_foundation] Report configs loaded: {len(cfgs)}")
+    discovery_instrument = _find_discovery_instrument(cfgs)
+
+    # --------------------------------------------------------
+    # GRAVEYARD REFUSAL CHECK (P0-HASH)
+    # Computes probe-identity hash from the loaded YAML and refuses runs
+    # that near-match an existing graveyard entry unless --override-graveyard
+    # is provided with a written reason. See
+    # docs/designs/real_edge_discovery_program.md → P0-HASH.
+    # --------------------------------------------------------
+    if not args.skip_registry and cfgs and cfg_path is not None:
+        from ta_foundation.discovery_registry import (
+            GraveyardRegistry,
+            check_graveyard,
+            compute_probe_identity,
+        )
+        from ta_foundation.discovery_registry.refusal import (
+            build_yaml_resolver,
+        )
+
+        proposed_identity = compute_probe_identity(cfgs[0].raw)
+        if proposed_identity.signals:
+            graveyard = GraveyardRegistry(out_dir)
+            resolver = build_yaml_resolver()
+            hit = check_graveyard(
+                proposed_identity,
+                graveyard,
+                identity_resolver=resolver,
+            )
+            if hit is not None:
+                if args.override_graveyard:
+                    print(f"[ta_foundation] Graveyard hit overridden: {hit.explain()}")
+                    print(f"[ta_foundation] Override reason: {args.override_graveyard}")
+                    graveyard.record_override(
+                        h=hit.matched_record.hash,
+                        reason=args.override_graveyard,
+                        yaml_path=str(cfg_path).replace("\\", "/"),
+                    )
+                else:
+                    print("[ta_foundation] REFUSED: probe identity matches a graveyarded entry.")
+                    print(f"[ta_foundation]   {hit.explain()}")
+                    print(
+                        "[ta_foundation]   To proceed anyway, re-run with "
+                        "--override-graveyard \"<reason explaining why this differs>\"."
+                    )
+                    return 4
+
+            # ----------------------------------------------------
+            # CUMULATIVE PENALTY (P0-CUMULATIVE)
+            # Mutate hardening.n_hypotheses_tested to reflect cross-probe
+            # cumulative count, family-filtered with decay. YAML value is
+            # preserved under yaml_n_hypotheses_tested for audit.
+            # ----------------------------------------------------
+            from ta_foundation.discovery_registry.refusal import (
+                compute_effective_n_hypotheses,
+                inject_effective_penalty,
+            )
+            effective_info = compute_effective_n_hypotheses(out_dir, proposed_identity)
+            mutations = inject_effective_penalty(cfgs[0].raw, effective_info)
+            for m in mutations:
+                print(
+                    f"[ta_foundation]   cumulative penalty: {m['block']}.hardening."
+                    f"n_hypotheses_tested {m['yaml_n']} -> {m['effective_n']} "
+                    f"(family cumulative={m['cumulative_family']}, decay={m['decay_factor']})"
+                )
 
     # --------------------------------------------------------
     # RUN MA ANCHOR ENGINE
@@ -258,12 +440,7 @@ def main() -> int:
 
     def _get_bars_1m():
         """Return the best available 1-minute bar DataFrame from the market store."""
-        merged = [df for (root, contract), df in result.market.minute_bars.items()
-                  if contract == ""]
-        if merged:
-            return merged[0]
-        all_bars = list(result.market.minute_bars.values())
-        return all_bars[0] if all_bars else None
+        return _select_bars_1m_from_market(result.market, discovery_instrument)
 
     def _apply_session_filter(bars, session_filter: dict):
         """
@@ -331,11 +508,16 @@ def main() -> int:
                 return
             # Optional session filter — slice bars to a time window before sweeping
             session_filter = cfg.get("session_filter")
-            if session_filter:
+            if session_filter and key != "level_discovery":
                 bars_1m = _apply_session_filter(bars_1m, session_filter)
                 if bars_1m is None or bars_1m.empty:
                     print(f"[ta_foundation] {label} skipped: no bars after session filter.")
                     return
+            elif session_filter and key == "level_discovery":
+                print(
+                    "[ta_foundation]   session_filter: preserving full bars for "
+                    "level context; filtering emitted signals inside level_discovery."
+                )
             disc = run_fn(bars_1m=bars_1m, config=cfg)
             print(f"[ta_foundation] {label} complete: "
                   f"{disc.get('n_combinations_run', 0)} combos, "
@@ -359,13 +541,13 @@ def main() -> int:
             traceback.print_exc()
 
     _run_discovery_module("candle_discovery",   "Candle Discovery",   run_candle_discovery,   create_placeholder=True)
-    _run_discovery_module("ma_discovery",       "MA Discovery",       run_ma_discovery)
-    _run_discovery_module("orb_discovery",      "ORB Discovery",      run_orb_discovery)
-    _run_discovery_module("bb_discovery",       "BB Discovery",       run_bb_discovery)
-    _run_discovery_module("breakout_discovery", "Breakout Discovery", run_breakout_discovery)
-    _run_discovery_module("pullback_discovery", "Pullback Discovery", run_pullback_discovery)
-    _run_discovery_module("level_discovery",    "Level Discovery",    run_level_discovery)
-    _run_discovery_module("lcr_discovery",     "LCR Discovery",      run_lcr_discovery)
+    _run_discovery_module("ma_discovery",       "MA Discovery",       run_ma_discovery,       create_placeholder=True)
+    _run_discovery_module("orb_discovery",      "ORB Discovery",      run_orb_discovery,      create_placeholder=True)
+    _run_discovery_module("bb_discovery",       "BB Discovery",       run_bb_discovery,       create_placeholder=True)
+    _run_discovery_module("breakout_discovery", "Breakout Discovery", run_breakout_discovery, create_placeholder=True)
+    _run_discovery_module("pullback_discovery", "Pullback Discovery", run_pullback_discovery, create_placeholder=True)
+    _run_discovery_module("level_discovery",    "Level Discovery",    run_level_discovery,    create_placeholder=True)
+    _run_discovery_module("lcr_discovery",      "LCR Discovery",      run_lcr_discovery,      create_placeholder=True)
     _run_discovery_module("premarket_discovery", "Pre-Market Predictor", run_premarket_predictor, create_placeholder=True)
 
     # --------------------------------------------------------
@@ -466,6 +648,7 @@ def main() -> int:
                 market=result.market,
                 options=sd_config,
                 db_path=args.db_path,
+                output_dir=out_dir,
             )
             print("[ta_foundation] Strategy Discovery complete.")
         except Exception as e:
@@ -601,15 +784,85 @@ def main() -> int:
 
             print(f"Wrote: {out_path}")
 
+            # Write the Discovery sidecar JSON when the YAML opted in via a
+            # top-level `discovery:` block. This is what powers the web
+            # Discovery UI's Setup Cards and cross-stage promotion.
+            discovery_block = (cfg.raw or {}).get("discovery") if isinstance(cfg.raw, dict) else None
+            is_discovery_run = isinstance(discovery_block, dict) and bool(discovery_block.get("stage"))
+            try:
+                if isinstance(discovery_block, dict):
+                    # Pull each family's per-block YAML config so the sidecar
+                    # writer can recover the session_filter (and similar
+                    # block-level fields) that the sweep orchestrators consume
+                    # but don't echo back onto result rows.
+                    family_block_keys = (
+                        "candle_discovery", "ma_discovery", "orb_discovery",
+                        "bb_discovery", "lcr_discovery", "breakout_discovery",
+                        "pullback_discovery", "level_discovery",
+                        "premarket_discovery", "large_candle_excursion",
+                    )
+                    family_configs: dict[str, dict] = {}
+                    raw_cfg = cfg.raw or {}
+                    if isinstance(raw_cfg, dict):
+                        for key in family_block_keys:
+                            block = raw_cfg.get(key)
+                            if isinstance(block, dict):
+                                # Strip the `_discovery` suffix to match the
+                                # family ids the summary writer keys on.
+                                family_id = key[:-len("_discovery")] if key.endswith("_discovery") else key
+                                family_configs[family_id] = block
+                    sidecar_path = write_sidecar_for_run(
+                        packages=result.packages,
+                        discovery_block=discovery_block,
+                        report_html_path=out_path,
+                        runtime_seconds=int(time.monotonic() - run_start_ts),
+                        bars_1m=_get_bars_1m(),
+                        family_configs=family_configs,
+                    )
+                    if sidecar_path is not None:
+                        print(f"Wrote: {sidecar_path}")
+                        if args.report_config:
+                            generated = generate_conditional_probe_yamls(
+                                parent_config_path=args.report_config,
+                                sidecar_path=sidecar_path,
+                                generated_dir=Path("discovery") / "generated",
+                            )
+                            if generated:
+                                print(
+                                    "[ta_foundation] generated conditional probes: "
+                                    + ", ".join(str(p) for p in generated)
+                                )
+                    else:
+                        print(
+                            "[ta_foundation] discovery sidecar skipped: "
+                            "discovery block missing stage/instrument or referencing unknown id."
+                        )
+            except Exception as _sc_exc:
+                print(
+                    f"[ta_foundation] WARNING: discovery sidecar write failed - "
+                    f"{type(_sc_exc).__name__}: {_sc_exc}"
+                )
+
             # Write a condensed plain-text summary alongside the HTML report.
             # This file is small and LLM-friendly — paste it directly into any
             # AI chat to discuss the run results without loading the full HTML.
-            try:
-                txt_path = out_path.with_suffix(".txt")
-                export_summary_text(result.packages, txt_path, title=cfg.title)
-                print(f"Wrote: {txt_path}")
-            except Exception as _txt_exc:
-                print(f"[ta_foundation] WARNING: text summary export failed — {_txt_exc}")
+            #
+            # Discovery stages don't have backtest packages — every field would
+            # render as an em-dash. The structured discovery sidecar already
+            # carries the diagnostic data, so skip the placeholder TXT entirely.
+            if is_discovery_run:
+                print(
+                    f"[ta_foundation] skipping text executive summary for "
+                    f"discovery run ({discovery_block.get('stage')}); "
+                    f"see the discovery sidecar JSON for diagnostics."
+                )
+            else:
+                try:
+                    txt_path = out_path.with_suffix(".txt")
+                    export_summary_text(result.packages, txt_path, title=cfg.title)
+                    print(f"Wrote: {txt_path}")
+                except Exception as _txt_exc:
+                    print(f"[ta_foundation] WARNING: text summary export failed - {_txt_exc}")
 
             try:
                 lce_summary_path = out_path.with_name(
@@ -632,24 +885,26 @@ def main() -> int:
             # Write a condensed plain-text weekly leaderboard summary.
             # Options are pulled from the weekly_leaderboard_cards section in the
             # report config so the text matches what the card shows exactly.
-            try:
-                weekly_opts: dict = {}
-                for sec in (cfg.sections or []):
-                    if isinstance(sec, dict) and sec.get("id") == "weekly_leaderboard_cards":
-                        weekly_opts = sec.get("options") or {}
-                        break
-                weekly_txt_path = out_path.with_name(
-                    out_path.stem + "_weekly_leaderboard.txt"
-                )
-                export_weekly_leaderboard_text(
-                    result.packages,
-                    weekly_txt_path,
-                    options=weekly_opts,
-                    title=cfg.title,
-                )
-                print(f"Wrote: {weekly_txt_path}")
-            except Exception as _wk_exc:
-                print(f"[ta_foundation] WARNING: weekly leaderboard text export failed — {_wk_exc}")
+            # Skipped for discovery runs (no trades -> empty placeholder).
+            if not is_discovery_run:
+                try:
+                    weekly_opts: dict = {}
+                    for sec in (cfg.sections or []):
+                        if isinstance(sec, dict) and sec.get("id") == "weekly_leaderboard_cards":
+                            weekly_opts = sec.get("options") or {}
+                            break
+                    weekly_txt_path = out_path.with_name(
+                        out_path.stem + "_weekly_leaderboard.txt"
+                    )
+                    export_weekly_leaderboard_text(
+                        result.packages,
+                        weekly_txt_path,
+                        options=weekly_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {weekly_txt_path}")
+                except Exception as _wk_exc:
+                    print(f"[ta_foundation] WARNING: weekly leaderboard text export failed - {_wk_exc}")
 
             try:
                 momentum_opts: dict | None = None
@@ -670,6 +925,35 @@ def main() -> int:
                     print(f"Wrote: {momentum_txt_path}")
             except Exception as _mom_exc:
                 print(f"[ta_foundation] WARNING: strategy momentum text export failed — {_mom_exc}")
+
+            try:
+                lifecycle_opts: dict | None = None
+                for sec in (cfg.sections or []):
+                    if isinstance(sec, dict) and sec.get("id") == "strategy_lifecycle_board":
+                        lifecycle_opts = sec.get("options") or {}
+                        break
+                if lifecycle_opts is not None:
+                    lifecycle_txt_path = out_path.with_name(
+                        out_path.stem + "_strategy_lifecycle.txt"
+                    )
+                    export_strategy_lifecycle_text(
+                        result.packages,
+                        lifecycle_txt_path,
+                        options=lifecycle_opts,
+                        title=cfg.title,
+                    )
+                    print(f"Wrote: {lifecycle_txt_path}")
+                    lifecycle_json_path = out_path.with_name(
+                        out_path.stem + "_strategy_lifecycle.json"
+                    )
+                    export_strategy_lifecycle_json(
+                        result.packages,
+                        lifecycle_json_path,
+                        options=lifecycle_opts,
+                    )
+                    print(f"Wrote: {lifecycle_json_path}")
+            except Exception as _life_exc:
+                print(f"[ta_foundation] WARNING: strategy lifecycle export failed - {_life_exc}")
 
             try:
                 session_momentum_opts: dict | None = None
@@ -796,17 +1080,167 @@ def main() -> int:
     # WRITE MANIFEST
     # --------------------------------------------------------
 
+    # When the run was driven by a `discovery:` block, plain backtest manifests
+    # are misleading: parsed_files / unparsed_files refer to NinjaTrader
+    # exports, but discovery loads market data instead. Surface that
+    # explicitly so the manifest doesn't look broken.
+    manifest_extra: dict = {}
+    if is_discovery_run:
+        market = getattr(result, "market", None)
+        minute_bar_keys: list = []
+        total_bars = 0
+        if market is not None and getattr(market, "minute_bars", None):
+            for (root, contract), df in market.minute_bars.items():
+                try:
+                    n_bars = int(len(df))
+                except TypeError:
+                    n_bars = 0
+                total_bars += n_bars
+                minute_bar_keys.append({
+                    "instrument_root": str(root or ""),
+                    "contract": str(contract or ""),
+                    "bar_count": n_bars,
+                })
+        manifest_extra["discovery"] = {
+            "stage_id": str(discovery_block.get("stage")),
+            "instrument": str(discovery_block.get("instrument") or ""),
+            "note": (
+                "This run is a discovery sweep over market data. "
+                "parsed_files / unparsed_files refer to NinjaTrader backtest "
+                "exports and are intentionally empty here. The actual diagnostic "
+                "data lives in the per-stage discovery summary JSON sidecar."
+            ),
+            "market_data": {
+                "minute_bar_artifacts": minute_bar_keys,
+                "total_minute_bars": total_bars,
+            },
+        }
+
     write_manifest(
         out_dir / "manifest.json",
         input_folder=in_dir,
         files_parsed=[],
         files_unparsed=result.unparsed_files,
         packages_warnings={rid: pkg.warnings for rid, pkg in result.packages.items()},
-        extra={},
+        extra=manifest_extra,
     )
 
     print(f"Wrote: {out_dir / 'manifest.json'}")
 
+    # --------------------------------------------------------
+    # POST-RUN REGISTRY UPDATE (P0-HASH / P0-CUMULATIVE)
+    # Append the just-written sidecar to the probe registry (and graveyard
+    # registry if applicable). Idempotent — re-runs are no-ops.
+    # --------------------------------------------------------
+    if not args.skip_registry:
+        from ta_foundation.discovery_registry.refusal import post_run_register
+        post_run_register(out_dir)
+
+    return 0
+
+
+def _shadow_pass_main(argv: list[str]) -> int:
+    """Forward-shadow pass entry point. Invoked when --shadow-pass is set.
+
+    Loads bars from --market-data, then iterates every candidate currently
+    in triage_state='shadow', emits/insets shadow_signals rows, and resolves
+    any open positions. See docs/designs/agentic_phase_d_forward_observation.md.
+    """
+    import pandas as pd
+    from ta_foundation.research_ledger import DEFAULT_DB_PATH, get_repository
+    from ta_foundation.shadow import FolderBarsDataSource, run_shadow_pass
+
+    ap = argparse.ArgumentParser(prog="ta_foundation --shadow-pass")
+    ap.add_argument("--shadow-pass", action="store_true", required=True,
+                    help="Run a forward-shadow pass over enrolled candidates.")
+    ap.add_argument("--market-data", required=True,
+                    help="Folder containing NinjaTrader minute-bar exports.")
+    ap.add_argument("--ledger-db", default=None,
+                    help="Path to research ledger SQLite file "
+                         "(default: .ta_artifacts/research_ledger.db).")
+    ap.add_argument("--candidate-id", default=None,
+                    help="Restrict the pass to a single candidate.")
+    ap.add_argument("--until", default=None,
+                    help="ISO timestamp clamp for the bar window (default: no clamp).")
+    args = ap.parse_args(argv)
+
+    ledger_db = Path(args.ledger_db) if args.ledger_db else DEFAULT_DB_PATH
+    repo = get_repository(ledger_db)
+    loader = FolderBarsDataSource(Path(args.market_data))
+
+    until_ts = pd.Timestamp(args.until) if args.until else None
+    report = run_shadow_pass(
+        repo=repo,
+        bars_loader=loader,
+        until_ts=until_ts,
+        candidate_id=args.candidate_id,
+    )
+    print(f"[shadow-pass] candidates={report.n_candidates} "
+          f"new_signals={report.total_signals_inserted} "
+          f"resolved={report.total_signals_resolved} "
+          f"no_fill={report.total_signals_no_fill}")
+    for cr in report.candidates:
+        if cr.error:
+            print(f"  - {cr.candidate_id} ERROR: {cr.error}")
+        elif cr.skipped_reason:
+            print(f"  - {cr.candidate_id} skipped: {cr.skipped_reason}")
+        else:
+            print(f"  - {cr.candidate_id} bars={cr.bars_seen} "
+                  f"new={cr.signals_inserted} dup={cr.signals_duplicate} "
+                  f"transitions={cr.transitions}")
+    return 0
+
+
+def _shadow_health_main(argv: list[str]) -> int:
+    """Render the daily shadow-health report (Phase D.2).
+
+    Reads the research ledger, aggregates per-candidate shadow statistics
+    for the chosen Denver session day, and emits a deterministic markdown
+    document. Default output path is
+    ``runs/<YYYY-MM-DD>/shadow_health.md`` relative to the current
+    working directory.
+    """
+    from ta_foundation.research_ledger import DEFAULT_DB_PATH, get_repository
+    from ta_foundation.shadow import compute_daily_health, render_health_markdown
+
+    ap = argparse.ArgumentParser(prog="ta_foundation --shadow-health")
+    ap.add_argument("--shadow-health", action="store_true", required=True,
+                    help="Render the daily shadow-health report.")
+    ap.add_argument("--for-date", default=None,
+                    help="Denver session day to summarise (YYYY-MM-DD). "
+                         "Defaults to today (Denver local).")
+    ap.add_argument("--trailing-window", type=int, default=30,
+                    help="Trailing trade count for rolling PF/win-rate.")
+    ap.add_argument("--out", default=None,
+                    help="Output markdown path. Default: "
+                         "runs/<YYYY-MM-DD>/shadow_health.md")
+    ap.add_argument("--ledger-db", default=None,
+                    help="Path to research ledger SQLite file.")
+    args = ap.parse_args(argv)
+
+    ledger_db = Path(args.ledger_db) if args.ledger_db else DEFAULT_DB_PATH
+    repo = get_repository(ledger_db)
+    report = compute_daily_health(
+        repo,
+        for_date=args.for_date,
+        trailing_window=int(args.trailing_window),
+    )
+    body = render_health_markdown(report)
+
+    out_path = (
+        Path(args.out)
+        if args.out
+        else Path("runs") / report.report_date / "shadow_health.md"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(body, encoding="utf-8")
+    print(f"[shadow-health] {report.report_date} "
+          f"candidates={report.candidates_active} "
+          f"signals_today={report.total_signals_today} "
+          f"resolved_today={report.total_resolved_today} "
+          f"open={report.total_open_positions} "
+          f"net_pnl_today=${report.total_net_pnl_today:.2f} "
+          f"anomalies={len(report.anomalies)} -> {out_path}")
     return 0
 
 

@@ -32,7 +32,11 @@ from ta_foundation.core.market_time_profile import derive_trade_time_profile_for
 from ta_foundation.reports.html.embed import file_to_base64_data_uri
 from ta_foundation.marketdata.store import MarketDataStore
 from ta_foundation.optimization.model import OptimizationBatch, OptimizationStore
-from ta_foundation.core.run_name_parser import ARTIFACT_SUFFIXES, strip_artifact_suffix
+from ta_foundation.core.run_name_parser import (
+    ARTIFACT_SUFFIXES,
+    is_bare_artifact_name,
+    strip_artifact_suffix,
+)
 
 from ta_foundation.marketdata.tick_cache import (
     TickCacheConfig,
@@ -71,7 +75,9 @@ def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
     Extract the run_id from a file path.
 
     1. If ``run_id_regex`` is provided and matches, use capture group 1.
-    2. Otherwise delegate to ``strip_artifact_suffix`` which knows all
+    2. If the filename uses the folder-based bare naming convention
+       (e.g. ``<run_id>/Trades.csv``), use the parent folder name.
+    3. Otherwise delegate to ``strip_artifact_suffix`` which knows all
        recognized artifact suffixes for both old and new naming conventions.
     """
     name = path.name
@@ -82,6 +88,9 @@ def derive_run_id(path: Path, run_id_regex: Optional[str] = None) -> str:
             candidate = m.group(1).strip()
             if candidate:
                 return candidate
+
+    if is_bare_artifact_name(name):
+        return path.parent.name
 
     return strip_artifact_suffix(name)
 

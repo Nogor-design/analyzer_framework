@@ -33,6 +33,12 @@ persistence = [
 web = [
   "flask",
 ]
+agentic = [
+  "langchain",
+  "langgraph",
+  "langchain-ollama",
+  "langgraph-checkpoint-sqlite",
+]
 dev = [
   "pytest",
 ]

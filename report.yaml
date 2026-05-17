@@ -176,23 +176,23 @@ sections:
 #      wlr_gap_px: 2
 #      wlr_show_legend: false
 #####Exec cards ####################################################
-#  - id: run_executive_profile_cards
-#    options:
-#      show_hint: true
-#      show_run_image: true
-#      background_style: image-dark-overlay   # options below
-#      card_width_px: 1180
-#      card_padding_px: 24
-#      image_width_px: 420
-#      wlr_days_back: 30
-#      wlr_gap_px: 2
-#      show_detail_charts: true
-#      detail_chart_layout: stack    # two-up | stack
-#      detail_chart_width_px: 1080  #540  | 1080
-#      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
-#      timeline_cell_h_px: 10
-#      timeline_show_hours: true
-#      timeline_show_summary: true
+  - id: run_executive_profile_cards
+    options:
+      show_hint: true
+      show_run_image: true
+      background_style: image-dark-overlay   # options below
+      card_width_px: 1180
+      card_padding_px: 24
+      image_width_px: 420
+      wlr_days_back: 30
+      wlr_gap_px: 2
+      show_detail_charts: true
+      detail_chart_layout: stack    # two-up | stack
+      detail_chart_width_px: 1080  #540  | 1080
+      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+      timeline_cell_h_px: 10
+      timeline_show_hours: true
+      timeline_show_summary: true
 #####Exec cards ####################################################
 #
 ####PREDICTION
@@ -303,20 +303,20 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 #####Weely Leaderboard ####################################################
-  - id: weekly_leaderboard_cards
-    title: "Weekly Prop Dashboard"
-    options:
-#      week_ending: "2026-04-17"   # optional
-      top_n: 200
-      starting_balance: 50000
-      trailing_dd: 2500
-      baseline_mode: fresh_week      # fresh_week or: continuous
-      show_card_image: true          # or: false
-      show_chart: false
-      show_debug_table: false
-      warn_buffer: 500
-      compact_noimg: true
-      bot_columns: 1
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+#      week_ending: "2026-05-02"   # optional
+#      top_n: 200
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      baseline_mode: fresh_week      # fresh_week or: continuous
+#      show_card_image: false          # or: false
+#      show_chart: false
+#      show_debug_table: false
+#      warn_buffer: 500
+#      compact_noimg: true
+#      bot_columns: 1
 #####Weely Leaderboard ####################################################
 #  - id: strategy_momentum_board
 #    title: "Strategy Momentum Board"

@@ -38,7 +38,12 @@ class NinjaTraderSummaryCsvParser:
     _TZ = ZoneInfo("America/Denver")
 
     def can_parse(self, path: Path, header: str) -> bool:
-        name_ok = path.name.endswith("_Summery.csv") or path.name.endswith("_Summary.csv")
+        name_ok = (
+            path.name.endswith("_Summery.csv")
+            or path.name.endswith("_Summary.csv")
+            or path.name == "Summary.csv"
+            or path.name == "Summery.csv"
+        )
         sig_ok = ("Performance" in header and "All trades" in header and "Long trades" in header)
         return name_ok and sig_ok
 

@@ -24,6 +24,7 @@ from ta_foundation.reports.html.sections.deployment_board_poster import render_d
 from ta_foundation.reports.html.sections.strategy_parameter_matrix import render_strategy_parameter_matrix
 from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
 from ta_foundation.reports.html.sections.strategy_momentum_board import render_strategy_momentum_board
+from ta_foundation.reports.html.sections.strategy_lifecycle_board import render_strategy_lifecycle_board
 from ta_foundation.reports.html.sections.strategy_session_momentum_board import render_strategy_session_momentum_board
 from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
     render_trades_intraday_pnl_by_day,
@@ -327,7 +328,10 @@ def _make_generic_overview(discovery_key: str, title_label: str, accent: str):
         data = None
         if discovery_key in ctx:
             data = ctx[discovery_key]
-        elif ctx.get("all_options", {}).get(discovery_key):
+        elif (
+            isinstance(ctx.get("all_options", {}).get(discovery_key), dict)
+            and "sweep_results" in ctx["all_options"][discovery_key]
+        ):
             data = ctx["all_options"][discovery_key]
         else:
             for pkg in (ctx.get("packages") or {}).values():
@@ -520,6 +524,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="strategy_momentum_board",
         default_title="Strategy Momentum Board",
         render_fn=render_strategy_momentum_board,
+    ),
+    "strategy_lifecycle_board": SectionDef(
+        id="strategy_lifecycle_board",
+        default_title="Strategy Lifecycle Board",
+        render_fn=render_strategy_lifecycle_board,
     ),
     "strategy_session_momentum_board": SectionDef(
         id="strategy_session_momentum_board",
