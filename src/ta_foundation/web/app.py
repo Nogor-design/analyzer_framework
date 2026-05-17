@@ -1230,6 +1230,80 @@ def create_app() -> "Flask":
         return jsonify({"result": result.to_dict()})
 
     @app.route(
+        "/api/optimizer/sessions/<session_id>/shadow/generate",
+        methods=["POST"],
+    )
+    def api_optimizer_session_shadow_generate(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shadow import (
+            OptimizerShadowError,
+            generate_shadow_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("run_ids") or None
+        try:
+            result = generate_shadow_templates(
+                session,
+                from_date=str(payload.get("from_date") or ""),
+                to_date=str(payload.get("to_date") or ""),
+                candidate_run_ids=run_ids,
+            )
+        except OptimizerShadowError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"result": result.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shadow/run",
+        methods=["POST"],
+    )
+    def api_optimizer_session_shadow_run(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shadow import (
+            OptimizerShadowError,
+            trigger_shadow_run,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            info = trigger_shadow_run(session)
+        except OptimizerShadowError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(info)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shadow/status",
+        methods=["GET"],
+    )
+    def api_optimizer_session_shadow_status(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shadow import shadow_status
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"status": shadow_status(session).to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shadow/ingest",
+        methods=["POST"],
+    )
+    def api_optimizer_session_shadow_ingest(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shadow import ingest_shadow_results
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        status = ingest_shadow_results(session)
+        return jsonify({"status": status.to_dict()})
+
+    @app.route(
         "/api/optimizer/sessions/<session_id>/robustness",
         methods=["POST"],
     )

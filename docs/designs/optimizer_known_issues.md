@@ -15,6 +15,47 @@ For the operator runbook, see
 
 ## Open
 
+### AddOn drops contract suffix on re-runs of named Backtest templates
+
+**Symptom.** A named final-Backtest template that originally produced
+trades produces **zero trades** when re-run via the BatchControl
+AddOn, even when the XML is byte-identical between runs. The two
+templates' `<InstrumentOrInstrumentList>` tags both contain
+`NQ 06-26`, but the returned `Settings.csv` differs:
+
+- Original run: `Instrument,NQ 06-26`
+- Shadow re-run: `Instrument,NQ`
+
+**Reproduction (2026-05-16, opt_5bab6a5ee1ea, F_001 / F_003).** Used
+the new `/api/optimizer/sessions/<id>/shadow/generate` to copy the
+named Backtest templates into the shadow folder, patched From/To
+to the SAME date range as the original run (Apr 14 – May 14 2026),
+dispatched via `/shadow/run`. NT ran cleanly (state=finished, 2/2),
+but both returned `Trades.csv` files were empty. `Settings.csv`
+showed `Instrument,NQ` for both shadow runs while the original
+backtest's `Settings.csv` showed `Instrument,NQ 06-26`.
+
+**Likely cause.** The BatchControl AddOn opens a temporary
+Strategy Analyzer tab for each template and loads the XML into it.
+That temporary tab's default instrument is `NQ` (the root), and the
+template's `<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>`
+override is not taking effect on the second pass. The optimizer
+phases produce per-template Optimization CSVs with `NQ 06-26` in
+the Instrument column, so the override DOES work at optimization
+time. Something in the Backtest load path is different.
+
+**Where to look.** `D:\ninjatraderOptimizer\NinjaTraderAddOnProject\BatchControl.cs`
+and `StrategyAnalyzerAutomation.cs` — specifically the template
+load + instrument apply path for Backtest mode. Compare with the
+optimization-mode path that does set the contract correctly.
+
+**Workaround.** None yet on the operator side. Shadow runs cannot
+be trusted to reproduce the original backtest until this is fixed.
+The shadow comparison itself is still useful — the
+"shadow window produced zero trades" divergence flag fires loudly
+when this happens, which is what surfaced the issue in the first
+place.
+
 ### Walk-forward and parameter-neighborhood robustness checks (deferred)
 
 The bootstrap trade-sequence robustness check shipped 2026-05-16
