@@ -5,33 +5,44 @@ from __future__ import annotations
 Uses the ``template_naming`` package (installed editable from
 ``D:\\templateNaming``) to decode the candidate's strategy template
 into its canonical ``Phase + MA + Descriptor`` form, then walks a
-deterministic filename fallback chain inside a configured images
-directory.
+deterministic filename fallback chain inside one or more configured
+images directories.
 
-Fallback chain (illustrated for ``CoilingPoseidonFireB-NQ.xml``):
+Search strategy (per dir, in this order):
 
-1. ``CoilingPoseidonFire`` — full compact name without direction / market
-2. ``PoseidonFire``        — MA + Descriptor only
-3. ``Poseidon``            — MA only
-4. ``Default``             — last-resort placeholder
-5. *substring search*      — any file in the dir whose stem contains
-   ``PoseidonFire`` (or just ``Poseidon`` if the longer match is empty).
-   This catches portraits whose filename starts with an unrelated
-   prefix like ``BrassZeusFire.png``.
+1. **Exact-stem match** against the following chain (first hit wins;
+   ``.png``/``.jpeg``/``.jpg`` accepted, case-insensitive):
 
-Each step tries both ``.jpeg`` and ``.png`` (case-insensitive on
-Windows). The first hit wins. If nothing matches, returns ``None``
-and the caller renders the decoded name without a portrait.
+   - ``<Phase><MA><Descriptor><Direction>-<Market>`` e.g. ``CoilingAresFireB-NQ``
+   - ``<Phase><MA><Descriptor><Direction>``         e.g. ``CoilingAresFireB``
+   - ``<Phase><MA><Descriptor>``                    e.g. ``CoilingAresFire``
+   - ``<MA><Descriptor>``                           e.g. ``AresFire``
+   - ``<MA>``                                       e.g. ``Ares``
+   - ``Default``
+
+2. **Per-god subdir pool** — if the dir contains ``<MA>_images/`` (e.g.
+   ``Zeus_images``) the lookup picks a deterministic image from inside
+   it (alphabetical first). This is how raw god-image albums are
+   organized in ``NewGodImages/``.
+
+3. **Substring search** in the dir — first file whose stem contains
+   ``<MA><Descriptor>`` (or just ``<MA>``). Catches prefixed names like
+   ``BrassZeusFire.png`` that don't match the deterministic chain.
+
+If multiple dirs are passed, each dir is exhausted (steps 1→3) before
+moving to the next dir. The first hit wins.
+
+``_Background.*`` variants are skipped automatically — those are
+companion files for compositing in the legacy ``God images`` dir and
+are never the portrait.
 
 The lookup never raises for missing directories or unparseable
-templates — it returns ``None`` and surfaces the reason in the
-``notes`` field of the result. Section renderers can show those notes
-as a debug aid.
+templates — it returns ``None`` and surfaces the reason in ``notes``.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 SUPPORTED_EXTS: tuple[str, ...] = (".jpeg", ".jpg", ".png")
@@ -44,6 +55,7 @@ class ImageLookupResult:
     decoded: dict[str, Any]      # NamingDecision fields, JSON-safe
     candidates_tried: list[str]  # filename stems we checked, in order
     matched_step: str | None     # which step in the chain hit
+    matched_dir: str | None = None  # which images dir contained the match
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -53,6 +65,7 @@ class ImageLookupResult:
             "decoded": dict(self.decoded),
             "candidates_tried": list(self.candidates_tried),
             "matched_step": self.matched_step,
+            "matched_dir": self.matched_dir,
             "notes": list(self.notes),
         }
 
@@ -60,7 +73,8 @@ class ImageLookupResult:
 def lookup_image_for_template(
     template_path: Path | str,
     *,
-    images_dir: Path | str | None,
+    images_dir: Path | str | Iterable[Path | str] | None,
+    market_suffix: str | None = None,
 ) -> ImageLookupResult:
     """Resolve the best portrait for the candidate XML at ``template_path``.
 
@@ -69,9 +83,15 @@ def lookup_image_for_template(
     template_path : Path | str
         XML template — e.g. a final_backtest_handoff/named_backtest_templates
         XML. The decoder reads it to extract Phase/MA/Descriptor.
-    images_dir : Path | str | None
-        Directory of portrait images. ``None`` (or non-existent) skips
-        the lookup and just returns the decoded name with a note.
+    images_dir : Path | str | Iterable | None
+        Directory or list of directories of portrait images, searched in
+        priority order. A single string with embedded newlines is also
+        treated as a multi-dir list (one path per line).
+    market_suffix : str | None
+        Market root (e.g. ``"NQ"``) used to try the
+        ``<compact>-<market>`` exact-match stem first. Derived by the
+        caller from the session contract (``"NQ 06-26"`` -> ``"NQ"``).
+        If absent, that step is simply skipped.
     """
     template = Path(template_path) if template_path else None
     notes: list[str] = []
@@ -98,16 +118,8 @@ def lookup_image_for_template(
 
     decoded = _decision_to_dict(decision)
 
-    if not images_dir:
-        notes.append("no images_dir configured")
-        return ImageLookupResult(
-            template_path=str(template), image_path=None, decoded=decoded,
-            candidates_tried=[], matched_step=None, notes=notes,
-        )
-
-    img_dir = Path(images_dir)
-    if not img_dir.exists() or not img_dir.is_dir():
-        notes.append(f"images_dir does not exist: {img_dir}")
+    dirs = _normalize_dirs(images_dir, notes=notes)
+    if not dirs:
         return ImageLookupResult(
             template_path=str(template), image_path=None, decoded=decoded,
             candidates_tried=[], matched_step=None, notes=notes,
@@ -116,9 +128,13 @@ def lookup_image_for_template(
     phase = decoded.get("phase") or ""
     ma_name = decoded.get("ma_name") or ""
     descriptor = decoded.get("descriptor") or ""
+    direction = decoded.get("direction") or ""
+    market = (market_suffix or "").strip()
 
-    # Deterministic fallback chain.
+    # Deterministic fallback chain — extended with direction+market.
     chain: list[tuple[str, str]] = [
+        ("compact+direction+market", f"{phase}{ma_name}{descriptor}{direction}-{market}" if market else ""),
+        ("compact+direction", f"{phase}{ma_name}{descriptor}{direction}"),
         ("phase+ma+descriptor", f"{phase}{ma_name}{descriptor}"),
         ("ma+descriptor", f"{ma_name}{descriptor}"),
         ("ma", ma_name),
@@ -127,32 +143,42 @@ def lookup_image_for_template(
     chain = [(step, stem) for step, stem in chain if stem]
 
     candidates_tried: list[str] = []
-    for step, stem in chain:
-        candidates_tried.append(stem)
-        match = _find_in_dir(img_dir, stem)
-        if match is not None:
-            return ImageLookupResult(
-                template_path=str(template), image_path=str(match),
-                decoded=decoded, candidates_tried=candidates_tried,
-                matched_step=step, notes=notes,
-            )
 
-    # Substring search — first file whose stem contains the MA+Descriptor
-    # (or just MA) substring. Useful when portraits live with a prefix
-    # like ``BrassZeusFire.png`` and the canonical lookup misses.
-    for needle in (f"{ma_name}{descriptor}", ma_name):
-        if not needle:
-            continue
-        match = _substring_search(img_dir, needle)
-        if match is not None:
-            notes.append(f"matched by substring search: {needle}")
-            return ImageLookupResult(
-                template_path=str(template), image_path=str(match),
-                decoded=decoded, candidates_tried=candidates_tried + [f"~{needle}"],
-                matched_step="substring", notes=notes,
-            )
+    # Per-dir: exact chain → god-pool subdir → substring search.
+    for img_dir in dirs:
+        for step, stem in chain:
+            candidates_tried.append(stem)
+            match = _find_in_dir(img_dir, stem)
+            if match is not None:
+                return ImageLookupResult(
+                    template_path=str(template), image_path=str(match),
+                    decoded=decoded, candidates_tried=candidates_tried,
+                    matched_step=step, matched_dir=str(img_dir), notes=notes,
+                )
 
-    notes.append("no image matched the fallback chain or substring search")
+        if ma_name:
+            pool_match = _pick_from_god_pool(img_dir, ma_name)
+            if pool_match is not None:
+                notes.append(f"matched from per-god pool: {img_dir.name}/{ma_name}_images/")
+                return ImageLookupResult(
+                    template_path=str(template), image_path=str(pool_match),
+                    decoded=decoded, candidates_tried=candidates_tried + [f"{ma_name}_images/*"],
+                    matched_step="god_pool", matched_dir=str(img_dir), notes=notes,
+                )
+
+        for needle in (f"{ma_name}{descriptor}", ma_name):
+            if not needle:
+                continue
+            match = _substring_search(img_dir, needle)
+            if match is not None:
+                notes.append(f"matched by substring search: {needle}")
+                return ImageLookupResult(
+                    template_path=str(template), image_path=str(match),
+                    decoded=decoded, candidates_tried=candidates_tried + [f"~{needle}"],
+                    matched_step="substring", matched_dir=str(img_dir), notes=notes,
+                )
+
+    notes.append("no image matched the fallback chain, per-god pool, or substring search")
     return ImageLookupResult(
         template_path=str(template), image_path=None,
         decoded=decoded, candidates_tried=candidates_tried,
@@ -182,6 +208,59 @@ def plain_english_summary(decoded: dict[str, Any]) -> str:
 # Internals
 # ---------------------------------------------------------------------------
 
+def _normalize_dirs(
+    images_dir: Path | str | Iterable[Path | str] | None,
+    *,
+    notes: list[str],
+) -> list[Path]:
+    """Coerce ``images_dir`` to an ordered list of existing directories.
+
+    Accepts:
+    - ``None``                                  → empty (annotated note)
+    - a single ``Path`` / ``str``                → one-element list
+    - a ``str`` with newlines                    → split per line
+    - any ``Iterable`` of paths/strings          → preserved order
+
+    Non-existent or non-directory entries are dropped with a note so
+    typos surface in the result without breaking the call.
+    """
+    if images_dir is None:
+        notes.append("no images_dir configured")
+        return []
+
+    raw: list[Any]
+    if isinstance(images_dir, (str, Path)):
+        text = str(images_dir)
+        if "\n" in text:
+            raw = [line.strip() for line in text.splitlines() if line.strip()]
+        else:
+            raw = [text] if text.strip() else []
+    else:
+        try:
+            raw = list(images_dir)
+        except TypeError:
+            notes.append(f"images_dir not iterable: {type(images_dir).__name__}")
+            return []
+
+    out: list[Path] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not entry:
+            continue
+        p = Path(entry)
+        key = str(p.resolve()) if p.exists() else str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not p.exists() or not p.is_dir():
+            notes.append(f"images_dir does not exist: {p}")
+            continue
+        out.append(p)
+    if not out and not notes:
+        notes.append("no images_dir configured")
+    return out
+
+
 def _decision_to_dict(decision: Any) -> dict[str, Any]:
     return {
         "phase": getattr(decision, "phase", None),
@@ -198,33 +277,61 @@ def _decision_to_dict(decision: Any) -> dict[str, Any]:
     }
 
 
+def _is_portrait(entry: Path) -> bool:
+    """Skip non-image files and the legacy ``*_Background.*`` companions."""
+    if not entry.is_file():
+        return False
+    if entry.suffix.lower() not in SUPPORTED_EXTS:
+        return False
+    if entry.stem.lower().endswith("_background"):
+        return False
+    return True
+
+
 def _find_in_dir(img_dir: Path, stem: str) -> Path | None:
     """Case-insensitive exact-stem lookup across supported extensions."""
     if not stem:
         return None
     stem_lower = stem.lower()
     for entry in img_dir.iterdir():
-        if not entry.is_file():
-            continue
-        suffix = entry.suffix.lower()
-        if suffix not in SUPPORTED_EXTS:
+        if not _is_portrait(entry):
             continue
         if entry.stem.lower() == stem_lower:
             return entry
     return None
 
 
+def _pick_from_god_pool(img_dir: Path, ma_name: str) -> Path | None:
+    """Pick a deterministic portrait from ``<img_dir>/<MA>_images/``.
+
+    The sub-directory naming convention is ``<MaName>_images`` (e.g.
+    ``Zeus_images``, ``Hera_images``). Match is case-insensitive on the
+    subdir name. Inside it, sort by stem and return the first portrait —
+    deterministic across reruns and easy to override by renaming a file.
+    """
+    needle = f"{ma_name}_images".lower()
+    subdir: Path | None = None
+    for entry in img_dir.iterdir():
+        if entry.is_dir() and entry.name.lower() == needle:
+            subdir = entry
+            break
+    if subdir is None:
+        return None
+
+    candidates = sorted(
+        (p for p in subdir.iterdir() if _is_portrait(p)),
+        key=lambda p: p.name.lower(),
+    )
+    return candidates[0] if candidates else None
+
+
 def _substring_search(img_dir: Path, needle: str) -> Path | None:
     if not needle:
         return None
     needle_lower = needle.lower()
-    # Prefer the shortest filename containing the substring — usually
-    # cleaner than a noisy long prefix.
     best: Path | None = None
     for entry in img_dir.iterdir():
-        if not entry.is_file():
-            continue
-        if entry.suffix.lower() not in SUPPORTED_EXTS:
+        if not _is_portrait(entry):
             continue
         if needle_lower in entry.stem.lower():
             if best is None or len(entry.stem) < len(best.stem):

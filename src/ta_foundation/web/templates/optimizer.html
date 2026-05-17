@@ -150,11 +150,11 @@
       </div>
       <div class="col-span-3">
         <label class="block text-xs text-gray-400 mb-1">
-          God/Monster images dir <span class="text-gray-500">(optional)</span>
-          <span class="text-amber-400 text-[10px] ml-1" title="Portrait images for per-candidate finalist reports. Matched in this order: PhaseMaDescriptor → MaDescriptor → Ma → Default, .jpeg or .png. Fallback: substring search.">where portrait files live</span>
+          God/Monster images dirs <span class="text-gray-500">(optional, one per line)</span>
+          <span class="text-amber-400 text-[10px] ml-1" title="Portrait images for per-candidate finalist reports. Searched in listed priority. Per dir: exact stem (Compact+Dir-Market → Compact+Dir → Compact → MaDesc → Ma → Default) → &lt;MaName&gt;_images/ subdir pool → substring search.">priority list; &lt;MaName&gt;_images/ subdirs are auto-pooled</span>
         </label>
-        <input id="gr-god-images-dir" type="text" class="w-full pathish"
-               placeholder="e.g. D:\templateNaming\imgOutput" />
+        <textarea id="gr-god-images-dir" rows="2" class="w-full pathish"
+                  placeholder="C:\Users\Owner\Pictures\NewGodImages&#10;C:\Users\Owner\Pictures\God images"></textarea>
       </div>
     </div>
   </section>

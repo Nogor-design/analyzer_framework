@@ -222,12 +222,19 @@ def build_candidate_report(
     analysis_csv = candidate_dir / "Analysis.csv"
     template_path = _find_template_path_for_run_id(session, run_id)
 
+    # Derive market root from the session contract: "NQ 06-26" -> "NQ".
+    # Falls back to market_suffix on the document, then empty.
+    doc = session.load_document()
+    instrument = (doc.instrument or "").strip()
+    market_root = instrument.split()[0] if instrument else (doc.market_suffix or "").strip()
+
     base_options: dict[str, Any] = {
         "run_id": run_id,
         "label": pkg.summary.kpis_all.get("strategy") if pkg.summary else run_id,
         "analysis_csv_path": str(analysis_csv) if analysis_csv.exists() else None,
         "template_path": str(template_path) if template_path else None,
         "images_dir": str(images_dir) if images_dir else None,
+        "market_suffix": market_root or None,
     }
     if not analysis_csv.exists():
         notes.append(f"Analysis.csv not present for {run_id}; chart-replica section will degrade.")

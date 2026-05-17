@@ -28,6 +28,7 @@ def render_exec_card_god_banner(ctx: dict[str, Any]) -> str:
     options = ctx.get("options") or {}
     template_path = options.get("template_path")
     images_dir = options.get("images_dir")
+    market_suffix = options.get("market_suffix") or ""
     run_id = options.get("run_id") or ""
     label = options.get("label") or ""
 
@@ -45,7 +46,9 @@ def render_exec_card_god_banner(ctx: dict[str, Any]) -> str:
         return _plain_banner(run_id=run_id, title=label or "(no template)",
                              subtitle="", notes=["no template_path provided"])
 
-    result = lookup_image_for_template(Path(template_path), images_dir=images_dir)
+    result = lookup_image_for_template(
+        Path(template_path), images_dir=images_dir, market_suffix=market_suffix or None,
+    )
     decoded = result.decoded
     title = decoded.get("compact_name") or label or "(strategy)"
     subtitle = plain_english_summary(decoded)
