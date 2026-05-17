@@ -44,8 +44,19 @@
     <span class="text-amber-400 font-bold text-lg">Decision</span>
     <span class="text-gray-500 text-sm pathish">/ {{ dashboard.session_id }}</span>
   </div>
-  <div class="text-xs text-gray-500">Generated {{ dashboard.generated_at }}</div>
+  <div class="flex items-center gap-3 text-xs">
+    {% if dashboard.status == "ok" %}
+      <button id="build-reports-btn"
+              class="btn-primary px-3 py-1.5 rounded text-xs font-semibold"
+              title="(Re)generate the per-candidate HTML reports linked from each row below.">
+        Build per-candidate reports
+      </button>
+    {% endif %}
+    <span class="text-gray-500">Generated {{ dashboard.generated_at }}</span>
+  </div>
 </header>
+
+<div id="build-status" class="max-w-6xl mx-auto px-6 pt-3 text-xs text-gray-400"></div>
 
 <main class="max-w-6xl mx-auto p-6 space-y-5">
 
@@ -228,6 +239,42 @@
   {% endif %}
 
 </main>
+
+<script>
+(function() {
+  const btn = document.getElementById("build-reports-btn");
+  const status = document.getElementById("build-status");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const sid = {{ dashboard.session_id | tojson }};
+    btn.disabled = true;
+    btn.textContent = "Building…";
+    status.textContent = "Generating per-candidate HTML reports…";
+    try {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-reports", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        status.textContent = "Build failed: " + (body.error || r.status);
+        btn.textContent = "Build per-candidate reports";
+        btn.disabled = false;
+        return;
+      }
+      const batch = body.batch || {};
+      const built = (batch.per_candidate || []).length;
+      const noteLines = (batch.notes || []).slice(0, 5).join(" · ");
+      status.textContent = "Built " + built + " report(s). " + (noteLines ? "Notes: " + noteLines : "") +
+        " Reloading…";
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      status.textContent = "Build failed: " + e;
+      btn.textContent = "Build per-candidate reports";
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
 
 </body>
 </html>

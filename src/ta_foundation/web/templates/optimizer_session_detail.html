@@ -429,7 +429,10 @@
     <div class="flex flex-wrap gap-3">
       <a href="/optimizer/sessions/{{ session.session_id }}/resume" class="btn-primary px-3 py-1.5 rounded text-xs no-underline">Resume to configure / run</a>
       <button id="clone-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Clone &amp; refine</button>
-      <button id="rebuild-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Rebuild deployment package</button>
+      <button id="rebuild-btn" class="btn-ghost px-3 py-1.5 rounded text-xs"
+              title="Re-runs the full package build: refresh review, recommendations, and auto-generate per-candidate HTML reports.">Rebuild deployment package</button>
+      <button id="build-reports-btn" class="btn-ghost px-3 py-1.5 rounded text-xs"
+              title="Just regenerate the per-candidate HTML reports; skip the full package rebuild.">Build per-candidate reports</button>
       <button id="delete-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Delete</button>
     </div>
     <div id="action-status" class="text-xs text-gray-500 mt-2"></div>
@@ -465,6 +468,25 @@ $("rebuild-btn").addEventListener("click", async () => {
     " phase3=" + (body.package && body.package.phase3_risk_template_count || 0) +
     " final=" + (body.package && body.package.final_backtest_template_count || 0) +
     " recs=" + (body.package && body.package.final_recommendation_count || 0);
+});
+
+$("build-reports-btn").addEventListener("click", async () => {
+  $("action-status").textContent = "Building per-candidate reports…";
+  const r = await fetch("/api/optimizer/sessions/" + SID + "/candidate-reports", {
+    method: "POST", headers: {"Content-Type":"application/json"}, body: "{}",
+  });
+  const body = await r.json();
+  if (!r.ok) {
+    $("action-status").textContent = "Report build failed: " + (body.error || r.status);
+    return;
+  }
+  const batch = body.batch || {};
+  const built = (batch.per_candidate || []).length;
+  const noteLines = (batch.notes || []).slice(0, 3).join(" · ");
+  $("action-status").innerHTML =
+    "Built " + built + " per-candidate report(s). " +
+    (noteLines ? "Notes: " + noteLines + " · " : "") +
+    "<a href='/optimizer/sessions/" + SID + "/decision' class='text-amber-300 underline'>Open decision dashboard</a>";
 });
 
 function fmtVal(v, digits) {

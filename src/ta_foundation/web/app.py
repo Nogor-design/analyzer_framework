@@ -1174,6 +1174,35 @@ def create_app() -> "Flask":
             return jsonify({"error": "session not found"}), 404
         return jsonify({"dashboard": build_decision_dashboard(session).to_dict()})
 
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/candidate-reports",
+        methods=["POST"],
+    )
+    def api_optimizer_build_candidate_reports(session_id: str):
+        """Bulk-build per-candidate HTML reports for every finalist on disk.
+
+        Triggered from the Decision Dashboard's "Build per-candidate reports"
+        button. Same operation as the side effect inside ``build_deployment_package``,
+        but callable directly without re-running the full package rebuild.
+        """
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            build_all_candidate_reports,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        doc = session.load_document()
+        try:
+            batch = build_all_candidate_reports(
+                session,
+                images_dir=doc.god_images_dir or None,
+            )
+        except Exception as exc:
+            return jsonify({"error": f"unexpected report build error: {exc}"}), 500
+        return jsonify({"batch": batch.to_dict()})
+
     @app.route("/optimizer/sessions/<session_id>/resume")
     def optimizer_session_resume(session_id: str):
         from flask import redirect
