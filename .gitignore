@@ -1,0 +1,35 @@
+.venv/
+.venv*/
+.pytest_cache/
+.ta_artifacts/
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.dll
+*.egg-info/
+.idea/
+.claude/
+
+outputs*/
+None/
+$null
+
+# Codex / claude test process logs left around the repo root.
+.codex_*.log
+.codex_*.out.log
+.codex_*.err.log
+
+# Editor scratch files (atomic-save temp files).
+*.tmp.*
+
+# Ad-hoc per-invocation output / runs directories. The committed
+# `outputs/` plural is excluded by `outputs*/` above; this catches the
+# singular forms that the CLI / discovery / strategy_lifecycle scripts
+# create as scratch.
+/output/
+/runs/
+
+# Local-only databases — runtime state, not source.
+*.duckdb
+agent_state.db
