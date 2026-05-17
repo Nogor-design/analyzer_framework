@@ -32,6 +32,8 @@
     <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
   </div>
   <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions/{{ session.session_id }}/decision"
+       class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Decision dashboard</a>
     <a href="/optimizer/sessions/{{ session.session_id }}/resume"
        class="btn-primary px-3 py-1.5 rounded text-sm font-semibold no-underline">Resume</a>
   </div>
@@ -114,7 +116,7 @@
         <table>
           <tr><th>Max drawdown ($)</th><td>{{ session.guardrails.max_drawdown_dollars }}</td></tr>
           <tr><th>Min trades</th><td>{{ session.guardrails.min_trades }}</td></tr>
-          <tr><th>Min % days traded</th><td>{{ session.guardrails.min_percent_days_traded }}</td></tr>
+          <tr><th>Min % days traded <span class="text-amber-400" title="Applied at final-review stage only — not at the optimizer-row stage.">⚑</span></th><td>{{ session.guardrails.min_percent_days_traded }}</td></tr>
           <tr><th>Min profit factor</th><td>{{ session.guardrails.min_profit_factor }}</td></tr>
           <tr><th>Min net profit</th><td>{{ session.guardrails.min_net_profit }}</td></tr>
           <tr><th>Max trades/day</th><td>{{ session.guardrails.max_trades_per_day }}</td></tr>
@@ -259,6 +261,81 @@
   </section>
 
   <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Parameter neighborhood (optional)</h2>
+    <div class="text-xs text-gray-400 mb-3">
+      For each final candidate, re-run its fixed-Backtest template with small ±pct offsets around
+      each numeric optimized parameter. Distinguishes a robust peak from a needle peak in the
+      optimizer's surface. Bool / enum parameters are skipped automatically. Output lands in
+      <span class="pathish">deployment_package/neighborhood/</span>.
+    </div>
+    <div class="grid grid-cols-4 gap-3 text-xs mb-3">
+      <div>
+        <label class="block text-gray-400 mb-1">Offset (±%)</label>
+        <input id="nb-pct" type="number" value="10" min="1" max="50" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-gray-400 mb-1">Steps per parameter</label>
+        <input id="nb-steps" type="number" value="4" min="2" max="10" class="w-full" />
+      </div>
+      <div>
+        <label class="block text-gray-400 mb-1">Mode</label>
+        <select id="nb-mode" class="w-full">
+          <option value="one_at_a_time" selected>One at a time</option>
+          <option value="full_cube">Full cube</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <button id="nb-generate-btn" class="btn-primary px-3 py-1.5 rounded text-xs font-semibold">Generate neighborhood templates</button>
+      <button id="nb-run-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Dispatch to NinjaTrader</button>
+      <button id="nb-ingest-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Ingest neighborhood results</button>
+      <span id="nb-status" class="text-xs text-gray-500"></span>
+    </div>
+    <div id="nb-results" class="mt-3 hidden">
+      <div class="text-xs text-gray-400 mb-1">Stability per candidate:</div>
+      <div class="overflow-x-auto mb-3">
+        <table class="text-xs w-full">
+          <thead>
+            <tr class="border-b border-gray-700 text-gray-500">
+              <th class="pr-3">Run</th>
+              <th class="pr-3 text-right">Center PF</th>
+              <th class="pr-3 text-right">Center net</th>
+              <th class="pr-3 text-right">Cells</th>
+              <th class="pr-3 text-right">With trades</th>
+              <th class="pr-3 text-right">PF&gt;1</th>
+              <th class="pr-3 text-right">PF min</th>
+              <th class="pr-3 text-right">PF median</th>
+              <th class="pr-3 text-right">PF max</th>
+              <th class="pr-3 text-right">Net median</th>
+              <th class="pr-3 text-right">CoV(net)</th>
+              <th class="pr-3">Flags</th>
+            </tr>
+          </thead>
+          <tbody id="nb-stability-tbody"></tbody>
+        </table>
+      </div>
+      <div class="text-xs text-gray-400 mb-1">Per-cell detail:</div>
+      <div class="overflow-x-auto">
+        <table class="text-xs w-full">
+          <thead>
+            <tr class="border-b border-gray-700 text-gray-500">
+              <th class="pr-3">Run</th>
+              <th class="pr-3 text-right">Cell</th>
+              <th class="pr-3">Label</th>
+              <th class="pr-3 text-right">Trades</th>
+              <th class="pr-3 text-right">Net</th>
+              <th class="pr-3 text-right">PF</th>
+              <th class="pr-3 text-right">DD</th>
+            </tr>
+          </thead>
+          <tbody id="nb-cells-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
     <h2 class="text-amber-400 font-semibold text-sm mb-2">Shadow execution (optional)</h2>
     <div class="text-xs text-gray-400 mb-3">
       Re-run each final candidate against a recent rolling-window of historical data. Strictly
@@ -310,14 +387,14 @@
     <h2 class="text-amber-400 font-semibold text-sm mb-2">Robustness checks (optional)</h2>
     <div class="text-xs text-gray-400 mb-3">
       Optional validation of the final candidates. The trade-sequence bootstrap is the only check
-      runnable today without re-running NinjaTrader; walk-forward and parameter-neighborhood checks
-      are deferred (require dispatching more optimizer runs). Output lands in
+      runnable from this card today; walk-forward and parameter-neighborhood validation each have
+      their own dedicated card above (they dispatch NT runs). Output lands in
       <span class="pathish">deployment_package/robustness/</span>.
     </div>
     <div class="flex flex-wrap items-center gap-4 text-xs mb-3">
       <label class="flex items-center gap-1"><input id="rob-bootstrap" type="checkbox" checked /> Bootstrap trade sequence</label>
-      <label class="flex items-center gap-1 text-gray-500"><input id="rob-walkforward" type="checkbox" disabled /> Walk-forward (deferred)</label>
-      <label class="flex items-center gap-1 text-gray-500"><input id="rob-neighborhood" type="checkbox" disabled /> Parameter neighborhood (deferred)</label>
+      <label class="flex items-center gap-1 text-gray-500"><input id="rob-walkforward" type="checkbox" disabled /> Walk-forward (see card above)</label>
+      <label class="flex items-center gap-1 text-gray-500"><input id="rob-neighborhood" type="checkbox" disabled /> Parameter neighborhood (see card above)</label>
       <span class="text-gray-400">Samples: <input id="rob-samples" type="number" value="1000" min="50" max="10000" class="w-20" /></span>
     </div>
     <div class="flex items-center gap-3">
@@ -492,6 +569,91 @@ $("wf-ingest-btn").addEventListener("click", async () => {
   const today = new Date().toISOString().slice(0, 10);
   $("wf-anchor").value = today;
 })();
+
+function renderNeighborhood(status) {
+  const stab = status.candidate_stability || [];
+  const cells = status.per_cell_results || [];
+  const stabTbody = $("nb-stability-tbody");
+  stabTbody.innerHTML = "";
+  for (const s of stab) {
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-gray-800 text-gray-300";
+    const flags = (s.stability_flags || []).join("; ") || "ok";
+    tr.innerHTML = `
+      <td class="font-mono">${s.candidate_run_id}</td>
+      <td class="text-right">${fmtVal(s.center_profit_factor, 2)}</td>
+      <td class="text-right">${fmtVal(s.center_net_profit, 0)}</td>
+      <td class="text-right">${s.cells_run}</td>
+      <td class="text-right">${s.cells_with_trades}</td>
+      <td class="text-right">${s.cells_with_pf_above_1}</td>
+      <td class="text-right">${fmtVal(s.pf_min, 2)}</td>
+      <td class="text-right">${fmtVal(s.pf_median, 2)}</td>
+      <td class="text-right">${fmtVal(s.pf_max, 2)}</td>
+      <td class="text-right">${fmtVal(s.net_median, 0)}</td>
+      <td class="text-right">${fmtVal(s.coefficient_of_variation_net, 2)}</td>
+      <td class="text-xs text-amber-300">${flags === "ok" ? '<span class="text-green-400">ok</span>' : flags}</td>
+    `;
+    stabTbody.appendChild(tr);
+  }
+  const cellTbody = $("nb-cells-tbody");
+  cellTbody.innerHTML = "";
+  const sorted = cells.slice().sort((a, b) =>
+    a.candidate_run_id.localeCompare(b.candidate_run_id) || a.cell_index - b.cell_index
+  );
+  for (const r of sorted) {
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-gray-800 text-gray-300";
+    tr.innerHTML = `
+      <td class="font-mono">${r.candidate_run_id}</td>
+      <td class="text-right">${r.cell_index}</td>
+      <td class="text-gray-400">${r.label || ""}</td>
+      <td class="text-right">${r.trades}</td>
+      <td class="text-right">${fmtVal(r.net_profit, 0)}</td>
+      <td class="text-right">${fmtVal(r.profit_factor, 2)}</td>
+      <td class="text-right">${fmtVal(r.max_drawdown, 0)}</td>
+    `;
+    cellTbody.appendChild(tr);
+  }
+  $("nb-results").classList.remove("hidden");
+}
+
+$("nb-generate-btn").addEventListener("click", async () => {
+  const pctRaw = parseFloat($("nb-pct").value || "10");
+  const body = {
+    pct: (isFinite(pctRaw) ? pctRaw : 10) / 100,
+    steps: parseInt($("nb-steps").value || "4", 10),
+    mode: $("nb-mode").value || "one_at_a_time",
+  };
+  $("nb-status").textContent = "Generating neighborhood templates…";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/neighborhood/generate", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { $("nb-status").textContent = "Generate failed: " + res.status + " " + await res.text(); return; }
+  const data = await res.json();
+  const r = data.result || {};
+  const tcount = (r.templates || []).length;
+  $("nb-status").textContent = `Generated ${tcount} cells (mode=${r.mode}, ±${(r.pct*100).toFixed(0)}%). Click "Dispatch" to send to NT.`;
+});
+
+$("nb-run-btn").addEventListener("click", async () => {
+  $("nb-status").textContent = "Dispatching to NinjaTrader…";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/neighborhood/run", { method: "POST" });
+  if (!res.ok) { $("nb-status").textContent = "Dispatch failed: " + res.status + " " + await res.text(); return; }
+  const body = await res.json();
+  $("nb-status").textContent = "Dispatched (runId " + (body.payload && body.payload.runId || "?") + "). Wait for NT, then 'Ingest'.";
+});
+
+$("nb-ingest-btn").addEventListener("click", async () => {
+  $("nb-status").textContent = "Ingesting neighborhood results…";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/neighborhood/ingest", { method: "POST" });
+  if (!res.ok) { $("nb-status").textContent = "Ingest failed: " + res.status + " " + await res.text(); return; }
+  const body = await res.json();
+  const s = body.status || {};
+  renderNeighborhood(s);
+  const notes = (s.notes || []).length ? " | " + s.notes.join(" | ") : "";
+  $("nb-status").textContent = `Ingested. ${(s.candidate_stability || []).length} candidate stability rows.${notes}`;
+});
 
 function renderShadowComparisons(comparisons) {
   const tbody = $("shadow-tbody");

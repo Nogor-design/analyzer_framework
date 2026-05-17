@@ -103,8 +103,12 @@ def test_bootstrap_small_trade_count_adds_caveat_note(tmp_path: Path):
     assert any("Trade count is 3" in n for n in result.notes)
 
 
-def test_walk_forward_and_neighborhood_stubs_raise():
+def test_walk_forward_stub_raises_and_neighborhood_redirects():
+    # walk_forward_validation is still a stub in this module — the real
+    # walk-forward engine lives under ta_foundation.web.optimizer_walkforward.
     with pytest.raises(NotImplementedError):
         walk_forward_validation()
-    with pytest.raises(NotImplementedError):
+    # parameter_neighborhood_check is now a redirect shim — the
+    # implementation lives under ta_foundation.web.optimizer_neighborhood.
+    with pytest.raises(RuntimeError, match="optimizer_neighborhood"):
         parameter_neighborhood_check()

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Optional robustness checks for optimizer final candidates.
 
-The bootstrap check is the only one runnable today without a
-NinjaTrader roundtrip — it operates on the Trades.csv produced by a
-fixed-Backtest run. Walk-forward and parameter-neighborhood checks
-require dispatching new NT runs and are deferred (stubs at the bottom
-of this module).
+The bootstrap check is the only one runnable in this module — it
+operates on the Trades.csv produced by a fixed-Backtest run with no
+NinjaTrader roundtrip needed. Walk-forward and parameter-neighborhood
+validation live in dedicated web engines because they dispatch NT
+runs (see ``ta_foundation.web.optimizer_walkforward`` and
+``ta_foundation.web.optimizer_neighborhood``).
 
 The bootstrap idea: take the actual trade-level returns from a
 finished Backtest, resample with replacement N times, and compute the
@@ -168,15 +169,16 @@ def walk_forward_validation(*args: Any, **kwargs: Any) -> None:
 
 
 def parameter_neighborhood_check(*args: Any, **kwargs: Any) -> None:
-    """For each candidate, sweep ±N% around each parameter and check
-    whether the strategy stays profitable or collapses one increment
-    away. Distinguishes a robust peak from a needle peak. Requires
-    dispatching small NT Backtests for each neighborhood cell.
+    """Deprecated re-export shim. The neighborhood check is implemented in
+    ``ta_foundation.web.optimizer_neighborhood`` because it dispatches NT
+    runs; use :func:`generate_neighborhood_templates` /
+    :func:`trigger_neighborhood_run` / :func:`ingest_neighborhood_results`
+    from that module, or the ``/api/optimizer/sessions/<id>/neighborhood/*``
+    routes from the web UI.
     """
-    raise NotImplementedError(
-        "parameter_neighborhood_check is not yet implemented. It requires "
-        "dispatching one fixed-Backtest per neighborhood cell; see "
-        "docs/designs/optimizer_known_issues.md for the deferred design."
+    raise RuntimeError(
+        "parameter_neighborhood_check moved to ta_foundation.web.optimizer_neighborhood "
+        "(generate / run / status / ingest). See docs/designs/optimizer_known_issues.md."
     )
 
 

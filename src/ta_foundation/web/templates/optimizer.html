@@ -34,6 +34,7 @@
     <span class="text-gray-500 text-sm">/ NinjaTrader plan preview</span>
   </div>
   <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions/{{ session_id }}/decision" class="btn-ghost px-3 py-1.5 rounded">Decision Dashboard</a>
     <a href="/optimizer/sessions" class="btn-ghost px-3 py-1.5 rounded">Sessions</a>
     <span class="text-gray-500">
       session <span id="session-id-display" class="font-mono text-gray-300">{{ session_id }}</span>
@@ -117,7 +118,10 @@
         <input id="gr-min-trades" type="number" class="w-full" placeholder="e.g. 10" />
       </div>
       <div>
-        <label class="block text-xs text-gray-400 mb-1">Min % days traded</label>
+        <label class="block text-xs text-gray-400 mb-1">
+          Min % days traded
+          <span class="text-amber-400" title="Applied at final-review stage only. The optimizer rows themselves are not filtered by this — %days-traded isn't in the optimizer CSV.">⚑ final-review only</span>
+        </label>
         <input id="gr-min-pct-days" type="number" step="0.1" class="w-full" placeholder="e.g. 20" />
       </div>
       <div>
@@ -143,6 +147,14 @@
       <div>
         <label class="block text-xs text-gray-400 mb-1">Keep best rows / chunk</label>
         <input id="ch-keep-best" type="number" class="w-full" value="500" />
+      </div>
+      <div class="col-span-3">
+        <label class="block text-xs text-gray-400 mb-1">
+          God/Monster images dir <span class="text-gray-500">(optional)</span>
+          <span class="text-amber-400 text-[10px] ml-1" title="Portrait images for per-candidate finalist reports. Matched in this order: PhaseMaDescriptor → MaDescriptor → Ma → Default, .jpeg or .png. Fallback: substring search.">where portrait files live</span>
+        </label>
+        <input id="gr-god-images-dir" type="text" class="w-full pathish"
+               placeholder="e.g. D:\templateNaming\imgOutput" />
       </div>
     </div>
   </section>
@@ -408,8 +420,10 @@ function makeParamRow(i) {
   const p = PARAMS[i];
   const tr = document.createElement("tr");
   tr.className = "border-b border-gray-800";
-  const rangeText = (p.minimum !== "" && p.minimum != null) || (p.maximum !== "" && p.maximum != null)
-    ? `[${p.minimum ?? "−∞"}, ${p.maximum ?? "+∞"}]`
+  const hasMin = p.minimum !== "" && p.minimum != null;
+  const hasMax = p.maximum !== "" && p.maximum != null;
+  const rangeText = hasMin || hasMax
+    ? `[${hasMin ? p.minimum : "−∞"}, ${hasMax ? p.maximum : "+∞"}]`
     : "(no [Range])";
   const isBool = (p.type_name || "").toLowerCase() === "bool";
   const optimizing = p.mode === "optimize";
@@ -557,6 +571,7 @@ function collectSessionPayload() {
       max_runtime_minutes_per_chunk: numOrNull($("ch-max-runtime").value),
       keep_best_results: parseInt($("ch-keep-best").value || "500", 10),
     },
+    god_images_dir: ($("gr-god-images-dir") && $("gr-god-images-dir").value) || "",
   };
 }
 
@@ -924,6 +939,7 @@ $("rename-btn").addEventListener("click", async () => {
     if (ch.max_combinations_per_chunk) $("ch-max-combo").value = ch.max_combinations_per_chunk;
     if (ch.max_runtime_minutes_per_chunk != null) $("ch-max-runtime").value = ch.max_runtime_minutes_per_chunk;
     if (ch.keep_best_results != null) $("ch-keep-best").value = ch.keep_best_results;
+    if (doc.god_images_dir) $("gr-god-images-dir").value = doc.god_images_dir;
     if (existing.plan) renderPlan(existing.plan);
     // Resume run status if a run.json already exists for this session.
     try {

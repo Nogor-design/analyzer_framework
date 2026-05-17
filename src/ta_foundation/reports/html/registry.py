@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from ta_foundation.reports.html.sections.analysis_chart_replica import render_analysis_chart_replica
+from ta_foundation.reports.html.sections.exec_card_god_banner import render_exec_card_god_banner
 from ta_foundation.reports.html.sections.daily_scoreboard import render_daily_scoreboard
 from ta_foundation.reports.html.sections.comparison_overview import render_comparison_overview
 from ta_foundation.reports.html.sections.equity_curve import render_equity_curve_all_runs
@@ -439,6 +441,17 @@ class SectionDef:
 
 
 SECTION_REGISTRY: dict[str, SectionDef] = {
+    # --- optimizer-finalist sections (auto-generated per candidate) ---
+    "exec_card_god_banner": SectionDef(
+        id="exec_card_god_banner",
+        default_title="",
+        render_fn=render_exec_card_god_banner,
+    ),
+    "analysis_chart_replica": SectionDef(
+        id="analysis_chart_replica",
+        default_title="Analysis (replicated from CSV)",
+        render_fn=render_analysis_chart_replica,
+    ),
     # --- existing sections ---
     "comparison_overview": SectionDef(
         id="comparison_overview",

@@ -266,6 +266,20 @@ def build_deployment_package(
         oos_to_date=resolved_to,
     )
 
+    # Auto-generate per-candidate HTML reports whenever final-Backtest
+    # results are on disk. Safe to call when nothing's there (returns
+    # an empty batch with a note); guarded with broad try so a report
+    # render error never breaks the package rebuild itself.
+    if final_review_dir is not None and _dir_has_files(final_results_dir):
+        try:
+            from ta_foundation.web.optimizer_candidate_report import build_all_candidate_reports
+            build_all_candidate_reports(
+                session,
+                images_dir=doc.god_images_dir or None,
+            )
+        except Exception as exc:
+            notes.append(f"per-candidate report build failed: {exc}")
+
     return OptimizerDeploymentPackage(
         session_id=session.id,
         package_dir=str(package_dir.resolve()),

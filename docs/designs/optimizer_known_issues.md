@@ -15,21 +15,39 @@ For the operator runbook, see
 
 ## Open
 
-### Parameter-neighborhood robustness check (deferred)
+### Auto-stage market data alongside optimization sessions (deferred)
 
-The bootstrap (2026-05-16) and walk-forward (2026-05-16) checks
-shipped. The third deeper check remains stubbed in
-`src/ta_foundation/optimization/robustness.py`:
+**Why this is on the list.** Today the Python side never sees the
+bars/ticks an optimization ran against unless the operator manually
+exports them and drops the TXT files in the session input folder
+(where `minute_bars_last_txt.py` and `tick_last_txt.py` route them
+into `MarketDataStore`). All currently-shipped robustness tests work
+around this:
 
-- **`parameter_neighborhood_check`** — for each candidate, sweep
-  ±N% around each numeric parameter (one at a time, or full
-  small-cube) and check whether the strategy stays profitable or
-  collapses one increment away. Distinguishes a robust peak from a
-  needle peak. Design sketch: for each candidate parameter, pick
-  3–5 neighborhood values, generate a small fixed-Backtest grid,
-  dispatch via the runner, summarize win rate / PF stability across
-  the cube. Same NT-roundtrip plumbing as walk-forward; ~1 day
-  build.
+- Bootstrap resamples `Trades.csv` directly — no bars needed.
+- Walk-forward and the proposed parameter-neighborhood check
+  round-trip through NT for fills, because we don't have a Python
+  simulator that matches NT execution.
+
+So no current test is blocked. We're documenting this because the
+question keeps coming up and the answer is non-obvious.
+
+**When to revisit.** Add this only when a planned Python-side test
+genuinely needs bar context — candidates: indicator-on-bar
+consistency checks, slippage / fill modeling, regime overlays on the
+optimization rows, a Python-side mini-simulator for cheap
+neighborhood / sensitivity sweeps that avoids NT round-trips.
+
+**Design sketch (when needed).** Half-day AddOn change: on session
+start the NT AddOn dumps the relevant minute (and optionally tick)
+range for the session's contract to a known per-session location, so
+the Python ingest picks them up automatically without operator
+pre-staging. Key parameters: `instrument_root`, `contract`, date
+range derived from the session's Backtest window, output format
+matching the existing `Last.txt` exports the parsers already
+understand. Alternative cheaper path: a `tools\Export-Bars.ps1`
+helper that the operator runs once per session and that drops the
+files in the session input folder.
 
 ### ~~NT custom optimizer DLL ignores bool parameter sweeps~~ — root cause re-diagnosed and fixed 2026-05-16
 
@@ -100,54 +118,31 @@ Invoke-RestMethod -Method Post -Uri "$base/run"
 
 ---
 
-### AddOn cancel cannot abort an in-flight template
+### AddOn cancel still cannot interrupt the in-flight template (partial)
 
-**Symptom.** Calling
-`POST /api/optimizer/sessions/<id>/run/cancel` writes the cancel
-state to `run.json` and removes `C:\temp\nt8_command.json`, but the
-NinjaTrader AddOn finishes the current template before it sees the
-absence of the command file. Long-running phase-3 chunks can keep
-running for the full template duration after a cancel click.
+The IPC half is fixed (2026-05-17, see Resolved below): the web cancel
+button now actually reaches the AddOn and stops the batch at the next
+template boundary, matching the local CANCEL button's semantics.
 
-**Where to look.** `BatchControl.cs` in
-`D:\ninjatraderOptimizer\NinjaTraderAddOnProject`. The batch loop
-checks the command file between templates, not within a single
-Strategy Analyzer optimization run.
+The remaining gap is **NT-internal**: once `RunCommand.Execute(null)`
+has been issued on a Strategy Analyzer tab, the AddOn cannot stop that
+optimization mid-flight — NT exposes no public Stop API on
+`StrategyAnalyzerVM.RunCommand`. The currently-running template must
+complete (or NT must be killed) before the cancel takes visible
+effect.
 
-**Workaround.** Stop NinjaTrader directly if you need to abort a
-long-running optimization mid-template. Otherwise wait for the
-current template to finish; the cancel will take effect at the next
-template boundary.
+**Where to look** if a future operator wants to push further:
+- `StrategyAnalyzerAutomation.cs` — would need a discovered field like
+  `StopCommand` / `CancelCommand` / equivalent on the SA view model.
+  Past reflection sweeps (see `tools/inspect_vm_command_fields.ps1`)
+  did not surface one. Closing the SA tab via `OnCloseTab` while a
+  run is in flight is *possible* but risks leaking handles or
+  corrupting export state.
 
----
-
-### `[2,]` range display in the parameter table
-
-**Symptom.** The "Range" column in the optimizer parameter table
-renders as `[2,]` when the strategy's `[Range]` attribute has a min
-but no explicit max (e.g. `[Range(2, int.MaxValue)]`). Cosmetic only;
-the sweep still validates fine because Min/Max are taken from the
-optimize fields, not the [Range] hint.
-
-**Where to fix.** `src/ta_foundation/web/templates/optimizer.html`,
-the `rangeText` ternary inside `makeParamRow`. Render `[2, ∞]` or
-just `≥ 2` instead of `[2, ]`.
-
----
-
-### `min_percent_days_traded` not applied at the optimizer-row stage
-
-**Symptom.** The session's `min_percent_days_traded` guardrail
-filters final-Backtest review rows correctly, but `optimizer_results`
-does not compute or filter on percent-days-traded for raw optimizer
-rows because that field is not in `*_Optimization.csv`. The web UI
-allows setting the guardrail and shows it on the deployment package
-notes, but it has no effect until the final-Backtest stage.
-
-**Where to fix.** Either compute percent-days-traded from the
-Settings / Trades exports during result intake, or surface this
-clearly in the UI as "applied at final review only". The latter is
-the cheaper option.
+**Workaround for true emergencies.** Stop NinjaTrader directly. The
+local CANCEL button and the new IPC cancel both have the same
+"finish current template, then stop" semantics; neither can interrupt
+a single optimization once NT has started it.
 
 ---
 
@@ -170,6 +165,90 @@ python -m pytest src/ta_foundation/tests/web src/ta_foundation/tests/optimizatio
 ---
 
 ## Resolved (kept for history)
+
+### 2026-05-17 — Web-app cancel now reaches the AddOn (IPC half)
+The `commandWatcher` in
+`D:\ninjatraderOptimizer\NinjaTraderAddOnProject\BatchControl.cs`
+previously only listened for `Changed/Created/Renamed` on
+`C:\temp\nt8_command.json`. The web UI's cancel path unlinks that
+file (`optimizer_runner.cancel_run`), so the AddOn never saw the
+signal and the batch ran to completion regardless. Fix:
+
+- `SetupIPC()` now also subscribes to `Deleted`. New handler
+  `OnCommandFileDeleted` flips `cancelRequested` when the file
+  disappears mid-batch (`isRunning && !cancelRequested` guard so
+  idle deletions are ignored).
+- `OnCommandFileChanged` now recognizes an explicit
+  `{"action":"Cancel"}` payload as an alternative cancel trigger
+  (future-proof for callers that don't want to delete the file).
+- New helper `RequestCancelFromIpc(reason)` flips the flag on the
+  WPF dispatcher and logs which path fired it.
+
+Effect: web-app cancel now has the same semantics as clicking the
+local CANCEL button — the batch stops at the next template boundary.
+NT's RunCommand has no public Stop API, so the in-flight template
+itself still has to finish; see the remaining Open item for context.
+
+Built with MSBuild on `NinjaTraderAddOnProject.sln`; the PostBuildEvent
+xcopied the DLL/PDB to
+`%USERPROFILE%\Documents\NinjaTrader 8\bin\Custom\` (verified
+LastWriteTime 2026-05-17 08:29:58 UTC). NT restarted.
+
+**Live smoke test (2026-05-17 08:38).** Staged a single-template
+RunBatch payload (`smoke_W00.xml` copied from
+`opt_5bab6a5ee1ea/walkforward/templates/F_001__W00.xml`) to a
+disposable `%TEMP%\nt_cancel_smoke` folder, wrote
+`nt8_command.json`, watched `nt8_status.json` until
+`state=running, currentTemplate=smoke_W00`, then deleted the
+command file. The AddOn flipped `state` to `cancelled` ~570 ms
+after the deletion and aborted before NT exported anything.
+Confirms the IPC contract is live in the deployed DLL.
+
+### 2026-05-17 — `[2,]` range display fixed
+`makeParamRow` in `src/ta_foundation/web/templates/optimizer.html`
+was using `??` to fall back to `−∞`/`+∞` for absent bounds, but the
+backing values arrive as `""` rather than `null/undefined` so the
+fallback never triggered. Replaced the ternary with explicit
+`hasMin`/`hasMax` checks (empty-string-aware). Cosmetic-only change;
+the Range column now renders `[2, +∞]` when a `[Range(2, int.MaxValue)]`
+attribute supplies only a minimum.
+
+### 2026-05-17 — `min_percent_days_traded` UI clarified as final-review only
+Took the cheaper UI-clarification path rather than back-computing
+percent-days-traded from Trades exports. The guardrail input on the
+configure page and the readout on the session detail page now carry
+an amber `⚑ final-review only` indicator with a tooltip explaining
+that the field is not present in `*_Optimization.csv` and therefore
+does not filter raw optimizer rows — only the final-Backtest review
+stage applies it.
+
+### 2026-05-17 — Parameter-neighborhood validation (opt-in)
+Added `src/ta_foundation/optimization/neighborhood.py` (pure cell
+planner) + `src/ta_foundation/web/optimizer_neighborhood.py` (engine) +
+4 API routes (`/neighborhood/generate`, `/run`, `/status`, `/ingest`) +
+"Parameter neighborhood (optional)" card on the session detail page.
+For each final candidate, generates a small set of fixed-Backtest
+templates with one (or — in `full_cube` mode — several) numeric
+parameter shifted by ±pct% around the candidate's value, honoring the
+original parameter increment so generated values land on the same grid
+the optimizer used. Dispatches through the existing AddOn IPC. Bool /
+enum / fixed parameters are skipped automatically.
+
+Ingest produces a per-candidate stability summary (PF min/median/max,
+net min/median/max, CoV of net profit, count of cells with PF>1, plus
+per-parameter sensitivity bucket) and flags needle peaks (`center
+PF >> neighborhood median`) and degenerate sweeps. Writes
+`stability.json` + `stability.md` to `<session>/deployment_package/neighborhood/`.
+
+`parameter_neighborhood_check` in
+`src/ta_foundation/optimization/robustness.py` is now a redirect shim
+to the new engine. The "Parameter neighborhood (deferred)" checkbox in
+the robustness card is replaced by a note pointing to the new card.
+
+Test coverage: 8 planner tests (`tests/optimization/test_neighborhood.py`)
++ 9 engine tests (`tests/web/test_optimizer_neighborhood.py`). 412
+passing across the optimizer/web/parsers suites with the
+`test_conditional_promotion` ignore in place.
 
 ### 2026-05-16 — AddOn dropped contract suffix on Backtest template re-runs
 The BatchControl AddOn unconditionally overrode every loaded template's

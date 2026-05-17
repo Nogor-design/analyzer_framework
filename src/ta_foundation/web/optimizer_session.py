@@ -179,6 +179,7 @@ class OptimizerSessionDocument:
     backtest_seed_template_path: str = ""
     oos_from_date: str = ""
     oos_to_date: str = ""
+    god_images_dir: str = ""   # portrait images for the per-candidate report banner
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -197,6 +198,7 @@ class OptimizerSessionDocument:
             "backtest_seed_template_path": self.backtest_seed_template_path,
             "oos_from_date": self.oos_from_date,
             "oos_to_date": self.oos_to_date,
+            "god_images_dir": self.god_images_dir,
         }
 
     def plan_hash(self) -> str:
@@ -249,6 +251,7 @@ class OptimizerSessionDocument:
             backtest_seed_template_path=str(data.get("backtest_seed_template_path") or ""),
             oos_from_date=str(data.get("oos_from_date") or ""),
             oos_to_date=str(data.get("oos_to_date") or ""),
+            god_images_dir=str(data.get("god_images_dir") or ""),
         )
 
 
@@ -345,6 +348,7 @@ class OptimizerSession:
                 "label", "strategy_id", "seed_template_path",
                 "instrument", "market_suffix",
                 "backtest_seed_template_path", "oos_from_date", "oos_to_date",
+                "god_images_dir",
             }
             for key, value in patch.items():
                 if key in simple_keys:
@@ -477,6 +481,7 @@ def clone_session(
         backtest_seed_template_path=src_doc.backtest_seed_template_path,
         oos_from_date=src_doc.oos_from_date,
         oos_to_date=src_doc.oos_to_date,
+        god_images_dir=src_doc.god_images_dir,
     )
     new_session = OptimizerSession(new_dir)
     new_session.save_document(new_doc)

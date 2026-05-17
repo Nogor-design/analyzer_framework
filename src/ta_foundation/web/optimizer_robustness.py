@@ -3,9 +3,11 @@ from __future__ import annotations
 """Drive optional robustness checks for an optimizer session and write
 the results into the deployment package.
 
-Today only the trade-sequence bootstrap is implemented end-to-end. The
-walk-forward and parameter-neighborhood stubs raise NotImplementedError
-when invoked — they are deferred because they require NT roundtrips.
+This module runs the trade-sequence bootstrap. Walk-forward validation
+and parameter-neighborhood validation live in their own engines because
+they dispatch NinjaTrader runs:
+    - :mod:`ta_foundation.web.optimizer_walkforward`
+    - :mod:`ta_foundation.web.optimizer_neighborhood`
 
 Output:
     <session>/deployment_package/robustness/
@@ -91,11 +93,17 @@ def run_robustness_for_session(
 
     if walk_forward:
         checks_requested.append("walk_forward")
-        notes.append("walk_forward requested but not yet implemented (requires NT roundtrip).")
+        notes.append(
+            "walk_forward is dispatched via the dedicated walkforward engine "
+            "(/api/optimizer/sessions/<id>/walkforward/*), not from this card."
+        )
 
     if parameter_neighborhood:
         checks_requested.append("parameter_neighborhood")
-        notes.append("parameter_neighborhood requested but not yet implemented (requires NT roundtrip).")
+        notes.append(
+            "parameter_neighborhood is dispatched via the dedicated neighborhood engine "
+            "(/api/optimizer/sessions/<id>/neighborhood/*), not from this card."
+        )
 
     report = RobustnessReport(
         session_id=session.id,

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Decision Dashboard {{ dashboard.session_id }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-state { background: #1f2937; color: #93c5fd; }
+    .pill-state-candidate_ready_for_operator_review { background: #064e3b; color: #34d399; }
+    .pill-state-blocked, .pill-state-no_results { background: #7f1d1d; color: #fecaca; }
+    .pill-rank { background: #fcd34d; color: #111827; font-weight: 700; }
+    .pill-adj { background: #d97706; color: #1f2937; font-weight: 700; }
+    .pill-recommended { background: #064e3b; color: #34d399; }
+    .pill-rejected { background: #7f1d1d; color: #fecaca; }
+    .pill-evaluated { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+    .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .badge-ok { background: #064e3b; color: #34d399; }
+    .badge-warn { background: #78350f; color: #fcd34d; }
+    .badge-fail { background: #7f1d1d; color: #fecaca; }
+    .badge-none { background: #1f2937; color: #6b7280; border: 1px dashed #374151; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    th { color: #6b7280; text-align: left; font-weight: 500; }
+    td { padding: 4px 8px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    details.flagbox > summary { cursor: pointer; list-style: none; }
+    details.flagbox > summary::-webkit-details-marker { display: none; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <a href="/optimizer/sessions/{{ dashboard.session_id }}" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Detail</a>
+    <span class="text-amber-400 font-bold text-lg">Decision</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ dashboard.session_id }}</span>
+  </div>
+  <div class="text-xs text-gray-500">Generated {{ dashboard.generated_at }}</div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+
+  {% if dashboard.status != "ok" %}
+    <section class="card">
+      <h1 class="text-xl font-bold mb-2">{{ dashboard.label or "(unlabeled session)" }}</h1>
+      <div class="text-amber-300">{{ dashboard.status_reason }}</div>
+      <div class="mt-3">
+        <a href="/optimizer/sessions/{{ dashboard.session_id }}"
+           class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Open session detail</a>
+      </div>
+    </section>
+  {% else %}
+
+    <section class="card">
+      <div class="flex items-baseline gap-3 mb-2 flex-wrap">
+        <h1 class="text-xl font-bold">{{ dashboard.label or "(unlabeled session)" }}</h1>
+        {% if dashboard.decision_state %}
+          <span class="pill pill-state-{{ dashboard.decision_state }}">{{ dashboard.decision_state }}</span>
+        {% endif %}
+      </div>
+      <div class="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+        <div>Contract: <span class="pathish">{{ dashboard.instrument or "(unset)" }}</span></div>
+        {% if dashboard.oos_window %}
+          <div>OOS window: {{ dashboard.oos_window[0] }} → {{ dashboard.oos_window[1] }}</div>
+        {% endif %}
+        <div>{{ dashboard.recommended_count }} recommended &middot; {{ dashboard.rejected_count }} rejected</div>
+      </div>
+      {% if dashboard.headline or dashboard.decision_notes %}
+        <div class="mt-3 text-sm text-gray-200">
+          {% if dashboard.headline %}<div class="mb-1">Decision state: <code class="text-amber-300">{{ dashboard.headline }}</code></div>{% endif %}
+          {% if dashboard.decision_notes %}
+            <ul class="list-disc pl-5 text-gray-300 text-xs space-y-1">
+              {% for note in dashboard.decision_notes %}<li>{{ note }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2 class="text-amber-400 font-semibold text-sm mb-1">Candidates</h2>
+      <div class="text-xs text-gray-500 mb-3">
+        Sorted by robustness-adjusted rank: lower is better. The engine's recommendation pill is shown for
+        comparison &mdash; when the two disagree by 2+ positions you'll see a &#x2B06;/&#x2B07; marker.
+      </div>
+      <div class="overflow-x-auto">
+        <table class="text-xs w-full">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="pr-3">Adj #</th>
+              <th class="pr-3">Status</th>
+              <th class="pr-3">Run</th>
+              <th class="pr-3">Mode</th>
+              <th class="pr-3">Session</th>
+              <th class="pr-3 num">Score</th>
+              <th class="pr-3 num">Net</th>
+              <th class="pr-3 num">PF</th>
+              <th class="pr-3 num">Max DD</th>
+              <th class="pr-3 num">Trades</th>
+              <th class="pr-3 num">%days</th>
+              <th class="pr-3">Bootstrap</th>
+              <th class="pr-3">Walk-fwd</th>
+              <th class="pr-3">Neighborhood</th>
+              <th class="pr-3">Shadow</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in dashboard.candidate_rows %}
+              <tr class="border-b border-gray-800 align-top">
+                <td>
+                  <span class="pill pill-adj">#{{ row.adjusted_rank }}</span>
+                  {% if row.rank is not none and row.adjusted_rank is not none and (row.adjusted_rank - row.rank)|abs >= 2 %}
+                    {% if row.adjusted_rank < row.rank %}
+                      <span style="color:#34d399;font-size:11px;"
+                            title="engine rank #{{ row.rank }} &rarr; robustness-adjusted #{{ row.adjusted_rank }}">&#x2B06; +{{ row.rank - row.adjusted_rank }}</span>
+                    {% else %}
+                      <span style="color:#fecaca;font-size:11px;"
+                            title="engine rank #{{ row.rank }} &rarr; robustness-adjusted #{{ row.adjusted_rank }}">&#x2B07; -{{ row.adjusted_rank - row.rank }}</span>
+                    {% endif %}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.status == "recommended" %}
+                    <span class="pill pill-rank">#{{ row.rank }}</span>
+                    <span class="pill pill-recommended">recommended</span>
+                  {% elif row.status == "rejected" %}
+                    <span class="pill pill-rejected">rejected</span>
+                  {% else %}
+                    <span class="pill pill-evaluated">evaluated</span>
+                  {% endif %}
+                </td>
+                <td class="font-mono text-gray-300">
+                  {% if row.report_url %}
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <a href="{{ row.report_url }}" target="_blank" rel="noopener"
+                         class="text-amber-300 hover:text-amber-200 no-underline"
+                         title="Open the auto-generated finalist HTML report (new tab)">
+                        {{ row.run_id }} &#x2197;
+                      </a>
+                      <a href="/optimizer/sessions/{{ dashboard.session_id }}/candidates/{{ row.run_id }}/report-builder"
+                         class="text-gray-400 hover:text-amber-300 no-underline font-sans"
+                         title="Choose report sections and rebuild this candidate">
+                        Customize
+                      </a>
+                    </div>
+                  {% else %}
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span>{{ row.run_id }}</span>
+                      <a href="/optimizer/sessions/{{ dashboard.session_id }}/candidates/{{ row.run_id }}/report-builder"
+                         class="text-gray-400 hover:text-amber-300 no-underline font-sans"
+                         title="Choose report sections and rebuild this candidate">
+                        Customize
+                      </a>
+                    </div>
+                  {% endif %}
+                </td>
+                <td class="text-gray-400">{{ row.mode }}</td>
+                <td class="text-gray-400">{{ row.session_bucket }}</td>
+                <td class="num text-gray-200">{{ "%.1f"|format(row.score) if row.score is not none else "" }}</td>
+                <td class="num">{{ "{:,.0f}".format(row.total_net_profit) if row.total_net_profit is not none else "" }}</td>
+                <td class="num">{{ "%.2f"|format(row.profit_factor) if row.profit_factor is not none else "" }}</td>
+                <td class="num text-red-300">{{ "{:,.0f}".format(row.max_drawdown) if row.max_drawdown is not none else "" }}</td>
+                <td class="num">{{ row.trades }}</td>
+                <td class="num text-gray-300">{{ "%.1f"|format(row.percent_days_traded) if row.percent_days_traded is not none else "" }}</td>
+                {% for check in row.checks %}
+                  <td>
+                    <details class="flagbox">
+                      <summary>
+                        <span class="badge badge-{{ check.severity }}">{{ check.headline }}</span>
+                      </summary>
+                      {% if check.flags %}
+                        <ul class="mt-1 text-xs text-amber-200 list-disc pl-4 space-y-0.5">
+                          {% for flag in check.flags %}<li>{{ flag }}</li>{% endfor %}
+                        </ul>
+                      {% else %}
+                        <div class="mt-1 text-xs text-gray-500">no flags</div>
+                      {% endif %}
+                    </details>
+                  </td>
+                {% endfor %}
+              </tr>
+              {% if row.decision_reason %}
+                <tr class="border-b border-gray-800">
+                  <td></td>
+                  <td colspan="14" class="text-xs text-gray-400 italic pb-2">{{ row.decision_reason }}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-xs text-gray-500 mt-3">
+        Legend:
+        <span class="badge badge-ok ml-2">ok</span> check ran, no concerns
+        <span class="badge badge-warn ml-2">warn</span> something to look at
+        <span class="badge badge-fail ml-2">fail</span> clear divergence / collapse
+        <span class="badge badge-none ml-2">(not run)</span> this check has no data for this candidate
+      </div>
+    </section>
+
+    {% if dashboard.artifact_links %}
+      <section class="card">
+        <h2 class="text-amber-400 font-semibold text-sm mb-2">Artifacts on disk</h2>
+        <div class="text-xs text-gray-500 mb-2">
+          Full per-check reports live under the deployment package. The dashboard rolls these up
+          into the badges above; open the underlying Markdown for the long-form detail.
+        </div>
+        <ul class="text-xs space-y-1">
+          {% for name, path in dashboard.artifact_links.items() %}
+            <li>
+              <span class="text-gray-300">{{ name }}</span>
+              <span class="text-gray-500 pathish ml-2">deployment_package/{{ path }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+  {% endif %}
+
+</main>
+
+</body>
+</html>

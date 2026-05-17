@@ -196,11 +196,17 @@ def cancel_run(
 ) -> RunRecord | None:
     """Best-effort cancel.
 
-    The current AddOn has no IPC cancel path; the user must click CANCEL on
-    the NinjaTrader batch panel. What we *can* do reliably:
+    Since 2026-05-17 the AddOn subscribes to ``Deleted`` events on
+    ``C:\\temp\\nt8_command.json``: unlinking the file flips
+    ``cancelRequested`` mid-batch, equivalent to clicking the local
+    CANCEL button on the NinjaTrader batch panel. The currently-running
+    template still completes (NT has no public Stop API on the Strategy
+    Analyzer ``RunCommand``), but no further templates dispatch.
 
-    - delete the command file so the AddOn doesn't re-trigger on touch
-    - flip our local ``RunRecord`` to ``cancelled`` so the UI stops polling
+    This function:
+
+    - deletes the command file so the AddOn sees the cancel signal
+    - flips our local ``RunRecord`` to ``cancelled`` so the UI stops polling
       as if the run is alive.
     """
     run = load_run(session)

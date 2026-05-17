@@ -1076,6 +1076,104 @@ def create_app() -> "Flask":
             summary=summary,
         )
 
+    @app.route("/optimizer/sessions/<session_id>/decision")
+    def optimizer_decision_dashboard_page(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_decision_dashboard import build_decision_dashboard
+
+        session = get_session(session_id)
+        if session is None:
+            from flask import abort
+            return abort(404)
+        dashboard = build_decision_dashboard(session)
+        return render_template(
+            "optimizer_decision_dashboard.html",
+            dashboard=dashboard.to_dict(),
+        )
+
+    @app.route("/optimizer/sessions/<session_id>/candidates/<run_id>/report")
+    def optimizer_candidate_report_page(session_id: str, run_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            PER_CANDIDATE_REPORTS_DIRNAME,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = (session.directory / "deployment_package" /
+                     PER_CANDIDATE_REPORTS_DIRNAME / f"{run_id}.html")
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path, mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/candidates/<run_id>/report-builder")
+    def optimizer_candidate_report_builder_page(session_id: str, run_id: str):
+        from flask import abort
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import group_sections_by_bucket
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        doc = session.load_document()
+        return render_template(
+            "optimizer_candidate_report_builder.html",
+            session=doc.to_dict(),
+            run_id=run_id,
+            buckets=group_sections_by_bucket(),
+            report_url=f"/optimizer/sessions/{session_id}/candidates/{run_id}/report",
+            post_url=f"/api/optimizer/sessions/{session_id}/candidates/{run_id}/report-builder",
+        )
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/candidates/<run_id>/report-builder",
+        methods=["POST"],
+    )
+    def api_optimizer_candidate_report_builder(session_id: str, run_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            CandidateReportError,
+            build_candidate_report,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        payload = request.get_json(silent=True) or {}
+        if isinstance(payload.get("sections"), list):
+            selected = [str(s) for s in payload.get("sections") if str(s)]
+        else:
+            selected = [str(s) for s in request.form.getlist("sections") if str(s)]
+        if not selected:
+            return jsonify({"error": "select at least one section"}), 400
+
+        doc = session.load_document()
+        try:
+            result = build_candidate_report(
+                session,
+                run_id,
+                sections=selected,
+                images_dir=doc.god_images_dir or None,
+            )
+        except CandidateReportError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected report build error: {exc}"}), 500
+        return jsonify({"result": result.to_dict()})
+
+    @app.route("/api/optimizer/sessions/<session_id>/decision", methods=["GET"])
+    def api_optimizer_decision_dashboard(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_decision_dashboard import build_decision_dashboard
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"dashboard": build_decision_dashboard(session).to_dict()})
+
     @app.route("/optimizer/sessions/<session_id>/resume")
     def optimizer_session_resume(session_id: str):
         from flask import redirect
@@ -1306,6 +1404,85 @@ def create_app() -> "Flask":
         if session is None:
             return jsonify({"error": "session not found"}), 404
         return jsonify({"status": ingest_walk_forward_results(session).to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/neighborhood/generate",
+        methods=["POST"],
+    )
+    def api_optimizer_session_nb_generate(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_neighborhood import (
+            DEFAULT_MODE,
+            DEFAULT_PCT,
+            DEFAULT_STEPS,
+            OptimizerNeighborhoodError,
+            generate_neighborhood_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("run_ids") or None
+        try:
+            result = generate_neighborhood_templates(
+                session,
+                pct=float(payload.get("pct") or DEFAULT_PCT),
+                steps=int(payload.get("steps") or DEFAULT_STEPS),
+                mode=str(payload.get("mode") or DEFAULT_MODE),
+                candidate_run_ids=run_ids,
+            )
+        except OptimizerNeighborhoodError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"result": result.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/neighborhood/run",
+        methods=["POST"],
+    )
+    def api_optimizer_session_nb_run(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_neighborhood import (
+            OptimizerNeighborhoodError,
+            trigger_neighborhood_run,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            info = trigger_neighborhood_run(session)
+        except OptimizerNeighborhoodError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(info)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/neighborhood/status",
+        methods=["GET"],
+    )
+    def api_optimizer_session_nb_status(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_neighborhood import neighborhood_status
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"status": neighborhood_status(session).to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/neighborhood/ingest",
+        methods=["POST"],
+    )
+    def api_optimizer_session_nb_ingest(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_neighborhood import ingest_neighborhood_results
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"status": ingest_neighborhood_results(session).to_dict()})
 
     @app.route(
         "/api/optimizer/sessions/<session_id>/shadow/generate",
