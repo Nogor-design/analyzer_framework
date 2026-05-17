@@ -1230,6 +1230,42 @@ def create_app() -> "Flask":
         return jsonify({"result": result.to_dict()})
 
     @app.route(
+        "/api/optimizer/sessions/<session_id>/robustness",
+        methods=["POST"],
+    )
+    def api_optimizer_session_robustness(session_id: str):
+        from ta_foundation.web.optimizer_robustness import (
+            RobustnessError,
+            run_robustness_for_session,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        try:
+            samples = int(payload.get("bootstrap_samples") or 1000)
+        except (TypeError, ValueError):
+            samples = 1000
+        try:
+            seed = int(payload.get("seed") or 42)
+        except (TypeError, ValueError):
+            seed = 42
+        try:
+            report = run_robustness_for_session(
+                session,
+                bootstrap=bool(payload.get("bootstrap", True)),
+                walk_forward=bool(payload.get("walk_forward", False)),
+                parameter_neighborhood=bool(payload.get("parameter_neighborhood", False)),
+                bootstrap_samples=max(50, min(samples, 10000)),
+                seed=seed,
+            )
+        except RobustnessError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"report": report.to_dict()})
+
+    @app.route(
         "/api/optimizer/sessions/<session_id>/refine",
         methods=["POST"],
     )

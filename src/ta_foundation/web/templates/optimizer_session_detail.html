@@ -181,6 +181,47 @@
   </section>
 
   <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Robustness checks (optional)</h2>
+    <div class="text-xs text-gray-400 mb-3">
+      Optional validation of the final candidates. The trade-sequence bootstrap is the only check
+      runnable today without re-running NinjaTrader; walk-forward and parameter-neighborhood checks
+      are deferred (require dispatching more optimizer runs). Output lands in
+      <span class="pathish">deployment_package/robustness/</span>.
+    </div>
+    <div class="flex flex-wrap items-center gap-4 text-xs mb-3">
+      <label class="flex items-center gap-1"><input id="rob-bootstrap" type="checkbox" checked /> Bootstrap trade sequence</label>
+      <label class="flex items-center gap-1 text-gray-500"><input id="rob-walkforward" type="checkbox" disabled /> Walk-forward (deferred)</label>
+      <label class="flex items-center gap-1 text-gray-500"><input id="rob-neighborhood" type="checkbox" disabled /> Parameter neighborhood (deferred)</label>
+      <span class="text-gray-400">Samples: <input id="rob-samples" type="number" value="1000" min="50" max="10000" class="w-20" /></span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="rob-run-btn" class="btn-primary px-3 py-1.5 rounded text-xs font-semibold">Run robustness checks</button>
+      <span id="rob-status" class="text-xs text-gray-500"></span>
+    </div>
+    <div id="rob-results" class="mt-3 hidden">
+      <div class="text-xs text-gray-400 mb-1">Bootstrap results (per candidate):</div>
+      <div class="overflow-x-auto">
+        <table class="text-xs w-full">
+          <thead>
+            <tr class="border-b border-gray-700 text-gray-500">
+              <th class="pr-3">Run</th>
+              <th class="pr-3 text-right">Trades</th>
+              <th class="pr-3 text-right">PF obs</th>
+              <th class="pr-3 text-right">PF p05..p95</th>
+              <th class="pr-3 text-right">P(PF&ge;obs)</th>
+              <th class="pr-3 text-right">Net obs</th>
+              <th class="pr-3 text-right">Net p05..p95</th>
+              <th class="pr-3 text-right">DD obs</th>
+              <th class="pr-3 text-right">DD p05..p95</th>
+            </tr>
+          </thead>
+          <tbody id="rob-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
     <h2 class="text-amber-400 font-semibold text-sm mb-2">Actions</h2>
     <div class="flex flex-wrap gap-3">
       <a href="/optimizer/sessions/{{ session.session_id }}/resume" class="btn-primary px-3 py-1.5 rounded text-xs no-underline">Resume to configure / run</a>
@@ -221,6 +262,60 @@ $("rebuild-btn").addEventListener("click", async () => {
     " phase3=" + (body.package && body.package.phase3_risk_template_count || 0) +
     " final=" + (body.package && body.package.final_backtest_template_count || 0) +
     " recs=" + (body.package && body.package.final_recommendation_count || 0);
+});
+
+function fmtVal(v, digits) {
+  if (v == null || v === "") return "";
+  if (typeof v !== "number" && isNaN(parseFloat(v))) return String(v);
+  const n = typeof v === "number" ? v : parseFloat(v);
+  if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (Math.abs(n) >= 10) return n.toFixed(1);
+  return n.toFixed(digits == null ? 3 : digits);
+}
+
+$("rob-run-btn").addEventListener("click", async () => {
+  const samples = parseInt($("rob-samples").value || "1000", 10);
+  $("rob-status").textContent = "Running robustness checks…";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/robustness", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      bootstrap: $("rob-bootstrap").checked,
+      walk_forward: $("rob-walkforward").checked,
+      parameter_neighborhood: $("rob-neighborhood").checked,
+      bootstrap_samples: samples,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    $("rob-status").textContent = "Robustness failed: " + res.status + " " + body;
+    return;
+  }
+  const body = await res.json();
+  const report = body.report || {};
+  const results = report.bootstrap_results || [];
+  const tbody = $("rob-tbody");
+  tbody.innerHTML = "";
+  for (const r of results) {
+    const pf = r.profit_factor || {}, np_ = r.net_profit || {}, dd = r.max_drawdown || {};
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-gray-800 text-gray-300";
+    tr.innerHTML = `
+      <td class="font-mono">${r.run_id}</td>
+      <td class="text-right">${r.trade_count}</td>
+      <td class="text-right">${fmtVal(pf.observed, 2)}</td>
+      <td class="text-right text-gray-400">${fmtVal(pf.bootstrap_p05, 2)} .. ${fmtVal(pf.bootstrap_p95, 2)}</td>
+      <td class="text-right">${fmtVal(pf.p_at_or_above_observed, 3)}</td>
+      <td class="text-right">${fmtVal(np_.observed, 0)}</td>
+      <td class="text-right text-gray-400">${fmtVal(np_.bootstrap_p05, 0)} .. ${fmtVal(np_.bootstrap_p95, 0)}</td>
+      <td class="text-right">${fmtVal(dd.observed, 0)}</td>
+      <td class="text-right text-gray-400">${fmtVal(dd.bootstrap_p05, 0)} .. ${fmtVal(dd.bootstrap_p95, 0)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  $("rob-results").classList.remove("hidden");
+  const notes = report.notes && report.notes.length ? " | " + report.notes.join(" | ") : "";
+  $("rob-status").textContent = `Done. ${results.length} candidate${results.length === 1 ? "" : "s"} bootstrapped.${notes}`;
 });
 
 $("delete-btn").addEventListener("click", async () => {

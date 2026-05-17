@@ -15,6 +15,39 @@ For the operator runbook, see
 
 ## Open
 
+### Walk-forward and parameter-neighborhood robustness checks (deferred)
+
+The bootstrap trade-sequence robustness check shipped 2026-05-16
+(see Resolved). Two deeper checks are stubbed in
+`src/ta_foundation/optimization/robustness.py` and raise
+`NotImplementedError`:
+
+- **`walk_forward_validation`** — roll multiple OOS windows back
+  through history, re-optimize on each IS window, validate on the
+  next OOS window, report the IS/OOS PF degradation. Requires
+  dispatching new optimizer + Backtest templates through
+  NinjaTrader. Design sketch: for each candidate, pick K rolling
+  IS/OOS pairs of N days each, regenerate phase-1..3 templates with
+  the IS date range, send via the runner, run final fixed Backtest
+  on the OOS range, collect IS/OOS PF deltas.
+
+- **`parameter_neighborhood_check`** — for each candidate, sweep
+  ±N% around each numeric parameter (one at a time, or full
+  small-cube) and check whether the strategy stays profitable or
+  collapses one increment away. Distinguishes a robust peak from a
+  needle peak. Design sketch: for each candidate parameter, pick
+  3–5 neighborhood values, generate a small fixed-Backtest grid,
+  dispatch via the runner, summarize win rate / PF stability across
+  the cube.
+
+Both require the same NT-roundtrip plumbing that the existing
+final-Backtest flow uses (write XML templates, drop a RunBatch
+command, poll heartbeat, ingest results), so the implementation is
+not trivial — it's a 1–2 day build each. The bootstrap covers the
+"is this trade set lucky?" question; walk-forward covers "does this
+generalize beyond the OOS window I chose?"; neighborhood covers
+"is this a robust optimum or a needle?"
+
 ### ~~NT custom optimizer DLL ignores bool parameter sweeps~~ — root cause re-diagnosed and fixed 2026-05-16
 
 **Initial misdiagnosis.** The symptom was real (returned
@@ -154,6 +187,21 @@ python -m pytest src/ta_foundation/tests/web src/ta_foundation/tests/optimizatio
 ---
 
 ## Resolved (kept for history)
+
+### 2026-05-16 — Bootstrap trade-sequence robustness check (opt-in)
+Added `src/ta_foundation/optimization/robustness.py` +
+`src/ta_foundation/web/optimizer_robustness.py` +
+`POST /api/optimizer/sessions/<id>/robustness`. UI: "Robustness
+checks (optional)" card on the session detail page. For each final
+candidate, reads its `Trades.csv` and resamples with replacement
+(default 1000 samples). Reports PF / net profit / max DD bootstrap
+percentiles + p(stat ≥ observed). First live run on
+`opt_5bab6a5ee1ea` exposed that `F_001`'s observed PF 5.01 sits at
+the median (p=0.532) of a 2.22..15.88 bootstrap range — the
+strategy is plausibly real, but the headline PF carries huge
+uncertainty at only 17 trades. Walk-forward and
+parameter-neighborhood checks are stubbed in the same module and
+raise `NotImplementedError` (see Open above).
 
 ### 2026-05-16 — Bool-sweep `Increment` serialized as `true`
 Fixed by switching to a numeric-only `_serialize_increment` helper
