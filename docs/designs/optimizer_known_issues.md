@@ -15,41 +15,58 @@ For the operator runbook, see
 
 ## Open
 
-### NT custom optimizer DLL ignores bool parameter sweeps
+### ~~NT custom optimizer DLL ignores bool parameter sweeps~~ — root cause re-diagnosed and fixed 2026-05-16
 
-**Symptom.** A generated optimizer XML with
-`<Min xsi:type="xsd:boolean">false</Min>`,
-`<Max xsi:type="xsd:boolean">true</Max>`, `<Increment>1</Increment>`
-on a bool parameter (e.g. `Reverse`) executes only the strategy's
-fixed value, not both `false` and `true`. The returned
-`*_Optimization.csv` contains a single distinct value for that param,
-even when multiple combinations were planned.
+**Initial misdiagnosis.** The symptom was real (returned
+`*_Optimization.csv` contained only one value for the swept bool
+param) but it was not a bool-handling bug. The custom optimizer's log
+at `C:\Users\Owner\AppData\Local\Temp\nt8_custom_optimizer.log`
+showed it correctly enumerated `Parameter space: Reverse has 2
+candidate values` and reached `UniqueParameterSets=18` for an
+18-combo plan including both `Reverse` values.
 
-**Web side is correct.** As of 2026-05-16, the bool-sweep `Increment`
-serializer fix in `optimizer_template_writer.py` emits integer `1`
-(was `true`, which the default NT optimizer used to collapse the sweep
-to a single value). Production parser tests confirm Min/Max/Increment
-appear correctly in the generated XML.
+**Actual root cause.** With `PopulationSize=50 × Generations=10 = 500`
+iterations against only 18 unique combinations, ~482 iterations were
+wasted re-running parameter sets the optimizer had already evaluated.
+NT's `KeepBestResults=N` then retained the top-N by Performance, and
+since each unique combo was run ~28 times (deterministically yielding
+identical scores), the top-N over-represented the highest-scoring
+combinations — typically pushing the under-performing bool side out
+entirely.
 
-**Where to look.** The seed templates we use force
-`<OptimizerType>NinjaTrader.NinjaScript.Optimizers.CustomMultiObjectiveOptimizer</OptimizerType>`,
-which is the custom optimizer DLL living at
-`D:\ninjatraderOptimizer\NinjaTraderOptimizerProject`. That DLL is
-likely sampling around the strategy's fixed `<Reverse>` value rather
-than treating the bool Parameter block as a discrete domain. Verify
-in `BatchOptimizerLoader` / the custom optimizer's parameter handling.
+**Fix (deployed 2026-05-16).** In
+`D:\ninjatraderOptimizer\NinjaTraderOptimizerProject\NinjaTraderOptimizerProject\Optimizers\CustomMultiObjectiveOptimizer.cs`:
 
-**Workaround.** Pin `Reverse` as `fixed` and use **Clone & refine**
-on the session list page to create a second session with the opposite
-value. The deployment package, recommendations engine, and final
-review treat each session independently and the bucket-diverse
-recommendation logic handles both modes naturally.
+- `ComputeUniqueComboCount(valueSpaces)` calculates the Cartesian
+  product size of all parameter value spaces.
+- `OnOptimize` now branches: if `totalUniqueCombos <= NumberOfIterations`,
+  call new `RunExhaustive()` which enumerates each unique combination
+  exactly once. Otherwise fall back to the original Halton-sampled
+  `RunCoverageSampling()` for large spaces.
+- Log line now includes `TotalUniqueCombos=N` so the operator can see
+  which branch was taken; exhaustive mode logs
+  `Exhaustive mode: enumerating N unique combinations` and
+  `Exhaustive mode dispatched N iterations`.
 
-**Verification session.** `opt_0c96561ec6e4` (2026-05-16,
-multi-type sweep smoke). Planned 18 combinations (3 averageSlow x
-3 MaxTPRatio x 2 Reverse); NT exported 100 rows representing 5
-distinct `(Reverse, averageSlow, MaxTPRatio)` tuples — Reverse only
-ever False.
+Built with MSBuild, deployed via `tools\Deploy-Optimizer.ps1`.
+
+**Verification.** Pending live re-run. Repro session
+`opt_0c96561ec6e4` (multi-type sweep: 3 averageSlow × 3 MaxTPRatio ×
+2 Reverse = 18 combos). Expected behavior with the fix: 18 retained
+rows covering all 18 unique tuples including both Reverse values,
+since exhaustive mode runs each combo exactly once and NT keeps all
+18 results.
+
+Re-test recipe:
+```powershell
+# Web UI must be running. NinjaTrader must have Strategy Analyzer open.
+$base = "http://127.0.0.1:7738/api/optimizer/sessions/opt_0c96561ec6e4"
+Remove-Item -Recurse -Force ".ta_artifacts\web_optimizer\sessions\opt_0c96561ec6e4\nt_output" -ErrorAction SilentlyContinue
+Invoke-RestMethod -Method Post -Uri "$base/run"
+# Then poll $base/run/status until state=finished
+```
+Check `C:\Users\Owner\AppData\Local\Temp\nt8_custom_optimizer.log` for
+the `Exhaustive mode dispatched 18 iterations.` line.
 
 ---
 
