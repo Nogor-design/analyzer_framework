@@ -50,23 +50,37 @@ entirely.
 
 Built with MSBuild, deployed via `tools\Deploy-Optimizer.ps1`.
 
-**Verification.** Pending live re-run. Repro session
+**Verification (2026-05-16, complete).** Live re-run on session
 `opt_0c96561ec6e4` (multi-type sweep: 3 averageSlow × 3 MaxTPRatio ×
-2 Reverse = 18 combos). Expected behavior with the fix: 18 retained
-rows covering all 18 unique tuples including both Reverse values,
-since exhaustive mode runs each combo exactly once and NT keeps all
-18 results.
+2 Reverse = 18 combos).
 
-Re-test recipe:
+DLL log:
+```
+Starting coverage-search run: PopulationSize=50, Generations=10,
+NumberOfIterations=500, OptimizationParameters=26, TotalUniqueCombos=18, ...
+Parameter space: averageSlow has 3 candidate values.
+Parameter space: MaxTPRatio has 3 candidate values.
+Parameter space: Reverse has 2 candidate values.
+Exhaustive mode: enumerating 18 unique combinations (NumberOfIterations=500).
+Exhaustive mode dispatched 18 iterations.
+Custom optimizer completed. UniqueParameterSets=18, DuplicateParameterSets=0.
+```
+
+Result CSV: 18 rows, perfectly covering all 18 unique
+(Reverse, averageSlow, MaxTPRatio) tuples. Reverse=False appears 9
+times, Reverse=True 9 times. Before the fix the same session had
+yielded 100 retained rows over only 5 distinct combos with
+Reverse=True missing entirely.
+
+This issue is **closed**. Re-test recipe kept for future regression
+detection:
 ```powershell
-# Web UI must be running. NinjaTrader must have Strategy Analyzer open.
 $base = "http://127.0.0.1:7738/api/optimizer/sessions/opt_0c96561ec6e4"
 Remove-Item -Recurse -Force ".ta_artifacts\web_optimizer\sessions\opt_0c96561ec6e4\nt_output" -ErrorAction SilentlyContinue
 Invoke-RestMethod -Method Post -Uri "$base/run"
-# Then poll $base/run/status until state=finished
+# Poll $base/run/status until state=finished, then check the DLL log
+# for "Exhaustive mode dispatched 18 iterations."
 ```
-Check `C:\Users\Owner\AppData\Local\Temp\nt8_custom_optimizer.log` for
-the `Exhaustive mode dispatched 18 iterations.` line.
 
 ---
 
