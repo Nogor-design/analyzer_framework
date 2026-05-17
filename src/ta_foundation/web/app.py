@@ -1230,6 +1230,84 @@ def create_app() -> "Flask":
         return jsonify({"result": result.to_dict()})
 
     @app.route(
+        "/api/optimizer/sessions/<session_id>/walkforward/generate",
+        methods=["POST"],
+    )
+    def api_optimizer_session_wf_generate(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_walkforward import (
+            OptimizerWalkForwardError,
+            generate_walk_forward_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("run_ids") or None
+        try:
+            result = generate_walk_forward_templates(
+                session,
+                anchor_date=str(payload.get("anchor_date") or ""),
+                window_days=int(payload.get("window_days") or 30),
+                count=int(payload.get("count") or 3),
+                gap_days=int(payload.get("gap_days") or 0),
+                candidate_run_ids=run_ids,
+                skip_is_window=bool(payload.get("skip_is_window", True)),
+            )
+        except OptimizerWalkForwardError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except (TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"result": result.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/walkforward/run",
+        methods=["POST"],
+    )
+    def api_optimizer_session_wf_run(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_walkforward import (
+            OptimizerWalkForwardError,
+            trigger_walk_forward_run,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            info = trigger_walk_forward_run(session)
+        except OptimizerWalkForwardError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(info)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/walkforward/status",
+        methods=["GET"],
+    )
+    def api_optimizer_session_wf_status(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_walkforward import walk_forward_status
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"status": walk_forward_status(session).to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/walkforward/ingest",
+        methods=["POST"],
+    )
+    def api_optimizer_session_wf_ingest(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_walkforward import ingest_walk_forward_results
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify({"status": ingest_walk_forward_results(session).to_dict()})
+
+    @app.route(
         "/api/optimizer/sessions/<session_id>/shadow/generate",
         methods=["POST"],
     )

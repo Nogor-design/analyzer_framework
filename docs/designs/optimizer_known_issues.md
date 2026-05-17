@@ -15,21 +15,11 @@ For the operator runbook, see
 
 ## Open
 
-### Walk-forward and parameter-neighborhood robustness checks (deferred)
+### Parameter-neighborhood robustness check (deferred)
 
-The bootstrap trade-sequence robustness check shipped 2026-05-16
-(see Resolved). Two deeper checks are stubbed in
-`src/ta_foundation/optimization/robustness.py` and raise
-`NotImplementedError`:
-
-- **`walk_forward_validation`** — roll multiple OOS windows back
-  through history, re-optimize on each IS window, validate on the
-  next OOS window, report the IS/OOS PF degradation. Requires
-  dispatching new optimizer + Backtest templates through
-  NinjaTrader. Design sketch: for each candidate, pick K rolling
-  IS/OOS pairs of N days each, regenerate phase-1..3 templates with
-  the IS date range, send via the runner, run final fixed Backtest
-  on the OOS range, collect IS/OOS PF deltas.
+The bootstrap (2026-05-16) and walk-forward (2026-05-16) checks
+shipped. The third deeper check remains stubbed in
+`src/ta_foundation/optimization/robustness.py`:
 
 - **`parameter_neighborhood_check`** — for each candidate, sweep
   ±N% around each numeric parameter (one at a time, or full
@@ -38,15 +28,8 @@ The bootstrap trade-sequence robustness check shipped 2026-05-16
   needle peak. Design sketch: for each candidate parameter, pick
   3–5 neighborhood values, generate a small fixed-Backtest grid,
   dispatch via the runner, summarize win rate / PF stability across
-  the cube.
-
-Both require the same NT-roundtrip plumbing that the existing
-final-Backtest flow uses (write XML templates, drop a RunBatch
-command, poll heartbeat, ingest results), so the implementation is
-not trivial — it's a 1–2 day build each. The bootstrap covers the
-"is this trade set lucky?" question; walk-forward covers "does this
-generalize beyond the OOS window I chose?"; neighborhood covers
-"is this a robust optimum or a needle?"
+  the cube. Same NT-roundtrip plumbing as walk-forward; ~1 day
+  build.
 
 ### ~~NT custom optimizer DLL ignores bool parameter sweeps~~ — root cause re-diagnosed and fixed 2026-05-16
 
@@ -212,6 +195,35 @@ Fixed in two places:
   `trigger_shadow_run` now reads `session.doc.instrument` and includes
   it as `"instrument"` in the IPC payload. The optimizer phase runner
   already did this; shadow was the omission.
+
+### 2026-05-16 — Walk-forward validation (opt-in, fixed-parameter variant)
+Added `src/ta_foundation/optimization/walkforward.py` (pure window
+planner) + `src/ta_foundation/web/optimizer_walkforward.py` (engine) +
+4 API routes (`/walkforward/generate`, `/run`, `/status`, `/ingest`) +
+"Walk-forward validation (optional)" card on the session detail page.
+Generates N fixed-Backtest templates per candidate, one per rolling
+historical window (anchor + window_days + count + gap), with optional
+"skip windows overlapping the OOS range" filter. Dispatches via the
+existing AddOn IPC. Ingests per-window Trades.csv / Summary.csv and
+produces a per-candidate stability summary (PF min/median/max, mean &
+CoV of net profit, count of windows with PF>1 and with trades, flags
+for "PF median collapsed", "highly variable net", etc.). Writes
+`stability.json` + `stability.md` to `<session>/deployment_package/walkforward/`.
+
+First live run on `opt_5bab6a5ee1ea` / `F_001` (3 x 7-day windows
+ending 2026-04-13, immediately before the OOS) produced a dramatic
+result: F_001's IS PF of 5.01 collapsed to a 3-window PF median of
+**0.00** with net **-$6,970** across 13 trades — strong evidence the
+strategy is curve-fit to its specific OOS window. Walk-forward flags
+fired correctly. The same live run also confirmed the AddOn
+contract-drop fix from commit c41dc77 — the templates produced actual
+trades (not zeros), proving the new DLL correctly preserves the
+template's `NQ 06-26` contract.
+
+Note: this is the cheaper *fixed-parameter* variant of walk-forward.
+A future enhancement would re-OPTIMIZE the parameters on each IS
+window via the full phase-1→2→3 pipeline before validating on the
+next OOS window. That's still deferred.
 
 ### 2026-05-16 — Bootstrap trade-sequence robustness check (opt-in)
 Added `src/ta_foundation/optimization/robustness.py` +
