@@ -263,6 +263,7 @@ def trigger_shadow_run(
 
     target = Path(command_file) if command_file is not None else DEFAULT_COMMAND_FILE
     target.parent.mkdir(parents=True, exist_ok=True)
+    doc = session.load_document()
     payload = {
         "action": "RunBatch",
         "runId": "shadow_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"),
@@ -270,6 +271,11 @@ def trigger_shadow_run(
         # paths and will silently skip the run.
         "sourceFolder": str(templates_dir.resolve()),
         "destFolder": str(nt_output_dir.resolve()),
+        # The contract MUST be on the IPC payload. Without it the AddOn
+        # falls back to the currently-selected Strategy Analyzer tab's
+        # instrument and silently clobbers the template's own
+        # <InstrumentOrInstrumentList> override.
+        "instrument": doc.instrument,
     }
     target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return {"command_file": str(target), "payload": payload}

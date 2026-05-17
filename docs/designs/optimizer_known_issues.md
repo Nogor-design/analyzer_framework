@@ -15,47 +15,6 @@ For the operator runbook, see
 
 ## Open
 
-### AddOn drops contract suffix on re-runs of named Backtest templates
-
-**Symptom.** A named final-Backtest template that originally produced
-trades produces **zero trades** when re-run via the BatchControl
-AddOn, even when the XML is byte-identical between runs. The two
-templates' `<InstrumentOrInstrumentList>` tags both contain
-`NQ 06-26`, but the returned `Settings.csv` differs:
-
-- Original run: `Instrument,NQ 06-26`
-- Shadow re-run: `Instrument,NQ`
-
-**Reproduction (2026-05-16, opt_5bab6a5ee1ea, F_001 / F_003).** Used
-the new `/api/optimizer/sessions/<id>/shadow/generate` to copy the
-named Backtest templates into the shadow folder, patched From/To
-to the SAME date range as the original run (Apr 14 – May 14 2026),
-dispatched via `/shadow/run`. NT ran cleanly (state=finished, 2/2),
-but both returned `Trades.csv` files were empty. `Settings.csv`
-showed `Instrument,NQ` for both shadow runs while the original
-backtest's `Settings.csv` showed `Instrument,NQ 06-26`.
-
-**Likely cause.** The BatchControl AddOn opens a temporary
-Strategy Analyzer tab for each template and loads the XML into it.
-That temporary tab's default instrument is `NQ` (the root), and the
-template's `<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>`
-override is not taking effect on the second pass. The optimizer
-phases produce per-template Optimization CSVs with `NQ 06-26` in
-the Instrument column, so the override DOES work at optimization
-time. Something in the Backtest load path is different.
-
-**Where to look.** `D:\ninjatraderOptimizer\NinjaTraderAddOnProject\BatchControl.cs`
-and `StrategyAnalyzerAutomation.cs` — specifically the template
-load + instrument apply path for Backtest mode. Compare with the
-optimization-mode path that does set the contract correctly.
-
-**Workaround.** None yet on the operator side. Shadow runs cannot
-be trusted to reproduce the original backtest until this is fixed.
-The shadow comparison itself is still useful — the
-"shadow window produced zero trades" divergence flag fires loudly
-when this happens, which is what surfaced the issue in the first
-place.
-
 ### Walk-forward and parameter-neighborhood robustness checks (deferred)
 
 The bootstrap trade-sequence robustness check shipped 2026-05-16
@@ -228,6 +187,31 @@ python -m pytest src/ta_foundation/tests/web src/ta_foundation/tests/optimizatio
 ---
 
 ## Resolved (kept for history)
+
+### 2026-05-16 — AddOn dropped contract suffix on Backtest template re-runs
+The BatchControl AddOn unconditionally overrode every loaded template's
+`<InstrumentOrInstrumentList>` with either the IPC payload's
+`instrument` field or the currently-selected tab's instrument.
+When the IPC omitted the instrument and the operator's tab had `NQ`
+(the root), the AddOn loaded an `NQ 06-26` template as `NQ` and
+the strategy produced zero trades. Discovered via the new shadow
+execution feature when the same named template that originally
+produced 17 trades produced 0 trades on a re-run.
+
+Fixed in two places:
+
+- **NT AddOn** (`D:\ninjatraderOptimizer\NinjaTraderAddOnProject\BatchControl.cs`):
+  introduced `bool instrumentExplicit = !string.IsNullOrWhiteSpace(requestedInstrument);`
+  and made the `SetSelectedInstrumentOrInstrumentList` override conditional on
+  `instrumentExplicit`. When the IPC payload doesn't specify an instrument,
+  the template's own `<InstrumentOrInstrumentList>` value (already
+  applied by `LoadTemplate`) is preserved. New log line "Batch instrument
+  source: ..." reports which path was taken. Commit `c41dc77` in
+  `D:\ninjatraderOptimizer` (master branch, not pushed).
+- **Web** (`src/ta_foundation/web/optimizer_shadow.py`):
+  `trigger_shadow_run` now reads `session.doc.instrument` and includes
+  it as `"instrument"` in the IPC payload. The optimizer phase runner
+  already did this; shadow was the omission.
 
 ### 2026-05-16 — Bootstrap trade-sequence robustness check (opt-in)
 Added `src/ta_foundation/optimization/robustness.py` +
