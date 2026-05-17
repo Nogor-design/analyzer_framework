@@ -246,6 +246,75 @@ class TestValidation:
         if "cost_normalized" in result and result["cost_normalized"] is not None:
             assert "profit_net" in result["cost_normalized"].columns
 
+    def test_rolling_no_qualifying_folds_fails_fold_consistency_gate(self):
+        """
+        Regression: previously, when n_folds was misconfigured relative to the
+        dev sample (block_size < min_is_trades, so zero folds qualify), the
+        rolling walk-forward returned fold_sign_consistency=None and the
+        fold_sign_consistency gate was silently skipped — letting candidates
+        "pass" hardening with the consistency check effectively disabled.
+
+        With the silent-skip guard in place, requesting rolling WF with a
+        configuration that produces no qualifying folds must surface as an
+        explicit failed gate rather than a missing gate.
+        """
+        # 30 trades is well over min_oos floor but too few for n_folds=6 with
+        # min_is_trades=20 (block_size = 30 // 7 = 4, which fails the IS floor).
+        trades = _make_trades(n=30)
+        misconfigured_wf = {
+            **DEFAULT_WF_CONFIG,
+            "wf_type": "rolling",
+            "n_folds": 6,
+            "min_is_trades": 20,
+            "min_oos_trades": 1,
+        }
+        result = run_validation(
+            trades,
+            wf_config=misconfigured_wf,
+            cost_model=DEFAULT_COST_MODEL,
+            use_rolling_wf=True,
+        )
+
+        gate_names = {g.name for g in result.gates}
+        assert "fold_sign_consistency" in gate_names, (
+            "rolling WF with no qualifying folds must surface a fold_sign_consistency "
+            "gate, not silently skip it"
+        )
+        fsc_gate = next(g for g in result.gates if g.name == "fold_sign_consistency")
+        assert fsc_gate.passed is False
+        assert any(
+            "fold_sign_consistency unavailable" in issue
+            for issue in result.issues
+        ), "issues list should explicitly note the rolling failure"
+
+    def test_explicit_fold_sign_consistency_overrides_rolling_fallback(self):
+        """When the caller supplies an explicit fold_sign_consistency value the
+        normal pass/fail gate path runs, even if rolling could not compute its
+        own fraction. This preserves the override behavior documented in the
+        run_validation docstring."""
+        trades = _make_trades(n=30)
+        misconfigured_wf = {
+            **DEFAULT_WF_CONFIG,
+            "wf_type": "rolling",
+            "n_folds": 6,
+            "min_is_trades": 20,
+            "min_oos_trades": 1,
+        }
+        result = run_validation(
+            trades,
+            wf_config=misconfigured_wf,
+            cost_model=DEFAULT_COST_MODEL,
+            use_rolling_wf=True,
+            fold_sign_consistency=0.8,
+            fold_sign_consistency_min=0.6,
+        )
+        fsc_gate = next(
+            (g for g in result.gates if g.name == "fold_sign_consistency"), None
+        )
+        assert fsc_gate is not None
+        assert fsc_gate.passed is True
+        assert fsc_gate.value == 0.8
+
 
 # ---------------------------------------------------------------------------
 # Evaluation
@@ -4066,3 +4135,375 @@ class TestWmaAnchor:
         spec = self._make_spec(family="DEMA", length=5)
         with pytest.raises(ValueError, match="Unsupported anchor family"):
             compute_anchor_series(bars, spec)
+
+
+# ===========================================================================
+# Dev-slice split (T5: separate exit search from entry search)
+# ===========================================================================
+
+class TestDevSplitForSearch:
+    """Confirms the entry-search and exit-search slices are disjoint and the
+    fallback paths leave both slices pointing at the full dev frame."""
+
+    def _make_dev_trades(self, n: int) -> pd.DataFrame:
+        start = pd.Timestamp("2026-01-02 09:30", tz="America/Denver")
+        return pd.DataFrame({
+            "trade_id": list(range(n)),
+            "entry_time": [start + pd.Timedelta(minutes=i) for i in range(n)],
+            "profit": np.linspace(-100.0, 100.0, n),
+        })
+
+    def test_chronological_split_is_disjoint(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_dev_for_search,
+            DEFAULT_DEV_SPLIT_CONFIG,
+        )
+        dev = self._make_dev_trades(120)
+        meta, entry_df, exit_df = _split_dev_for_search(
+            dev, {**DEFAULT_DEV_SPLIT_CONFIG}
+        )
+        assert meta["enabled"] is True
+        assert meta["n_entry"] + meta["n_exit"] == len(dev)
+        assert set(entry_df["trade_id"]).isdisjoint(set(exit_df["trade_id"]))
+        # Chronological ordering: every entry trade fires before every exit trade.
+        assert entry_df["entry_time"].max() <= exit_df["entry_time"].min()
+
+    def test_interleaved_split_is_disjoint_and_balanced(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_dev_for_search,
+            DEFAULT_DEV_SPLIT_CONFIG,
+        )
+        dev = self._make_dev_trades(80)
+        cfg = {**DEFAULT_DEV_SPLIT_CONFIG, "mode": "interleaved", "entry_frac": 0.5}
+        meta, entry_df, exit_df = _split_dev_for_search(dev, cfg)
+        assert meta["enabled"] is True
+        assert set(entry_df["trade_id"]).isdisjoint(set(exit_df["trade_id"]))
+        assert abs(meta["n_entry"] - meta["n_exit"]) <= 1
+
+    def test_disabled_falls_back_to_full_dev(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_dev_for_search,
+            DEFAULT_DEV_SPLIT_CONFIG,
+        )
+        dev = self._make_dev_trades(60)
+        cfg = {**DEFAULT_DEV_SPLIT_CONFIG, "enabled": False}
+        meta, entry_df, exit_df = _split_dev_for_search(dev, cfg)
+        assert meta["enabled"] is False
+        assert entry_df is dev and exit_df is dev
+
+    def test_too_small_sample_falls_back(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_dev_for_search,
+            DEFAULT_DEV_SPLIT_CONFIG,
+        )
+        dev = self._make_dev_trades(10)  # below default min_entry_trades=30
+        meta, entry_df, exit_df = _split_dev_for_search(
+            dev, {**DEFAULT_DEV_SPLIT_CONFIG}
+        )
+        assert meta["enabled"] is False
+        assert "sample too small" in meta.get("reason", "")
+        assert entry_df is dev and exit_df is dev
+
+    def test_signal_feature_df_split_is_disjoint(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_signal_feature_df,
+        )
+        n = 100
+        sfdf = pd.DataFrame({
+            "signal_id": list(range(n)),
+            "dt": pd.date_range("2026-01-01", periods=n, freq="h", tz="UTC"),
+            "ret_ticks": np.linspace(-2, 2, n),
+        })
+        meta = {"enabled": True}
+        entry_sfdf, exit_sfdf = _split_signal_feature_df(
+            sfdf, meta, entry_frac=0.5, mode="chronological"
+        )
+        assert set(entry_sfdf["signal_id"]).isdisjoint(set(exit_sfdf["signal_id"]))
+        assert entry_sfdf["dt"].max() <= exit_sfdf["dt"].min()
+
+    def test_signal_feature_df_split_inactive_returns_full(self):
+        from ta_foundation.analysis.strategy_discovery.orchestrator import (
+            _split_signal_feature_df,
+        )
+        sfdf = pd.DataFrame({
+            "signal_id": [0, 1, 2],
+            "dt": pd.date_range("2026-01-01", periods=3, freq="h", tz="UTC"),
+        })
+        entry_sfdf, exit_sfdf = _split_signal_feature_df(
+            sfdf, {"enabled": False}, entry_frac=0.5, mode="chronological"
+        )
+        assert entry_sfdf is sfdf and exit_sfdf is sfdf
+
+
+# ===========================================================================
+# True rolling walk-forward (T7: P1-5)
+# ===========================================================================
+
+class TestRollingWalkForward:
+    """Confirms the new wf_type='rolling' mode produces non-overlapping IS
+    slices, populates per-fold distribution, and exposes variance metrics."""
+
+    def _make_trades(self, n: int, seed: int = 0) -> pd.DataFrame:
+        rng = np.random.default_rng(seed)
+        start = pd.Timestamp("2026-01-02 09:30", tz="America/Denver")
+        return pd.DataFrame({
+            "trade_id": list(range(n)),
+            "entry_time": [start + pd.Timedelta(minutes=i) for i in range(n)],
+            "profit_net": rng.normal(loc=2.0, scale=10.0, size=n),
+        })
+
+    def test_rolling_mode_is_slices_are_pairwise_disjoint(self):
+        from ta_foundation.analysis.strategy_discovery.validation import (
+            compute_walk_forward_rolling,
+        )
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "rolling", "n_folds": 6, "min_is_trades": 30}
+        result = compute_walk_forward_rolling(trades, profit_col="profit_net", wf_config=cfg)
+        assert result["wf_type"] == "rolling"
+        assert len(result["folds"]) == 6
+        is_ranges = [tuple(f["is_idx_range"]) for f in result["folds"]]
+        # Pairwise disjoint
+        for i, (a_start, a_end) in enumerate(is_ranges):
+            for b_start, b_end in is_ranges[i + 1:]:
+                assert a_end <= b_start or b_end <= a_start, (
+                    f"IS ranges overlap: {(a_start, a_end)} vs {(b_start, b_end)}"
+                )
+
+    def test_rolling_mode_oos_pool_equals_union_of_fold_oos(self):
+        from ta_foundation.analysis.strategy_discovery.validation import (
+            compute_walk_forward_rolling,
+            extract_oos_pool,
+        )
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "rolling", "n_folds": 6, "min_is_trades": 30}
+        result = compute_walk_forward_rolling(trades, profit_col="profit_net", wf_config=cfg)
+        oos_pool = extract_oos_pool(trades, wf_config=cfg)
+        # Union of fold-OOS index ranges should cover exactly the OOS pool
+        union_size = sum(f["oos_idx_range"][1] - f["oos_idx_range"][0] for f in result["folds"])
+        assert union_size == len(oos_pool)
+        first_oos_start = result["folds"][0]["oos_idx_range"][0]
+        last_oos_end = result["folds"][-1]["oos_idx_range"][1]
+        assert last_oos_end - first_oos_start == len(oos_pool)
+
+    def test_folds_distribution_matches_fold_count(self):
+        from ta_foundation.analysis.strategy_discovery.validation import (
+            compute_walk_forward_rolling,
+        )
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "rolling", "n_folds": 6, "min_is_trades": 30}
+        result = compute_walk_forward_rolling(trades, profit_col="profit_net", wf_config=cfg)
+        dist = result["folds_distribution"]
+        assert len(dist) == 6
+        for entry in dist:
+            assert set(entry.keys()) >= {
+                "fold", "oos_pf", "oos_sharpe", "oos_expectancy", "oos_n_trades",
+            }
+
+    def test_variance_fields_populated_with_multiple_folds(self):
+        from ta_foundation.analysis.strategy_discovery.validation import (
+            compute_walk_forward_rolling,
+        )
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "rolling", "n_folds": 6, "min_is_trades": 30}
+        result = compute_walk_forward_rolling(trades, profit_col="profit_net", wf_config=cfg)
+        # With 6 folds of stochastic returns, expectancy std must be a real
+        # finite number, not None.
+        assert result["oos_expectancy_std"] is not None
+        assert result["oos_expectancy_std"] >= 0.0
+        assert result["oos_sharpe_mean"] is not None
+
+    def test_anchored_mode_still_works_for_backwards_compat(self):
+        from ta_foundation.analysis.strategy_discovery.validation import (
+            compute_walk_forward_rolling,
+        )
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "anchored", "n_folds": 5, "is_pct": 0.70, "min_is_trades": 30}
+        result = compute_walk_forward_rolling(trades, profit_col="profit_net", wf_config=cfg)
+        assert result["wf_type"] == "anchored"
+        # In anchored mode, every fold's IS starts at 0 (expanding window).
+        for f in result["folds"]:
+            assert f["is_idx_range"][0] == 0
+
+    def test_extract_oos_pool_rolling_strips_only_first_block(self):
+        from ta_foundation.analysis.strategy_discovery.validation import extract_oos_pool
+        trades = self._make_trades(420)
+        cfg = {"wf_type": "rolling", "n_folds": 6}
+        oos = extract_oos_pool(trades, wf_config=cfg)
+        # block_size = 420 // 7 = 60, so OOS pool = 360 trades
+        assert len(oos) == 360
+        # First trade in OOS pool = trade index 60 from sorted input
+        assert int(oos.iloc[0]["trade_id"]) == 60
+
+
+# ---------------------------------------------------------------------------
+# T8 — Slippage / latency stress sweep
+# ---------------------------------------------------------------------------
+
+class TestSlippageStress:
+    """Covers slippage_stress.run_slippage_stress and its ranking-gate hookup."""
+
+    BASELINE_COST = {"commission_per_side": 2.09, "tick_value": 5.00}
+
+    def _make_trades(self, n: int = 60, mean_profit: float = 80.0, seed: int = 7) -> pd.DataFrame:
+        rng = np.random.default_rng(seed)
+        return pd.DataFrame({
+            "entry_time": pd.date_range("2025-02-01 09:30", periods=n, freq="60min", tz="America/Denver"),
+            "profit": rng.normal(mean_profit, 120.0, n),
+        })
+
+    def test_matrix_shape_matches_grid(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        trades = self._make_trades(60)
+        result = run_slippage_stress(
+            trades,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"slippage_ticks": [1, 2, 3], "entry_delays": [0, 1, 2]},
+        )
+        assert result["enabled"] is True
+        assert len(result["stress_matrix"]) == 9
+        # All cells carry the n_trades figure
+        assert all(c["n_trades"] == 60 for c in result["stress_matrix"])
+
+    def test_loss_pct_increases_with_slippage_and_delay(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        trades = self._make_trades(80, mean_profit=120.0)
+        result = run_slippage_stress(
+            trades,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"slippage_ticks": [1, 2, 3], "entry_delays": [0, 1, 2]},
+        )
+        # Find cells. Each (slip, delay) combo costs strictly more than (1, 0),
+        # so loss_pct must be ≥ 0 (within float tolerance) and strictly
+        # increasing as slip / delay grow.
+        cells = {(c["slip_ticks"], c["delay_bars"]): c for c in result["stress_matrix"]}
+        baseline_cell = cells[(1.0, 0)]
+        worst_cell = cells[(3.0, 2)]
+        assert baseline_cell["expectancy_loss_pct"] == pytest.approx(0.0, abs=1e-6)
+        assert worst_cell["expectancy_loss_pct"] > baseline_cell["expectancy_loss_pct"]
+        # Same slip, more delay → strictly worse:
+        assert cells[(2.0, 2)]["expectancy_loss_pct"] > cells[(2.0, 0)]["expectancy_loss_pct"]
+
+    def test_stress_cell_picks_configured_combo(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        trades = self._make_trades(60)
+        result = run_slippage_stress(
+            trades,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"slippage_ticks": [1, 2, 3], "entry_delays": [0, 1, 2], "stress_cell": [3, 2]},
+        )
+        sc = result["stress_cell"]
+        assert sc is not None
+        assert sc["slip_ticks"] == 3.0
+        assert sc["delay_bars"] == 2
+
+    def test_gate_fails_under_thin_expectancy(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        # Razor-thin baseline expectancy: mean profit ≈ 11 ticks of value
+        # (≈ $55), barely above one extra tick of round-trip slippage. Adding
+        # slip+delay easily wipes out > 40% of expectancy.
+        thin = self._make_trades(80, mean_profit=15.0, seed=11)
+        result = run_slippage_stress(
+            thin,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"max_expectancy_loss_pct": 40.0, "stress_cell": [2, 1]},
+        )
+        assert result["passed"] is False
+        sc = result["stress_cell"]
+        assert sc is not None
+        assert sc["expectancy_loss_pct"] > 40.0
+
+    def test_gate_passes_under_strong_edge(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        # Strong baseline expectancy: a few ticks of slippage barely dent it.
+        strong = self._make_trades(80, mean_profit=2000.0, seed=11)
+        result = run_slippage_stress(
+            strong,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"max_expectancy_loss_pct": 40.0, "stress_cell": [2, 1]},
+        )
+        assert result["passed"] is True
+
+    def test_disabled_returns_inactive_dict(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        trades = self._make_trades(40)
+        result = run_slippage_stress(
+            trades,
+            baseline_cost_model=self.BASELINE_COST,
+            options={"enabled": False},
+        )
+        assert result["enabled"] is False
+        assert result["stress_matrix"] == []
+        assert result["passed"] is False
+        assert any("disabled" in s for s in result["issues"])
+
+    def test_empty_trades_returns_safe_skip(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        result = run_slippage_stress(
+            pd.DataFrame(),
+            baseline_cost_model=self.BASELINE_COST,
+        )
+        assert result["passed"] is False
+        assert result["stress_matrix"] == []
+        assert any("no trades" in s for s in result["issues"])
+
+    def test_missing_profit_column_returns_skip(self):
+        from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+        df = pd.DataFrame({"profit_net": [10, -5, 20]})
+        result = run_slippage_stress(df, baseline_cost_model=self.BASELINE_COST)
+        assert result["passed"] is False
+        assert any("'profit'" in s for s in result["issues"])
+
+    def test_ranking_gate_rejects_slippage_failure(self):
+        """When require_slippage_stress_passed is on, a failing stress gate
+        routes the candidate to ``rejected`` with a structured reason."""
+        from ta_foundation.analysis.strategy_discovery.ranking import (
+            evaluate_hard_gates,
+        )
+        sd = {
+            "evaluation_oos": {"n_trades": 60, "profit_factor": 1.5},
+            "evaluation":     {"n_trades": 60, "profit_factor": 1.5},
+            "slippage_stress": {
+                "enabled": True,
+                "passed": False,
+                "max_expectancy_loss_pct": 40.0,
+                "stress_cell": {"slip_ticks": 2.0, "delay_bars": 1, "expectancy_loss_pct": 65.0},
+            },
+        }
+        failures = evaluate_hard_gates(
+            sd,
+            gates_config={"require_slippage_stress_passed": True},
+        )
+        gate_names = [f["gate"] for f in failures]
+        assert "require_slippage_stress_passed" in gate_names
+        ss_failure = next(f for f in failures if f["gate"] == "require_slippage_stress_passed")
+        assert ss_failure["value"] == 65.0
+        assert ss_failure["threshold"] == 40.0
+
+    def test_ranking_gate_rejects_when_not_run(self):
+        """If the sweep wasn't run (disabled / errored), the gate fails so
+        operators can't silently bypass execution-realism checks."""
+        from ta_foundation.analysis.strategy_discovery.ranking import (
+            evaluate_hard_gates,
+        )
+        sd = {
+            "evaluation_oos": {"n_trades": 60, "profit_factor": 1.5},
+            "slippage_stress": {"enabled": False, "passed": False},
+        }
+        failures = evaluate_hard_gates(
+            sd,
+            gates_config={"require_slippage_stress_passed": True},
+        )
+        assert any(f["gate"] == "require_slippage_stress_passed" for f in failures)
+
+    def test_ranking_gate_off_by_default(self):
+        """The slippage gate is opt-in: defaults must not reject otherwise-
+        valid candidates that simply haven't enabled the sweep."""
+        from ta_foundation.analysis.strategy_discovery.ranking import (
+            evaluate_hard_gates,
+        )
+        sd = {
+            "evaluation_oos": {"n_trades": 60, "profit_factor": 1.5},
+            # No slippage_stress block at all.
+        }
+        failures = evaluate_hard_gates(sd)
+        assert all(f["gate"] != "require_slippage_stress_passed" for f in failures)

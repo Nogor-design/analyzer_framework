@@ -1,0 +1,95 @@
+report:
+  title: "Structure Levels Quick Discovery"
+  output_filename: "03_structure_levels_quick.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "03_levels_regions"
+  instrument: "NQ"
+
+level_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  atr_period: 14
+  timeframes: [1]
+
+  signals:
+    swing_level_test:
+      enabled: true
+      pivot_lookback: [5]
+      touch_atr_mult: [0.5, 1.0]
+      max_pivots: [5]
+      direction: [0]
+
+    consolidation_breakout:
+      enabled: true
+      consol_bars: [8, 12]
+      max_range_atr: [0.8, 1.2]
+      min_breach_atr: [0.2]
+      direction: [0]
+
+    round_number_bounce:
+      enabled: true
+      level_step: [25.0, 50.0, 100.0]
+      touch_ticks: [4.0, 8.0]
+      direction: [0]
+
+    vwap_reclaim_reject:
+      enabled: true
+      max_dist_ticks: [8.0, 16.0, 24.0]
+      min_pierce_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
+
+    prior_session_reaction:
+      enabled: true
+      levels:
+        - ["prior_high", "prior_low", "overnight_high", "overnight_low"]
+        - ["prior_close"]
+      touch_ticks: [4.0, 8.0, 12.0]
+      min_close_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
+
+    liquidity_sweep_failure:
+      enabled: true
+      lookback: [10, 20, 40]
+      sweep_ticks: [1.0, 2.0, 4.0]
+      close_back_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
+
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [12, 16, 20, 30]
+      stop: [8, 10, 12, 16]
+    max_bars_timeout: 20
+    timeout_result: at_close
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: false}
+  hardening:
+    enabled: true
+    n_mc_simulations: 100
+    n_hypotheses_tested: 96
+    require_slippage_stress_passed: false
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    options:
+      top_n: 30

@@ -1,0 +1,80 @@
+report:
+  title: "NQ NY Open 5m ORB Short 150/30 Locked Holdout"
+  output_filename: "04_nq_ny_open_orb_5m_short_150_30_locked_holdout.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 40
+  orb:
+    orb_minutes: [5]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [-1]
+    min_range_ticks: [8]
+    require_close_beyond: [true]
+    one_signal_per_side: true
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: false}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [150]
+      stop: [30]
+    max_bars_timeout: 90
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  hardening:
+    enabled: true
+    n_mc_simulations: 500
+    n_hypotheses_tested: 24
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    holdout:
+      enabled: true
+      is_frac: 0.60
+      val_frac: 0.20
+      time_col: entry_time
+      min_dev_trades: 40
+      min_holdout_trades: 10
+      require_holdout_passed: true
+      min_profit_factor: 1.0
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "locked_validation_candidate"
+  parent_config: "discovery/04_nq_ny_open_orb_5m_large_move_short_hardened.yaml"
+  parent_sidecar: "output/nq_ny_open_orb_5m_large_move_short_hardened/04_nq_ny_open_orb_5m_large_move_short_hardened_summary.json"
+  parent_rank: 1
+  locked_rule: "NQ NY-open 5m ORB short breakout, close beyond range, break-extreme entry, 150 tick TP / 30 tick SL"
+  caution: "Locked follow-up from prior discovery. Treat any holdout pass as evidence for forward-shadow research, not deployment."
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 10

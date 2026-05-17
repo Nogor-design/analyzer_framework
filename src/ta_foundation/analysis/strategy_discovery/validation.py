@@ -113,11 +113,12 @@ class ValidationResult:
 
 
 DEFAULT_WF_CONFIG: Dict[str, Any] = {
-    "wf_type": "rolling",
-    "is_pct": 0.70,
+    "wf_type": "rolling",         # 'rolling' = non-overlapping IS/OOS blocks (T7)
+                                   # 'anchored' = expanding-IS (legacy; leaks earlier-fold IS)
+    "is_pct": 0.70,                # only used when wf_type='anchored'
     "min_oos_trades": 20,
     "min_is_trades": 50,
-    "n_folds": 5,
+    "n_folds": 6,                  # bumped from 5 → 6 per T7; spec calls for k≥6
     "degradation_threshold": 0.20,
 }
 
@@ -171,6 +172,23 @@ def _compute_win_rate(returns: pd.Series) -> Optional[float]:
     return _safe_float(float((valid > 0).mean()))
 
 
+def _compute_sharpe(returns: pd.Series) -> Optional[float]:
+    """Per-trade Sharpe-like ratio: mean(returns) / std(returns).
+
+    Not annualised — used here only to compare folds against each other,
+    so the unit-of-time choice cancels out. Returns None when std is zero
+    or the sample is too small to estimate variance reliably.
+    """
+    valid = pd.to_numeric(returns, errors="coerce").dropna()
+    if len(valid) < 2:
+        return None
+    mu = float(valid.mean())
+    sigma = float(valid.std(ddof=1))
+    if sigma == 0 or not np.isfinite(sigma):
+        return None
+    return _safe_float(mu / sigma)
+
+
 def _compute_max_drawdown(cumulative_pnl: pd.Series) -> float:
     """
     Max drawdown on a cumulative P&L series.
@@ -214,6 +232,50 @@ def apply_cost_model(
         out["profit_net"] = np.nan
 
     return out
+
+
+def extract_oos_pool(
+    trades: pd.DataFrame,
+    *,
+    wf_config: Dict[str, Any],
+    time_col: str = "entry_time",
+) -> pd.DataFrame:
+    """
+    Return the contiguous OOS pool the walk-forward folds evaluate on,
+    sorted by ``time_col`` when present.
+
+    Under ``wf_type='rolling'`` (T7 default) the dev set is partitioned into
+    ``n_folds + 1`` equal blocks: block 0 is fold-1's IS only and every
+    subsequent block is some fold's OOS. The OOS pool is therefore
+    ``trades.iloc[block_size:]`` — the union of all fold-OOS slices.
+
+    Under ``wf_type='anchored'`` (legacy) every row after the first
+    ``is_pct`` fraction is OOS for at least one fold, so the pool is
+    ``trades.iloc[floor(n * is_pct):]``.
+
+    Returns an empty DataFrame (with original columns) if no OOS rows exist.
+    """
+    if trades is None or len(trades) == 0:
+        return trades.iloc[0:0] if isinstance(trades, pd.DataFrame) else pd.DataFrame()
+    df = trades.copy()
+    if time_col in df.columns:
+        df = df.sort_values(time_col).reset_index(drop=True)
+    n = len(df)
+    wf_type = str(wf_config.get("wf_type", "rolling")).lower()
+    if wf_type == "rolling":
+        n_folds = int(wf_config.get("n_folds", 6))
+        if n_folds < 1:
+            return df.iloc[0:0]
+        block_size = n // (n_folds + 1)
+        if block_size < 1 or block_size >= n:
+            return df.iloc[0:0]
+        return df.iloc[block_size:].reset_index(drop=True)
+    # anchored / legacy
+    is_pct = float(wf_config.get("is_pct", 0.70))
+    initial_is_end = int(np.floor(n * is_pct))
+    if initial_is_end >= n:
+        return df.iloc[0:0]
+    return df.iloc[initial_is_end:].reset_index(drop=True)
 
 
 def compute_walk_forward(
@@ -316,23 +378,54 @@ def compute_walk_forward_rolling(
     wf_config: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Anchored expanding walk-forward across n_folds.
+    Multi-fold walk-forward across ``n_folds`` folds.
 
-    Divides the OOS portion (1 - is_pct) into n_folds chunks.  Each fold uses
-    all data up to that OOS chunk's start as IS and the chunk itself as OOS.
+    Two modes, selected by ``wf_config["wf_type"]``:
 
-    Returns dict:
-      n_folds, folds (list of per-fold dicts), oos_expectancy_across_folds,
-      fold_sign_consistency (0.0–1.0), passed (bool), issues (list)
+    ``rolling`` (default, T7) — TRUE rolling walk-forward.
+        The dev set is divided into ``n_folds + 1`` contiguous, equal-size
+        blocks. For fold ``i`` (1..n_folds): IS = block ``i-1``, OOS = block
+        ``i``. Every fold's IS slice is verifiably DISJOINT from every other
+        fold's IS slice — no expanding-window leak. Each fold's IS is also
+        immediately adjacent to (and just before) its own OOS, which is the
+        property that makes "rolling" meaningful.
+
+    ``anchored`` (legacy) — anchored expanding walk-forward.
+        First ``is_pct`` fraction of trades is the burn-in IS pool. The
+        remaining trades are sliced into ``n_folds`` OOS chunks; each fold
+        uses every trade up to its OOS chunk's start as its (expanding) IS.
+        Earlier-fold IS data is reused by later folds, which biases later
+        folds. Kept only for backwards compatibility and direct comparison
+        with prior runs.
+
+    Returns dict (additive — keys present in the legacy implementation are
+    preserved):
+      wf_type                       'rolling' or 'anchored'
+      n_folds                       requested fold count
+      folds                         list of per-fold dicts (legacy schema)
+      folds_distribution            list of {fold, oos_pf, oos_sharpe,
+                                    oos_expectancy, oos_n_trades}
+      oos_expectancy_across_folds   trade-weighted mean across folds
+      oos_expectancy_std            std-deviation of per-fold oos_expectancy
+      oos_pf_std                    std-deviation of per-fold oos_pf
+      oos_sharpe_mean               equal-weighted mean of per-fold oos_sharpe
+      fold_sign_consistency         fraction of folds with mean OOS > 0
+      passed                        sign_consistency ≥ 0.6 and pooled exp > 0
+      issues                        list of issue strings
     """
-    is_pct = float(wf_config.get("is_pct", 0.70))
-    n_folds = int(wf_config.get("n_folds", 5))
+    wf_type = str(wf_config.get("wf_type", "rolling")).lower()
+    n_folds = int(wf_config.get("n_folds", 6))
     min_is_trades = int(wf_config.get("min_is_trades", 50))
 
     result: Dict[str, Any] = {
+        "wf_type": wf_type,
         "n_folds": n_folds,
         "folds": [],
+        "folds_distribution": [],
         "oos_expectancy_across_folds": None,
+        "oos_expectancy_std": None,
+        "oos_pf_std": None,
+        "oos_sharpe_mean": None,
         "fold_sign_consistency": None,
         "passed": False,
         "issues": [],
@@ -351,50 +444,89 @@ def compute_walk_forward_rolling(
         return result
 
     n = len(df)
-    initial_is_end = int(np.floor(n * is_pct))
-    oos_pool = n - initial_is_end
-
-    if oos_pool < n_folds:
-        result["issues"].append(
-            f"OOS pool ({oos_pool} trades) too small for {n_folds} folds"
-        )
-        return result
-
-    fold_size = oos_pool // n_folds
     fold_results: List[Dict[str, Any]] = []
 
-    for fold_idx in range(n_folds):
-        oos_start = initial_is_end + fold_idx * fold_size
-        oos_end = oos_start + fold_size if fold_idx < n_folds - 1 else n
+    if wf_type == "rolling":
+        if n_folds < 1:
+            result["issues"].append(f"n_folds={n_folds} invalid (must be ≥1)")
+            return result
+        block_size = n // (n_folds + 1)
+        if block_size < 1:
+            result["issues"].append(
+                f"trade count ({n}) too small for {n_folds} non-overlapping folds"
+            )
+            return result
 
-        is_df = df.iloc[:oos_start]
-        oos_df = df.iloc[oos_start:oos_end]
+        # Build n_folds+1 contiguous blocks. Last block absorbs the
+        # remainder so we never silently drop trailing trades.
+        boundaries = [i * block_size for i in range(n_folds + 1)] + [n]
 
-        if len(is_df) < min_is_trades or len(oos_df) < 1:
-            continue
-
-        is_returns = pd.to_numeric(is_df[profit_col], errors="coerce").dropna()
-        oos_returns = pd.to_numeric(oos_df[profit_col], errors="coerce").dropna()
-
-        is_exp = _compute_expectancy(is_returns)
-        oos_exp = _compute_expectancy(oos_returns)
-
-        fold_results.append({
-            "fold": fold_idx + 1,
-            "is_trades": len(is_df),
-            "oos_trades": len(oos_df),
-            "is_expectancy": is_exp,
-            "oos_expectancy": oos_exp,
-            "is_pf": _compute_profit_factor(is_returns),
-            "oos_pf": _compute_profit_factor(oos_returns),
-            "oos_positive": bool(oos_exp is not None and oos_exp > 0),
-        })
+        for fold_idx in range(n_folds):
+            is_start = boundaries[fold_idx]
+            is_end = boundaries[fold_idx + 1]
+            oos_start = is_end
+            oos_end = boundaries[fold_idx + 2]
+            is_df = df.iloc[is_start:is_end]
+            oos_df = df.iloc[oos_start:oos_end]
+            if len(is_df) < min_is_trades or len(oos_df) < 1:
+                continue
+            fold_results.append(
+                _per_fold_metrics(
+                    fold_idx=fold_idx,
+                    is_df=is_df,
+                    oos_df=oos_df,
+                    profit_col=profit_col,
+                    is_range=(is_start, is_end),
+                    oos_range=(oos_start, oos_end),
+                )
+            )
+    else:
+        # anchored / legacy
+        is_pct = float(wf_config.get("is_pct", 0.70))
+        initial_is_end = int(np.floor(n * is_pct))
+        oos_pool = n - initial_is_end
+        if oos_pool < n_folds:
+            result["issues"].append(
+                f"OOS pool ({oos_pool} trades) too small for {n_folds} folds"
+            )
+            return result
+        fold_size = oos_pool // n_folds
+        for fold_idx in range(n_folds):
+            oos_start = initial_is_end + fold_idx * fold_size
+            oos_end = oos_start + fold_size if fold_idx < n_folds - 1 else n
+            is_df = df.iloc[:oos_start]
+            oos_df = df.iloc[oos_start:oos_end]
+            if len(is_df) < min_is_trades or len(oos_df) < 1:
+                continue
+            fold_results.append(
+                _per_fold_metrics(
+                    fold_idx=fold_idx,
+                    is_df=is_df,
+                    oos_df=oos_df,
+                    profit_col=profit_col,
+                    is_range=(0, oos_start),
+                    oos_range=(oos_start, oos_end),
+                )
+            )
 
     result["folds"] = fold_results
 
     if not fold_results:
         result["issues"].append("no folds had sufficient trades")
         return result
+
+    # Per-fold distribution and aggregates
+    distribution = [
+        {
+            "fold": f["fold"],
+            "oos_pf": f["oos_pf"],
+            "oos_sharpe": f["oos_sharpe"],
+            "oos_expectancy": f["oos_expectancy"],
+            "oos_n_trades": f["oos_trades"],
+        }
+        for f in fold_results
+    ]
+    result["folds_distribution"] = distribution
 
     n_positive = sum(1 for f in fold_results if f["oos_positive"])
     sign_consistency = n_positive / len(fold_results)
@@ -408,6 +540,17 @@ def compute_walk_forward_rolling(
         ) / total_oos
         result["oos_expectancy_across_folds"] = _safe_float(weighted_exp)
 
+    # Variance metrics — fold-to-fold stability. Only meaningful with ≥2 folds.
+    exp_series = [f["oos_expectancy"] for f in fold_results if f["oos_expectancy"] is not None]
+    if len(exp_series) >= 2:
+        result["oos_expectancy_std"] = _safe_float(float(np.std(exp_series, ddof=1)))
+    pf_series = [f["oos_pf"] for f in fold_results if f["oos_pf"] is not None]
+    if len(pf_series) >= 2:
+        result["oos_pf_std"] = _safe_float(float(np.std(pf_series, ddof=1)))
+    sharpe_series = [f["oos_sharpe"] for f in fold_results if f["oos_sharpe"] is not None]
+    if sharpe_series:
+        result["oos_sharpe_mean"] = _safe_float(float(np.mean(sharpe_series)))
+
     result["passed"] = bool(
         sign_consistency >= 0.6
         and result["oos_expectancy_across_folds"] is not None
@@ -415,6 +558,34 @@ def compute_walk_forward_rolling(
     )
 
     return result
+
+
+def _per_fold_metrics(
+    fold_idx: int,
+    is_df: pd.DataFrame,
+    oos_df: pd.DataFrame,
+    profit_col: str,
+    is_range: Tuple[int, int],
+    oos_range: Tuple[int, int],
+) -> Dict[str, Any]:
+    """Build the per-fold result dict consumed by both rolling and anchored modes."""
+    is_returns = pd.to_numeric(is_df[profit_col], errors="coerce").dropna()
+    oos_returns = pd.to_numeric(oos_df[profit_col], errors="coerce").dropna()
+    is_exp = _compute_expectancy(is_returns)
+    oos_exp = _compute_expectancy(oos_returns)
+    return {
+        "fold": fold_idx + 1,
+        "is_trades": int(len(is_df)),
+        "oos_trades": int(len(oos_df)),
+        "is_expectancy": is_exp,
+        "oos_expectancy": oos_exp,
+        "is_pf": _compute_profit_factor(is_returns),
+        "oos_pf": _compute_profit_factor(oos_returns),
+        "oos_sharpe": _compute_sharpe(oos_returns),
+        "oos_positive": bool(oos_exp is not None and oos_exp > 0),
+        "is_idx_range": [int(is_range[0]), int(is_range[1])],
+        "oos_idx_range": [int(oos_range[0]), int(oos_range[1])],
+    }
 
 
 def run_t_test(
@@ -777,6 +948,28 @@ def run_validation(
         ))
         if not fsc_passed:
             all_issues.append(f"hard gate failed: fold_sign_consistency ({fsc_val:.3f} < {fold_sign_consistency_min:.3f})")
+    elif use_rolling_wf:
+        # Rolling walk-forward was requested but produced no qualifying folds
+        # (typically n_folds too high relative to dev sample given min_is_trades).
+        # Treat this as an explicit gate failure rather than silently skipping
+        # the consistency check, otherwise a misconfigured n_folds can let a
+        # candidate "pass" hardening with the gate disabled.
+        rolling_issues = rolling_wf_results.get("issues") or []
+        rolling_reason = "; ".join(str(s) for s in rolling_issues) or "no qualifying folds"
+        gates.append(GateResult(
+            name="fold_sign_consistency",
+            passed=False,
+            value=None,
+            threshold=fold_sign_consistency_min,
+            reason=(
+                f"rolling walk-forward did not produce a sign-consistency fraction "
+                f"({rolling_reason}); reduce n_folds or lower min_is_trades"
+            ),
+        ))
+        all_issues.append(
+            "hard gate failed: fold_sign_consistency unavailable — rolling "
+            f"walk-forward produced no fraction ({rolling_reason})"
+        )
 
     # Gate: session concentration
     if session_concentration_cap is not None:

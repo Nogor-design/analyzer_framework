@@ -1,141 +1,205 @@
 # ============================================================
-# STAGE 6 — VALIDATE TOP COMBOS
+# STAGE 6 - VALIDATE PROMOTED COMBOS
 # ============================================================
-# Run this LAST. Take the top 2-3 combos from stages 2-5 and
-# verify them with strict IS/OOS walk-forward validation.
-#
-# HOW TO USE:
-#   1. From stages 2-5, note the exact winning parameters:
-#      - Signal family (candle/LCR/ORB/MA/etc.)
-#      - Signal type (pattern name, multiplier, etc.)
-#      - Timeframe (1m or 5m)
-#      - TP ticks / SL ticks
-#   2. Edit ONLY those values into this file.
-#   3. Set min_trades to a higher value (30+) for stricter validation.
-#   4. Run and check the "Walk-Forward Validation" section.
-#
-# Runtime: ~2-3 minutes with --no-tick-data
-# Combos:  ~50-100 (just your top combos)
-#
-# WHAT TO LOOK AT:
-#   "Strategy Discovery — Walk-Forward Validation" section.
-#   IS/OOS degradation < 0.15 = robust.
-#   IS/OOS degradation > 0.40 = overfit, don't trade it.
-#
-#   "Strategy Discovery — Cohort Analysis" section.
-#   Does PF stay consistent month-to-month? Decaying = regime-dependent.
+# Stage 6 is promotion-driven. The web UI deep-merges the exact winning
+# combo overrides from earlier stages into this file, then reruns only those
+# families with stricter minimum trade counts and per-combo hardening.
 # ============================================================
 
 report:
-  title: "Stage 6 — Validation"
+  title: "Stage 6 - Validation"
   output_filename: "06_validate.html"
   timezone: "America/Denver"
 
-# ============================================================
-# EDIT THESE TO MATCH YOUR TOP COMBOS FROM STAGES 2-5
-# Currently set to the most common winning patterns as defaults.
-# ============================================================
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+_validation_defaults: &validation_defaults
+  min_trades: 30
+  hardening:
+    enabled: true
+    n_mc_simulations: 250
+    n_hypotheses_tested: 1
+    min_t_stat_abs: 0.0
+    require_slippage_stress_passed: true
+    wf_config:
+      wf_type: rolling
+      n_folds: 6
+      min_is_trades: 50
+      min_oos_trades: 20
+      degradation_threshold: 0.20
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      stress_cell: [2, 1]
+      max_expectancy_loss_pct: 40.0
+  filter_discovery: {enabled: false}
+
+_entry_timing_next_open: &entry_timing_next_open
+  next_open: {enabled: true}
+  break_extreme: {enabled: false}
+  body_midpoint: {enabled: false}
+
+_outcome_ticks: &outcome_ticks
+  atr: {enabled: false}
+  ticks:
+    enabled: true
+    take_profit: [20]
+    stop: [10]
+  max_bars_timeout: 20
+  timeout_result: loss
+  tick_size: 0.25
+  tick_value: 5.00
+  commission_per_side: 2.09
+  slippage_ticks: 1
 
 candle_discovery:
-  enabled: true
-  session_filter:
-    hour_from: 7
-    minute_from: 30
-    hour_to: 16
-  timeframes: [1]     # ← Lock to the winning TF from stage 2
-  min_trades: 30      # Higher threshold = only strong combos survive
-
+  <<: *validation_defaults
+  enabled: false
+  session_filter: {hour_from: 7, minute_from: 30, hour_to: 16}
+  timeframes: [1]
   candle_features:
     size_lookbacks: [10]
     atr_period: 14
     tick_size: 0.25
     min_body_ticks: 2
-
   patterns:
-    # ← EDIT: Enable only the patterns that won in stage 2.
-    # Disable everything that didn't.
-    large_body:
-      enabled: true
-      body_multiplier: [2.0]  # ← Use the exact winning value
-      wick_to_body_max: [0.5]
-      lookback: [10]
-      min_size_ticks: 3
-
-    inside_bar:
-      enabled: true         # ← Enable/disable based on stage 2 results
-
-    # Everything else disabled for clean validation
+    large_body: {enabled: false, body_multiplier: [2.0], wick_to_body_max: [0.5], lookback: [10]}
+    pin_bar_bullish: {enabled: false}
+    pin_bar_bearish: {enabled: false}
+    inside_bar: {enabled: false}
+    outside_bar: {enabled: false}
+    engulfing_bullish: {enabled: false}
+    engulfing_bearish: {enabled: false}
+    doji: {enabled: false}
     clean_breakout_bar: {enabled: false}
-    pin_bar_bullish:    {enabled: false}
-    pin_bar_bearish:    {enabled: false}
-    engulfing_bullish:  {enabled: false}
-    engulfing_bearish:  {enabled: false}
-    outside_bar:        {enabled: false}
-    doji:               {enabled: false}
-
   direction: both
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
 
-  entry_timing:
-    next_open:
-      enabled: true         # ← Use the entry type that won in stage 2
-    break_extreme: {enabled: false}
-    body_midpoint: {enabled: false}
-
-  outcome:
-    atr: {enabled: false}
-    ticks:
-      enabled: true
-      take_profit: [20]     # ← Use the exact winning TP from stage 2
-      stop: [10]            # ← Use the exact winning SL from stage 2
-    max_bars_timeout: 15
-    timeout_result: loss
-
-  slippage_ticks: 1
-  filter_discovery: {enabled: false}
-
-# ============================================================
-# LCR — validate top LCR combo from stage 3
-# Edit multiplier/signal_type to match your stage 3 winner
-# ============================================================
 lcr_discovery:
-  enabled: true
-  session_filter:
-    hour_from: 7
-    minute_from: 30
-    hour_to: 16
-  size_multipliers: [2.5]   # ← Use the winning multiplier from stage 3
+  enabled: false
+  session_filter: {hour_from: 7, minute_from: 30, hour_to: 16}
+  hardening:
+    enabled: true
+    n_mc_simulations: 250
+    require_slippage_stress_passed: true
+  size_multipliers: [2.5]
   lookbacks: [20]
   zone_types: ["body"]
   tp_ticks: [20]
   sl_ticks: [10]
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
   max_bars_timeout: 20
   retrace_window: 20
-  signal_types: ["retrace"]  # ← Usually the best; edit if stage 3 showed otherwise
+  signal_types: ["retrace"]
   min_trades: 30
   max_active_regions: 100
   max_region_age: 500
 
+orb_discovery:
+  <<: *validation_defaults
+  enabled: false
+  orb:
+    orb_minutes: [15]
+    session_open_hour: 9
+    session_open_minute: 30
+    session_close_hour: 16
+    direction: [0]
+    min_range_ticks: [4]
+    tick_size: 0.25
+    atr_period: 14
+    require_close_beyond: [true]
+    one_signal_per_side: true
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
+bb_discovery:
+  <<: *validation_defaults
+  enabled: false
+  timeframes: [1]
+  bb_features:
+    atr_period: 14
+    squeeze_threshold: 0.04
+    tick_size: 0.25
+  signals:
+    bb_mean_reversion: {enabled: false, period: [20], n_std: [2.0], direction: [0]}
+    bb_continuation: {enabled: false, period: [20], n_std: [2.0], direction: [0]}
+    bb_squeeze_breakout: {enabled: false, period: [20], n_std: [2.0], direction: [0]}
+    bb_walk: {enabled: false, period: [20], n_std: [2.0], direction: [0]}
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
+ma_discovery:
+  <<: *validation_defaults
+  enabled: false
+  timeframes: [1]
+  ma_features:
+    atr_period: 14
+    tick_size: 0.25
+  signals:
+    ma_cross: {enabled: false, period: [20], ma_type: ["ema"], direction: [0]}
+    ma_pullback: {enabled: false, period: [20], ma_type: ["ema"], direction: [0]}
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
+breakout_discovery:
+  <<: *validation_defaults
+  enabled: false
+  timeframes: [1]
+  atr_period: 14
+  signals:
+    n_bar_breakout: {enabled: false, lookback: [20], direction: [0]}
+    volatility_breakout: {enabled: false, atr_mult: [2.0], direction: [0]}
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
+pullback_discovery:
+  <<: *validation_defaults
+  enabled: false
+  timeframes: [1]
+  atr_period: 14
+  signals:
+    trend_pullback: {enabled: false, trend_bars: [8], min_trend_atr: [1.0], retrace_min: [0.38], retrace_max: [0.65], direction: [0]}
+    inside_bar_continuation: {enabled: false, trend_bars: [8], min_trend_atr: [0.8], direction: [0]}
+    failed_breakout: {enabled: false, lookback: [20], direction: [0]}
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
+level_discovery:
+  <<: *validation_defaults
+  enabled: false
+  timeframes: [1]
+  atr_period: 14
+  signals:
+    swing_level_test: {enabled: false, pivot_lookback: [5], touch_atr_mult: [0.5], max_pivots: [5], direction: [0]}
+    consolidation_breakout: {enabled: false, consol_bars: [8], max_range_atr: [0.8], direction: [0]}
+    round_number_bounce: {enabled: false, level_step: [50.0], touch_ticks: [4.0], direction: [0]}
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_ticks
+
 sections:
-  # The key validation sections:
   - id: strategy_discovery_validation
-    # IS/OOS walk-forward validation table
-
   - id: strategy_discovery_cohort
-    # Month-by-month PF consistency — does it decay?
-
   - id: strategy_discovery_ranked_table
-    options:
-      top_n: 20
-
+    options: {top_n: 20}
   - id: candle_discovery_ranking
-    options:
-      top_n: 10
-
+    options: {top_n: 10}
   - id: lcr_discovery_overview
-    options:
-      top_n: 5
-
+    options: {top_n: 10}
+  - id: orb_discovery_overview
+    options: {top_n: 10}
+  - id: bb_discovery_overview
+    options: {top_n: 10}
+  - id: ma_discovery_overview
+    options: {top_n: 10}
+  - id: breakout_discovery_overview
+    options: {top_n: 10}
+  - id: pullback_discovery_overview
+    options: {top_n: 10}
+  - id: level_discovery_overview
+    options: {top_n: 10}
   - id: strategy_discovery_drawdown
-    # Max drawdown profile — does it have a catastrophic drawdown?

@@ -27,6 +27,10 @@ report:
   output_filename: "03_levels_regions.html"
   timezone: "America/Denver"
 
+discovery:
+  stage: "03_levels_regions"
+  instrument: "NQ"
+
 # ============================================================
 # LCR DISCOVERY — full multiplier/lookback/zone sweep
 # 3 × 2 × 2 × 3 TP × 2 SL × 4 signals = 288 combos
@@ -46,7 +50,7 @@ lcr_discovery:
   sl_ticks: [8, 12]
 
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
   max_bars_timeout: 20
   retrace_window: 20
   atr_period: 14
@@ -64,7 +68,9 @@ lcr_discovery:
 
 # ============================================================
 # BREAKOUT DISCOVERY
-# ~80 combos
+# Structure entries. This intentionally includes looser modern intraday
+# references because the broad scan was too indicator-heavy.
+# ~150 combos
 # ============================================================
 breakout_discovery:
   enabled: true
@@ -101,13 +107,53 @@ level_discovery:
     minute_from: 30
     hour_to: 16
   min_trades: 15
-  lookback_bars: [10, 20]
   timeframes: [1, 5]
 
   signals:
-    swing_level:       {enabled: true}
-    consolidation:     {enabled: true}
-    round_number:      {enabled: true}
+    swing_level_test:
+      enabled: true
+      pivot_lookback: [5]
+      touch_atr_mult: [0.5, 1.0]
+      max_pivots: [5]
+      direction: [0]
+
+    consolidation_breakout:
+      enabled: true
+      consol_bars: [8, 12]
+      max_range_atr: [0.8, 1.2]
+      min_breach_atr: [0.2]
+      direction: [0]
+
+    round_number_bounce:
+      enabled: true
+      level_step: [25.0, 50.0, 100.0]
+      touch_ticks: [4.0, 8.0]
+      direction: [0]
+
+    vwap_reclaim_reject:
+      enabled: true
+      max_dist_ticks: [8.0, 16.0, 24.0]
+      min_pierce_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
+
+    prior_session_reaction:
+      enabled: true
+      levels:
+        - ["prior_high", "prior_low", "overnight_high", "overnight_low"]
+        - ["prior_close"]
+      touch_ticks: [4.0, 8.0, 12.0]
+      min_close_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
+
+    liquidity_sweep_failure:
+      enabled: true
+      lookback: [10, 20, 40]
+      sweep_ticks: [1.0, 2.0, 4.0]
+      close_back_ticks: [1.0, 2.0]
+      invert_direction: [false, true]
+      direction: [0]
 
   outcome:
     ticks:

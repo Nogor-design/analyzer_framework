@@ -1,0 +1,155 @@
+report:
+  title: Conditional Probe R8 Rule 2
+  output_filename: 03_nq_failed_reference_breakout_probe.html
+  timezone: America/Denver
+  output: conditional_probe__rank08_rule02.html
+discovery:
+  stage: 03_levels_regions
+  instrument: NQ
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes:
+  - 1
+  - 5
+  signals:
+    swing_level_test:
+      enabled: false
+    consolidation_breakout:
+      enabled: false
+    round_number_bounce:
+      enabled: false
+    vwap_reclaim_reject:
+      enabled: false
+    vwap_continuation:
+      enabled: false
+    prior_session_reaction:
+      enabled: false
+    reference_sweep_reclaim:
+      enabled: false
+    liquidity_sweep_failure:
+      enabled: false
+    large_candle_origin_retest:
+      enabled: false
+    failed_reference_breakout:
+      enabled: true
+      levels:
+      - - prior_high
+        - prior_low
+      - - overnight_high
+        - overnight_low
+      - - prior_high
+        - prior_low
+        - overnight_high
+        - overnight_low
+      confirmation_ticks:
+      - 1.0
+      - 2.0
+      - 4.0
+      max_fail_bars:
+      - 4
+      - 8
+      - 12
+      fail_close_ticks:
+      - 1.0
+      - 2.0
+      min_atr_ticks:
+      - 4.0
+      direction:
+      - -1
+      invert_direction:
+      - false
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: false
+    body_midpoint:
+      enabled: false
+  outcome:
+    atr:
+      enabled: false
+    ticks:
+      enabled: true
+      take_profit:
+      - 16
+      - 24
+      - 40
+      - 60
+      - 100
+      stop:
+      - 8
+      - 12
+      - 16
+      - 20
+    max_bars_timeout: 40
+    timeout_result: at_close
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery:
+    enabled: false
+  entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_trades: 40
+    max_candidates: 700
+    top_n: 10
+sections:
+- id: level_discovery_overview
+- id: strategy_discovery_unified
+  top_n: 30
+research_note:
+  status: broad_probe
+  thesis: "Confirmed-close-then-fail breakouts of prior/overnight reference levels\
+    \ \u2014 trapped-breakout reversal hypothesis."
+  caution: "Broad probe \u2014 expect many filter rows below PF 1.0. Mine entry_discovery.top_rules\
+    \ for tradable pockets before promoting."
+conditional_promotion:
+  parent_config: discovery\03_nq_failed_reference_breakout_probe.yaml
+  parent_sidecar: output\03_nq_failed_reference_breakout_probe_summary.json
+  parent_report: output\03_nq_failed_reference_breakout_probe.html
+  parent_stage: 03_levels_regions
+  parent_rank: 8
+  parent_family: level
+  parent_signal: failed_reference_breakout
+  parent_params:
+    levels:
+    - prior_high
+    - prior_low
+    confirmation_ticks: 1.0
+    max_fail_bars: 8
+    fail_close_ticks: 1.0
+    direction: 0
+    min_atr_ticks: 4.0
+    invert_direction: false
+    tick_size: 0.25
+    atr_period: 14
+  parent_outcome:
+    mode: ticks_100_20
+  rule_rank: 2
+  rule_string: market_pos == Short AND signal_atr >= 11.7131
+  rule_conditions:
+  - column: market_pos
+    op: eq
+    value: Short
+    description: market_pos == Short
+  - column: signal_atr
+    op: gte
+    value: 11.7131
+    description: signal_atr >= 11.7131
+  rule_stats:
+    n_trades: 205
+    win_rate: 0.2293
+    profit_factor: 1.2657
+    avg_profit: 23.38
+    net_profit: 4793.1
+    score: 59.66
+  conversions:
+  - column: market_pos
+    op: eq
+    value: Short
+    yaml_path: level_discovery.signals.failed_reference_breakout.direction
+  status: research_candidate

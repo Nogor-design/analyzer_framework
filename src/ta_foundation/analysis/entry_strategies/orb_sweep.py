@@ -12,6 +12,7 @@ orb_discovery:
   min_trades: 15
 
   orb:
+    signal_type:          ["breakout", "failure_reclaim"]
     orb_minutes:          [15, 30, 60]
     session_open_hour:    9
     session_open_minute:  30
@@ -43,6 +44,7 @@ from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
+from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -56,6 +58,7 @@ DEFAULT_ORB_DISCOVERY_CONFIG: Dict[str, Any] = {
 
     "orb": {
         "orb_minutes":           [15, 30, 60],
+        "signal_type":           ["breakout"],
         "session_open_hour":     9,
         "session_open_minute":   30,
         "session_close_hour":    16,
@@ -65,6 +68,9 @@ DEFAULT_ORB_DISCOVERY_CONFIG: Dict[str, Any] = {
         "atr_period":            14,
         "require_close_beyond":  [True, False],
         "one_signal_per_side":   True,
+        "min_sweep_ticks":       [1.0],
+        "close_back_ticks":      [0.0],
+        "max_reclaim_bars":      [3],
     },
 
     "entry_timing": {
@@ -155,6 +161,7 @@ def _run_single_combo(
     bars_with_regime: Optional[pd.DataFrame],
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
 ) -> Optional[List[Dict[str, Any]]]:
 
     # 1. Detect ORB signals
@@ -227,7 +234,7 @@ def _run_single_combo(
         filter_results = _try_filter_discovery(group, filter_cfg)
         params_key     = "|".join(f"{k}={v}" for k, v in sorted(params.items()))
 
-        all_results.append({
+        result = {
             "strategy_type":    "orb",
             "signal_id":        "orb",
             "pattern_id":       f"ORB_{params.get('orb_minutes', 30)}m",
@@ -246,7 +253,9 @@ def _run_single_combo(
             "session_breakdown": session_bk,
             "filter_results":   filter_results,
             "is_oos_degradation": compute_is_oos_degradation(group),
-        })
+        }
+        attach_hardening_metadata(result, group, outcome_cfg, hardening_cfg)
+        all_results.append(result)
 
     return all_results if all_results else None
 
@@ -280,6 +289,7 @@ def run_orb_discovery(
     timing_cfgs = cfg.get("entry_timing", {})
     outcome_cfg = cfg.get("outcome", {})
     filter_cfg  = cfg.get("filter_discovery", {})
+    hardening_cfg = cfg.get("hardening", {})
 
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
     param_combos    = _expand_params(orb_cfg)
@@ -301,6 +311,7 @@ def run_orb_discovery(
                 bars_with_regime=bars_with_regime,
                 min_trades=min_trades,
                 filter_cfg=filter_cfg,
+                hardening_cfg=hardening_cfg,
             )
             if results:
                 sweep_results.extend(results)

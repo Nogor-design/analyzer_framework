@@ -1,0 +1,145 @@
+report:
+  title: Conditional Probe R1 Rule 3
+  output: 03_vwap_london_reject_fade__rank01_rule03.html
+discovery:
+  stage: 03_levels_regions
+  instrument: NQ
+level_discovery:
+  enabled: true
+  min_trades: 20
+  atr_period: 14
+  timeframes:
+  - 1
+  session_filter:
+    hour_from: 0
+    minute_from: 0
+    hour_to: 6
+    minute_to: 0
+  signals:
+    swing_level_test:
+      enabled: false
+    consolidation_breakout:
+      enabled: false
+    round_number_bounce:
+      enabled: false
+    prior_session_reaction:
+      enabled: false
+    liquidity_sweep_failure:
+      enabled: false
+    vwap_reclaim_reject:
+      enabled: true
+      min_dist_ticks:
+      - 13
+      max_dist_ticks:
+      - 20
+      - 24
+      - 32
+      min_pierce_ticks:
+      - 2
+      direction:
+      - -1
+      invert_direction:
+      - true
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: false
+    body_midpoint:
+      enabled: false
+  outcome:
+    atr:
+      enabled: false
+    ticks:
+      enabled: true
+      take_profit:
+      - 20
+      - 24
+      - 28
+      stop:
+      - 10
+      - 12
+      - 16
+    max_bars_timeout: 15
+    timeout_result: at_close
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery:
+    enabled: false
+  entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_trades: 20
+    max_candidates: 300
+    top_n: 10
+  hardening:
+    enabled: true
+    n_mc_simulations: 250
+    n_hypotheses_tested: 54
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      n_folds: 3
+      min_is_trades: 5
+      min_oos_trades: 3
+      degradation_threshold: 0.4
+    slippage_stress:
+      enabled: true
+      slippage_ticks:
+      - 1
+      - 2
+      - 3
+      entry_delays:
+      - 0
+      - 1
+      - 2
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell:
+      - 2
+      - 1
+    require_slippage_stress_passed: true
+sections:
+- id: level_discovery_overview
+- id: strategy_discovery_unified
+  top_n: 30
+conditional_promotion:
+  parent_config: discovery\03_vwap_london_reject_fade.yaml
+  parent_sidecar: output\vwap_london_reject_fade_nq_audit\comparison_report_summary.json
+  parent_report: output\vwap_london_reject_fade_nq_audit\comparison_report.html
+  parent_stage: 03_levels_regions
+  parent_rank: 1
+  parent_family: level
+  parent_signal: vwap_reclaim_reject
+  parent_params:
+    max_dist_ticks: 20
+    min_pierce_ticks: 2
+    direction: -1
+    min_dist_ticks: 8
+    invert_direction: true
+    tick_size: 0.25
+    atr_period: 14
+  parent_outcome:
+    mode: ticks_28_16
+  rule_rank: 3
+  rule_string: level_dist_ticks >= 12.43
+  rule_conditions:
+  - column: level_dist_ticks
+    op: gte
+    value: 12.43
+    description: level_dist_ticks >= 12.43
+  rule_stats:
+    n_trades: 243
+    win_rate: 0.3827
+    profit_factor: 0.824
+    avg_profit: -10.23
+    net_profit: -2485.74
+    score: 54.47
+  conversions:
+  - column: level_dist_ticks
+    op: gte
+    value: 12.43
+    yaml_path: level_discovery.signals.vwap_reclaim_reject.min_dist_ticks
+  status: research_candidate

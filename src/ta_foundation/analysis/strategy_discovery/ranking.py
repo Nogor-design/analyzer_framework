@@ -52,6 +52,41 @@ FINAL_WEIGHTS: Dict[str, float] = {
 
 
 # ---------------------------------------------------------------------------
+# Hard-gate config
+# ---------------------------------------------------------------------------
+#
+# Hard gates are exclusion filters applied before scoring. Any candidate that
+# fails one or more enabled gates is routed to the ``rejected`` list with a
+# structured reason; only survivors enter the ranked leaderboard. Each gate
+# is opt-in by threshold — a value of ``None`` disables that gate.
+#
+# Defaults are intentionally gentle (statistical sanity, not fund-grade) so
+# small backtests still produce a leaderboard. Real fund-grade reviewers
+# should tighten these in YAML — for example:
+#
+#   strategy_discovery:
+#     ranking_gates:
+#       enabled: true
+#       min_oos_trades: 150
+#       min_profit_factor: 1.2
+#       min_sharpe: 1.0
+#       max_drawdown_pct: 25.0
+#       require_sensitivity_class: "moderate"
+#       require_validation_passed: true
+
+DEFAULT_RANKING_GATES: Dict[str, Any] = {
+    "enabled": True,
+    "min_oos_trades": 30,         # statistical-sanity floor; fund-grade ≈ 150
+    "min_profit_factor": 1.0,     # not unprofitable; fund-grade ≈ 1.2–1.5
+    "min_sharpe": None,           # null = skip; fund-grade ≈ 1.0
+    "max_drawdown_pct": None,     # null = skip; fund-grade ≈ 25.0
+    "require_sensitivity_class": None,  # null | "moderate" | "robust"
+    "require_validation_passed": False,
+    "require_slippage_stress_passed": False,  # T8 — opt-in gate
+}
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -139,26 +174,46 @@ def _score_risk_adj(evaluation: Dict[str, Any], risk_metrics: Optional[Dict[str,
 
 def _score_stability(validation: Dict[str, Any]) -> float:
     """
-    Stability — OOS retention, WF fold consistency.
-    OOS degradation: 0% = 100, 20% threshold = 0.
+    Stability — OOS retention, WF fold consistency, and per-fold variance.
+
+    Components (fold variance added in T7):
+      retention_score (40%)  IS→OOS PF degradation (0% drop = 100, 20% = 0)
+      oos_pf_score    (25%)  raw OOS PF (1.0 = 0, 2.0 = 100)
+      ratio_score     (15%)  OOS_PF / IS_PF (1.0 = best)
+      fold_var_score  (20%)  inverse of per-fold OOS expectancy std normalised
+                             by the across-fold mean. Lower variance = higher
+                             score. Falls back to a neutral 50 when fewer
+                             than 2 folds were retained or expectancy is zero.
     """
     wf = validation.get("wf_results") or {}
     oos_deg = _safe_float(wf.get("oos_degradation"), 0.15)
     is_pf   = _safe_float(wf.get("is_pf"), 1.0)
     oos_pf  = _safe_float(wf.get("oos_pf"), 1.0)
 
-    # OOS retention: degrade 0% → 100, degrade 20%+ → 0
     retention_score = _norm(-(oos_deg or 0.0), -0.20, 0.0)
-    # OOS PF: 1.0 → 0, 2.0 → 100
     oos_pf_score = _norm(oos_pf, 1.0, 2.0)
-    # IS/OOS ratio: ratio close to 1.0 = stable; IS PF way above OOS = overfit
     if is_pf and oos_pf and is_pf > 0:
         ratio = min(1.0, oos_pf / is_pf)
         ratio_score = _clamp(ratio * 100.0)
     else:
         ratio_score = 50.0
 
-    return _clamp(0.50 * retention_score + 0.30 * oos_pf_score + 0.20 * ratio_score)
+    # Fold variance score — read from rolling WF block (T7).
+    fold_var_score = 50.0
+    rolling = wf.get("rolling") or {}
+    exp_std = _safe_float(rolling.get("oos_expectancy_std"), None)
+    exp_mean = _safe_float(rolling.get("oos_expectancy_across_folds"), None)
+    if exp_std is not None and exp_mean is not None and abs(exp_mean) > 1e-9:
+        # Coefficient-of-variation-style penalty. CV ≤ 0.5 → 100, CV ≥ 2.0 → 0.
+        cv = abs(exp_std / exp_mean)
+        fold_var_score = _norm(-cv, -2.0, -0.5)
+
+    return _clamp(
+        0.40 * retention_score
+        + 0.25 * oos_pf_score
+        + 0.15 * ratio_score
+        + 0.20 * fold_var_score
+    )
 
 
 def _score_robustness(validation: Dict[str, Any], exit_disc: Dict[str, Any]) -> float:
@@ -405,12 +460,191 @@ def _complexity_penalty(evaluation: Dict[str, Any]) -> float:
 # Per-run component and score computation
 # ---------------------------------------------------------------------------
 
+def evaluate_hard_gates(
+    sd: Dict[str, Any],
+    gates_config: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Apply hard exclusion gates to a single strategy_discovery dict.
+
+    Returns a list of failure dicts; an empty list means all enabled gates
+    passed. Each failure dict has keys ``gate`` / ``value`` / ``threshold``
+    / ``reason`` so reviewers can see exactly why a candidate was rejected.
+
+    Each gate is opt-in by threshold — a ``None`` value in the config skips
+    that gate entirely. ``enabled: false`` skips all gates.
+    """
+    cfg = {**DEFAULT_RANKING_GATES, **(gates_config or {})}
+    if not cfg.get("enabled", True):
+        return []
+
+    failures: List[Dict[str, Any]] = []
+    eval_for_gates = _select_ranking_evaluation(sd) or {}
+
+    # Gate: minimum trade count on the eval block ranking will score against.
+    min_trades = cfg.get("min_oos_trades")
+    if min_trades is not None:
+        n_trades = eval_for_gates.get("n_trades") or 0
+        if n_trades < int(min_trades):
+            failures.append({
+                "gate": "min_oos_trades",
+                "value": n_trades,
+                "threshold": int(min_trades),
+                "reason": f"OOS trade count {n_trades} below minimum {int(min_trades)}",
+            })
+
+    # Gate: minimum profit factor.
+    min_pf = cfg.get("min_profit_factor")
+    if min_pf is not None:
+        pf = _safe_float(eval_for_gates.get("profit_factor"))
+        if pf is None or pf < float(min_pf):
+            failures.append({
+                "gate": "min_profit_factor",
+                "value": pf,
+                "threshold": float(min_pf),
+                "reason": (
+                    "profit factor unavailable" if pf is None
+                    else f"profit factor {pf:.3f} below minimum {float(min_pf):.3f}"
+                ),
+            })
+
+    # Gate: minimum Sharpe (from risk_metrics).
+    min_sharpe = cfg.get("min_sharpe")
+    if min_sharpe is not None:
+        sharpe = _safe_float((sd.get("risk_metrics") or {}).get("sharpe_ratio"))
+        if sharpe is None or sharpe < float(min_sharpe):
+            failures.append({
+                "gate": "min_sharpe",
+                "value": sharpe,
+                "threshold": float(min_sharpe),
+                "reason": (
+                    "sharpe unavailable" if sharpe is None
+                    else f"sharpe {sharpe:.3f} below minimum {float(min_sharpe):.3f}"
+                ),
+            })
+
+    # Gate: maximum drawdown ceiling (percent of peak equity).
+    max_dd = cfg.get("max_drawdown_pct")
+    if max_dd is not None:
+        dd_pct = _safe_float(
+            (sd.get("drawdown_analysis") or {}).get("overall", {}).get("max_drawdown_pct")
+        )
+        if dd_pct is not None and dd_pct > float(max_dd):
+            failures.append({
+                "gate": "max_drawdown_pct",
+                "value": dd_pct,
+                "threshold": float(max_dd),
+                "reason": f"max drawdown {dd_pct:.2f}% exceeds ceiling {float(max_dd):.2f}%",
+            })
+
+    # Gate: parameter-sensitivity classification. Reads parameter_sensitivity
+    # summary counts and applies a strategy-level interpretation:
+    #   "robust"   — every analysed sweep classified robust (n_fragile == 0
+    #                AND n_moderate == 0)
+    #   "moderate" — at most half of analysed sweeps are fragile
+    req_sens = cfg.get("require_sensitivity_class")
+    if req_sens:
+        ps = sd.get("parameter_sensitivity") or {}
+        summary = ps.get("summary") or {}
+        n_total = int(summary.get("n_numeric_sweeps") or 0)
+        n_fragile = int(summary.get("n_fragile") or 0)
+        n_moderate = int(summary.get("n_moderate") or 0)
+        req = str(req_sens).lower()
+
+        if n_total == 0:
+            failures.append({
+                "gate": "require_sensitivity_class",
+                "value": "none_analysed",
+                "threshold": req,
+                "reason": "parameter sensitivity not analysed — cannot satisfy classification gate",
+            })
+        elif req == "robust" and (n_fragile > 0 or n_moderate > 0):
+            failures.append({
+                "gate": "require_sensitivity_class",
+                "value": {"fragile": n_fragile, "moderate": n_moderate, "total": n_total},
+                "threshold": "robust",
+                "reason": f"non-robust sweeps present (fragile={n_fragile}, moderate={n_moderate})",
+            })
+        elif req == "moderate" and n_fragile * 2 > n_total:
+            failures.append({
+                "gate": "require_sensitivity_class",
+                "value": {"fragile": n_fragile, "total": n_total},
+                "threshold": "moderate",
+                "reason": f"fragile sweeps {n_fragile}/{n_total} exceed half the analysed set",
+            })
+
+    # Gate: require all validation gates to have passed.
+    if cfg.get("require_validation_passed"):
+        passed = bool((sd.get("validation") or {}).get("passed", False))
+        if not passed:
+            failures.append({
+                "gate": "require_validation_passed",
+                "value": False,
+                "threshold": True,
+                "reason": "validation gates did not all pass",
+            })
+
+    # Gate: require the slippage / latency stress cell to pass (T8). When the
+    # sweep was disabled or errored, we treat it as not satisfying the gate so
+    # operators don't silently bypass execution-realism checks by leaving the
+    # sweep off in YAML.
+    if cfg.get("require_slippage_stress_passed"):
+        ss = sd.get("slippage_stress") or {}
+        if ss.get("error") or not ss.get("enabled"):
+            failures.append({
+                "gate": "require_slippage_stress_passed",
+                "value": "not_run",
+                "threshold": True,
+                "reason": (
+                    f"slippage stress not run: {ss.get('error') or 'disabled'}"
+                ),
+            })
+        elif not bool(ss.get("passed", False)):
+            cell = ss.get("stress_cell") or {}
+            loss = cell.get("expectancy_loss_pct")
+            threshold = ss.get("max_expectancy_loss_pct")
+            failures.append({
+                "gate": "require_slippage_stress_passed",
+                "value": loss,
+                "threshold": threshold,
+                "reason": (
+                    f"stress cell expectancy loss {loss:.2f}% exceeds "
+                    f"max {float(threshold):.2f}%"
+                    if loss is not None and threshold is not None
+                    else "slippage stress cell did not pass"
+                ),
+            })
+
+    return failures
+
+
+def _select_ranking_evaluation(sd: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Choose the evaluation block ranking should score against.
+
+    Preference order:
+      1. evaluation_oos    — concatenated OOS folds on the dev slice.
+                             Unbiased estimate; the right thing to rank on.
+      2. evaluation        — dev-slice fit. Used as a fallback when OOS is
+                             unavailable (e.g., insufficient sample for the
+                             rolling walk-forward to carve folds).
+
+    A skipped/error stub for ``evaluation_oos`` is treated as missing so
+    the fallback kicks in. ``evaluation_holdout`` is intentionally not used
+    here — the holdout is a one-shot promotion gate, not a ranking input.
+    """
+    oos = sd.get("evaluation_oos")
+    if isinstance(oos, dict) and "n_trades" in oos and not oos.get("error") and not oos.get("skipped"):
+        return oos
+    return sd.get("evaluation") or {}
+
+
 def compute_components(sd: Dict[str, Any]) -> Dict[str, float]:
     """
     Compute all component scores (0–100 each) from a strategy_discovery dict.
     """
     validation     = sd.get("validation") or {}
-    evaluation     = sd.get("evaluation") or {}
+    evaluation     = _select_ranking_evaluation(sd)
     exit_disc      = sd.get("exit_discovery") or {}
     classification = sd.get("classification") or {}
     risk_metrics   = sd.get("risk_metrics") or {}
@@ -558,14 +792,26 @@ def _confidence_tier(score: float, passed: bool) -> str:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
+def run_ranking(
+    packages: Dict[str, Any],
+    gates_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Compute cross-run ranking from all packages' strategy_discovery metadata.
 
-    Attaches per-run ranking scores to pkg.metadata["derived"]["strategy_discovery"]["ranking"].
-    Returns a cross-run summary dict (JSON-safe).
+    Hard exclusion gates (``gates_config``, defaults in
+    ``DEFAULT_RANKING_GATES``) are applied first. Candidates that fail any
+    enabled gate are routed to the ``rejected`` list with structured
+    rejection reasons; only survivors enter the ranked leaderboard and
+    contribute to the weight-sensitivity check.
+
+    Attaches per-run ranking scores to
+    ``pkg.metadata["derived"]["strategy_discovery"]["ranking"]``. Returns a
+    JSON-safe cross-run summary dict containing both ``ranked`` and
+    ``rejected`` lists.
     """
     run_scores: List[Dict[str, Any]] = []
+    rejected_rows: List[Dict[str, Any]] = []
     all_components: Dict[str, Dict[str, float]] = {}
     valid_run_ids: List[str] = []
 
@@ -581,11 +827,30 @@ def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(sd, dict):
             continue
 
+        # Hard-gate check up front. Failures route the run to ``rejected``
+        # with structured reasons; survivors continue to scoring.
+        gate_failures = evaluate_hard_gates(sd, gates_config)
+
         components = compute_components(sd)
         scores = compute_scores(components)
 
         validation = sd.get("validation") or {}
-        evaluation = sd.get("evaluation") or {}
+        # Display metrics on the leaderboard come from the same evaluation
+        # block that drove the score, so reviewers see the numbers ranking
+        # actually used (OOS when available; dev-slice as fallback).
+        evaluation = _select_ranking_evaluation(sd)
+        evaluation_dev = sd.get("evaluation") or {}
+        evaluation_oos = sd.get("evaluation_oos") or {}
+        evaluation_holdout = sd.get("evaluation_holdout") or {}
+        holdout_partition = sd.get("holdout_partition") or {}
+        ranking_source = (
+            "oos" if (
+                isinstance(evaluation_oos, dict)
+                and evaluation_oos.get("n_trades") is not None
+                and not evaluation_oos.get("error")
+                and not evaluation_oos.get("skipped")
+            ) else "dev"
+        )
 
         classification = sd.get("classification") or {}
         row: Dict[str, Any] = {
@@ -597,12 +862,26 @@ def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
             "validation_passed": bool(validation.get("passed", False)),
             "confidence_tier": _confidence_tier(scores["final_score"], bool(validation.get("passed", False))),
             "components": {k: round(v, 2) for k, v in components.items()},
-            # Key metrics for quick display
+            # Provenance: which evaluation block ranking scored against.
+            "ranking_source":   ranking_source,
+            "holdout_enabled":  bool(holdout_partition.get("enabled", False)),
+            # Key metrics for quick display — sourced from ranking_source above.
             "profit_factor":   evaluation.get("profit_factor"),
             "win_rate":        evaluation.get("win_rate"),
             "n_trades":        evaluation.get("n_trades"),
             "net_profit":      evaluation.get("net_profit"),
             "max_drawdown":    evaluation.get("max_drawdown"),
+            # Side-by-side IS vs OOS vs HOLDOUT for at-a-glance degradation review.
+            "dev_profit_factor":      evaluation_dev.get("profit_factor"),
+            "dev_n_trades":           evaluation_dev.get("n_trades"),
+            "dev_net_profit":         evaluation_dev.get("net_profit"),
+            "oos_profit_factor":      evaluation_oos.get("profit_factor"),
+            "oos_n_trades":           evaluation_oos.get("n_trades"),
+            "oos_net_profit":         evaluation_oos.get("net_profit"),
+            "holdout_profit_factor":  evaluation_holdout.get("profit_factor"),
+            "holdout_n_trades":       evaluation_holdout.get("n_trades"),
+            "holdout_net_profit":     evaluation_holdout.get("net_profit"),
+            "holdout_win_rate":       evaluation_holdout.get("win_rate"),
             "classification":  classification.get("label"),
             "automation_score": classification.get("automation_score"),
             "oos_degradation": (sd.get("validation") or {}).get("wf_results", {}).get("oos_degradation"),
@@ -627,9 +906,19 @@ def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
             "kelly_recommended_fok": (sd.get("position_sizing") or {}).get("recommendation", {}).get("recommended_fraction_of_kelly"),
         }
 
-        run_scores.append(row)
-        all_components[str(run_id)] = components
-        valid_run_ids.append(str(run_id))
+        # Decorate the row with hard-gate outcome so leaderboard renderers
+        # can display rejection reasons even on the ``rejected`` table.
+        row["hard_gates_passed"] = (len(gate_failures) == 0)
+        row["rejection_reasons"] = list(gate_failures)
+        if gate_failures:
+            row["confidence_tier"] = "rejected"
+
+        if gate_failures:
+            rejected_rows.append(row)
+        else:
+            run_scores.append(row)
+            all_components[str(run_id)] = components
+            valid_run_ids.append(str(run_id))
 
         # Attach per-run ranking back to pkg metadata
         sd.setdefault("ranking", {}).update({
@@ -637,15 +926,31 @@ def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
             "deploy_score":    scores["deploy_score"],
             "final_score":     scores["final_score"],
             "grade":           _grade(scores["final_score"]),
-            "confidence_tier": _confidence_tier(scores["final_score"], bool(validation.get("passed", False))),
+            "confidence_tier": "rejected" if gate_failures else _confidence_tier(
+                scores["final_score"], bool(validation.get("passed", False))
+            ),
             "components":      {k: round(v, 2) for k, v in components.items()},
+            "ranking_source":  ranking_source,
+            "holdout_enabled": bool(holdout_partition.get("enabled", False)),
+            "hard_gates_passed": (len(gate_failures) == 0),
+            "rejection_reasons": list(gate_failures),
         })
 
-    result_empty = {"ranked": [], "sensitivity": {}, "diagnostics": {"n_runs": 0}}
+    # When every run was rejected, surface the rejected list anyway so
+    # reviewers can see *why* the leaderboard is empty.
     if not run_scores:
-        return result_empty
+        return {
+            "ranked": [],
+            "rejected": rejected_rows,
+            "sensitivity": {"note": "no survivors — sensitivity N/A"},
+            "diagnostics": {
+                "n_runs":     len(rejected_rows),
+                "n_survivors": 0,
+                "n_rejected":  len(rejected_rows),
+            },
+        }
 
-    # Sort by final_score descending, assign rank
+    # Sort survivors by final_score descending, assign rank.
     run_scores.sort(key=lambda r: r["final_score"], reverse=True)
     for i, row in enumerate(run_scores, start=1):
         row["rank"] = i
@@ -675,9 +980,12 @@ def run_ranking(packages: Dict[str, Any]) -> Dict[str, Any]:
 
     cross_run = {
         "ranked": run_scores,
+        "rejected": rejected_rows,
         "sensitivity": sensitivity,
         "diagnostics": {
-            "n_runs":             len(run_scores),
+            "n_runs":              len(run_scores) + len(rejected_rows),
+            "n_survivors":         len(run_scores),
+            "n_rejected":          len(rejected_rows),
             "n_passed_validation": sum(1 for r in run_scores if r["validation_passed"]),
             "n_high_confidence":   sum(1 for r in run_scores if r["confidence_tier"] == "high"),
         },

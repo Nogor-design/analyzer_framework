@@ -1,0 +1,18 @@
+pre_registration:
+  direction: both
+  family: orb_failure_reclaim
+  hypothesis_id: h_auth_20260514T144053_orbfailurerecl_6cf8fbd4_be8c
+  instrument: NQ
+  params:
+    fill_mode: body_midpoint
+    orb_minutes: 5
+    reclaim_within_bars: 2
+    stop_ticks: 24
+    sweep_min_ticks: 4
+    target_ticks: 80
+  pre_reg_mechanism: An opening range breakout that cannot hold beyond the range traps
+    early breakout participants. Reclaim into the range forces those late entries
+    to exit, and a body-midpoint pullback attempts to avoid chasing the immediate
+    reversal.
+  session_window: ny_open_0730_0830_denver
+  timeframe: 5m

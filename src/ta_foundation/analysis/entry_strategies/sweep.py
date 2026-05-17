@@ -46,6 +46,7 @@ from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
+from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -177,6 +178,7 @@ def _run_single_combo(
     tf_minutes: int,
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
     bars_tf: Optional[pd.DataFrame] = None,
 ) -> Optional[Dict[str, Any]]:
     """Run one full pipeline combination and return a SweepResult dict or None.
@@ -297,6 +299,7 @@ def _run_single_combo(
             "filter_results":   filter_results,
             "is_oos_degradation": compute_is_oos_degradation(group),
         }
+        attach_hardening_metadata(result, group, outcome_cfg, hardening_cfg)
         all_results.append(result)
 
     return all_results if all_results else None
@@ -343,6 +346,7 @@ def run_candle_discovery(
     outcome_cfg:   Dict       = cfg.get("outcome", {})
     mtf_cfg:       Dict       = cfg.get("mtf", {})
     filter_cfg:    Dict       = cfg.get("filter_discovery", {})
+    hardening_cfg: Dict       = cfg.get("hardening", {})
 
     directions     = _direction_values(direction_cfg)
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
@@ -411,6 +415,7 @@ def run_candle_discovery(
                             tf_minutes=tf,
                             min_trades=min_trades,
                             filter_cfg=filter_cfg,
+                            hardening_cfg=hardening_cfg,
                             bars_tf=bars_tf,
                         )
                         if results:
@@ -462,6 +467,7 @@ def run_candle_discovery(
                     tf_minutes=_min_tf,
                     min_trades=min_trades,
                     filter_cfg=filter_cfg,
+                    hardening_cfg=hardening_cfg,
                     bars_tf=bars_tf_cache.get(_min_tf),
                 )
                 if results:
@@ -519,6 +525,7 @@ def run_candle_discovery(
                         tf_minutes=ent_tf,
                         min_trades=min_trades,
                         filter_cfg=filter_cfg,
+                        hardening_cfg=hardening_cfg,
                         bars_tf=bars_tf_cache.get(ent_tf),
                     )
                     if results:

@@ -83,6 +83,7 @@ from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
+from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -222,6 +223,7 @@ def _run_single_combo(
     tf_minutes: int,
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
 ) -> Optional[List[Dict[str, Any]]]:
 
     signals_df = detect_bb_signal(signal_id, enriched_tf, params)
@@ -290,7 +292,7 @@ def _run_single_combo(
         fill_rate     = round(len(group) / n_signals, 4) if n_signals > 0 else 0.0
         params_key    = "|".join(f"{k}={v}" for k, v in sorted(params.items()))
 
-        all_results.append({
+        result = {
             "strategy_type":     "bb",
             "signal_id":         signal_id,
             "pattern_id":        signal_id,
@@ -309,7 +311,9 @@ def _run_single_combo(
             "session_breakdown": session_bk,
             "filter_results":    _try_filter_discovery(group, filter_cfg),
             "is_oos_degradation": compute_is_oos_degradation(group),
-        })
+        }
+        attach_hardening_metadata(result, group, outcome_cfg, hardening_cfg)
+        all_results.append(result)
 
     return all_results if all_results else None
 
@@ -337,6 +341,7 @@ def run_bb_discovery(
     timing_cfgs      = cfg.get("entry_timing", {})
     outcome_cfg      = cfg.get("outcome", {})
     filter_cfg       = cfg.get("filter_discovery", {})
+    hardening_cfg    = cfg.get("hardening", {})
 
     enabled_timings  = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
 
@@ -394,6 +399,7 @@ def run_bb_discovery(
                         tf_minutes=tf,
                         min_trades=min_trades,
                         filter_cfg=filter_cfg,
+                        hardening_cfg=hardening_cfg,
                     )
                     if results:
                         sweep_results.extend(results)

@@ -1,0 +1,127 @@
+report:
+  title: "NQ Large Candle Origin Retest — Short-Only Locked Hardening"
+  output_filename: "03_nq_large_candle_origin_retest_short_locked_hardening.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+# Locked from a non-numeric conditional pocket the auto-promoter missed
+# (top-10 cutoff). In discovery/03_nq_large_candle_origin_retest_probe.yaml
+# the rule "level_type == large_candle_origin_short AND level_dist_ticks
+# <= 12.0" appeared at rule_rank 1 inside parent ranks 17 and 25, scoring
+# PF 3.00 / 3.54 on 229 / 181 trades. It is the only level_type-conditioned
+# rule across the entire broad sweep and therefore the only candidate from
+# this family that explores a different conditional dimension than the
+# already-rejected signal_atr x level_dist_ticks pocket
+# (03_nq_large_candle_origin_retest_high_atr_locked_hardening.yaml, which
+# died on 1-tick slippage).
+#
+# Locked configuration:
+#   - rank-1 grid params: avg_lookback=40, large_body_mult=2.5,
+#     min_body_ticks=8, max_retest_bars=6, touch_ticks=8, min_close_ticks=2
+#   - direction restricted to short via direction=-1 (only bearish
+#     large-candle origin retests)
+#   - max_dist_ticks=12 (conditional filter)
+#   - 40 tick TP / 8 tick SL (rank-1 winning outcome)
+
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes: [5]
+  signals:
+    swing_level_test:        {enabled: false}
+    consolidation_breakout:  {enabled: false}
+    round_number_bounce:     {enabled: false}
+    vwap_reclaim_reject:     {enabled: false}
+    vwap_continuation:       {enabled: false}
+    prior_session_reaction:  {enabled: false}
+    reference_sweep_reclaim: {enabled: false}
+    failed_reference_breakout: {enabled: false}
+    liquidity_sweep_failure: {enabled: false}
+
+    large_candle_origin_retest:
+      enabled: true
+      avg_lookback: [40]
+      large_body_mult: [2.5]
+      min_body_ticks: [8.0]
+      max_retest_bars: [6]
+      touch_ticks: [8.0]
+      min_close_ticks: [2.0]
+      max_dist_ticks: [12]
+      min_atr_ticks: [4.0]
+      direction: [-1]
+      invert_direction: [false]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [40]
+      stop: [8]
+    max_bars_timeout: 40
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: false}
+  entry_discovery: {enabled: false}
+
+  hardening:
+    enabled: true
+    n_mc_simulations: 500
+    # Same multiple-comparison penalty as the high-ATR sister hardening:
+    # both pockets came from the same 8,640-combo broad parent.
+    n_hypotheses_tested: 8640
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    holdout:
+      enabled: true
+      is_frac: 0.60
+      val_frac: 0.20
+      time_col: entry_time
+      min_dev_trades: 80
+      min_holdout_trades: 20
+      require_holdout_passed: true
+      min_profit_factor: 1.0
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "locked_research_candidate_hardening"
+  parent_config: "discovery/03_nq_large_candle_origin_retest_probe.yaml"
+  parent_sidecar: "output/03_nq_large_candle_origin_retest_probe_summary.json"
+  parent_rank: 17
+  parent_rule_rank: 1
+  parent_rule_string: "level_type == large_candle_origin_short AND level_dist_ticks <= 12.0"
+  parent_rule_stats:
+    n_trades: 229
+    profit_factor: 3.0012
+  locked_rule: "NQ large-candle-origin-retest, 5m, short-only (direction=-1), large_body_mult=2.5, min_body_ticks=8, max_retest_bars=6, touch_ticks=8, min_close_ticks=2, max_dist_ticks=12, min_atr_ticks=4, 40 tick TP / 8 tick SL, next-open entry"
+  rationale: "Only non-numeric conditional dimension surfaced in the broad probe's 25 ranked rows. Sister high-ATR pocket (signal_atr x level_dist_ticks) already failed slippage stress; this short-only / tight-distance pocket explores a structurally different filter and is the family's last research opportunity before graveyard."
+  caution: "Conditional pocket buried below the auto-promoter's top-10 cutoff. Requires hardening, stress, locked holdout, and forward-shadow observation before any deployment claim."
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 10

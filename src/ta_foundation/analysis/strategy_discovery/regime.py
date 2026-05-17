@@ -93,6 +93,18 @@ def compute_adx(bars: pd.DataFrame, period: int = 14) -> pd.DataFrame:
     return out
 
 
+def compute_realized_vol(bars: pd.DataFrame, period: int = 20) -> pd.Series:
+    """
+    Compute realized volatility: rolling standard deviation of log returns.
+    Annualized (approx) assuming 5m bars: sqrt(252 * 78) = sqrt(19656) ~= 140.
+    """
+    c = pd.to_numeric(bars.get("close"), errors="coerce")
+    log_ret = np.log(c / c.shift(1))
+    # Using 20-bar rolling std of log returns.
+    # For relative regime classification, the annualization constant doesn't matter.
+    return log_ret.rolling(window=int(period)).std()
+
+
 def compute_bar_regime(
     bars: pd.DataFrame,
     *,
@@ -102,6 +114,8 @@ def compute_bar_regime(
     adx_trend_threshold: float = 25.0,
     atr_high_pct: float = 0.75,
     atr_low_pct: float = 0.25,
+    vol_mode: str = "atr",  # "atr" | "realized_vol"
+    vol_period: int = 20,    # period for realized_vol
 ) -> pd.DataFrame:
     """
     Add regime label columns to a bars DataFrame.
@@ -111,12 +125,20 @@ def compute_bar_regime(
     # Step 1: compute ADX, +DI, -DI
     out = compute_adx(bars, period=adx_period)
 
-    # Step 2: compute ATR via existing helper
+    # Step 2: compute Volatility Metric
+    if vol_mode == "realized_vol":
+        out["vol_metric"] = compute_realized_vol(out, period=vol_period)
+    else:
+        out["vol_metric"] = atr_wilder(out, period=atr_period)
+    
+    # Also keep 'atr' for backward compatibility / other uses
     out["atr"] = atr_wilder(out, period=atr_period)
 
-    # Step 3: rolling percentile rank of ATR
-    atr_series = pd.to_numeric(out["atr"], errors="coerce")
-    out["atr_pct_rank"] = atr_series.rolling(window=int(atr_lookback), min_periods=1).rank(pct=True)
+    # Step 3: rolling percentile rank of Vol Metric
+    vol_series = pd.to_numeric(out["vol_metric"], errors="coerce")
+    out["vol_pct_rank"] = vol_series.rolling(window=int(atr_lookback), min_periods=1).rank(pct=True)
+    # backward compat column name
+    out["atr_pct_rank"] = out["vol_pct_rank"]
 
     # Step 4: trend_direction
     plus_di = pd.to_numeric(out["plus_di"], errors="coerce")
@@ -136,13 +158,28 @@ def compute_bar_regime(
         "ranging",
     )
 
-    # Step 6: vol_regime
-    atr_pct_rank = pd.to_numeric(out["atr_pct_rank"], errors="coerce")
+    # Step 6: vol_regime (3-bucket: low, normal, high)
+    vol_pct_rank = pd.to_numeric(out["vol_pct_rank"], errors="coerce")
     vol_regime = pd.Series(index=out.index, dtype="object")
-    vol_regime.loc[atr_pct_rank >= float(atr_high_pct)] = "high_vol"
-    vol_regime.loc[atr_pct_rank <= float(atr_low_pct)] = "low_vol"
-    vol_regime.loc[vol_regime.isna() & atr_pct_rank.notna()] = "normal_vol"
+    vol_regime.loc[vol_pct_rank >= float(atr_high_pct)] = "high_vol"
+    vol_regime.loc[vol_pct_rank <= float(atr_low_pct)] = "low_vol"
+    vol_regime.loc[vol_regime.isna() & vol_pct_rank.notna()] = "normal_vol"
     out["vol_regime"] = vol_regime.fillna("normal_vol")
+
+    # Step 6b: vol_regime_tertile and vol_regime_quartile
+    out["vol_regime_tertile"] = pd.cut(
+        vol_pct_rank, 
+        bins=[0, 0.33, 0.66, 1.0], 
+        labels=["low", "mid", "high"],
+        include_lowest=True
+    ).astype(str)
+    
+    out["vol_regime_quartile"] = pd.cut(
+        vol_pct_rank, 
+        bins=[0, 0.25, 0.50, 0.75, 1.0], 
+        labels=["q1", "q2", "q3", "q4"],
+        include_lowest=True
+    ).astype(str)
 
     # Step 7: composite regime
     def _composite(row: Any) -> str:

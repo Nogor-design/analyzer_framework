@@ -20,6 +20,7 @@ from ta_foundation.analysis.entry_strategies.lcr.signals import (
     compute_retrace_stats,
     emit_lcr_entries,
 )
+from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -70,6 +71,7 @@ def run_lcr_discovery(
     min_trades = int(config.get("min_trades", 20))
     max_active_regions = int(config.get("max_active_regions", 100))
     max_region_age = int(config.get("max_region_age", 500))
+    hardening_cfg = config.get("hardening", {})
 
     combos = list(itertools.product(
         size_multipliers, lookbacks, zone_types, tp_ticks_list, sl_ticks_list,
@@ -136,7 +138,7 @@ def run_lcr_discovery(
             n_broken = sum(1 for r in regions if r.broken)
             n_events_of_type = sum(1 for ev in events if ev.event_type == sig_type)
 
-            results.append({
+            result = {
                 "size_multiplier": mult,
                 "lookback": lb,
                 "zone_type": zt,
@@ -153,7 +155,33 @@ def run_lcr_discovery(
                 "avg_win": round(avg_win, 2),
                 "avg_loss": round(avg_loss, 2),
                 "is_oos_degradation": round(is_oos, 4) if is_oos is not None else None,
-            })
+                "signal_id": sig_type,
+                "params": {
+                    "size_multiplier": mult,
+                    "lookback": lb,
+                    "zone_type": zt,
+                    "tp_ticks": tp,
+                    "sl_ticks": sl,
+                },
+                "direction_mode": "both",
+                "entry_timing": "next_open",
+                "outcome_mode": "ticks",
+                "metrics": {
+                    "n_trades": n_trades,
+                    "profit_factor": round(profit_factor, 4) if profit_factor is not None else None,
+                    "win_rate": round(win_rate, 4),
+                    "avg_trade": round(float(total_net / n_trades), 4) if n_trades else None,
+                    "avg_winner": round(avg_win, 2),
+                    "avg_loser": round(avg_loss, 2),
+                },
+            }
+            outcome_cfg = {
+                "tick_value": tick_value,
+                "slippage_ticks": 0,
+                "commission_per_side": 0,
+            }
+            attach_hardening_metadata(result, trades, outcome_cfg, hardening_cfg)
+            results.append(result)
 
     ranked = _rank_lcr_results(results)
 

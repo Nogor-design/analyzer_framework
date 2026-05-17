@@ -29,6 +29,10 @@ report:
   output_filename: "large_candle_excursion.html"
   timezone: "America/Denver"
 
+discovery:
+  stage: "large_candle_excursion"
+  instrument: "NQ"
+
 large_candle_excursion:
   enabled: true
 

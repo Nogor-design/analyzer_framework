@@ -1,0 +1,61 @@
+report:
+  title: "NQ London Liquidity Sweep Failure Fast Probe"
+  output_filename: "03_nq_london_liquidity_sweep_fast_probe.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "03_levels_regions"
+  instrument: "NQ"
+
+level_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 0
+    minute_from: 0
+    hour_to: 6
+    minute_to: 0
+  min_trades: 30
+  atr_period: 14
+  timeframes: [1]
+  signals:
+    swing_level_test: {enabled: false}
+    consolidation_breakout: {enabled: false}
+    round_number_bounce: {enabled: false}
+    vwap_reclaim_reject: {enabled: false}
+    prior_session_reaction: {enabled: false}
+    liquidity_sweep_failure:
+      enabled: true
+      lookback: [20]
+      sweep_ticks: [2.0, 4.0]
+      close_back_ticks: [1.0]
+      direction: [0]
+      invert_direction: [false, true]
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [12, 20]
+      stop: [8, 12]
+    max_bars_timeout: 20
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_trades: 30
+    max_candidates: 400
+    top_n: 10
+  hardening: {enabled: false}
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 30

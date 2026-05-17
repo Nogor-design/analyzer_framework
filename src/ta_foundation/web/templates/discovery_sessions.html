@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Discovery Sessions</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/discovery/widgets.css" />
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .session-row { transition: border-color 0.15s; }
+    .session-row:hover { border-color: #f59e0b; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .pill-active { background: #064e3b; color: #34d399; }
+    .pill-other { background: #1f2937; color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <span class="text-amber-400 font-bold text-lg">Discovery</span>
+    <span class="text-gray-500 text-sm">/ Sessions</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/discovery" class="dh-header-btn">Back to current session</a>
+    <a href="/discovery/lce" class="dh-header-btn">Large Candle Excursion</a>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto p-6">
+  <div class="flex items-baseline justify-between mb-4">
+    <h1 class="text-2xl font-bold">Saved Sessions</h1>
+    <span class="text-xs text-gray-500">{{ sessions|length }} session{% if sessions|length != 1 %}s{% endif %}</span>
+  </div>
+  <p class="text-gray-400 text-sm mb-6">
+    Each session is one Discovery workspace: a project context, an instrument, per-stage form values, run history,
+    and the combos you've promoted between stages. Resume to continue where you left off, rename to label work,
+    or delete to clean up.
+  </p>
+
+  {% if not sessions %}
+    <div class="p-8 border border-dashed border-gray-700 rounded text-center text-gray-400">
+      <div class="text-base mb-2">No sessions yet.</div>
+      <a href="/discovery" class="dw-run-btn inline-block no-underline">Start a new session</a>
+    </div>
+  {% else %}
+    <div id="session-rows" class="flex flex-col gap-3">
+      {% for s in sessions %}
+        <div class="session-row border border-gray-800 rounded p-4 flex items-start gap-4"
+             data-session-id="{{ s.session_id }}">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="ses-label text-base font-semibold text-gray-100">
+                {{ s.label or "(unlabeled)" }}
+              </span>
+              {% if s.session_id == active_session_id %}
+                <span class="pill pill-active">Active</span>
+              {% else %}
+                <span class="pill pill-other">{{ s.instrument_symbol or "?" }}</span>
+              {% endif %}
+            </div>
+            <div class="text-xs text-gray-500 mt-1 font-mono truncate">id {{ s.session_id }}</div>
+            <div class="text-xs text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Instrument: <span class="text-gray-200">{{ s.instrument_symbol or "?" }}</span></span>
+              <span>Stage: <span class="text-gray-200">{{ s.current_stage or "(none)" }}</span></span>
+              <span>Runs: <span class="text-gray-200">{{ s.run_count }}</span></span>
+              <span>Updated: <span class="text-gray-200">{{ s.updated_at }}</span></span>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 items-stretch min-w-[180px]">
+            <a href="/discovery/sessions/{{ s.session_id }}/resume"
+               class="dw-run-btn text-center no-underline">Resume</a>
+            <button type="button" class="dh-btn dh-btn-ghost rename-btn">Rename</button>
+            <button type="button" class="dh-btn dh-btn-ghost delete-btn">Delete</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+
+<script>
+async function api(path, opts) {
+  const resp = await fetch(path, Object.assign({headers: {"Content-Type": "application/json"}}, opts || {}));
+  return {ok: resp.ok, status: resp.status, body: await resp.json().catch(() => ({}))};
+}
+
+document.querySelectorAll(".session-row").forEach((row) => {
+  const sid = row.getAttribute("data-session-id");
+  const labelEl = row.querySelector(".ses-label");
+
+  row.querySelector(".rename-btn").addEventListener("click", async () => {
+    const current = (labelEl.textContent || "").trim();
+    const next = prompt("New label for this session?", current === "(unlabeled)" ? "" : current);
+    if (next === null) return;
+    const result = await api(`/api/discovery/sessions/${encodeURIComponent(sid)}`, {
+      method: "PATCH",
+      body: JSON.stringify({label: next}),
+    });
+    if (!result.ok) {
+      alert(`Rename failed: ${result.body.error || result.status}`);
+      return;
+    }
+    labelEl.textContent = next || "(unlabeled)";
+  });
+
+  row.querySelector(".delete-btn").addEventListener("click", async () => {
+    if (!confirm("Delete this session and all of its runs/promotions? This cannot be undone.")) return;
+    const result = await api(`/api/discovery/sessions/${encodeURIComponent(sid)}`, {method: "DELETE"});
+    if (!result.ok) {
+      alert(`Delete failed: ${result.body.error || result.status}`);
+      return;
+    }
+    row.remove();
+  });
+});
+</script>
+</body>
+</html>

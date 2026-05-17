@@ -1,0 +1,70 @@
+report:
+  title: "NQ NY Open 5m ORB Large Move Short Hardened Probe"
+  output_filename: "04_nq_ny_open_orb_5m_large_move_short_hardened.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "05_orb_momentum"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 40
+  orb:
+    orb_minutes: [5]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [-1]
+    min_range_ticks: [8, 16]
+    require_close_beyond: [true]
+    one_signal_per_side: true
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: false}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [80, 100, 150]
+      stop: [30, 50]
+    max_bars_timeout: 90
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  hardening:
+    enabled: true
+    n_mc_simulations: 300
+    n_hypotheses_tested: 24
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "research_candidate"
+  parent_config: "discovery/04_nq_ny_open_orb_5m_large_move_hardened.yaml"
+  parent_sidecar: "output/nq_ny_open_orb_5m_large_move_hardened/04_nq_ny_open_orb_5m_large_move_hardened_summary.json"
+  thesis: "Direction split of the NQ NY-open 5-minute ORB large-move runner; tests whether short breakouts carry the blended edge."
+  caution: "Derived from a discovered both-direction pocket; use hardening and recent holdout before promotion."
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 30

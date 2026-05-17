@@ -1,0 +1,128 @@
+report:
+  title: "NQ Large Candle Origin Retest — Wide-Stop High-ATR Locked Hardening"
+  output_filename: "03_nq_large_candle_origin_retest_wide_stop_high_atr_locked_hardening.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+# Direct A/B against the graveyarded
+# 03_nq_large_candle_origin_retest_high_atr_locked_hardening.yaml
+# (40t TP / 8t SL — collapsed at 2t/1-bar slippage stress to PF 1.008 /
+# expectancy loss 98.0%). Hypothesis: the *signal* (high-ATR origin
+# retest within 30 ticks) still discriminates, but a 16-tick stop
+# absorbs realistic friction whereas the 8-tick stop did not.
+#
+# Parent (this probe rank 2 → conditional rank 1):
+#   signal_atr >= 14.0785 AND level_dist_ticks <= 30.0
+#   n_trades=225, win_rate=0.5733, PF=2.6513, net=14929.5
+# In tick units the ATR threshold is 14.0785 / 0.25 = 56.314 ticks,
+# so min_atr_ticks=57 matches the rule. All signal params are pinned
+# to the parent grid (avg_lookback=40, large_body_mult=2.5, etc.) —
+# the only change vs the graveyarded sister hardening is the stop:
+# 8t → 16t with the same 40t target.
+
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes: [5]
+  signals:
+    swing_level_test:        {enabled: false}
+    consolidation_breakout:  {enabled: false}
+    round_number_bounce:     {enabled: false}
+    vwap_reclaim_reject:     {enabled: false}
+    vwap_continuation:       {enabled: false}
+    prior_session_reaction:  {enabled: false}
+    reference_sweep_reclaim: {enabled: false}
+    failed_reference_breakout: {enabled: false}
+    liquidity_sweep_failure: {enabled: false}
+
+    large_candle_origin_retest:
+      enabled: true
+      avg_lookback: [40]
+      large_body_mult: [2.5]
+      min_body_ticks: [8.0]
+      max_retest_bars: [6]
+      touch_ticks: [8.0]
+      min_close_ticks: [2.0]
+      max_dist_ticks: [30]
+      min_atr_ticks: [57.0]
+      direction: [0]
+      invert_direction: [false]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [40]
+      stop: [16]
+    max_bars_timeout: 40
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: false}
+  entry_discovery: {enabled: false}
+
+  hardening:
+    enabled: true
+    n_mc_simulations: 500
+    # Wide-stop probe budget was 1,280 combos (separate hypothesis from the
+    # 8,640-combo parent — different outcome grid). Penalty applies against
+    # the wide-stop probe alone.
+    n_hypotheses_tested: 1280
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    holdout:
+      enabled: true
+      is_frac: 0.60
+      val_frac: 0.20
+      time_col: entry_time
+      min_dev_trades: 80
+      min_holdout_trades: 20
+      require_holdout_passed: true
+      min_profit_factor: 1.0
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "locked_research_candidate_hardening"
+  parent_config: "discovery/03_nq_large_candle_origin_retest_wide_stop_probe.yaml"
+  parent_sidecar: "output/03_nq_large_candle_origin_retest_wide_stop_probe_summary.json"
+  parent_rank: 2
+  parent_rule_rank: 1
+  parent_rule_string: "signal_atr >= 14.0785 AND level_dist_ticks <= 30.0"
+  parent_rule_stats:
+    n_trades: 225
+    win_rate: 0.5733
+    profit_factor: 2.6513
+    net_profit: 14929.5
+  sister_hardening_graveyard: "discovery/03_nq_large_candle_origin_retest_high_atr_locked_hardening.yaml"
+  locked_rule: "NQ large-candle-origin-retest, 5m, both directions, large_body_mult=2.5, min_body_ticks=8, max_retest_bars=6, touch_ticks=8, min_close_ticks=2, max_dist_ticks=30, min_atr_ticks=57 (ATR >= 14.25 price units), 40 tick TP / 16 tick SL, next-open entry"
+  hypothesis: "Wider 16-tick stop should make the 2t/1-bar stress cell consume roughly 12% of per-loss cost instead of the ~25% it consumed at the 8-tick stop. If the slippage gate now passes, the family has a viable form; if it still fails, the family is structurally dead at this signal."
+  caution: "Lower in-sample PF (2.65) than the graveyarded sister hardening (3.59) — slippage stress is the decisive test, not in-sample edge."
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 10

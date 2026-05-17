@@ -46,7 +46,41 @@ import pandas as pd
 
 from .regime import compute_bar_regime, summarize_daily_regime
 from .mae_mfe import compute_mae_mfe_profile
-from .validation import run_validation, DEFAULT_WF_CONFIG, DEFAULT_COST_MODEL
+from .validation import (
+    run_validation,
+    DEFAULT_WF_CONFIG,
+    DEFAULT_COST_MODEL,
+    apply_cost_model,
+    extract_oos_pool,
+)
+from .holdout import partition_trades
+
+
+# Default holdout configuration. Holdout is ENABLED by default — discovery
+# without a locked holdout produces in-sample-fit metrics that cannot be
+# trusted for fund-quality evaluation.
+DEFAULT_HOLDOUT_CONFIG: Dict[str, Any] = {
+    "enabled": True,
+    "is_frac": 0.60,           # IS portion of the development slice
+    "val_frac": 0.20,          # VAL portion (IS + VAL = 80% dev)
+    "time_col": "entry_time",
+    "min_dev_trades": 50,      # below this, fall back to no-holdout (insufficient sample)
+    "min_holdout_trades": 20,  # below this, holdout eval is skipped (too small to score)
+}
+
+
+# Default dev-slice split for separating entry-search from exit-search.
+# Co-fitting entries and exits on the same trades inflates apparent edge by
+# an order of magnitude; chopping the dev slice in half so each search sees
+# a disjoint sample is the cheapest way to break that joint optimisation.
+DEFAULT_DEV_SPLIT_CONFIG: Dict[str, Any] = {
+    "enabled": True,
+    "entry_frac": 0.50,        # chronological fraction allocated to entry search
+    "mode": "chronological",   # 'chronological' | 'interleaved'
+    "min_entry_trades": 30,
+    "min_exit_trades": 30,
+    "time_col": "entry_time",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +123,286 @@ def _make_json_safe(obj: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Holdout partitioning
+# ---------------------------------------------------------------------------
+
+def _resolve_holdout(
+    original_trades: Optional[pd.DataFrame],
+    holdout_config: Dict[str, Any],
+) -> tuple:
+    """
+    Decide whether a locked holdout slice can be carved off, and return
+    (holdout_meta, dev_trades, holdout_trades).
+
+    When the holdout is active, ``dev_trades`` contains only the IS+VAL
+    portion (everything before the holdout boundary), and ``holdout_trades``
+    holds the locked slice. Discovery runs on ``dev_trades`` only; the
+    holdout is evaluated exactly once at the end of the per-package loop
+    via ``compute_evaluation_metrics``.
+
+    When the holdout cannot be applied (disabled, missing time column,
+    insufficient sample), ``dev_trades`` is the original trade set and
+    ``holdout_trades`` is None.
+    """
+    enabled = bool(holdout_config.get("enabled", True))
+    is_frac = float(holdout_config.get("is_frac", 0.60))
+    val_frac = float(holdout_config.get("val_frac", 0.20))
+    time_col = str(holdout_config.get("time_col", "entry_time"))
+    min_dev = int(holdout_config.get("min_dev_trades", 50))
+    min_holdout = int(holdout_config.get("min_holdout_trades", 20))
+
+    meta: Dict[str, Any] = {
+        "enabled": False,
+        "is_frac": is_frac,
+        "val_frac": val_frac,
+    }
+
+    if not enabled:
+        meta["reason"] = "holdout disabled in config"
+        return meta, original_trades, None
+
+    if original_trades is None or not isinstance(original_trades, pd.DataFrame) or len(original_trades) == 0:
+        meta["reason"] = "no trades available"
+        return meta, original_trades, None
+
+    if time_col not in original_trades.columns:
+        meta["reason"] = f"missing time column '{time_col}'"
+        return meta, original_trades, None
+
+    try:
+        partition = partition_trades(
+            original_trades,
+            is_frac=is_frac,
+            val_frac=val_frac,
+            time_col=time_col,
+        )
+    except Exception as exc:
+        meta["reason"] = f"partition failed: {exc}"
+        return meta, original_trades, None
+
+    dev_df = pd.concat([partition.is_df, partition.val_df], ignore_index=True) if (partition.n_is + partition.n_val) > 0 else original_trades.iloc[0:0]
+    holdout_df = partition.holdout_df
+
+    if len(dev_df) < min_dev or len(holdout_df) < min_holdout:
+        meta.update(partition.to_dict())
+        meta["reason"] = (
+            f"sample too small for holdout split "
+            f"(dev={len(dev_df)} < {min_dev} or holdout={len(holdout_df)} < {min_holdout})"
+        )
+        return meta, original_trades, None
+
+    meta.update(partition.to_dict())
+    meta["enabled"] = True
+    meta["dev_trades"] = int(len(dev_df))
+    return meta, dev_df, holdout_df
+
+
+def _compute_holdout_evaluation(
+    holdout_trades: Optional[pd.DataFrame],
+    cost_model: Dict[str, Any],
+    bars_with_regime: Optional[pd.DataFrame],
+) -> Optional[Dict[str, Any]]:
+    """
+    One-shot evaluation on the locked holdout slice. Returns None when no
+    holdout is available. Applies the cost model and computes the same
+    metric set used for the dev-slice evaluation, plus regime breakdown.
+    """
+    from .evaluation import compute_evaluation_metrics, compute_regime_breakdown
+
+    if holdout_trades is None or len(holdout_trades) == 0:
+        return None
+
+    cost_norm = apply_cost_model(holdout_trades, cost_model)
+    metrics = compute_evaluation_metrics(cost_norm)
+    if bars_with_regime is not None:
+        try:
+            metrics["by_regime"] = compute_regime_breakdown(cost_norm, bars_with_regime)
+        except Exception:
+            pass
+    return metrics
+
+
+def _compute_oos_evaluation(
+    cost_normalized_dev: Optional[pd.DataFrame],
+    wf_config: Dict[str, Any],
+    bars_with_regime: Optional[pd.DataFrame],
+) -> Optional[Dict[str, Any]]:
+    """
+    Build the OOS-fold evaluation on the dev slice. The OOS pool is the
+    contiguous tail of the dev slice that the rolling walk-forward folds
+    score on — aggregating ``compute_evaluation_metrics`` across that tail
+    yields a true OOS view, not an in-sample fit.
+    """
+    from .evaluation import compute_evaluation_metrics, compute_regime_breakdown
+
+    if cost_normalized_dev is None or len(cost_normalized_dev) == 0:
+        return None
+    oos_pool = extract_oos_pool(cost_normalized_dev, wf_config=wf_config)
+    if oos_pool is None or len(oos_pool) == 0:
+        return None
+    metrics = compute_evaluation_metrics(oos_pool)
+    if bars_with_regime is not None:
+        try:
+            metrics["by_regime"] = compute_regime_breakdown(oos_pool, bars_with_regime)
+        except Exception:
+            pass
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# Dev-slice split (entry-search vs exit-search)
+# ---------------------------------------------------------------------------
+
+def _split_dev_for_search(
+    dev_trades: Optional[pd.DataFrame],
+    dev_split_config: Dict[str, Any],
+) -> tuple:
+    """
+    Partition the dev slice into disjoint entry-search and exit-search
+    samples so that stop/target sweeps cannot be co-fit against the same
+    trades that generated the entry rule.
+
+    Returns ``(meta, entry_trades, exit_trades)``. When the split is
+    disabled, the column is missing, or the sample is too small, both
+    returned slices fall back to the full ``dev_trades`` and ``meta``
+    records the reason. Callers should treat that fallback as "split
+    inactive" and the caller should still record the meta.
+    """
+    enabled = bool(dev_split_config.get("enabled", True))
+    entry_frac = float(dev_split_config.get("entry_frac", 0.50))
+    mode = str(dev_split_config.get("mode", "chronological")).lower()
+    min_entry = int(dev_split_config.get("min_entry_trades", 30))
+    min_exit = int(dev_split_config.get("min_exit_trades", 30))
+    time_col = str(dev_split_config.get("time_col", "entry_time"))
+
+    meta: Dict[str, Any] = {
+        "enabled": False,
+        "entry_frac": entry_frac,
+        "mode": mode,
+        "n_entry": 0,
+        "n_exit": 0,
+    }
+
+    if not enabled:
+        meta["reason"] = "dev_split disabled in config"
+        return meta, dev_trades, dev_trades
+
+    if dev_trades is None or not isinstance(dev_trades, pd.DataFrame) or len(dev_trades) == 0:
+        meta["reason"] = "no dev trades available"
+        return meta, dev_trades, dev_trades
+
+    if not (0.0 < entry_frac < 1.0):
+        meta["reason"] = f"entry_frac={entry_frac} out of (0,1)"
+        return meta, dev_trades, dev_trades
+
+    if mode == "interleaved":
+        # Alternate by sorted position. Stride is chosen so that ~entry_frac
+        # of rows go into the entry slice. For 0.5 this is exact every-other.
+        if time_col in dev_trades.columns:
+            sorted_df = dev_trades.sort_values(time_col).reset_index(drop=True)
+        else:
+            sorted_df = dev_trades.reset_index(drop=True)
+        n = len(sorted_df)
+        # Use a deterministic position-based mask: a row at index i goes to
+        # entry if (i * entry_frac) % 1 wraps. This approximates the target
+        # fraction without introducing randomness.
+        positions = np.arange(n)
+        cum = np.floor((positions + 1) * entry_frac).astype(int)
+        prev = np.floor(positions * entry_frac).astype(int)
+        entry_mask = cum > prev
+        entry_df = sorted_df.loc[entry_mask].copy()
+        exit_df = sorted_df.loc[~entry_mask].copy()
+    else:
+        # Chronological split by date span — same convention as
+        # holdout.partition_trades so users find the behaviour familiar.
+        if time_col not in dev_trades.columns:
+            meta["reason"] = f"missing time column '{time_col}' (mode={mode})"
+            return meta, dev_trades, dev_trades
+        df = dev_trades.copy()
+        df[time_col] = pd.to_datetime(df[time_col], utc=False, errors="coerce")
+        df = df.dropna(subset=[time_col]).sort_values(time_col).reset_index(drop=True)
+        if len(df) == 0:
+            meta["reason"] = "all dev trades have null time column"
+            return meta, dev_trades, dev_trades
+        t_min = df[time_col].min()
+        t_max = df[time_col].max()
+        span = t_max - t_min
+        boundary = t_min + span * entry_frac
+        entry_df = df[df[time_col] < boundary].copy()
+        exit_df = df[df[time_col] >= boundary].copy()
+        meta["entry_start"] = entry_df[time_col].min().isoformat() if len(entry_df) > 0 else None
+        meta["entry_end"] = entry_df[time_col].max().isoformat() if len(entry_df) > 0 else None
+        meta["exit_start"] = exit_df[time_col].min().isoformat() if len(exit_df) > 0 else None
+        meta["exit_end"] = exit_df[time_col].max().isoformat() if len(exit_df) > 0 else None
+
+    if len(entry_df) < min_entry or len(exit_df) < min_exit:
+        meta["n_entry"] = int(len(entry_df))
+        meta["n_exit"] = int(len(exit_df))
+        meta["reason"] = (
+            f"sample too small (entry={len(entry_df)} < {min_entry} or "
+            f"exit={len(exit_df)} < {min_exit})"
+        )
+        return meta, dev_trades, dev_trades
+
+    meta["enabled"] = True
+    meta["n_entry"] = int(len(entry_df))
+    meta["n_exit"] = int(len(exit_df))
+    return meta, entry_df, exit_df
+
+
+def _split_signal_feature_df(
+    signal_feature_df: Optional[pd.DataFrame],
+    dev_split_meta: Dict[str, Any],
+    entry_frac: float,
+    mode: str,
+) -> tuple:
+    """
+    Split the per-signal feature matrix into entry-search and exit-search
+    halves using the same chronological convention as ``_split_dev_for_search``.
+
+    When the dev_split is inactive (``meta["enabled"] is False``), or the
+    matrix has no ``dt`` column, both returned halves are the full matrix.
+    Returns ``(entry_sfdf, exit_sfdf)``.
+    """
+    if signal_feature_df is None or not isinstance(signal_feature_df, pd.DataFrame) or len(signal_feature_df) == 0:
+        return signal_feature_df, signal_feature_df
+
+    if not dev_split_meta.get("enabled"):
+        return signal_feature_df, signal_feature_df
+
+    if "dt" not in signal_feature_df.columns:
+        return signal_feature_df, signal_feature_df
+
+    df = signal_feature_df.copy()
+    try:
+        df["__dt_naive"] = pd.to_datetime(df["dt"], utc=False, errors="coerce")
+    except Exception:
+        return signal_feature_df, signal_feature_df
+
+    df = df.dropna(subset=["__dt_naive"]).sort_values("__dt_naive").reset_index(drop=True)
+    if len(df) == 0:
+        return signal_feature_df, signal_feature_df
+
+    if mode == "interleaved":
+        n = len(df)
+        positions = np.arange(n)
+        cum = np.floor((positions + 1) * entry_frac).astype(int)
+        prev = np.floor(positions * entry_frac).astype(int)
+        entry_mask = cum > prev
+        entry_df = df.loc[entry_mask].drop(columns="__dt_naive").copy()
+        exit_df = df.loc[~entry_mask].drop(columns="__dt_naive").copy()
+    else:
+        t_min = df["__dt_naive"].min()
+        t_max = df["__dt_naive"].max()
+        span = t_max - t_min
+        boundary = t_min + span * entry_frac
+        entry_df = df[df["__dt_naive"] < boundary].drop(columns="__dt_naive").copy()
+        exit_df = df[df["__dt_naive"] >= boundary].drop(columns="__dt_naive").copy()
+
+    return entry_df, exit_df
+
+
+# ---------------------------------------------------------------------------
 # Helpers for extracting regime config
 # ---------------------------------------------------------------------------
 
@@ -102,6 +416,8 @@ def _resolve_regime_kwargs(regime_cfg: Dict[str, Any]) -> Dict[str, Any]:
         "adx_trend_threshold": ("adx_trend_threshold", float),
         "atr_high_pct": ("atr_high_pct", float),
         "atr_low_pct": ("atr_low_pct", float),
+        "vol_mode": ("vol_mode", str),
+        "vol_period": ("vol_period", int),
     }
     for cfg_key, (kwarg_name, cast) in mapping.items():
         if cfg_key in regime_cfg:
@@ -121,6 +437,7 @@ def run_strategy_discovery(
     market: Any,
     options: Dict[str, Any],
     db_path: Optional[str] = None,
+    output_dir: Optional[str | Path] = None,
 ) -> None:
     """
     Main entry point. Called by cli/main.py.
@@ -143,6 +460,8 @@ def run_strategy_discovery(
     regime_cfg = dict(options.get("regime") or {})
     wf_config = {**DEFAULT_WF_CONFIG, **dict(options.get("walk_forward") or {})}
     cost_model = {**DEFAULT_COST_MODEL, **dict(options.get("cost_model") or {})}
+    holdout_config = {**DEFAULT_HOLDOUT_CONFIG, **dict(options.get("holdout") or {})}
+    dev_split_config = {**DEFAULT_DEV_SPLIT_CONFIG, **dict(options.get("dev_split") or {})}
     tick_value = float(cost_model.get("tick_value", 5.0))
     # tick_size is not in cost_model spec but is needed for mae_mfe — default to 0.25 (NQ)
     tick_size = float(options.get("tick_size", 0.25))
@@ -201,6 +520,37 @@ def run_strategy_discovery(
         discovery_block["regime_summary"] = regime_summary_records
         discovery_block["regime_issues"] = regime_issues
 
+        # ---- Locked holdout partition --------------------------------------
+        # Discovery (validation, entry/exit search, importance, sensitivity,
+        # …) runs on the IS+VAL development slice only. The holdout slice
+        # is preserved untouched and evaluated exactly once at the end of
+        # this iteration. We mutate pkg.trades for the duration of the
+        # per-package work and restore the original frame at the bottom of
+        # the loop body so report rendering still sees the full trade set.
+        # Every inner analysis block already has its own try/except, so an
+        # un-restored mutation requires an exception path none of them
+        # tolerate — acceptable for keeping the body readable.
+        original_trades = getattr(pkg, "trades", None)
+        holdout_meta, dev_trades, holdout_trades = _resolve_holdout(
+            original_trades, holdout_config
+        )
+        discovery_block["holdout_partition"] = _make_json_safe(holdout_meta)
+        if dev_trades is not original_trades:
+            pkg.trades = dev_trades
+
+        # ---- Entry-search vs exit-search dev split -------------------------
+        # Carve the dev slice into two disjoint chronological halves so that
+        # exit grids cannot be co-fit on the same trades that produced the
+        # entry rule. When the split is active, ``pkg.trades`` is swapped
+        # to the entry slice around entry_discovery / signal_entry_discovery
+        # / entry_pattern_bridge calls and to the exit slice around
+        # exit_discovery / signal_exit_sweep calls; everything else continues
+        # to see the full ``dev_trades`` baseline.
+        dev_split_meta, entry_trades, exit_trades = _split_dev_for_search(
+            dev_trades, dev_split_config
+        )
+        discovery_block["dev_split"] = _make_json_safe(dev_split_meta)
+
         # MAE/MFE profile
         try:
             trades = getattr(pkg, "trades", None)
@@ -222,7 +572,11 @@ def run_strategy_discovery(
             try:
                 cost_norm_pre = _apply_cost_model(trades, cost_model)
                 pre_regime_breakdown = compute_regime_breakdown(cost_norm_pre, bars_with_regime)
-                pre_regime_dispersion = len(pre_regime_breakdown)
+                
+                # Dispersion count should reflect the primary 'regime' dimension
+                # for the hard gate.
+                primary_bk = pre_regime_breakdown.get("by_regime", pre_regime_breakdown)
+                pre_regime_dispersion = len(primary_bk)
             except Exception:
                 pass
 
@@ -250,7 +604,19 @@ def run_strategy_discovery(
                 assets.setdefault("strategy_discovery", {})
                 assets["strategy_discovery"]["bars_with_regime"] = bars_with_regime
 
-        # Evaluation (full metrics; regime breakdown already computed above)
+        # Evaluation views.
+        #
+        #   evaluation          — dev slice (IS+VAL), cost-normalized.
+        #                         Diagnostic / reference only; this is what
+        #                         discovery actually saw.
+        #
+        #   evaluation_oos      — concatenation of all rolling-WF OOS folds
+        #                         on the dev slice. This is the unbiased
+        #                         metric set; ranking should rank on this.
+        #
+        #   evaluation_holdout  — locked-holdout slice, evaluated once and
+        #                         only once after discovery is complete.
+        #                         Promotion gate, not a fitting target.
         try:
             cost_norm_trades = validation_result.cost_normalized if validation_result is not None else None
             if cost_norm_trades is not None and len(cost_norm_trades) > 0:
@@ -265,7 +631,70 @@ def run_strategy_discovery(
         except Exception as exc:
             discovery_block["evaluation"] = {"error": str(exc)}
 
-        # Exit Policy Discovery
+        try:
+            oos_metrics = _compute_oos_evaluation(
+                validation_result.cost_normalized if validation_result is not None else None,
+                wf_config=wf_config,
+                bars_with_regime=bars_with_regime,
+            )
+            if oos_metrics is not None:
+                discovery_block["evaluation_oos"] = _make_json_safe(oos_metrics)
+            else:
+                discovery_block["evaluation_oos"] = {
+                    "skipped": True,
+                    "reason": "insufficient OOS pool",
+                }
+        except Exception as exc:
+            discovery_block["evaluation_oos"] = {"error": str(exc)}
+
+        try:
+            if holdout_trades is not None and len(holdout_trades) > 0:
+                holdout_metrics = _compute_holdout_evaluation(
+                    holdout_trades,
+                    cost_model=cost_model,
+                    bars_with_regime=bars_with_regime,
+                )
+                discovery_block["evaluation_holdout"] = _make_json_safe(holdout_metrics) if holdout_metrics else {
+                    "skipped": True,
+                    "reason": "holdout evaluation produced no metrics",
+                }
+            else:
+                discovery_block["evaluation_holdout"] = {
+                    "skipped": True,
+                    "reason": "no locked holdout slice",
+                }
+        except Exception as exc:
+            discovery_block["evaluation_holdout"] = {"error": str(exc)}
+
+        # Slippage / latency stress sweep (T8). Re-prices the dev trades under
+        # a grid of (slippage_ticks, entry_delay_bars) regimes so reviewers can
+        # see how much of the apparent edge survives realistic execution. The
+        # gate cell defaults to (slip=2, delay=1); candidates that lose more
+        # than ``max_expectancy_loss_pct`` of expectancy at that cell are
+        # flagged for the ranking-time hard gate.
+        try:
+            from .slippage_stress import run_slippage_stress
+            ss_options = dict(options.get("slippage_stress") or {})
+            stress_trades = (
+                validation_result.cost_normalized
+                if validation_result is not None
+                and isinstance(getattr(validation_result, "cost_normalized", None), pd.DataFrame)
+                and len(validation_result.cost_normalized) > 0
+                else (dev_trades if isinstance(dev_trades, pd.DataFrame) else None)
+            )
+            discovery_block["slippage_stress"] = _make_json_safe(
+                run_slippage_stress(
+                    stress_trades,
+                    baseline_cost_model=cost_model,
+                    options=ss_options,
+                )
+            )
+        except Exception as exc:
+            discovery_block["slippage_stress"] = {"error": str(exc), "passed": False}
+
+        # Exit Policy Discovery — runs on the exit-search slice when the
+        # dev_split is active so stop/target grids can't be co-fit against
+        # the trades that generated the entry rule.
         try:
             from .exit_discovery import run_exit_discovery
             ed_options = dict(options.get("exit_discovery") or {})
@@ -273,14 +702,24 @@ def run_strategy_discovery(
             ed_options.setdefault("tick_size", tick_size)
             ed_options.setdefault("tick_value", tick_value)
             ed_options.setdefault("atr_tf", timeframe)
-            exit_result = run_exit_discovery(
-                pkg=pkg,
-                market=market,
-                options=ed_options,
-                bars_with_regime=bars_with_regime,
-            )
+            if exit_trades is not dev_trades:
+                pkg.trades = exit_trades
+            try:
+                exit_result = run_exit_discovery(
+                    pkg=pkg,
+                    market=market,
+                    options=ed_options,
+                    bars_with_regime=bars_with_regime,
+                )
+            finally:
+                if exit_trades is not dev_trades:
+                    pkg.trades = dev_trades
             discovery_block["exit_discovery"] = exit_result
         except Exception as exc:
+            # Defensive restore in case the swap above raised before the
+            # try/finally above was reached.
+            if getattr(pkg, "trades", None) is exit_trades and exit_trades is not dev_trades:
+                pkg.trades = dev_trades
             discovery_block["exit_discovery"] = {"error": str(exc)}
 
         # Feature matrix (store in assets, not metadata — it's a DataFrame)
@@ -366,7 +805,10 @@ def run_strategy_discovery(
         except Exception as exc:
             discovery_block["candidate_scorecard"] = {"error": str(exc)}
 
-        # Signal Entry Discovery (pure corpus-based, no executed trades required)
+        # Signal Entry Discovery (pure corpus-based, no executed trades required).
+        # When the dev_split is active, only the entry-search slice of the
+        # signal_feature_matrix is fed to discovery — the exit slice is
+        # reserved for signal_exit_sweep downstream.
         try:
             pkg_assets_sed = getattr(pkg, "assets", {}) or {}
             sd_assets_sed = pkg_assets_sed.get("strategy_discovery") or {}
@@ -375,8 +817,14 @@ def run_strategy_discovery(
                 from .signal_entry_discovery import run_signal_entry_discovery
                 sed_options = dict(options.get("signal_entry_discovery") or {})
                 sed_options.setdefault("enabled", True)
+                sfdf_entry, _sfdf_exit = _split_signal_feature_df(
+                    sfdf,
+                    dev_split_meta,
+                    entry_frac=float(dev_split_config.get("entry_frac", 0.50)),
+                    mode=str(dev_split_config.get("mode", "chronological")).lower(),
+                )
                 discovery_block["signal_entry_discovery"] = run_signal_entry_discovery(
-                    signal_feature_df=sfdf,
+                    signal_feature_df=sfdf_entry,
                     options=sed_options,
                 )
         except Exception as exc:
@@ -451,13 +899,21 @@ def run_strategy_discovery(
                         feat_df_ed["profit_net"] = cost_norm["profit_net"].values
                 except Exception:
                     pass
-            discovery_block["entry_discovery"] = run_entry_discovery(
-                pkg=pkg,
-                options=entry_options,
-                feature_df=feat_df_ed,
-                bars_with_regime=bars_with_regime,
-            )
+            if entry_trades is not dev_trades:
+                pkg.trades = entry_trades
+            try:
+                discovery_block["entry_discovery"] = run_entry_discovery(
+                    pkg=pkg,
+                    options=entry_options,
+                    feature_df=feat_df_ed,
+                    bars_with_regime=bars_with_regime,
+                )
+            finally:
+                if entry_trades is not dev_trades:
+                    pkg.trades = dev_trades
         except Exception as exc:
+            if getattr(pkg, "trades", None) is entry_trades and entry_trades is not dev_trades:
+                pkg.trades = dev_trades
             discovery_block["entry_discovery"] = {"error": str(exc)}
 
         # Filter Discovery
@@ -563,12 +1019,19 @@ def run_strategy_discovery(
         except Exception as exc:
             discovery_block["parameter_sensitivity"] = {"error": str(exc)}
 
+        # Restore the full trade set so post-discovery consumers (report
+        # rendering, downstream analysis) see all trades — discovery only
+        # ever saw the dev slice.
+        if dev_trades is not original_trades:
+            pkg.trades = original_trades
+
     # -----------------------------------------------------------------------
     # Ranking — runs after all per-package analysis is complete
     # -----------------------------------------------------------------------
     try:
         from .ranking import run_ranking
-        run_ranking(packages)  # attaches per-run scores + cross_run_ranking to packages internally
+        gates_config = options.get("ranking_gates")
+        run_ranking(packages, gates_config=gates_config)  # attaches per-run scores + cross_run_ranking to packages internally
     except Exception as exc:
         import traceback as _tb
         print(f"[ta_foundation] WARNING ranking failed: {exc}")
@@ -688,8 +1151,28 @@ def run_strategy_discovery(
                 patterns_df=pe_patterns if isinstance(pe_patterns, pd.DataFrame) else None,
             )
 
+            # Split the corpus into entry-search and exit-search halves so
+            # rule discovery and stop/target sweeps see disjoint signals.
+            # The market_discovery package has no executed trades, so use a
+            # synthetic "active" meta and let _split_signal_feature_df do
+            # the work via the dt column.
+            ms_split_meta: Dict[str, Any] = {
+                "enabled": bool(dev_split_config.get("enabled", True)),
+                "entry_frac": float(dev_split_config.get("entry_frac", 0.50)),
+                "mode": str(dev_split_config.get("mode", "chronological")).lower(),
+            }
+            sfdf_entry, sfdf_exit = _split_signal_feature_df(
+                signal_feature_df,
+                ms_split_meta,
+                entry_frac=ms_split_meta["entry_frac"],
+                mode=ms_split_meta["mode"],
+            )
+            ms_split_meta["n_entry"] = int(len(sfdf_entry)) if isinstance(sfdf_entry, pd.DataFrame) else 0
+            ms_split_meta["n_exit"] = int(len(sfdf_exit)) if isinstance(sfdf_exit, pd.DataFrame) else 0
+            corpus_block["dev_split"] = _make_json_safe(ms_split_meta)
+
             corpus_block["signal_entry_discovery"] = run_signal_entry_discovery(
-                signal_feature_df=signal_feature_df,
+                signal_feature_df=sfdf_entry,
                 options=sed_options,
             )
 
@@ -700,13 +1183,16 @@ def run_strategy_discovery(
             try:
                 from .signal_validation import run_signal_validation
                 corpus_block["signal_validation"] = run_signal_validation(
-                    signal_feature_df=signal_feature_df,
+                    signal_feature_df=sfdf_entry,
                     options=sv_options,
                 )
             except Exception as sv_exc:
                 corpus_block["signal_validation"] = {"error": str(sv_exc)}
 
-            # Signal corpus exit sweep — find best stop/target for each signal rule
+            # Signal corpus exit sweep — find best stop/target for each
+            # signal rule, evaluated on the EXIT slice so the optimal
+            # parameters are not co-fit with the trades that produced the
+            # rule itself.
             ses_options = dict(options.get("signal_exit_sweep") or {})
             ses_options.setdefault("enabled", True)
             exit_sweep_result: Dict[str, Any] = {}
@@ -715,7 +1201,7 @@ def run_strategy_discovery(
                 sed_result = corpus_block.get("signal_entry_discovery") or {}
                 signal_rules = sed_result.get("top_signal_rules") or []
                 exit_sweep_result = run_signal_exit_sweep(
-                    signal_feature_df=signal_feature_df,
+                    signal_feature_df=sfdf_exit,
                     signal_rules=signal_rules,
                     options=ses_options,
                 )
@@ -751,3 +1237,26 @@ def run_strategy_discovery(
                 "signal_entry_discovery"
             ] = {"error": str(exc)}
             _tb.print_exc()
+
+    # -----------------------------------------------------------------------
+    # Research Ledger Integration (P1)
+    # -----------------------------------------------------------------------
+    if db_path and output_dir:
+        try:
+            from ta_foundation.research_ledger import get_repository
+            from ta_foundation.research_ledger.backfill import backfill_from_outputs
+            from pathlib import Path
+
+            repo = get_repository(db_path)
+            out_path = Path(output_dir)
+            if out_path.exists():
+                # Note: We rely on the fact that the CLI caller writes sidecars
+                # to this directory AFTER this function returns. 
+                # This automation only works if the CLI caller triggers 
+                # a final sweep or if we call this from the CLI.
+                # To ensure it runs, we'll suggest calling it from cli/main.py.
+                report = backfill_from_outputs(repo, [out_path], registered_by="orchestrator")
+                if report.runs_inserted > 0 or report.candidates_inserted > 0:
+                    print(f"[ta_foundation] Ledger updated: +{report.runs_inserted} runs, +{report.candidates_inserted} candidates.")
+        except Exception as exc:
+            print(f"[ta_foundation] WARNING ledger automation failed: {exc}")

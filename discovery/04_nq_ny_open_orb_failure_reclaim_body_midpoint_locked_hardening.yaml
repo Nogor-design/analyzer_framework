@@ -1,0 +1,90 @@
+report:
+  title: "NQ NY Open ORB Failure Reclaim Body Midpoint Locked Hardening"
+  output_filename: "04_nq_ny_open_orb_failure_reclaim_body_midpoint_locked_hardening.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 40
+  orb:
+    signal_type: ["failure_reclaim"]
+    orb_minutes: [5]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [0]
+    min_range_ticks: [8]
+    require_close_beyond: [true]
+    one_signal_per_side: true
+    min_sweep_ticks: [4.0]
+    close_back_ticks: [0.0]
+    max_reclaim_bars: [1]
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: false}
+    break_extreme: {enabled: false, buffer_ticks: 1, fill_timeout_bars: 3}
+    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [150]
+      stop: [20]
+    max_bars_timeout: 90
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  hardening:
+    enabled: true
+    n_mc_simulations: 500
+    n_hypotheses_tested: 2592
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      # n_folds sized to dev sample. Rolling splits dev into (n_folds+1)
+      # contiguous blocks; with ~103 dev trades and min_is_trades=20 the
+      # original n_folds=6 produced block_size=14 and zero qualifying folds.
+      # n_folds=3 yields block_size~25, which lets per-fold PF/expectancy
+      # be informative without lowering the per-fold floor.
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    holdout:
+      enabled: true
+      is_frac: 0.60
+      val_frac: 0.20
+      time_col: entry_time
+      min_dev_trades: 80
+      min_holdout_trades: 20
+      require_holdout_passed: true
+      min_profit_factor: 1.0
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "locked_research_candidate_hardening"
+  parent_config: "discovery/04_nq_ny_open_orb_failure_reclaim_probe.yaml"
+  parent_sidecar: "output/nq_ny_open_orb_failure_reclaim_probe/04_nq_ny_open_orb_failure_reclaim_probe_summary.json"
+  parent_rank: 1
+  locked_rule: "NQ NY-open 5m ORB failure/reclaim, both directions, body-midpoint retrace entry, 150 tick TP / 20 tick SL"
+  caution: "High-PF scout row only. Requires hardening, stress, and locked holdout before any forward-observation label."
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 10

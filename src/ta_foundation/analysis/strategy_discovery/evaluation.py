@@ -247,19 +247,21 @@ def compute_regime_breakdown(
 ) -> Dict[str, Any]:
     """
     Join trades to bars_with_regime by entry_time using merge_asof (backward),
-    then group by regime column.
+    then group by various regime columns.
 
-    Returns dict keyed by regime label, each with:
+    Returns dict with sub-dicts for each regime dimension:
+      regime, vol_regime, vol_regime_tertile, vol_regime_quartile,
+      trend_direction, trend_strength
+
+    Each sub-dict is keyed by label, containing:
       n_trades, win_rate, net_profit, avg_trade, profit_factor
-
-    Returns {} when either DataFrame is missing/empty or required columns absent.
     """
     # Guards
     if trades is None or not isinstance(trades, pd.DataFrame) or len(trades) == 0:
         return {}
     if bars_with_regime is None or not isinstance(bars_with_regime, pd.DataFrame) or len(bars_with_regime) == 0:
         return {}
-    if "dt" not in bars_with_regime.columns or "regime" not in bars_with_regime.columns:
+    if "dt" not in bars_with_regime.columns:
         return {}
     if "entry_time" not in trades.columns:
         return {}
@@ -277,7 +279,11 @@ def compute_regime_breakdown(
         bars_work = bars_work.sort_values("_dt_utc").reset_index(drop=True)
 
         # Columns to bring from bars_with_regime
-        bars_cols = ["_dt_utc", "regime"]
+        desired = {
+            "regime", "vol_regime", "vol_regime_tertile", "vol_regime_quartile",
+            "trend_direction", "trend_strength"
+        }
+        bars_cols = ["_dt_utc"] + [c for c in bars_work.columns if c in desired]
 
         merged = pd.merge_asof(
             trades_work,
@@ -287,22 +293,36 @@ def compute_regime_breakdown(
             direction="backward",
         )
 
-        result: Dict[str, Any] = {}
-        for regime_label, grp in merged.groupby("regime"):
-            regime_profits = pd.to_numeric(grp[profit_col], errors="coerce").dropna()
-            n_s = int(len(regime_profits))
-            if n_s == 0:
-                result[str(regime_label)] = {"n_trades": 0, "win_rate": None, "net_profit": None, "avg_trade": None, "profit_factor": None}
+        final_result: Dict[str, Any] = {}
+        
+        for col in bars_cols:
+            if col == "_dt_utc":
                 continue
-            n_w = int((regime_profits > 0).sum())
-            result[str(regime_label)] = {
-                "n_trades": n_s,
-                "win_rate": _safe_float(n_w / n_s),
-                "net_profit": _safe_float(regime_profits.sum()),
-                "avg_trade": _safe_float(regime_profits.mean()),
-                "profit_factor": compute_profit_factor(regime_profits),
-            }
-        return result
+            
+            dim_result: Dict[str, Any] = {}
+            for label, grp in merged.groupby(col):
+                regime_profits = pd.to_numeric(grp[profit_col], errors="coerce").dropna()
+                n_s = int(len(regime_profits))
+                if n_s == 0:
+                    dim_result[str(label)] = {"n_trades": 0, "win_rate": None, "net_profit": None, "avg_trade": None, "profit_factor": None}
+                    continue
+                n_w = int((regime_profits > 0).sum())
+                dim_result[str(label)] = {
+                    "n_trades": n_s,
+                    "win_rate": _safe_float(n_w / n_s),
+                    "net_profit": _safe_float(regime_profits.sum()),
+                    "avg_trade": _safe_float(regime_profits.mean()),
+                    "profit_factor": compute_profit_factor(regime_profits),
+                }
+            
+            if col == "regime":
+                # backward compat: top level has 'regime' entries if possible, 
+                # but we'll also put it in its own key.
+                final_result.update(dim_result)
+            
+            final_result[f"by_{col}"] = dim_result
+            
+        return final_result
 
     except Exception:
         return {}

@@ -1,0 +1,163 @@
+report:
+  title: Conditional Probe R9 Rule 1
+  output_filename: 03_nq_large_candle_origin_retest_wide_stop_probe.html
+  timezone: America/Denver
+  output: conditional_probe__rank09_rule01.html
+discovery:
+  stage: 03_levels_regions
+  instrument: NQ
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes:
+  - 1
+  - 5
+  signals:
+    swing_level_test:
+      enabled: false
+    consolidation_breakout:
+      enabled: false
+    round_number_bounce:
+      enabled: false
+    vwap_reclaim_reject:
+      enabled: false
+    vwap_continuation:
+      enabled: false
+    prior_session_reaction:
+      enabled: false
+    reference_sweep_reclaim:
+      enabled: false
+    failed_reference_breakout:
+      enabled: false
+    liquidity_sweep_failure:
+      enabled: false
+    large_candle_origin_retest:
+      enabled: true
+      avg_lookback:
+      - 20
+      - 40
+      large_body_mult:
+      - 2.0
+      - 2.5
+      min_body_ticks:
+      - 8.0
+      - 12.0
+      max_retest_bars:
+      - 6
+      - 12
+      touch_ticks:
+      - 5.0
+      - 8.0
+      min_close_ticks:
+      - 2.0
+      - 3.0
+      min_atr_ticks:
+      - 13.6994
+      direction:
+      - 0
+      invert_direction:
+      - false
+      max_dist_ticks:
+      - 13
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: false
+    body_midpoint:
+      enabled: false
+  outcome:
+    atr:
+      enabled: false
+    ticks:
+      enabled: true
+      take_profit:
+      - 40
+      - 60
+      - 80
+      - 100
+      - 150
+      stop:
+      - 16
+      - 20
+    max_bars_timeout: 40
+    timeout_result: at_close
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery:
+    enabled: false
+  entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_trades: 40
+    max_candidates: 700
+    top_n: 10
+sections:
+- id: level_discovery_overview
+- id: strategy_discovery_unified
+  top_n: 30
+research_note:
+  status: broad_probe_separate_hypothesis
+  parent_family: large_candle_origin_retest
+  parent_close_out: discovery/03_nq_large_candle_origin_retest_probe.yaml (graveyard
+    2026-05-13)
+  thesis: Wider stops (16-20t) with proportional targets (40-150t) absorb realistic
+    slippage and one-bar fill delay; the signal continues to discriminate even though
+    the prior 40t/8t geometry was execution-fragile.
+  caution: "Different outcome geometry from the graveyarded probe \u2014 combos do\
+    \ NOT share the 8,640-hypothesis penalty. Treat this as a new search budget (~1,280\
+    \ combos). Any promoted pocket must clear hardening including 2t/1-bar slippage\
+    \ stress before any deployment claim."
+conditional_promotion:
+  parent_config: discovery\03_nq_large_candle_origin_retest_wide_stop_probe.yaml
+  parent_sidecar: output\03_nq_large_candle_origin_retest_wide_stop_probe_summary.json
+  parent_report: output\03_nq_large_candle_origin_retest_wide_stop_probe.html
+  parent_stage: 03_levels_regions
+  parent_rank: 9
+  parent_family: level
+  parent_signal: large_candle_origin_retest
+  parent_params:
+    avg_lookback: 40
+    large_body_mult: 2.0
+    min_body_ticks: 8.0
+    max_retest_bars: 6
+    touch_ticks: 8.0
+    min_close_ticks: 3.0
+    direction: 0
+    min_atr_ticks: 4.0
+    invert_direction: false
+    tick_size: 0.25
+    atr_period: 14
+  parent_outcome:
+    mode: ticks_40_16
+  rule_rank: 1
+  rule_string: signal_atr >= 13.6994 AND level_dist_ticks <= 13.0
+  rule_conditions:
+  - column: signal_atr
+    op: gte
+    value: 13.6994
+    description: signal_atr >= 13.6994
+  - column: level_dist_ticks
+    op: lte
+    value: 13.0
+    description: level_dist_ticks <= 13.0
+  rule_stats:
+    n_trades: 212
+    win_rate: 0.6226
+    profit_factor: 3.2555
+    avg_profit: 80.16
+    net_profit: 16993.84
+    score: 93.07
+  conversions:
+  - column: signal_atr
+    op: gte
+    value: 13.6994
+    yaml_path: level_discovery.signals.large_candle_origin_retest.min_atr_ticks
+  - column: level_dist_ticks
+    op: lte
+    value: 13.0
+    yaml_path: level_discovery.signals.large_candle_origin_retest.max_dist_ticks
+  status: research_candidate

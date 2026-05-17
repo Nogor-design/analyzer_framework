@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Discovery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/discovery/widgets.css" />
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .stage-btn { transition: all 0.15s; }
+    .stage-btn.active { background: #f59e0b; color: #111827; border-color: #f59e0b; }
+    .stage-btn .ord { font-variant-numeric: tabular-nums; }
+    .blurb { white-space: pre-wrap; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .pill-funnel { background: #1e3a8a; color: #93c5fd; }
+    .pill-event { background: #581c87; color: #d8b4fe; }
+    .status-queued { background: #374151; color: #9ca3af; }
+    .status-running { background: #92400e; color: #fcd34d; }
+    .status-succeeded { background: #064e3b; color: #34d399; }
+    .status-failed { background: #450a0a; color: #f87171; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <span class="text-amber-400 font-bold text-lg">Discovery</span>
+    <span class="text-gray-500 text-sm">/ Strategy funnel</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <label class="text-gray-400">Session
+      <select id="session-picker" class="ml-2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100">
+        <!-- populated by JS -->
+      </select>
+    </label>
+    <button id="new-session-btn" class="px-2 py-1 rounded border border-gray-700 hover:border-amber-500 text-gray-300">+ New</button>
+    <span class="text-gray-600">|</span>
+    <label class="text-gray-400">Instrument
+      <select id="instrument-picker" class="ml-2 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-gray-100">
+        <!-- populated by JS -->
+      </select>
+    </label>
+    <span class="text-gray-600">|</span>
+    <span class="text-gray-500">id <span id="session-id-display" class="font-mono text-gray-400">{{ session_id }}</span></span>
+    <span class="text-gray-600">|</span>
+    <a href="/discovery/sessions" class="dh-header-btn" title="Manage saved sessions">Sessions</a>
+    <a href="/discovery/lce" class="dh-header-btn" title="Large Candle Excursion event study">LCE</a>
+    <button id="open-tour-btn" class="dh-header-btn" title="Walk through the discovery funnel">Tour</button>
+    <button id="open-glossary-btn" class="dh-header-btn" title="Browse all terms">Glossary</button>
+    <label class="dh-header-btn flex items-center gap-1 cursor-pointer" title="Show advanced override fields">
+      <input id="expert-mode-toggle" type="checkbox" class="accent-amber-500" />
+      <span>Expert</span>
+    </label>
+  </div>
+</header>
+
+<div class="flex h-[calc(100vh-57px)]">
+
+  <!-- Stage stepper -->
+  <aside class="w-72 min-w-[260px] border-r border-gray-800 overflow-y-auto">
+    <div id="funnel-stages-header" class="px-4 py-3 text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
+      Funnel
+    </div>
+    <div id="funnel-stages" class="flex flex-col"></div>
+
+    <div id="event-studies-header" class="px-4 py-3 mt-4 text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800">
+      Event studies
+    </div>
+    <div id="event-studies" class="flex flex-col"></div>
+  </aside>
+
+  <!-- Stage detail -->
+  <main class="flex-1 overflow-y-auto">
+    <div id="stage-detail" class="max-w-3xl mx-auto p-6">
+      <div class="text-gray-500 text-sm">Pick a stage on the left.</div>
+    </div>
+  </main>
+
+  <!-- Right rail: session runs -->
+  <aside class="w-80 min-w-[260px] border-l border-gray-800 overflow-y-auto">
+    <div class="px-4 py-3 text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800 flex items-center justify-between">
+      <span>Session runs</span>
+      <button id="refresh-runs" class="text-gray-500 hover:text-amber-400">&#8635;</button>
+    </div>
+    <div id="runs-list" class="flex flex-col"></div>
+  </aside>
+
+</div>
+
+<script src="/static/discovery/widgets.js"></script>
+<script src="/static/discovery/help.js"></script>
+<script src="/static/discovery/discovery_form.js"></script>
+<script src="/static/discovery/results_pane.js"></script>
+<script src="/static/discovery/run_watch.js"></script>
+<script>
+const SESSION_ID_INITIAL = {{ session_id | tojson }};
+const LCE_ONLY = {% if lce_only | default(false, true) %}true{% else %}false{% endif %};
+
+const state = {
+  sessionId: SESSION_ID_INITIAL,
+  stages: { funnel: [], events: [] },
+  currentStageId: null,
+  sessionDoc: null,    // last full session document we fetched
+  activeTab: "configure",   // "configure" | "results"
+  selectedRunJobId: null,   // job_id of run currently shown in Results tab
+  lastRuns: [],
+  lceOnly: Boolean(LCE_ONLY),
+};
+
+if (state.lceOnly) {
+  document.title = "ta_foundation - Large Candle Excursion";
+  // Hide the funnel section in the sidebar entirely; the LCE page only
+  // needs the event-studies entry. Keep the event-studies header visible
+  // for context.
+  const funnelHeader = document.getElementById("funnel-stages-header");
+  if (funnelHeader) funnelHeader.classList.add("hidden");
+  document.getElementById("funnel-stages").classList.add("hidden");
+  const eventsHeader = document.getElementById("event-studies-header");
+  if (eventsHeader) {
+    eventsHeader.classList.remove("mt-4");
+    eventsHeader.textContent = "Event studies";
+  }
+}
+
+async function api(path, opts) {
+  const resp = await fetch(path, Object.assign({headers: {"Content-Type": "application/json"}}, opts || {}));
+  if (!resp.ok && resp.status >= 500) {
+    console.error(`API ${path} failed:`, resp.status, await resp.text());
+  }
+  return resp.json().catch(() => ({}));
+}
+
+function el(tag, attrs, children) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    if (k === "class") e.className = attrs[k];
+    else if (k === "html") e.innerHTML = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const c of (children || [])) {
+    if (c == null) continue;
+    e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return e;
+}
+
+function statusPillClass(s) {
+  return ({
+    queued: "status-queued",
+    running: "status-running",
+    succeeded: "status-succeeded",
+    failed: "status-failed",
+  })[s] || "status-queued";
+}
+
+// ---- Stage list ---------------------------------------------------------
+
+function renderStageList() {
+  const funnelHost = document.getElementById("funnel-stages");
+  const eventHost = document.getElementById("event-studies");
+  funnelHost.replaceChildren();
+  eventHost.replaceChildren();
+
+  const renderItem = (stage, kind) => {
+    const btn = el("button", {
+      class: `stage-btn text-left px-4 py-3 border-b border-gray-800 hover:bg-gray-900 flex items-start gap-3 ${stage.id === state.currentStageId ? "active" : ""}`,
+      "data-stage": stage.id,
+    }, [
+      el("span", {class: "ord text-xs text-gray-500 w-6 mt-0.5"}, [
+        kind === "funnel" ? String(stage.ordinal) : "·",
+      ]),
+      el("div", {class: "flex-1"}, [
+        el("div", {class: "text-sm font-semibold"}, [stage.label]),
+        el("div", {class: "text-xs text-gray-400 mt-0.5"}, [stage.one_liner]),
+        el("div", {class: "text-[11px] text-gray-500 mt-1"}, [stage.runtime_estimate]),
+      ]),
+    ]);
+    btn.addEventListener("click", () => selectStage(stage.id));
+    return btn;
+  };
+
+  state.stages.funnel.forEach(s => funnelHost.appendChild(renderItem(s, "funnel")));
+  state.stages.events.forEach(s => eventHost.appendChild(renderItem(s, "event")));
+}
+
+async function loadStages() {
+  const data = await api("/api/discovery/stages");
+  state.stages.funnel = data.funnel_stages || [];
+  state.stages.events = data.event_studies || [];
+  state.familiesById = {};
+  for (const fam of (data.families || [])) {
+    state.familiesById[fam.id] = fam;
+  }
+  if (state.lceOnly) {
+    // LCE page: hide every funnel stage and force-select the LCE event study.
+    state.stages.funnel = [];
+    const lce = state.stages.events.find((s) => s.id === "large_candle_excursion");
+    state.currentStageId = lce ? lce.id : (state.stages.events[0] && state.stages.events[0].id) || null;
+  } else if (!state.currentStageId && state.stages.funnel.length) {
+    state.currentStageId = state.stages.funnel[0].id;
+  }
+  renderStageList();
+  if (state.currentStageId) await selectStage(state.currentStageId);
+}
+
+// ---- Stage detail -------------------------------------------------------
+
+async function selectStage(stageId) {
+  state.currentStageId = stageId;
+  // Switching stages resets to the Configure tab; the user can flip to
+  // Results explicitly by clicking a finished run on the right rail.
+  state.activeTab = "configure";
+  state.selectedRunJobId = null;
+  renderStageList();
+  const detail = document.getElementById("stage-detail");
+  detail.replaceChildren(el("div", {class: "text-gray-500 text-sm"}, ["Loading..."]));
+
+  const result = await api(`/api/discovery/stages/${encodeURIComponent(stageId)}`);
+  const stage = (result && result.stage) || null;
+  if (!stage) {
+    detail.replaceChildren(el("div", {class: "text-red-400"}, [`Could not load stage ${stageId}`]));
+    return;
+  }
+  state.currentStage = stage;
+
+  const stickyHelp = (stage.sticky_help || []).map(h =>
+    el("li", {class: "text-sm text-gray-400 leading-relaxed"}, [h])
+  );
+
+  const pillClass = stage.kind === "event_study" ? "pill pill-event" : "pill pill-funnel";
+
+  detail.replaceChildren(
+    el("div", {class: "flex items-center gap-3"}, [
+      el("span", {class: pillClass}, [stage.kind === "event_study" ? "Event study" : `Stage ${stage.ordinal}`]),
+      el("span", {class: "text-xs text-gray-500"}, [stage.runtime_estimate]),
+    ]),
+    el("h2", {class: "text-2xl font-bold mt-3"}, [stage.label]),
+    el("p", {class: "text-gray-400 mt-1"}, [stage.one_liner]),
+
+    el("section", {class: "mt-6"}, [
+      el("h3", {class: "text-xs uppercase tracking-wider text-gray-500 mb-2"}, ["What this stage does"]),
+      el("p", {class: "blurb text-sm text-gray-300 leading-relaxed"}, [stage.long_blurb]),
+    ]),
+
+    el("section", {class: "mt-6"}, [
+      el("h3", {class: "text-xs uppercase tracking-wider text-gray-500 mb-2"}, ["What to look at"]),
+      el("p", {class: "blurb text-sm text-gray-300 leading-relaxed"}, [stage.what_to_look_at]),
+    ]),
+
+    stickyHelp.length ? el("section", {class: "mt-6"}, [
+      el("h3", {class: "text-xs uppercase tracking-wider text-gray-500 mb-2"}, ["Read this first"]),
+      el("ul", {class: "list-disc pl-6 space-y-1"}, stickyHelp),
+    ]) : null,
+  );
+
+  // Stuck? help — collapsible panel with stage tips, next-stage links,
+  // and curated glossary terms. Mounted under the static stage blurbs so
+  // it stays out of the user's way until they open it.
+  if (window.DiscoveryHelp && window.DiscoveryHelp.StuckHelp) {
+    detail.appendChild(window.DiscoveryHelp.StuckHelp.render(
+      stage,
+      state.familiesById || {},
+      window.DiscoveryGlossary,
+    ));
+  }
+
+  // Persist the user's current stage choice on the session.
+  fetch(`/api/discovery/sessions/${encodeURIComponent(state.sessionId)}`, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({current_stage: stageId}),
+  }).catch(() => {});
+
+  // Tabs + the swappable pane host.
+  detail.appendChild(buildTabsBar());
+  const paneHost = el("div", {id: "stage-pane-host", class: "mt-4"}, []);
+  detail.appendChild(paneHost);
+
+  renderActivePane();
+}
+
+function buildTabsBar() {
+  const make = (id, label) => {
+    const isActive = state.activeTab === id;
+    const btn = el("button", {
+      type: "button",
+      class: `px-4 py-2 text-sm border-b-2 transition-colors ${
+        isActive
+          ? "border-amber-400 text-amber-400 font-semibold"
+          : "border-transparent text-gray-400 hover:text-gray-200"
+      }`,
+    }, [label]);
+    btn.addEventListener("click", () => {
+      if (state.activeTab === id) return;
+      state.activeTab = id;
+      renderActivePane();
+      // Re-render tabs to update active styling
+      const old = document.getElementById("stage-tabs-bar");
+      if (old) old.replaceWith(buildTabsBar());
+    });
+    return btn;
+  };
+  return el("div", {id: "stage-tabs-bar", class: "mt-8 flex border-b border-gray-800"}, [
+    make("configure", "Configure"),
+    make("results", "Results"),
+  ]);
+}
+
+function renderActivePane() {
+  const host = document.getElementById("stage-pane-host");
+  if (!host || !state.currentStage) return;
+  host.replaceChildren();
+
+  if (state.activeTab === "configure") {
+    if (window.DiscoveryForm) {
+      window.DiscoveryForm.mountStageForm({
+        container: host,
+        stage: state.currentStage,
+        sessionId: state.sessionId,
+        sessionDoc: state.sessionDoc,
+        familiesById: state.familiesById || {},
+        onRunDispatched: () => loadSessionDetails(),
+        onViewResults: (run) => {
+          if (run && run.job_id) state.selectedRunJobId = run.job_id;
+          state.activeTab = "results";
+          const oldBar = document.getElementById("stage-tabs-bar");
+          if (oldBar) oldBar.replaceWith(buildTabsBar());
+          renderActivePane();
+        },
+      });
+    } else {
+      host.appendChild(el("div", {class: "text-red-400 text-sm"}, [
+        "DiscoveryForm not loaded.",
+      ]));
+    }
+    return;
+  }
+
+  // Results tab
+  const run = pickActiveRun();
+  if (!run) {
+    host.appendChild(el("div", {class: "p-6 border border-dashed border-gray-700 rounded text-center text-sm text-gray-400"}, [
+      "No finished runs for this stage yet. Click ‘Run this stage’ on the Configure tab, then come back here.",
+    ]));
+    return;
+  }
+  if (window.DiscoveryResults) {
+    window.DiscoveryResults.mountResultsPane({
+      container: host,
+      sessionId: state.sessionId,
+      run,
+      onPromoted: () => loadSessionDetails(),
+    });
+  } else {
+    host.appendChild(el("div", {class: "text-red-400 text-sm"}, [
+      "DiscoveryResults not loaded.",
+    ]));
+  }
+}
+
+function pickActiveRun() {
+  const runs = state.lastRuns || [];
+  if (state.selectedRunJobId) {
+    const explicit = runs.find((r) => r.job_id === state.selectedRunJobId);
+    if (explicit) return explicit;
+  }
+  // Fall back to the most recent succeeded run for the current stage.
+  return runs
+    .slice()
+    .reverse()
+    .find((r) => r.stage_id === state.currentStageId && r.status === "succeeded") || null;
+}
+
+async function loadGlossary() {
+  try {
+    const data = await api("/api/discovery/glossary");
+    if (data && data.terms) window.DiscoveryGlossary = data;
+  } catch (err) {
+    console.warn("Failed to load glossary:", err);
+  }
+}
+
+// ---- Sessions -----------------------------------------------------------
+
+async function loadSessions() {
+  const data = await api("/api/discovery/sessions");
+  const sessions = data.sessions || [];
+  const picker = document.getElementById("session-picker");
+  picker.replaceChildren();
+  for (const s of sessions) {
+    const opt = el("option", {value: s.session_id}, [
+      `${s.label || "(unlabeled)"} - ${s.instrument_symbol || "?"}`,
+    ]);
+    if (s.session_id === state.sessionId) opt.setAttribute("selected", "selected");
+    picker.appendChild(opt);
+  }
+}
+
+document.getElementById("session-picker").addEventListener("change", async (e) => {
+  state.sessionId = e.target.value;
+  document.getElementById("session-id-display").textContent = state.sessionId;
+  await loadSessionDetails();
+});
+
+document.getElementById("new-session-btn").addEventListener("click", async () => {
+  const label = prompt("Label for the new session?", "");
+  if (label === null) return;
+  const resp = await api("/api/discovery/sessions", {
+    method: "POST",
+    body: JSON.stringify({label, instrument_symbol: getInstrumentChoice()}),
+  });
+  if (resp && resp.session) {
+    state.sessionId = resp.session.session_id;
+    document.getElementById("session-id-display").textContent = state.sessionId;
+    await loadSessions();
+    await loadSessionDetails();
+  }
+});
+
+// ---- Instruments --------------------------------------------------------
+
+async function loadInstruments() {
+  const data = await api("/api/discovery/instruments");
+  const picker = document.getElementById("instrument-picker");
+  picker.replaceChildren();
+  for (const inst of (data.instruments || [])) {
+    picker.appendChild(el("option", {value: inst.symbol}, [`${inst.symbol} - ${inst.name}`]));
+  }
+}
+
+function getInstrumentChoice() {
+  const picker = document.getElementById("instrument-picker");
+  return (picker && picker.value) || "NQ";
+}
+
+document.getElementById("instrument-picker").addEventListener("change", async (e) => {
+  await api(`/api/discovery/sessions/${encodeURIComponent(state.sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({instrument_symbol: e.target.value}),
+  });
+});
+
+// ---- Session detail (instrument sync + runs) ----------------------------
+
+async function loadSessionDetails() {
+  if (!state.sessionId) return;
+  const data = await api(`/api/discovery/sessions/${encodeURIComponent(state.sessionId)}`);
+  const session = data.session;
+  state.sessionDoc = session || null;
+  if (session && session.instrument && session.instrument.symbol) {
+    const picker = document.getElementById("instrument-picker");
+    if (picker) picker.value = session.instrument.symbol;
+  }
+  state.lastRuns = data.runs || [];
+  renderRuns(state.lastRuns);
+}
+
+function renderRuns(runs) {
+  const host = document.getElementById("runs-list");
+  host.replaceChildren();
+  if (!runs.length) {
+    host.appendChild(el("div", {class: "px-4 py-6 text-xs text-gray-500 text-center"}, ["No runs yet."]));
+    return;
+  }
+  // Most recent first
+  runs.slice().reverse().forEach(run => {
+    const clickable = run.status === "succeeded";
+    const isSelected = state.selectedRunJobId === run.job_id && state.activeTab === "results";
+    const row = el("div", {
+      class: `px-4 py-3 border-b border-gray-800 ${clickable ? "cursor-pointer hover:bg-gray-900" : ""} ${isSelected ? "bg-gray-900" : ""}`,
+      title: clickable ? "Click to view results" : "",
+    }, [
+      el("div", {class: "flex items-center justify-between"}, [
+        el("span", {class: "text-sm font-medium"}, [run.stage_id]),
+        el("span", {class: `pill ${statusPillClass(run.status)}`}, [run.status]),
+      ]),
+      el("div", {class: "text-[11px] text-gray-500 mt-1"}, [run.started_at || ""]),
+      run.report_html_path
+        ? el("div", {class: "text-[11px] text-gray-400 mt-1 pathish"}, [run.report_html_path])
+        : null,
+      clickable
+        ? el("div", {class: "text-[11px] text-amber-400 mt-1"}, ["View results →"])
+        : null,
+    ]);
+    if (clickable) {
+      row.addEventListener("click", () => {
+        state.selectedRunJobId = run.job_id;
+        // Jump to the run's stage if different from the currently shown one.
+        if (run.stage_id && run.stage_id !== state.currentStageId) {
+          state.currentStageId = run.stage_id;
+        }
+        state.activeTab = "results";
+        // If we already have the right stage loaded, just re-render the pane;
+        // otherwise reload the stage detail end-to-end.
+        if (state.currentStage && state.currentStage.id === run.stage_id) {
+          const old = document.getElementById("stage-tabs-bar");
+          if (old) old.replaceWith(buildTabsBar());
+          renderActivePane();
+          // Re-render runs list so the highlight updates.
+          renderRuns(state.lastRuns);
+        } else {
+          selectStage(run.stage_id);
+        }
+      });
+    }
+    host.appendChild(row);
+  });
+}
+
+document.getElementById("refresh-runs").addEventListener("click", loadSessionDetails);
+
+// ---- Help wiring (tour, glossary panel) -------------------------------
+
+document.getElementById("open-tour-btn").addEventListener("click", () => {
+  if (window.DiscoveryHelp) window.DiscoveryHelp.Onboarding.show();
+});
+document.getElementById("open-glossary-btn").addEventListener("click", () => {
+  if (window.DiscoveryHelp) window.DiscoveryHelp.GlossaryPanel.toggle();
+});
+
+// ---- Expert mode toggle (persists in localStorage) --------------------
+
+const EXPERT_KEY = "ta_discovery_expert_mode_v1";
+function readExpertMode() {
+  try { return localStorage.getItem(EXPERT_KEY) === "1"; }
+  catch (e) { return false; }
+}
+function writeExpertMode(on) {
+  try { localStorage.setItem(EXPERT_KEY, on ? "1" : "0"); }
+  catch (e) { /* ignore */ }
+}
+
+const expertToggle = document.getElementById("expert-mode-toggle");
+window.DiscoveryExpertMode = readExpertMode();
+expertToggle.checked = window.DiscoveryExpertMode;
+expertToggle.addEventListener("change", () => {
+  window.DiscoveryExpertMode = expertToggle.checked;
+  writeExpertMode(window.DiscoveryExpertMode);
+  // Re-mount the active stage so the Expert overrides section appears/disappears.
+  if (state.currentStage && state.activeTab === "configure") {
+    renderActivePane();
+  }
+});
+
+// Let Stuck? "go next" links drive the stage stepper.
+if (window.DiscoveryHelp) {
+  window.DiscoveryHelp.setStageJumpHandler((nextStageId) => {
+    if (!nextStageId) return;
+    const known = state.stages.funnel.concat(state.stages.events)
+      .some((s) => s.id === nextStageId);
+    if (!known) return;
+    selectStage(nextStageId);
+  });
+}
+
+// ---- Bootstrap ---------------------------------------------------------
+
+(async function init() {
+  await Promise.all([loadGlossary(), loadInstruments(), loadSessions()]);
+  // Stage selection needs sessionDoc to be available so the form can hydrate
+  // from saved values; load session details before rendering stages.
+  await loadSessionDetails();
+  await loadStages();
+  if (window.DiscoveryHelp) window.DiscoveryHelp.Onboarding.maybeShow();
+  // Light periodic refresh while a run is in flight (cheap, single endpoint)
+  setInterval(() => {
+    const hasInFlight = Array.from(document.querySelectorAll(".pill"))
+      .some(p => p.classList.contains("status-queued") || p.classList.contains("status-running"));
+    if (hasInFlight) loadSessionDetails();
+  }, 3000);
+})();
+</script>
+</body>
+</html>

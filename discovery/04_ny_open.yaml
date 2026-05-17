@@ -31,6 +31,10 @@ report:
   output_filename: "04_ny_open.html"
   timezone: "America/Denver"
 
+discovery:
+  stage: "04_ny_open"
+  instrument: "NQ"
+
 candle_discovery:
   enabled: true
   # Pre-NY + open window: 06:00-09:59 Denver = 14k bars instead of 78k (5× faster)
@@ -138,7 +142,7 @@ orb_discovery:
   session_open_hour: 7
   session_open_minute: 30
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
 
   entry_timing:
     next_open:     {enabled: true}

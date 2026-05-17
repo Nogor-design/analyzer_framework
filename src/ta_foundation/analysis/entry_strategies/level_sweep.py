@@ -32,6 +32,33 @@ YAML config block: ``level_discovery:``
         touch_ticks: [4.0, 8.0]
         direction: [0]
 
+      vwap_reclaim_reject:
+        enabled: true
+        max_dist_ticks: [8.0, 16.0]
+        min_pierce_ticks: [1.0, 2.0]
+        direction: [0]
+
+      prior_session_reaction:
+        enabled: true
+        levels: [["prior_high", "prior_low", "overnight_high", "overnight_low"]]
+        touch_ticks: [4.0, 8.0]
+        min_close_ticks: [1.0, 2.0]
+        direction: [0]
+
+      reference_sweep_reclaim:
+        enabled: true
+        levels: [["prior_high", "prior_low", "overnight_high", "overnight_low"]]
+        sweep_ticks: [1.0, 2.0, 4.0]
+        close_back_ticks: [0.0, 1.0]
+        direction: [0]
+
+      liquidity_sweep_failure:
+        enabled: true
+        lookback: [10, 20]
+        sweep_ticks: [1.0, 2.0]
+        close_back_ticks: [1.0]
+        direction: [0]
+
     entry_timing:
       next_open:     {enabled: true}
       break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
@@ -75,6 +102,67 @@ DEFAULT_LEVEL_DISCOVERY_CONFIG: Dict[str, Any] = {
             "level_step":  [50.0, 100.0],
             "touch_ticks": [4.0, 8.0],
             "direction":   [0],
+        },
+        "vwap_reclaim_reject": {
+            "enabled":          True,
+            "max_dist_ticks":   [8.0, 16.0],
+            "min_pierce_ticks": [1.0, 2.0],
+            "direction":        [0],
+        },
+        "vwap_distance_fade": {
+            "enabled":          False,
+            "min_dist_ticks":   [40.0, 60.0],
+            "max_dist_ticks":   [150.0],
+            "reversal_ticks":   [4.0, 8.0],
+            "direction":        [0],
+        },
+        "vwap_continuation": {
+            "enabled":                False,
+            "min_continuation_ticks": [3.0, 5.0],
+            "max_age_bars":           [4, 8],
+            "min_hold_bars":          [1, 2],
+            "min_dist_ticks":         [1.0],
+            "max_dist_ticks":         [16.0, 24.0],
+            "direction":              [0],
+        },
+        "prior_session_reaction": {
+            "enabled":          True,
+            "levels":           [["prior_high", "prior_low", "overnight_high", "overnight_low"]],
+            "touch_ticks":      [4.0, 8.0],
+            "min_close_ticks":  [1.0, 2.0],
+            "direction":        [0],
+        },
+        "reference_sweep_reclaim": {
+            "enabled":          True,
+            "levels":           [["prior_high", "prior_low", "overnight_high", "overnight_low"]],
+            "sweep_ticks":      [1.0, 2.0, 4.0],
+            "close_back_ticks": [0.0, 1.0],
+            "direction":        [0],
+        },
+        "failed_reference_breakout": {
+            "enabled":            False,
+            "levels":             [["prior_high", "prior_low", "overnight_high", "overnight_low"]],
+            "confirmation_ticks": [1.0, 2.0],
+            "max_fail_bars":      [4, 8, 12],
+            "fail_close_ticks":   [1.0, 2.0],
+            "direction":          [0],
+        },
+        "liquidity_sweep_failure": {
+            "enabled":          True,
+            "lookback":         [10, 20],
+            "sweep_ticks":      [1.0, 2.0],
+            "close_back_ticks": [1.0],
+            "direction":        [0],
+        },
+        "large_candle_origin_retest": {
+            "enabled":         False,
+            "avg_lookback":    [20, 40],
+            "large_body_mult": [1.6, 2.0, 2.5],
+            "min_body_ticks":  [8.0, 12.0],
+            "max_retest_bars": [8, 12, 20],
+            "touch_ticks":     [3.0, 5.0],
+            "min_close_ticks": [2.0, 3.0],
+            "direction":       [0],
         },
     },
 

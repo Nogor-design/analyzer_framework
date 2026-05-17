@@ -27,6 +27,13 @@ report:
   output_filename: "01_quick_scan.html"
   timezone: "America/Denver"
 
+# Tag this run for the Discovery web UI sidecar (discovery_summary.json).
+# Edit `instrument` to match what you're testing — the sidecar wraps that
+# instrument's tick_size/tick_value into the JSON for downstream rendering.
+discovery:
+  stage: "01_quick_scan"
+  instrument: "NQ"
+
 # ============================================================
 # CANDLE PATTERNS — 1 param set each, next_open entry only
 # 9 patterns × 1 TP × 1 SL × 1 TF = ~27 combos
@@ -163,7 +170,7 @@ orb_discovery:
   session_open_hour: 7
   session_open_minute: 30
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
 
   entry_timing:
     next_open:     {enabled: true}
@@ -190,14 +197,13 @@ bb_discovery:
     minute_from: 30
     hour_to: 16
   min_trades: 20
-  bb_period: [20]
-  n_std: [2.0]
   timeframes: [1]
 
   signals:
-    bb_squeeze:    {enabled: true}
-    bb_reversal:   {enabled: true}
-    bb_breakout:   {enabled: true}
+    bb_mean_reversion:   {enabled: true, period: [20], n_std: [2.0]}
+    bb_continuation:     {enabled: true, period: [20], n_std: [2.0]}
+    bb_squeeze_breakout: {enabled: true, period: [20], n_std: [2.0]}
+    bb_walk:             {enabled: true, period: [20], n_std: [2.0]}
 
   entry_timing:
     next_open: {enabled: true}
@@ -221,7 +227,7 @@ lcr_discovery:
   tp_ticks: [20]
   sl_ticks: [10]
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
   max_bars_timeout: 20
   retrace_window: 20
   signal_types: ["fresh", "touch", "break", "retrace"]

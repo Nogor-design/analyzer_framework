@@ -1,0 +1,527 @@
+# Discovery glossary
+#
+# Beginner-friendly definitions for every term the Discovery UI puts in front
+# of the user. Edit this file directly to refine wording — no code changes
+# required. The web layer loads it via discovery_glossary.py.
+#
+# Each entry must have:
+#   short_name      — display label, e.g. "Profit Factor (PF)"
+#   category        — one of the ids declared under `categories:` below
+#   one_line        — single sentence, plain English, no jargon
+#   details         — 1–3 sentences of deeper context; formulas allowed
+#   why_it_matters  — how this term shows up in our discovery workflow
+# Optional:
+#   see_also        — list of other term ids the UI can cross-link to
+#   formula         — a short text formula the UI can render in <code>
+
+schema_version: 1
+
+categories:
+  - id: metrics
+    label: "Metrics & Verdicts"
+    summary: "How we score and rank the setups we test."
+  - id: workflow
+    label: "Workflow Concepts"
+    summary: "How the discovery funnel works end to end."
+  - id: candle_patterns
+    label: "Candle Patterns"
+    summary: "Bar shapes our pattern detector can find."
+  - id: families
+    label: "Signal Families"
+    summary: "The eight categories of trade ideas we test."
+  - id: entry_timing
+    label: "Entry Timing"
+    summary: "How we get into a trade once a signal fires."
+  - id: outcome
+    label: "Trade Outcome"
+    summary: "How we decide if a tested trade won or lost."
+  - id: market
+    label: "Market & Time"
+    summary: "Trading-hour and timeframe terms."
+
+terms:
+
+  # =========================================================================
+  # METRICS & VERDICTS
+  # =========================================================================
+  profit_factor:
+    short_name: "Profit Factor (PF)"
+    category: metrics
+    one_line: "Total dollars won divided by total dollars lost."
+    details: >
+      A PF of 1.0 is break-even. 1.2 is mild edge. 1.5+ is strong. Below 1.0
+      the system loses money. PF ignores how often you win — only the
+      total scale of wins versus losses.
+    formula: "PF = sum(winning trades) / abs(sum(losing trades))"
+    why_it_matters: "Our primary score across every stage. Stage 1 stops here if nothing reaches PF 1.2."
+    see_also: [win_rate, expectancy]
+
+  win_rate:
+    short_name: "Win Rate"
+    category: metrics
+    one_line: "The percentage of trades that closed profitable."
+    details: >
+      A high win rate doesn't mean a good system. A 60% win rate with tiny
+      wins and huge losses still loses money. Pair this with PF and
+      expectancy to see the whole picture.
+    why_it_matters: "Useful for understanding the personality of a setup — is it many small wins or rare big ones?"
+    see_also: [profit_factor, expectancy]
+
+  expectancy:
+    short_name: "Expectancy"
+    category: metrics
+    one_line: "Average dollars (or ticks) made per trade."
+    details: >
+      The expected payoff of taking the trade once. Negative expectancy
+      means the average trade loses money; even a high win rate can't save
+      a strategy with negative expectancy.
+    formula: "expectancy = win_rate * avg_win - (1 - win_rate) * avg_loss"
+    why_it_matters: "Combined with how often the setup fires, expectancy tells you yearly P&L."
+    see_also: [profit_factor, win_rate]
+
+  is_oos_degradation:
+    short_name: "IS/OOS Degradation"
+    category: metrics
+    one_line: "How much the profit factor drops when tested on data the strategy hasn't seen."
+    details: >
+      We split history 70/30. We tune on the first 70% (in-sample, IS),
+      then check the last 30% (out-of-sample, OOS) to see if the edge
+      survived. A drop of 0.08 means PF fell 8% — solid. A drop of 0.50
+      means the system was overfit and is unlikely to make money live.
+    why_it_matters: "Best single defense against curve-fitting. Stage 6 validation lives or dies on this number."
+    see_also: [walk_forward, tier]
+
+  sharpe:
+    short_name: "Sharpe Ratio"
+    category: metrics
+    one_line: "Reward earned per unit of volatility."
+    details: >
+      Higher is better; above 1.0 is generally tradeable, above 2.0 is
+      excellent. A high-PF system with bumpy returns will have a lower
+      Sharpe than a moderate-PF system with smooth returns.
+    why_it_matters: "Helps us pick between two setups with similar PF — the smoother one usually wins."
+    see_also: [max_drawdown, profit_factor]
+
+  max_drawdown:
+    short_name: "Max Drawdown"
+    category: metrics
+    one_line: "The worst peak-to-trough fall in equity over the test."
+    details: >
+      Reported in ticks or dollars. If drawdown is bigger than your
+      account can survive, it doesn't matter how good the PF is.
+    why_it_matters: "Final go/no-go check before going live. Apex/prop accounts also use this for survivability."
+    see_also: [sharpe, expectancy]
+
+  tier:
+    short_name: "Tier (Verdict)"
+    category: metrics
+    one_line: "A plain-English verdict — Most Robust / High Quality / Solid / Marginal — built from PF, sample size, and IS/OOS degradation."
+    details: |
+      Most Robust = PF ≥ 1.5, IS/OOS Δ ≤ 10%, n ≥ 30 — trade it.
+      High Quality = PF ≥ 1.3, n ≥ 20 — paper trade, then live.
+      Solid       = PF ≥ 1.1, n ≥ 15 — needs more data first.
+      Marginal    = PF ≥ 1.0 — likely noise; skip.
+    why_it_matters: "The Setup Card on every Results pane leads with this."
+    see_also: [profit_factor, is_oos_degradation]
+
+  # =========================================================================
+  # WORKFLOW CONCEPTS
+  # =========================================================================
+  combo:
+    short_name: "Combo"
+    category: workflow
+    one_line: "One specific parameter combination we test."
+    details: >
+      If you sweep 3 take-profit values × 2 stops × 2 timeframes,
+      that's 12 combos. Every multi-value field multiplies combo count.
+    why_it_matters: "Combos drive runtime. The estimator banner above each Run button is just combo-counting."
+
+  sweep:
+    short_name: "Sweep"
+    category: workflow
+    one_line: "Running every combo in a parameter grid and ranking the results."
+    details: >
+      Discovery is a sweep over parameter space. Each combo is fully
+      simulated against historical bars, then we sort the results by PF.
+    why_it_matters: "Stages 1–5 are sweeps. Stage 6 is a focused re-sweep on only your top picks."
+
+  walk_forward:
+    short_name: "Walk-Forward Validation"
+    category: workflow
+    one_line: "Rolling re-tests of a strategy on time periods it hasn't been tuned on."
+    details: >
+      We slide a window forward through history, tuning on the early
+      portion and trading the next chunk. The IS/OOS degradation
+      metric is the walk-forward result expressed as a single number.
+    why_it_matters: "Stage 6 runs walk-forward and is the last gate before any setup gets paper-traded."
+    see_also: [is_oos_degradation, tier]
+
+  min_trades:
+    short_name: "Minimum Trades"
+    category: workflow
+    one_line: "We refuse to score any combo that fired fewer times than this."
+    details: >
+      A combo with 4 trades and PF 3.0 is meaningless — too small a
+      sample. min_trades=20 is a typical minimum for stages 1–5;
+      Stage 6 raises it to 30+ for tighter validation.
+    why_it_matters: "First defense against noise pretending to be edge."
+    see_also: [is_oos_degradation, tier]
+
+  promote:
+    short_name: "Promote"
+    category: workflow
+    one_line: "Click a winner from one stage to pre-fill the next stage's parameters."
+    details: >
+      Promotion copies the winning family, pattern, timeframe, and TP/SL
+      values into the next stage's form. It's how the funnel hands off
+      between stages without you typing anything.
+    why_it_matters: "Replaces the manual 'open the HTML, scribble the numbers, edit the next YAML' workflow."
+
+  tick:
+    short_name: "Tick"
+    category: workflow
+    one_line: "The smallest price increment for the instrument."
+    details: >
+      For NQ a tick is 0.25 points and worth $5. We measure stops and
+      take-profits in ticks so the strategy is portable across instruments.
+    why_it_matters: "Most outcome parameters in this UI are tick-counted."
+    see_also: [slippage]
+
+  slippage:
+    short_name: "Slippage (ticks)"
+    category: workflow
+    one_line: "Extra cost per fill, in ticks, to account for spread and order-execution friction."
+    details: >
+      A slippage of 1 tick means we assume every entry and exit fills
+      one tick worse than the bar price. Using zero slippage produces
+      backtest results that won't survive live trading.
+    why_it_matters: "Default 1 tick. Lower it only if you have hard data on your fill quality."
+
+  combo_estimator:
+    short_name: "Combo Estimator"
+    category: workflow
+    one_line: "The live counter showing how many combos your current settings will test."
+    details: >
+      Combo count is the cartesian product of every multi-value field.
+      Above ~1500 the run can hang, so the UI warns before letting you proceed.
+    why_it_matters: "Tells you when you've added one too many parameters."
+    see_also: [combo, sweep]
+
+  # =========================================================================
+  # CANDLE PATTERNS
+  # =========================================================================
+  large_body:
+    short_name: "Large Body Bar"
+    category: candle_patterns
+    one_line: "A bar whose body (open-to-close) is much larger than the recent average."
+    details: >
+      Triggered when the current bar's body is at least N× the rolling
+      body average over the last lookback bars. Often signals momentum
+      ignition.
+    why_it_matters: "One of the strongest single-bar momentum signals; usually ranks well in Stage 2."
+
+  pin_bar:
+    short_name: "Pin Bar"
+    category: candle_patterns
+    one_line: "A bar with a small body and a long wick on one side — looks like a pin."
+    details: >
+      Long lower wick = bullish (buyers rejected lower prices).
+      Long upper wick = bearish (sellers rejected higher prices).
+      Classic reversal signal at supports/resistances.
+    why_it_matters: "Pin bars are a reversal staple — discovery tells you whether they actually work on your instrument."
+
+  engulfing:
+    short_name: "Engulfing Bar"
+    category: candle_patterns
+    one_line: "A bar whose body fully wraps the previous bar's body in the opposite direction."
+    details: >
+      Bullish engulfing: a green bar that swallows the prior red bar.
+      Bearish engulfing: the opposite. Suggests a sudden shift in
+      who's in control.
+    why_it_matters: "Often used as a confirmation pattern after a pullback."
+
+  inside_bar:
+    short_name: "Inside Bar"
+    category: candle_patterns
+    one_line: "A bar whose high and low are both inside the prior bar's high and low."
+    details: >
+      Coiling — a compression bar that often precedes an expansion.
+      Trade the break of the inside-bar range.
+    why_it_matters: "Cheap to detect; often shows up just before NY-open expansion moves."
+
+  outside_bar:
+    short_name: "Outside Bar"
+    category: candle_patterns
+    one_line: "A bar whose high is higher and whose low is lower than the prior bar."
+    details: >
+      Engulfs the prior range. Can be momentum or exhaustion depending
+      on context.
+    why_it_matters: "Useful as a volatility-expansion signal."
+
+  doji:
+    short_name: "Doji"
+    category: candle_patterns
+    one_line: "A bar with almost no body — open and close are nearly equal."
+    details: >
+      Indecision. By itself a doji predicts nothing; it matters
+      mostly as confirmation around a key level.
+    why_it_matters: "Rarely the strongest signal on its own. Useful in NY-open scalp combinations."
+
+  clean_breakout_bar:
+    short_name: "Clean Breakout Bar"
+    category: candle_patterns
+    one_line: "A bar that's both large in range and body-dominant — small wicks, big push."
+    details: >
+      Defined by ATR multiple and body-to-range ratio. Filters out
+      large bars that have huge wicks (rejection) and keeps only
+      committed directional bars.
+    why_it_matters: "Often outperforms generic large-body detection on trending instruments."
+
+  # =========================================================================
+  # SIGNAL FAMILIES
+  # =========================================================================
+  candle_family:
+    short_name: "Candle Patterns Family"
+    category: families
+    one_line: "Strategies built around single-bar or multi-bar candle shapes."
+    details: >
+      Includes large-body, pin bar, engulfing, inside/outside bar, doji,
+      and clean-breakout-bar patterns. Cheapest family to sweep.
+    why_it_matters: "Stage 2 deep-dives this family. Often the easiest edge to find."
+
+  lcr_family:
+    short_name: "Large Candle Region (LCR)"
+    category: families
+    one_line: "After an unusually large bar, treat its range as a magnetic zone — price often comes back to it."
+    details: >
+      Each oversized bar becomes a region. We then watch for fresh,
+      touch, break, and retrace events at that zone. Similar to the
+      'fair value gap' concept.
+    why_it_matters: "Stage 3 deep-dives this. Retrace events are usually the highest-PF subtype."
+    see_also: [signal_type_retrace]
+
+  orb_family:
+    short_name: "Opening Range Breakout (ORB)"
+    category: families
+    one_line: "Buy a break above (or sell a break below) the high/low of the first N minutes after the open."
+    details: >
+      Window sizes vary — 5, 10, 15, or 30 minutes. Shorter windows
+      are scalp-friendly; longer windows act as trend confirmation.
+    why_it_matters: "Stage 5 covers ORB sweeps. Often the best opening-range play on equity-index futures."
+
+  bb_family:
+    short_name: "Bollinger Bands (BB)"
+    category: families
+    one_line: "Trade signals based on a moving-average band that expands and contracts with volatility."
+    details: >
+      bb_mean_reversion = touch outer band and revert to mean.
+      bb_continuation = close outside band and continue.
+      bb_squeeze_breakout = compression that often precedes expansion.
+      bb_walk = trend persistence along an outer band.
+    why_it_matters: "Stage 5 covers BB. Useful when ORB and MA both fail to find edge."
+
+  ma_family:
+    short_name: "Moving Average (MA)"
+    category: families
+    one_line: "Trend signals built on moving averages."
+    details: >
+      ma_cross = fast MA crosses slow MA in the trade direction.
+      ma_pullback = price pulls back to the MA in trend, then resumes.
+    why_it_matters: "Classic trend-following family. Stage 5 sweeps period and MA type."
+
+  breakout_family:
+    short_name: "Breakout"
+    category: families
+    one_line: "Buy when price clears the highest high of the last N bars (or sell at the lowest low)."
+    details: >
+      n_bar_breakout = clean N-bar high/low break.
+      volatility_break = break that also expands ATR.
+    why_it_matters: "Stage 3 covers breakout signals. Pairs well with consolidation periods."
+
+  pullback_family:
+    short_name: "Pullback"
+    category: families
+    one_line: "Wait for a counter-trend pause inside an established trend, then re-enter."
+    details: >
+      trend_pullback = trade a shallow countermove in a trending market.
+      retracement_entry = wait for a deeper Fibonacci-style retrace.
+    why_it_matters: "Stage 5 covers pullback. Usually the highest win rate of the trend families."
+
+  level_family:
+    short_name: "Levels"
+    category: families
+    one_line: "Trade price reactions at fixed structural levels."
+    details: >
+      swing_level = recent swing high or low.
+      consolidation = horizontal range edge.
+      round_number = whole-number price levels.
+    why_it_matters: "Stage 3 covers levels. Best on instruments with strong structural memory."
+
+  # ---- LCR signal subtypes ----
+  signal_type_fresh:
+    short_name: "LCR — Fresh"
+    category: families
+    one_line: "Trade with the large candle on the bar it forms."
+    details: "Aggressive: ride the momentum that created the region."
+    why_it_matters: "Highest variance of the four LCR signal types."
+    see_also: [lcr_family]
+
+  signal_type_touch:
+    short_name: "LCR — Touch"
+    category: families
+    one_line: "Bounce off a still-intact LCR zone the first time price tags it."
+    details: "Mean-reversion play; zone has to still be untested."
+    why_it_matters: "Often a high win rate but limited reward."
+    see_also: [lcr_family]
+
+  signal_type_break:
+    short_name: "LCR — Break"
+    category: families
+    one_line: "Trade continuation when price breaks through an LCR zone."
+    details: "The zone failed; momentum carries beyond it."
+    why_it_matters: "Captures strong directional days."
+    see_also: [lcr_family]
+
+  signal_type_retrace:
+    short_name: "LCR — Retrace"
+    category: families
+    one_line: "After an LCR zone breaks, wait for price to re-test the broken edge, then trade with the break."
+    details: >
+      Old support becoming new resistance (or vice versa) at the LCR
+      boundary. Usually the highest-PF LCR subtype.
+    why_it_matters: "The most common LCR winner across instruments."
+    see_also: [lcr_family]
+
+  # =========================================================================
+  # ENTRY TIMING
+  # =========================================================================
+  next_open:
+    short_name: "Next Open Entry"
+    category: entry_timing
+    one_line: "After a signal fires, enter at the next bar's open price."
+    details: >
+      Simplest, most realistic entry. Easiest to model and the default
+      entry style for most discovery sweeps.
+    why_it_matters: "If a setup doesn't work on next-open, fancier entries rarely save it."
+
+  break_extreme:
+    short_name: "Break Extreme Entry"
+    category: entry_timing
+    one_line: "Enter on a stop-limit one tick past the signal bar's high (long) or low (short)."
+    details: >
+      Filters out signals that don't actually move; you only get filled
+      if the bar that follows confirms the direction. Has a fill timeout.
+    why_it_matters: "Cuts false signals at the cost of missing the cleanest moves."
+
+  body_midpoint:
+    short_name: "Body Midpoint Entry"
+    category: entry_timing
+    one_line: "Wait for price to pull back to the midpoint of the signal bar's body, then enter."
+    details: >
+      Better entry price, but lower fill rate. Useful in markets where
+      the next-bar open often gaps past the entry.
+    why_it_matters: "Tested in deeper sweeps when next-open looks marginal."
+
+  # =========================================================================
+  # OUTCOME
+  # =========================================================================
+  take_profit:
+    short_name: "Take Profit (TP)"
+    category: outcome
+    one_line: "How far price must move in our favor before we close the trade with a win."
+    details: >
+      Measured in ticks. Multi-value sweeps test different TPs to find
+      the one that maximizes PF for the given setup.
+    why_it_matters: "Usually the single biggest knob — wrong TP turns a winning signal into a loser."
+    see_also: [stop_loss, atr_outcome]
+
+  stop_loss:
+    short_name: "Stop Loss (SL)"
+    category: outcome
+    one_line: "How far price can move against us before we close the trade with a loss."
+    details: >
+      Tighter stops hurt win rate but limit drawdown. Wider stops do
+      the opposite. Sweeps test the tradeoff for the specific setup.
+    why_it_matters: "Always paired with TP. The TP/SL ratio sets the math the win rate has to beat."
+    see_also: [take_profit, atr_outcome]
+
+  atr_outcome:
+    short_name: "ATR-Based TP/SL"
+    category: outcome
+    one_line: "Set TP and SL as multiples of ATR instead of fixed ticks."
+    details: >
+      TP = target_mult × ATR, SL = stop_mult × ATR. Adapts the stop
+      to current volatility, which can keep performance stable across
+      regimes.
+    why_it_matters: "Tested as an alternative to fixed-tick TP/SL when volatility is uneven."
+    see_also: [take_profit, stop_loss, atr]
+
+  max_bars_timeout:
+    short_name: "Max Bars Timeout"
+    category: outcome
+    one_line: "If neither TP nor SL hit within this many bars, the trade closes."
+    details: >
+      Caps how long a trade stays open. A 15-bar timeout on 1m bars
+      means the trade is done after 15 minutes if nothing happens.
+    why_it_matters: "Stops a stagnant trade from tying up capital. Affects expectancy heavily."
+
+  timeout_result:
+    short_name: "Timeout Result"
+    category: outcome
+    one_line: "What we record when a trade times out — loss, breakeven, or last-known excursion."
+    details: >
+      'loss' is the strict default — anything that didn't reach TP is
+      treated as a loss. Conservative; protects against optimistic backtests.
+    why_it_matters: "Changing this can radically change PF; we keep it strict by default."
+
+  # =========================================================================
+  # MARKET & TIME
+  # =========================================================================
+  atr:
+    short_name: "Average True Range (ATR)"
+    category: market
+    one_line: "A rolling measure of typical bar size — how much the instrument moves on average."
+    details: >
+      Computed over a lookback (default 14 bars) and used to set
+      volatility-aware stops, targets, and pattern thresholds.
+    why_it_matters: "Lots of pattern detection thresholds are expressed in ATR multiples."
+    see_also: [atr_outcome]
+
+  session_filter:
+    short_name: "Session Filter"
+    category: market
+    one_line: "Only consider bars inside this trading-hour window."
+    details: >
+      Times are Denver local. RTH (regular trading hours) is the
+      default — premarket and overnight bars are usually too thin
+      to discover edge in.
+    why_it_matters: "Filtering to RTH can cut bar count 3× and speed up sweeps without hurting accuracy."
+    see_also: [rth]
+
+  rth:
+    short_name: "Regular Trading Hours (RTH)"
+    category: market
+    one_line: "The instrument's main session, when volume is highest."
+    details: >
+      For NQ/ES this is roughly 07:30–14:15 Denver. The instrument
+      picker preloads the right RTH window for whatever you select.
+    why_it_matters: "Default session filter for almost every discovery run."
+    see_also: [session_filter]
+
+  timeframe:
+    short_name: "Timeframe"
+    category: market
+    one_line: "The bar size we sweep on — 1-minute or 5-minute, typically."
+    details: >
+      1-minute is fast and captures more signals but more noise.
+      5-minute is slower with cleaner structure. Stages compare both.
+    why_it_matters: "Most setups have a preferred timeframe — Stage 1 finds it."
+
+  ny_open:
+    short_name: "NY Open"
+    category: market
+    one_line: "The opening of the New York equity-index session at 07:30 Denver (MDT) / 08:30 Denver (MST)."
+    details: >
+      The first 30–60 minutes after the bell typically have the
+      highest range and best directional follow-through of the day.
+    why_it_matters: "Stage 4 is dedicated to NY-open scalp setups."

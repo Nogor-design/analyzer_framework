@@ -24,6 +24,10 @@ report:
   output_filename: "05_orb_momentum.html"
   timezone: "America/Denver"
 
+discovery:
+  stage: "05_orb_momentum"
+  instrument: "NQ"
+
 # ============================================================
 # ORB — full window sweep
 # 4 windows × 2 entries × 3 TP × 2 SL = 48 combos
@@ -40,7 +44,7 @@ orb_discovery:
   session_open_minute: 30     # 07:30 Denver = NY bell (MDT)
   # Winter (MST): change to 8, 30 for 08:30 Denver = NY bell
   tick_size: 0.25
-  tick_value: 12.50
+  tick_value: 5.00
 
   entry_timing:
     next_open:
@@ -78,14 +82,13 @@ bb_discovery:
     minute_from: 30
     hour_to: 16
   min_trades: 15
-  bb_period: [14, 20]
-  n_std: [1.5, 2.0]
   timeframes: [1, 5]
 
   signals:
-    bb_squeeze:    {enabled: true}    # Volatility compression → expansion
-    bb_reversal:   {enabled: true}    # Touch outer band → revert to mean
-    bb_breakout:   {enabled: true}    # Close outside band → continuation
+    bb_mean_reversion:   {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Touch outer band -> revert to mean
+    bb_continuation:     {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Close outside band -> continuation
+    bb_squeeze_breakout: {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Volatility compression -> expansion
+    bb_walk:             {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Ride a persistent outer-band trend
 
   entry_timing:
     next_open: {enabled: true}

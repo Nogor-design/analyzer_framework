@@ -1,0 +1,45 @@
+report:
+  title: "NQ NY Open ORB Fast Probe"
+  output_filename: "04_nq_ny_open_orb_fast_probe.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "05_orb_momentum"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 20
+  orb:
+    orb_minutes: [5, 10, 15, 30]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [0, 1, -1]
+    min_range_ticks: [8, 16]
+    require_close_beyond: [true, false]
+    one_signal_per_side: true
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [12, 16, 20, 24]
+      stop: [8, 12, 16]
+    max_bars_timeout: 20
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  hardening: {enabled: false}
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 30

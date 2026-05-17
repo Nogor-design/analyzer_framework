@@ -23,6 +23,10 @@ report:
   output_filename: "02_candle_patterns.html"
   timezone: "America/Denver"
 
+discovery:
+  stage: "02_candle_patterns"
+  instrument: "NQ"
+
 candle_discovery:
   enabled: true
   session_filter:

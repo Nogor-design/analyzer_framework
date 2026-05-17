@@ -66,10 +66,31 @@ DEFAULT_OPTIONS: Dict[str, Any] = {
 }
 
 # Categorical columns to enumerate values for
-_CAT_COLS = ["regime", "session_label", "pattern_verdict"]
+_CAT_COLS = [
+    "regime",
+    "vol_regime",
+    "vol_regime_tertile",
+    "vol_regime_quartile",
+    "trend_direction",
+    "trend_strength",
+    "session_label",
+    "pattern_verdict",
+    "level_type",
+    "timing_mode",
+    "market_pos",
+    "outcome_mode",
+]
 
 # Numeric columns to threshold (thresholds are supplied via options or defaults)
 _NUM_COLS = ["adx", "pattern_score"]
+
+_GENERIC_NUMERIC_COLS = [
+    "atr",
+    "signal_atr",
+    "level_dist_ticks",
+    "breakout_ticks",
+    "fill_bars",
+]
 
 # Direction values
 _DIRECTION_VALUES = [1.0, -1.0]
@@ -160,14 +181,19 @@ def _generate_atoms(
         for thresh in pattern_score_thresholds:
             atoms.append(Condition("pattern_score", "gte", float(thresh)))
 
-    # Auto-threshold for ATR (>= p50, i.e. "elevated volatility")
-    if "atr" in feature_df.columns:
-        atr_series = pd.to_numeric(feature_df["atr"], errors="coerce").dropna()
-        if len(atr_series) >= 5:
-            p50 = float(atr_series.quantile(0.50))
-            p75 = float(atr_series.quantile(0.75))
-            atoms.append(Condition("atr", "gte", round(p50, 4)))
-            atoms.append(Condition("atr", "gte", round(p75, 4)))
+    # Auto-threshold common numeric trade/signal columns. Include both >= and
+    # <= quantile cuts so discovery can find "only near the level" as well as
+    # "only in elevated volatility".
+    for col in _GENERIC_NUMERIC_COLS:
+        if col not in feature_df.columns:
+            continue
+        series = pd.to_numeric(feature_df[col], errors="coerce").dropna()
+        if len(series) < 20:
+            continue
+        for q in (0.25, 0.50, 0.75):
+            val = round(float(series.quantile(q)), 4)
+            atoms.append(Condition(col, "gte", val))
+            atoms.append(Condition(col, "lte", val))
 
     # Boolean pattern columns (pat_*)
     pat_cols = [c for c in feature_df.columns if str(c).startswith("pat_")]
