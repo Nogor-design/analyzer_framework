@@ -1,3 +1,11 @@
+> **STATUS: SUPERSEDED (2026-05-13)** — see
+> `docs/designs/ai_integration_architecture_v2.md` for the active design (adds
+> the local-LLM enrichment layer scoped strictly to non-critical display
+> paths). Keep this file for diff/history reference; do not author new work
+> against it.
+
+---
+
 # AI Integration Architecture — ta_foundation
 
 > **Short summary for humans:**

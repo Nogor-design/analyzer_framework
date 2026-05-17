@@ -7,7 +7,10 @@ Use this workflow when working on this repository with Codex, Claude, or another
 For a new task, read only these first:
 
 - `CLAUDE.md`
+- `docs/DOCS_INDEX.md` — single authoritative map of current vs archived docs; check here before opening any other `.md`
 - `docs/AI_REPO_INDEX.md`
+- `docs/AI_CAPABILITY_MAP.md` when the task touches web UI, RAG/docs, reports, prediction, strategy templates, or strategy discovery
+- `docs/designs/real_edge_discovery_program.md` when the task touches edge discovery, probes, hardening, shadow runner, or the graveyard
 - The specific source and tests identified from the relevant category
 
 Avoid opening the entire repository tree or large generated output folders.
@@ -91,3 +94,51 @@ python scripts/build_ai_index.py
 ```
 
 The generated `docs/AI_REPO_INDEX.md` should be small enough to give an AI agent a map without flooding context with implementation details.
+
+## Local RAG Commands
+
+Build the local retrieval index:
+
+```bash
+python scripts/ai_rag.py build
+```
+
+Search for task-relevant chunks:
+
+```bash
+python scripts/ai_rag.py search "large candle excursion reports" --top 8
+```
+
+Limit retrieval to a category or path:
+
+```bash
+python scripts/ai_rag.py search "horizon calibration scoring" --category "Prediction" --top 8
+python scripts/ai_rag.py search "deployment board parser" --path "reports" --top 8
+```
+
+Write a markdown context pack for an AI session:
+
+```bash
+python scripts/ai_rag.py context "execution bridge heartbeat recovery" --top 10
+```
+
+Generated RAG data is written under `.ta_artifacts/ai_rag/`, which is ignored by git. Commit the scripts and docs, not the generated chunk index.
+
+## Recommended RAG Task Flow
+
+1. Read `CLAUDE.md` and `docs/AI_REPO_INDEX.md`.
+2. Read `docs/AI_CAPABILITY_MAP.md` for broad capability-routing tasks.
+3. Run `python scripts/ai_rag.py search "<task>" --top 8`.
+4. Open only the returned files and nearby tests.
+5. If the task is broad, run a second search with `--category` or `--path`.
+6. Use `context` when you want to hand a compact retrieved pack to another AI tool.
+
+## Capability Routing For AI Agents
+
+Do not flatten the project into "report generation." Route by capability first:
+
+- Backtest Reports: `cli/main.py`, `web/report_builder.py`, `web/report_catalog.py`, `reports/html/config.py`, `reports/html/registry.py`, report YAML files.
+- Prediction: `src/ta_foundation/prediction/`, especially `run_prediction.py`, `run_multi_agent.py`, `backtest_horizon_predictions.py`, `prediction.yaml`.
+- Strategy Templates: `analysis/strategy_composer/`, web `/api/generate`, `/api/backtest`, `/api/validate`, template schema.
+- Strategy Discovery: `analysis/strategy_discovery/`, `strategy_discovery_report.yaml`, and `strategy_discovery_*` report sections.
+- Web Orchestration: `web/app.py`, `web/jobs.py`, `web/prediction_jobs.py`, `web/report_catalog.py`, `web/templates/index.html`.

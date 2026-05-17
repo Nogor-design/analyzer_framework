@@ -24,6 +24,13 @@ python -m ta_foundation.cli.main \
   [--no-tick-data]
 ```
 
+**Run the local web UI:**
+```bash
+python -m ta_foundation.web.app --port 7734
+```
+
+The web UI is a capability workbench, not a single-purpose report page. Keep separate surfaces for Backtest Reports, Prediction, Strategy Templates, Strategy Discovery, and the System Map. Read `docs/AI_CAPABILITY_MAP.md` before broad web, docs, RAG, or capability-routing changes.
+
 **Run a single test file:**
 ```bash
 python -m pytest src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py -v
@@ -46,6 +53,12 @@ This is a **4-layer system** — layers must not collapse into each other:
 ```
 
 CLI orchestration order: **ingest → MA anchor analysis → pattern engine → strategy discovery → regime recommender → report rendering**
+
+Capability boundary reminder:
+- Backtest report generation ingests NinjaTrader backtest exports into `AnalysisPackage` objects and renders YAML-selected sections.
+- Prediction/horizon jobs do not use backtest packages; they load market data and prediction config/stores from `src/ta_foundation/prediction`.
+- Strategy template building uses `analysis/strategy_composer` and is separate from report rendering.
+- Strategy discovery is a major analysis/report capability; use existing CLI/YAML entry points rather than reimplementing it in web code.
 
 ### Core Data Model
 

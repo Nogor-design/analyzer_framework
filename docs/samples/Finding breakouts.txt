@@ -1,0 +1,4 @@
+Finding breakouts
+Run first optimizer for timeframe start 0 and run 2 to 4 hrs. Runs through 5 ma fast and ma slow 50 to 500 by 50.  The R/R is also swept. I run 1 month first. I am looking at profit factor. Max Drawdown and number of trades. also Total Net Profit.  I look for if the wins are dropping off at the end telling me it could be going out of favor.  All the numbers are based on NQ so if something looks like it is very profitable but has to large of a Max Drawdown I can have people run on MNQ or 2 MNQ or 5... Try and pick some with different slow ma.  Maybe  1 from 50 1 from 200, 400... 
+
+On the ones I pick I refine the fast MA and I optimize long and short and I optimize closer range for MaxStop and MaxTPRatio, On the next run I optimize the LossStop and ProfitStop and MaxTrades with R/R.
