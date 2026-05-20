@@ -17,6 +17,7 @@ import pandas as pd
 
 from ta_foundation.analysis.strategy_discovery.evaluation import compute_evaluation_metrics
 from ta_foundation.analysis.strategy_discovery.holdout import partition_trades
+from ta_foundation.analysis.strategy_discovery.honest_execution import apply_honest_execution
 from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
 from ta_foundation.analysis.strategy_discovery.validation import (
     DEFAULT_COST_MODEL,
@@ -32,8 +33,10 @@ DEFAULT_HARDENING_CONFIG: Dict[str, Any] = {
     "n_hypotheses_tested": 1,
     "min_t_stat_abs": 0.0,
     "require_slippage_stress_passed": True,
+    "require_honest_execution_passed": True,
     "wf_config": {},
     "slippage_stress": {},
+    "honest_execution": {},
     "holdout": {
         "enabled": False,
         "is_frac": 0.60,
@@ -63,6 +66,7 @@ def attach_hardening_metadata(
     result["holdout_partition"] = metadata.get("holdout_partition")
     result["evaluation_holdout"] = metadata.get("evaluation_holdout")
     result["slippage_stress"] = metadata.get("slippage_stress")
+    result["honest_execution"] = metadata.get("honest_execution")
 
     wf = (metadata.get("validation") or {}).get("wf_results") or {}
     deg = wf.get("oos_degradation")
@@ -87,6 +91,7 @@ def build_hardening_metadata(
         "holdout_partition": None,
         "evaluation_holdout": None,
         "slippage_stress": None,
+        "honest_execution": None,
         "issues": [],
     }
     if not enabled:
@@ -144,13 +149,26 @@ def build_hardening_metadata(
         )
         out["slippage_stress"] = _json_safe(stress)
 
+        honest = apply_honest_execution(
+            validation_trades,
+            cost_model=cost_model,
+            options=cfg.get("honest_execution") or {},
+        )
+        out["honest_execution"] = _json_safe(honest)
+
         stress_required = bool(cfg.get("require_slippage_stress_passed", True))
         stress_passed = bool(stress.get("passed", False)) if stress_required else True
+        honest_required = bool(cfg.get("require_honest_execution_passed", True))
+        honest_passed = bool(honest.get("passed", False)) if honest_required else True
         holdout_required = bool((cfg.get("holdout") or {}).get("require_holdout_passed", False))
         holdout_passed = bool((holdout_eval or {}).get("passed", False)) if holdout_required else True
-        out["passed"] = bool(validation.passed and stress_passed and holdout_passed)
+        out["passed"] = bool(
+            validation.passed and stress_passed and honest_passed and holdout_passed
+        )
         if stress_required and not stress_passed:
             out["issues"].append("hard gate failed: slippage_stress")
+        if honest_required and not honest_passed:
+            out["issues"].append("hard gate failed: honest_execution")
         if holdout_required and not holdout_passed:
             out["issues"].append("hard gate failed: holdout")
     except Exception as exc:
