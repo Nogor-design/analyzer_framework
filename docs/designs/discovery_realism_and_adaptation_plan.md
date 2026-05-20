@@ -86,6 +86,18 @@ package; (b) that profiler overlaps step 3's `regime_scoping` — unify them,
 don't build two regime-analysis paths; (c) step 4 depends on steps 1–3 and must
 not start before them.
 
+**Version 0 progress — adaptation_alpha measurement — DONE.** Per note (b), the
+blueprint's `adaptation_alpha` metric was landed inside `regime_scoping` rather
+than as a parallel module: each candidate now reports `adaptation_alpha` —
+the honest result of trading only the edge regimes (the regime-suppression
+decision) minus the honest result of trading every classified trade (the
+baseline). Reports `expectancy_delta`, `net_profit_delta`,
+`profit_factor_delta`, and `n_trades_delta` so the suppression trade-off is
+explicit. Still needed for Version 0: the cross-candidate context profiler
+(strong / weak / unknown contexts per candidate) and the regime/session
+performance-matrix report surface — both need an architecture decision on
+where a candidate corpus is read from, which is the natural next handoff point.
+
 ### Deferred — full tick-replay outcome resolution
 
 Replace 1m-bar touch-fill resolution with tick-by-tick fills; kills the

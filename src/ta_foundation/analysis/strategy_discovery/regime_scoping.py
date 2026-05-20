@@ -24,6 +24,12 @@ trial_budget):
                         trades only in those regimes.
        none           — no regime clears it.
   5. Re-validate the scoped variant honestly on the pooled edge-regime trades.
+  6. Measure ``adaptation_alpha`` — the honest result of trading only the edge
+     regimes minus the result of trading every classified trade — so the
+     regime-suppression decision is scored as its own variable. This is the
+     step-4 "Version 0 — simple adaptation-alpha backtest" deliverable, landed
+     here per the plan's "unify with regime_scoping, don't build two
+     regime-analysis paths" note.
 
 Selection bias: picking the best of N regimes is N extra trials. This module
 reports ``n_regimes_evaluated`` so the caller can add it to the step-2
@@ -99,6 +105,52 @@ def _label_trades_by_regime(
     return merged
 
 
+def _alpha_side(honest_result: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Pull the honest n_trades / expectancy / PF / net_profit off a re-price."""
+    honest = (honest_result or {}).get("honest") or {}
+    return {
+        "n_trades": int(honest.get("n_trades") or 0),
+        "expectancy": honest.get("expectancy"),
+        "profit_factor": honest.get("profit_factor"),
+        "net_profit": honest.get("net_profit"),
+    }
+
+
+def _empty_side() -> Dict[str, Any]:
+    """The 'trade nothing' side — suppressing every regime books a flat zero."""
+    return {"n_trades": 0, "expectancy": 0.0, "profit_factor": None, "net_profit": 0.0}
+
+
+def _assemble_adaptation_alpha(
+    baseline: Dict[str, Any], scoped: Dict[str, Any]
+) -> Dict[str, Any]:
+    """adaptation_alpha = scoped (regime-suppressed) minus baseline (trade-all).
+
+    A positive ``expectancy_delta`` means the regime suppression earned its keep
+    on a per-trade basis. ``net_profit_delta`` is reported alongside because
+    suppression also removes trades — when the suppressed regimes were
+    net-negative it rises, when they were merely thinner-but-positive it falls;
+    either way the trade-off is explicit rather than hidden.
+    """
+
+    def _delta(a: Any, b: Any) -> Optional[float]:
+        if a is None or b is None:
+            return None
+        return float(a) - float(b)
+
+    return {
+        "baseline": baseline,
+        "scoped": scoped,
+        "expectancy_delta": _delta(scoped.get("expectancy"), baseline.get("expectancy")),
+        "net_profit_delta": _delta(scoped.get("net_profit"), baseline.get("net_profit")),
+        "profit_factor_delta": _delta(
+            scoped.get("profit_factor"), baseline.get("profit_factor")
+        ),
+        "n_trades_delta": int(scoped.get("n_trades") or 0)
+        - int(baseline.get("n_trades") or 0),
+    }
+
+
 def run_regime_scoping(
     trades: Optional[pd.DataFrame],
     *,
@@ -130,6 +182,9 @@ def run_regime_scoping(
       edge_regimes, non_edge_regimes,
       track                    — "durable" | "regime-limited" | "none",
       scoped_variant           — {regimes, n_trades, honest, passed} or None,
+      adaptation_alpha         — {baseline, scoped, expectancy_delta,
+                                  net_profit_delta, profit_factor_delta,
+                                  n_trades_delta} or None,
       passed, issues.
     """
     cfg = {**DEFAULT_REGIME_SCOPING_CONFIG, **(options or {})}
@@ -150,6 +205,7 @@ def run_regime_scoping(
         "non_edge_regimes": [],
         "track": "none",
         "scoped_variant": None,
+        "adaptation_alpha": None,
         "passed": None,
         "issues": [],
     }
@@ -248,10 +304,23 @@ def run_regime_scoping(
         )
         return result
 
+    # Baseline for the adaptation-alpha measurement: the honest result of
+    # trading every classified trade with no regime suppression. The "adaptive
+    # decision" being scored is "trade only the edge regimes".
+    baseline_honest = apply_honest_execution(
+        labelled[~unlabelled_mask], cost_model=cost_model, options=honest_opts
+    )
+    baseline_side = _alpha_side(baseline_honest)
+
     n_edge = len(edge_regimes)
     if n_edge == 0:
         result["track"] = "none"
         result["passed"] = False
+        # Suppressing every regime books a flat zero — a positive alpha here
+        # means full suppression dodged a losing baseline.
+        result["adaptation_alpha"] = _assemble_adaptation_alpha(
+            baseline_side, _empty_side()
+        )
         result["issues"].append("no regime cleared the honest survival gate")
         return result
 
@@ -278,6 +347,9 @@ def run_regime_scoping(
         "honest": scoped_honest,
         "passed": scoped_passed,
     }
+    result["adaptation_alpha"] = _assemble_adaptation_alpha(
+        baseline_side, _alpha_side(scoped_honest)
+    )
 
     enough_edge_regimes = n_edge >= min_edge_regimes
     if not enough_edge_regimes:

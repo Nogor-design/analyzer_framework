@@ -151,6 +151,55 @@ def test_custom_regime_column_is_honoured() -> None:
     assert out["n_regimes_evaluated"] == 2
 
 
+def test_adaptation_alpha_is_flat_for_a_durable_edge() -> None:
+    # Every regime is an edge regime, so the scoped set == the baseline set:
+    # the suppression decision changes nothing and earns no alpha.
+    trades = pd.concat(
+        [_solid("2026-01-01 01:00"), _solid("2026-02-01 01:00")], ignore_index=True
+    )
+    out = run_regime_scoping(
+        trades, bars_with_regime=_two_regime_bars(), cost_model=COST_MODEL
+    )
+    alpha = out["adaptation_alpha"]
+    assert alpha is not None
+    assert alpha["n_trades_delta"] == 0
+    assert alpha["expectancy_delta"] == 0.0
+    assert alpha["net_profit_delta"] == 0.0
+
+
+def test_adaptation_alpha_rewards_suppressing_a_losing_regime() -> None:
+    # trend_up carries the edge; range bleeds. Suppressing range lifts per-trade
+    # expectancy AND net profit (the dropped regime was net-negative).
+    trades = pd.concat(
+        [_solid("2026-01-01 01:00"), _losing("2026-02-01 01:00")], ignore_index=True
+    )
+    out = run_regime_scoping(
+        trades, bars_with_regime=_two_regime_bars(), cost_model=COST_MODEL
+    )
+    alpha = out["adaptation_alpha"]
+    assert alpha["baseline"]["n_trades"] == 80
+    assert alpha["scoped"]["n_trades"] == 40
+    assert alpha["n_trades_delta"] == -40
+    assert alpha["expectancy_delta"] > 0
+    assert alpha["net_profit_delta"] > 0
+
+
+def test_adaptation_alpha_credits_full_suppression_when_no_edge() -> None:
+    # No regime survives — the adaptive decision is "trade nothing", which
+    # dodges the losing baseline for a positive expectancy alpha.
+    trades = pd.concat(
+        [_losing("2026-01-01 01:00"), _losing("2026-02-01 01:00")], ignore_index=True
+    )
+    out = run_regime_scoping(
+        trades, bars_with_regime=_two_regime_bars(), cost_model=COST_MODEL
+    )
+    alpha = out["adaptation_alpha"]
+    assert alpha["scoped"]["n_trades"] == 0
+    assert alpha["baseline"]["expectancy"] < 0
+    assert alpha["expectancy_delta"] > 0
+    assert alpha["net_profit_delta"] > 0
+
+
 def test_disabled_returns_unevaluated() -> None:
     out = run_regime_scoping(
         _solid("2026-01-01 01:00"),
