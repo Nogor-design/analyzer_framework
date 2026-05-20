@@ -32,10 +32,17 @@ selection bias (step 2).
 `analysis/strategy_discovery/trial_budget.py`: computes an effective trial
 count (within-run combinations + decayed prior-program trials), wired into
 hardening to feed both the Bonferroni t-test correction and the Deflated
-Sharpe Ratio gate — previously inert at n=1. Opt-in via the hardening
-`trial_budget` config. Follow-up (not done): auto-populate the counts — the
-sweep auto-reporting its grid size, the CLI reading the program total from the
-research ledger.
+Sharpe Ratio gate — previously inert at n=1.
+
+Follow-up — auto-populate the counts — partially DONE: the candle sweep now
+computes its own grid size (`sweep.py` → `_compute_trial_grid_size`: signal
+combos × outcome modes, plus a config-derived upper bound for the MTF passes)
+and auto-fills the hardening `trial_budget.within_run_trials`, so the
+correction is no longer opt-in there. Still not done: the same wiring for the
+other five hardening sweep families (`orb_sweep`, `ma_sweep`, `lcr_sweep`,
+`bb_sweep`, and breakout/pullback/level via `_sweep_base`), and the CLI
+reading the cumulative program total from the research ledger into
+`prior_program_trials`.
 
 ### Step 3 — Regime-conditioned discovery — DONE
 
