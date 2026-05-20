@@ -27,19 +27,53 @@ entry-strategy hardening. Rejects edges that exist only under optimistic fills.
 Does **not** catch touch-fill win misclassification (deferred — tick replay) or
 selection bias (step 2).
 
-### Step 2 — Selection-bias / multiple-testing accounting — NEXT
+### Step 2 — Selection-bias / multiple-testing accounting — DONE (commit c3646fc)
 
-Discount a swept candidate's significance by the breadth of the search across
-runs, families, instruments, sessions, and timeframes. A profit factor found
-after 5,000 combinations is not the same evidence as one found after 5. A
-partial mechanism exists (`n_hypotheses_tested` / the "P0-CUMULATIVE" path in
-hardening validation) — extend it to true cumulative accounting.
+`analysis/strategy_discovery/trial_budget.py`: computes an effective trial
+count (within-run combinations + decayed prior-program trials), wired into
+hardening to feed both the Bonferroni t-test correction and the Deflated
+Sharpe Ratio gate — previously inert at n=1. Opt-in via the hardening
+`trial_budget` config. Follow-up (not done): auto-populate the counts — the
+sweep auto-reporting its grid size, the CLI reading the program total from the
+research ledger.
 
-### Step 3 — Regime-conditioned discovery
+### Step 3 — Regime-conditioned discovery — NEXT (not started)
 
-Search "this pattern, in this regime, at this hour" instead of "on average."
-Most conditional edges are destroyed by averaging across regimes. Regime
-classifiers already exist; the discovery search does not yet condition on them.
+Turn the per-candidate regime breakdown from a *report* into a *selection*
+mechanism. The system already computes `regime_breakdown` per candidate
+(`entry_strategies/sweep.py` → `compute_regime_breakdown`) and has regime gates
+in `validation.py` (`min_per_regime_expectancy`, `regime_dispersion`) — but
+those *require robustness across all regimes*, the opposite of finding the
+regime where a pattern works. Regime classifiers exist
+(`regime_recommender/classifier.py`: trend_up / trend_down / range, with
+vol_expanding/compressed and trend_strong/weak secondaries).
+
+**Build — post-hoc approach (recommended; mirrors steps 1–2, contained,
+downstream of the sweep).** New module
+`analysis/strategy_discovery/regime_scoping.py`:
+
+1. Take a candidate's trades + per-trade regime label; compute per-regime
+   honest metrics (reuse `honest_execution`).
+2. Identify the regime(s) with a genuine edge.
+3. Emit a regime-scoped candidate variant that trades only in those regimes.
+4. Dual-track label: works across regimes → `durable`; works in a subset →
+   `regime-limited` (see "Durable vs transient edges" below).
+5. Re-validate the scoped variant honestly. The regime selection itself is
+   multiple testing — picking the best of N regimes is N more trials — so feed
+   that into the step 2 `trial_budget` (`within_run_trials`).
+
+Then wire into `entry_strategies/hardening.py` and add tests, same shape as
+steps 1–2.
+
+**Deeper alternative (later, not first):** make the 8 sweep engines treat the
+regime filter as a parameter axis. Larger; touches every family.
+
+**RESUME HERE (new chat):** read `compute_regime_breakdown` in
+`analysis/strategy_discovery/evaluation.py` for its output shape, and check how
+per-trade regime labels / `bars_with_regime` flow into
+`entry_strategies/sweep.py`. Then build `regime_scoping.py`. Steps 1–2 are
+committed (`d12157a`, `c3646fc`); run `git log --oneline -6` and `git status`
+to orient — the working tree has other unrelated mid-stream changes.
 
 ### Step 4 — Journaled AI supervisory layer
 
