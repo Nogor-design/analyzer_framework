@@ -172,3 +172,33 @@ def test_required_regime_scoping_gate_can_fail_a_candidate() -> None:
     assert metadata["regime_scoping"]["passed"] is False
     assert metadata["passed"] is False
     assert "hard gate failed: regime_scoping" in metadata["issues"]
+
+
+def test_n_hypotheses_tested_floors_an_auto_injected_trial_budget() -> None:
+    # A pinned single-candidate hardening re-run: the sweep auto-injects a tiny
+    # within_run_trials (its own 1-cell grid), but the operator set
+    # n_hypotheses_tested to the real broad-search size. The floor must win so
+    # the selection-bias correction is not silently weakened.
+    metadata = build_hardening_metadata(
+        _trades(120),
+        _OUTCOME_CFG,
+        {
+            "enabled": True,
+            "n_mc_simulations": 10,
+            "n_hypotheses_tested": 2592,
+            "require_slippage_stress_passed": False,
+            "require_honest_execution_passed": False,
+            "wf_config": _WF_CFG,
+            "trial_budget": {"within_run_trials": 1},
+        },
+    )
+
+    tb = metadata["trial_budget"]
+    assert tb["within_run_trials"] == 1          # honest record of this run
+    assert tb["effective_trials"] == 2592        # ...floored by the operator value
+    assert tb["n_hypotheses_tested_floor"] == 2592
+
+    t_test = next(
+        g for g in metadata["validation"]["gates"] if g["name"] == "t_test"
+    )
+    assert t_test["threshold"]["n_hypotheses_tested"] == 2592

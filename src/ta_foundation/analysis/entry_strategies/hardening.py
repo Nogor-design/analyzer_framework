@@ -151,6 +151,13 @@ def build_hardening_metadata(
         # effective trial count drives BOTH the Bonferroni t-test correction
         # and the Deflated Sharpe Ratio gate. Absent a budget, fall back to the
         # legacy n_hypotheses_tested key and leave the DSR gate dormant.
+        #
+        # n_hypotheses_tested is an operator-set FLOOR. A pinned single-
+        # candidate hardening re-run auto-populates within_run_trials from its
+        # own (tiny) grid; that must never weaken a correction the operator
+        # deliberately set for the broad search that actually found the
+        # candidate. The effective count is therefore max(budget, floor).
+        legacy_n = max(1, int(cfg.get("n_hypotheses_tested", 1) or 1))
         tb_cfg = cfg.get("trial_budget")
         if tb_cfg:
             tb_cfg_eff = dict(tb_cfg)
@@ -159,11 +166,15 @@ def build_hardening_metadata(
                     int(tb_cfg_eff.get("within_run_trials", 1) or 1) + regime_trials
                 )
             budget = compute_trial_budget(tb_cfg_eff)
-            effective_n = budget.effective_trials
-            dsr_trials = budget.effective_trials
-            out["trial_budget"] = _json_safe(budget.to_dict())
+            effective_n = max(budget.effective_trials, legacy_n)
+            dsr_trials = effective_n
+            tb_dict = budget.to_dict()
+            if effective_n != budget.effective_trials:
+                tb_dict["effective_trials"] = effective_n
+                tb_dict["n_hypotheses_tested_floor"] = legacy_n
+            out["trial_budget"] = _json_safe(tb_dict)
         else:
-            effective_n = max(1, int(cfg.get("n_hypotheses_tested", 1)))
+            effective_n = legacy_n
             dsr_trials = None
 
         validation = run_validation(
