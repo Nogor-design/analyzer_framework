@@ -91,6 +91,15 @@ into the research ledger** — validated, decay-tracked, provenance-stamped — 
 absorbed into model weights. The layer's contribution must be backtested as its
 own variable; an unmeasured AI overlay is confident noise, not judgment.
 
+Detailed blueprint: `docs/samples/adaptive_learning_layer_high_level_ideas.md`.
+It is the full design for this step and is well-aligned — its `adaptation_alpha`
+metric (result-with-decision minus baseline-without) is exactly the "measure it
+as its own variable" discipline. Notes when step 4 begins: (a) build only its
+"Version 0 — offline candidate-context profiler" first, not the 13-module
+package; (b) that profiler overlaps step 3's `regime_scoping` — unify them,
+don't build two regime-analysis paths; (c) step 4 depends on steps 1–3 and must
+not start before them.
+
 ### Deferred — full tick-replay outcome resolution
 
 Replace 1m-bar touch-fill resolution with tick-by-tick fills; kills the
