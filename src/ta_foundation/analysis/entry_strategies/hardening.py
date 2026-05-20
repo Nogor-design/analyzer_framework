@@ -19,6 +19,7 @@ from ta_foundation.analysis.strategy_discovery.evaluation import compute_evaluat
 from ta_foundation.analysis.strategy_discovery.holdout import partition_trades
 from ta_foundation.analysis.strategy_discovery.honest_execution import apply_honest_execution
 from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
+from ta_foundation.analysis.strategy_discovery.trial_budget import compute_trial_budget
 from ta_foundation.analysis.strategy_discovery.validation import (
     DEFAULT_COST_MODEL,
     DEFAULT_WF_CONFIG,
@@ -37,6 +38,7 @@ DEFAULT_HARDENING_CONFIG: Dict[str, Any] = {
     "wf_config": {},
     "slippage_stress": {},
     "honest_execution": {},
+    "trial_budget": {},
     "holdout": {
         "enabled": False,
         "is_frac": 0.60,
@@ -67,6 +69,7 @@ def attach_hardening_metadata(
     result["evaluation_holdout"] = metadata.get("evaluation_holdout")
     result["slippage_stress"] = metadata.get("slippage_stress")
     result["honest_execution"] = metadata.get("honest_execution")
+    result["trial_budget"] = metadata.get("trial_budget")
 
     wf = (metadata.get("validation") or {}).get("wf_results") or {}
     deg = wf.get("oos_degradation")
@@ -92,6 +95,7 @@ def build_hardening_metadata(
         "evaluation_holdout": None,
         "slippage_stress": None,
         "honest_execution": None,
+        "trial_budget": None,
         "issues": [],
     }
     if not enabled:
@@ -108,12 +112,27 @@ def build_hardening_metadata(
         validation_trades = dev_trades if holdout_meta.get("enabled") else prepared
         wf_config = _deep_merge(DEFAULT_WF_CONFIG, cfg.get("wf_config") or {})
 
+        # Selection-bias accounting: when a trial budget is configured, the
+        # effective trial count drives BOTH the Bonferroni t-test correction
+        # and the Deflated Sharpe Ratio gate. Absent a budget, fall back to the
+        # legacy n_hypotheses_tested key and leave the DSR gate dormant.
+        tb_cfg = cfg.get("trial_budget")
+        if tb_cfg:
+            budget = compute_trial_budget(tb_cfg)
+            effective_n = budget.effective_trials
+            dsr_trials = budget.effective_trials
+            out["trial_budget"] = _json_safe(budget.to_dict())
+        else:
+            effective_n = max(1, int(cfg.get("n_hypotheses_tested", 1)))
+            dsr_trials = None
+
         validation = run_validation(
             validation_trades,
             wf_config=wf_config,
             cost_model=cost_model,
             n_mc_simulations=int(cfg.get("n_mc_simulations", 100)),
-            n_hypotheses_tested=max(1, int(cfg.get("n_hypotheses_tested", 1))),
+            n_hypotheses_tested=effective_n,
+            dsr_n_trials=dsr_trials,
             min_t_stat_abs=float(cfg.get("min_t_stat_abs", 0.0)),
         )
         validation_dict = _json_safe(validation.to_dict())
