@@ -47,6 +47,7 @@ def _compute_trial_grid_size(config: Dict[str, Any]) -> int:
 def run_lcr_discovery(
     bars_1m: pd.DataFrame,
     config: Dict[str, Any],
+    bars_with_regime: Optional[pd.DataFrame] = None,
 ) -> Dict[str, Any]:
     """
     Entry point called by cli/main.py.
@@ -205,7 +206,10 @@ def run_lcr_discovery(
                 "slippage_ticks": 0,
                 "commission_per_side": 0,
             }
-            attach_hardening_metadata(result, trades, outcome_cfg, hardening_cfg)
+            attach_hardening_metadata(
+                result, trades, outcome_cfg, hardening_cfg,
+                bars_with_regime=bars_with_regime,
+            )
             results.append(result)
 
     ranked = _rank_lcr_results(results)

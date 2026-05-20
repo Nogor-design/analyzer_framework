@@ -442,6 +442,32 @@ def main() -> int:
         """Return the best available 1-minute bar DataFrame from the market store."""
         return _select_bars_1m_from_market(result.market, discovery_instrument)
 
+    _regime_bars_cache = {}
+
+    def _get_bars_with_regime():
+        """Regime-labelled 1m bars, computed once and shared across every
+        discovery module. Labels are derived from the full continuous series
+        (never a session-sliced one); sweeps join trades to it by entry_time,
+        so it only has to span the trade timestamps. Without this the hardening
+        regime-scoping gate and the per-candidate regime breakdown stay inert.
+        """
+        if "bars" not in _regime_bars_cache:
+            base = _get_bars_1m()
+            labelled = None
+            if base is not None and not base.empty:
+                try:
+                    from ta_foundation.analysis.strategy_discovery.regime import (
+                        compute_bar_regime,
+                    )
+                    labelled = compute_bar_regime(base)
+                except Exception as e:
+                    print(
+                        f"[ta_foundation] WARNING regime labelling failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
+            _regime_bars_cache["bars"] = labelled
+        return _regime_bars_cache["bars"]
+
     def _apply_session_filter(bars, session_filter: dict):
         """
         Slice bars to a session window.
@@ -518,7 +544,11 @@ def main() -> int:
                     "[ta_foundation]   session_filter: preserving full bars for "
                     "level context; filtering emitted signals inside level_discovery."
                 )
-            disc = run_fn(bars_1m=bars_1m, config=cfg)
+            import inspect
+            run_kwargs = {"bars_1m": bars_1m, "config": cfg}
+            if "bars_with_regime" in inspect.signature(run_fn).parameters:
+                run_kwargs["bars_with_regime"] = _get_bars_with_regime()
+            disc = run_fn(**run_kwargs)
             print(f"[ta_foundation] {label} complete: "
                   f"{disc.get('n_combinations_run', 0)} combos, "
                   f"{disc.get('n_results', 0)} results.")

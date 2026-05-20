@@ -271,7 +271,10 @@ def _run_single_combo(
             "filter_results":   filter_results,
             "is_oos_degradation": compute_is_oos_degradation(group),
         }
-        attach_hardening_metadata(result, group, outcome_cfg, hardening_cfg)
+        attach_hardening_metadata(
+            result, group, outcome_cfg, hardening_cfg,
+            bars_with_regime=bars_with_regime,
+        )
         all_results.append(result)
 
     return all_results if all_results else None
