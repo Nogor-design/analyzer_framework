@@ -73,6 +73,29 @@ DEFAULT_OUTCOME_CONFIG: Dict[str, Any] = {
 }
 
 
+def count_outcome_modes(outcome_cfg: Optional[Dict[str, Any]] = None) -> int:
+    """Number of outcome-mode cells ``simulate_outcomes`` expands per entry.
+
+    ATR contributes exactly one mode (``target_mult``/``stop_mult`` are
+    scalars); the tick grid contributes ``len(take_profit) * len(stop)``.
+    Mirrors the enabled-checks in ``simulate_outcomes`` so a sweep can size its
+    parameter grid without running the simulation.
+    """
+    cfg = {**DEFAULT_OUTCOME_CONFIG, **(outcome_cfg or {})}
+    n = 0
+    atr_cfg = cfg.get("atr", {}) or {}
+    if atr_cfg.get("enabled", True):
+        n += 1
+    tick_cfg = cfg.get("ticks", {}) or {}
+    if tick_cfg.get("enabled", True):
+        tp = tick_cfg.get("take_profit", [30, 60, 100])
+        sl = tick_cfg.get("stop", [30, 40, 50])
+        n_tp = len(tp) if isinstance(tp, (list, tuple)) else 1
+        n_sl = len(sl) if isinstance(sl, (list, tuple)) else 1
+        n += n_tp * n_sl
+    return max(1, n)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------

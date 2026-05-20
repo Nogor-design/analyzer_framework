@@ -20,8 +20,28 @@ from ta_foundation.analysis.entry_strategies.lcr.signals import (
     compute_retrace_stats,
     emit_lcr_entries,
 )
-from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
+)
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
+
+
+def _compute_trial_grid_size(config: Dict[str, Any]) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    size_mult × lookback × zone_type × tp × sl × signal_type. The tp/sl grid is
+    part of the combo product here, so there is no separate outcome-mode term.
+    """
+    n_combos = (
+        len(config.get("size_multipliers", [1.5, 2.0]))
+        * len(config.get("lookbacks", [10, 20]))
+        * len(config.get("zone_types", ["body"]))
+        * len(config.get("tp_ticks", [20]))
+        * len(config.get("sl_ticks", [10]))
+        * len(config.get("signal_types", ["fresh", "touch", "break", "retrace"]))
+    )
+    return max(1, n_combos)
 
 
 def run_lcr_discovery(
@@ -76,6 +96,11 @@ def run_lcr_discovery(
     combos = list(itertools.product(
         size_multipliers, lookbacks, zone_types, tp_ticks_list, sl_ticks_list,
     ))
+
+    # Auto-populate the trial budget from the sweep's own grid size so the
+    # hardening selection-bias correction is live instead of inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(config)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
 
     results: List[Dict[str, Any]] = []
     global_r2r: Optional[Dict] = None
@@ -187,6 +212,7 @@ def run_lcr_discovery(
 
     return {
         "n_combinations_run": len(combos) * len(signal_types),
+        "trial_grid_size": trial_grid_size,
         "n_results": len(results),
         "results": ranked,
         "r2r_stats": global_r2r,

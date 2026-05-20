@@ -55,6 +55,23 @@ DEFAULT_HARDENING_CONFIG: Dict[str, Any] = {
 }
 
 
+def inject_trial_grid_size(
+    hardening_cfg: Optional[Dict[str, Any]], grid_size: int
+) -> Dict[str, Any]:
+    """Auto-populate ``trial_budget.within_run_trials`` with a sweep's grid size.
+
+    A sweep knows how many parameter cells it evaluates, so the selection-bias
+    correction (Bonferroni + Deflated Sharpe Ratio) need not be opted into by
+    hand. An explicit ``within_run_trials`` already in config is left untouched.
+    """
+    hc = dict(hardening_cfg or {})
+    tb = dict(hc.get("trial_budget") or {})
+    if "within_run_trials" not in tb:
+        tb["within_run_trials"] = int(grid_size)
+    hc["trial_budget"] = tb
+    return hc
+
+
 def attach_hardening_metadata(
     result: Dict[str, Any],
     trades: pd.DataFrame,

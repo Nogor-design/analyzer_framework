@@ -41,12 +41,18 @@ from ta_foundation.analysis.entry_strategies.candle.mtf import (
     apply_hierarchical_filter,
     label_independent,
 )
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
-from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
+)
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -144,27 +150,6 @@ def _direction_values(direction_cfg: str) -> List[int]:
 # Trial-grid sizing — feeds the hardening selection-bias correction
 # ---------------------------------------------------------------------------
 
-def _count_outcome_modes(outcome_cfg: Dict[str, Any]) -> int:
-    """Outcome-mode cells the simulator expands per signal combo.
-
-    ATR contributes exactly one mode (``target_mult``/``stop_mult`` are
-    scalars); the tick grid contributes ``len(take_profit) * len(stop)``.
-    Mirrors the enabled-checks in ``outcome.simulator.simulate_outcomes``.
-    """
-    n = 0
-    atr_cfg = outcome_cfg.get("atr", {}) or {}
-    if atr_cfg.get("enabled", True):
-        n += 1
-    tick_cfg = outcome_cfg.get("ticks", {}) or {}
-    if tick_cfg.get("enabled", True):
-        tp = tick_cfg.get("take_profit", [30, 60, 100])
-        sl = tick_cfg.get("stop", [30, 40, 50])
-        n_tp = len(tp) if isinstance(tp, (list, tuple)) else 1
-        n_sl = len(sl) if isinstance(sl, (list, tuple)) else 1
-        n += n_tp * n_sl
-    return max(1, n)
-
-
 def _count_signal_combos(cfg: Dict[str, Any]) -> int:
     """Independent (non-MTF) signal combos: tf x pattern-params x dir x timing."""
     timeframes = [int(tf) for tf in cfg.get("timeframes", [])]
@@ -189,7 +174,7 @@ def _compute_trial_grid_size(cfg: Dict[str, Any]) -> int:
     above by the pattern-key grid. An upper bound is the safe direction for a
     selection-bias correction: better to over-count trials than under-count.
     """
-    outcome_modes = _count_outcome_modes(cfg.get("outcome", {}) or {})
+    outcome_modes = count_outcome_modes(cfg.get("outcome", {}) or {})
     independent = _count_signal_combos(cfg) * outcome_modes
 
     timeframes = [int(tf) for tf in cfg.get("timeframes", [])]
@@ -215,23 +200,6 @@ def _compute_trial_grid_size(cfg: Dict[str, Any]) -> int:
             mtf_upper += n_pattern_keys * n_timings * outcome_modes
 
     return max(1, independent + mtf_upper)
-
-
-def _inject_grid_size_into_hardening(
-    hardening_cfg: Dict[str, Any], grid_size: int
-) -> Dict[str, Any]:
-    """Auto-populate ``trial_budget.within_run_trials`` with the sweep grid size.
-
-    The sweep knows how many parameter cells it evaluated, so the selection-bias
-    correction no longer has to be opted into by hand. An explicit
-    ``within_run_trials`` already in config is left untouched.
-    """
-    hc = dict(hardening_cfg or {})
-    tb = dict(hc.get("trial_budget") or {})
-    if "within_run_trials" not in tb:
-        tb["within_run_trials"] = int(grid_size)
-    hc["trial_budget"] = tb
-    return hc
 
 
 # ---------------------------------------------------------------------------
@@ -448,7 +416,7 @@ def run_candle_discovery(
     # hardening selection-bias correction reflects the real search instead of
     # being inert at n=1.
     trial_grid_size = _compute_trial_grid_size(cfg)
-    hardening_cfg = _inject_grid_size_into_hardening(hardening_cfg, trial_grid_size)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
 
     directions     = _direction_values(direction_cfg)
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]

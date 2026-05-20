@@ -34,15 +34,17 @@ count (within-run combinations + decayed prior-program trials), wired into
 hardening to feed both the Bonferroni t-test correction and the Deflated
 Sharpe Ratio gate — previously inert at n=1.
 
-Follow-up — auto-populate the counts — partially DONE: the candle sweep now
-computes its own grid size (`sweep.py` → `_compute_trial_grid_size`: signal
-combos × outcome modes, plus a config-derived upper bound for the MTF passes)
-and auto-fills the hardening `trial_budget.within_run_trials`, so the
-correction is no longer opt-in there. Still not done: the same wiring for the
-other five hardening sweep families (`orb_sweep`, `ma_sweep`, `lcr_sweep`,
-`bb_sweep`, and breakout/pullback/level via `_sweep_base`), and the CLI
-reading the cumulative program total from the research ledger into
-`prior_program_trials`.
+Follow-up — auto-populate the counts — DONE for all six hardening sweep
+families: each computes its own grid size (signal combos × outcome modes; the
+candle sweep adds a config-derived upper bound for its MTF passes) and
+auto-fills the hardening `trial_budget.within_run_trials`, so the
+selection-bias correction is live by default instead of inert at n=1. The
+shared pieces — `count_outcome_modes` (`outcome/simulator.py`) and
+`inject_trial_grid_size` (`hardening.py`) — are centralized; `sweep.py`,
+`_sweep_base.py` (breakout/pullback/level), `orb_sweep.py`, `ma_sweep.py`,
+`bb_sweep.py`, and `lcr_sweep.py` each carry a `_compute_trial_grid_size`.
+Still not done: the CLI reading the cumulative program total from the research
+ledger into `prior_program_trials` (deferred — ledger-dependent).
 
 ### Step 3 — Regime-conditioned discovery — DONE
 

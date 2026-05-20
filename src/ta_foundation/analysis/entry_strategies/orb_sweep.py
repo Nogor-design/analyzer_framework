@@ -39,12 +39,18 @@ import pandas as pd
 
 from ta_foundation.analysis.entry_strategies.orb.signals import detect_orb, DEFAULT_ORB_CONFIG
 from ta_foundation.analysis.entry_strategies.candle.signals import emit_entries
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
-from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
+)
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -123,6 +129,17 @@ def _expand_params(orb_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
             p[k] = v
         combos.append(p)
     return combos
+
+
+def _compute_trial_grid_size(cfg: Dict[str, Any]) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    orb-param-combos × entry-timings × outcome modes.
+    """
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_combos = len(_expand_params(cfg.get("orb", {}) or {})) * n_timings
+    return max(1, n_combos * count_outcome_modes(cfg.get("outcome", {}) or {}))
 
 
 def _try_filter_discovery(trades_df: pd.DataFrame, filter_cfg: Dict) -> List[Dict]:
@@ -294,6 +311,11 @@ def run_orb_discovery(
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
     param_combos    = _expand_params(orb_cfg)
 
+    # Auto-populate the trial budget from the sweep's own grid size so the
+    # hardening selection-bias correction is live instead of inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(cfg)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
+
     sweep_results:      List[Dict[str, Any]] = []
     n_combinations_run: int = 0
 
@@ -320,4 +342,5 @@ def run_orb_discovery(
         "sweep_results":      sweep_results,
         "n_combinations_run": n_combinations_run,
         "n_results":          len(sweep_results),
+        "trial_grid_size":    trial_grid_size,
     }

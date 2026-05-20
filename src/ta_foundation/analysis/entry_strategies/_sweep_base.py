@@ -17,12 +17,18 @@ import pandas as pd
 
 from ta_foundation.marketdata.resample import ohlcv_resample_from_bars
 from ta_foundation.analysis.entry_strategies.candle.signals import emit_entries
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
 )
-from ta_foundation.analysis.entry_strategies.hardening import attach_hardening_metadata
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
+)
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
 
@@ -46,6 +52,27 @@ def _expand_params(signal_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     keys   = list(list_keys.keys())
     values = [list_keys[k] for k in keys]
     return [{**scalar_keys, **dict(zip(keys, combo))} for combo in product(*values)]
+
+
+def _compute_trial_grid_size(
+    cfg: Dict[str, Any], signal_registry: Dict[str, Callable]
+) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    tf × signal-param-combos × entry-timings × outcome modes. All terms are
+    config-derivable; data-dependent skips (an empty resample) only shrink it,
+    so this is a safe upper bound for the selection-bias correction.
+    """
+    timeframes = [int(tf) for tf in cfg.get("timeframes", [1])]
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_param = sum(
+        len(_expand_params(sc))
+        for sid, sc in (cfg.get("signals", {}) or {}).items()
+        if sc.get("enabled", True) and sid in signal_registry
+    )
+    n_combos = len(timeframes) * n_param * n_timings
+    return max(1, n_combos * count_outcome_modes(cfg.get("outcome", {}) or {}))
 
 
 def _try_filter_discovery(trades_df: pd.DataFrame, filter_cfg: Dict) -> List[Dict]:
@@ -338,6 +365,11 @@ def run_generic_sweep(
     hardening_cfg   = cfg.get("hardening", {})
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
 
+    # Auto-populate the trial budget from the sweep's own grid size so the
+    # hardening selection-bias correction is live instead of inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(cfg, signal_registry)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
+
     sweep_results:      List[Dict[str, Any]] = []
     n_combinations_run: int = 0
 
@@ -388,4 +420,5 @@ def run_generic_sweep(
         "sweep_results":      sweep_results,
         "n_combinations_run": n_combinations_run,
         "n_results":          len(sweep_results),
+        "trial_grid_size":    trial_grid_size,
     }
