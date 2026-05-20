@@ -415,15 +415,25 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (EnableDebugPrint)
             {
+                // Backward-compatible debug line: original format is unchanged
+                // through `pct=...%`; new pipe-delimited block appended at end
+                // for ta_foundation bar_regime parity tests to localize which
+                // intermediate (EMA, ATR, VWAP) diverges.
                 Print(string.Format(
-                    "{0:yyyy-MM-dd HH:mm:ss} | Trend={1} slope={2:F4} | VWAP={3} distATR={4:F3} | Vol={5} pct={6:P1}",
+                    "{0:yyyy-MM-dd HH:mm:ss} | Trend={1} slope={2:F4} | VWAP={3} distATR={4:F3} | Vol={5} pct={6:P1}"
+                    + " | ema_htf={7:F4} atr_htf={8:F4} atr_pri={9:F4} vwap={10:F4} atr_vol={11:F4}",
                     Time[0],
                     currentTrendRegime,
                     currentTrendSlopeValue,
                     currentVwapRegime,
                     currentVwapDistAtr,
                     currentVolatilityRegime,
-                    currentAtrPercentile));
+                    currentAtrPercentile,
+                    emaTrendHtf[0],
+                    atrTrendHtf[0],
+                    atrPrimary[0],
+                    currentSessionVwap,
+                    atrVolatility[0]));
             }
 
             bool allowTradeThisBar = allowTrading && PassesRegimeFilters();
