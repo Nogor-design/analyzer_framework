@@ -18,6 +18,7 @@ import pandas as pd
 from ta_foundation.analysis.strategy_discovery.evaluation import compute_evaluation_metrics
 from ta_foundation.analysis.strategy_discovery.holdout import partition_trades
 from ta_foundation.analysis.strategy_discovery.honest_execution import apply_honest_execution
+from ta_foundation.analysis.strategy_discovery.regime_scoping import run_regime_scoping
 from ta_foundation.analysis.strategy_discovery.slippage_stress import run_slippage_stress
 from ta_foundation.analysis.strategy_discovery.trial_budget import compute_trial_budget
 from ta_foundation.analysis.strategy_discovery.validation import (
@@ -35,9 +36,11 @@ DEFAULT_HARDENING_CONFIG: Dict[str, Any] = {
     "min_t_stat_abs": 0.0,
     "require_slippage_stress_passed": True,
     "require_honest_execution_passed": True,
+    "require_regime_scoping_passed": False,
     "wf_config": {},
     "slippage_stress": {},
     "honest_execution": {},
+    "regime_scoping": {},
     "trial_budget": {},
     "holdout": {
         "enabled": False,
@@ -69,6 +72,7 @@ def attach_hardening_metadata(
     result["evaluation_holdout"] = metadata.get("evaluation_holdout")
     result["slippage_stress"] = metadata.get("slippage_stress")
     result["honest_execution"] = metadata.get("honest_execution")
+    result["regime_scoping"] = metadata.get("regime_scoping")
     result["trial_budget"] = metadata.get("trial_budget")
 
     wf = (metadata.get("validation") or {}).get("wf_results") or {}
@@ -95,6 +99,7 @@ def build_hardening_metadata(
         "evaluation_holdout": None,
         "slippage_stress": None,
         "honest_execution": None,
+        "regime_scoping": None,
         "trial_budget": None,
         "issues": [],
     }
@@ -112,13 +117,31 @@ def build_hardening_metadata(
         validation_trades = dev_trades if holdout_meta.get("enabled") else prepared
         wf_config = _deep_merge(DEFAULT_WF_CONFIG, cfg.get("wf_config") or {})
 
+        # Regime-conditioned discovery: partition the candidate by entry regime
+        # and find the regime(s) where the edge honestly survives. Runs before
+        # the trial budget because picking the best of N regimes is N extra
+        # trials that the selection-bias correction must account for.
+        regime_scoping = run_regime_scoping(
+            validation_trades,
+            bars_with_regime=bars_with_regime,
+            cost_model=cost_model,
+            options=cfg.get("regime_scoping") or {},
+        )
+        out["regime_scoping"] = _json_safe(regime_scoping)
+        regime_trials = int(regime_scoping.get("n_regimes_evaluated", 0) or 0)
+
         # Selection-bias accounting: when a trial budget is configured, the
         # effective trial count drives BOTH the Bonferroni t-test correction
         # and the Deflated Sharpe Ratio gate. Absent a budget, fall back to the
         # legacy n_hypotheses_tested key and leave the DSR gate dormant.
         tb_cfg = cfg.get("trial_budget")
         if tb_cfg:
-            budget = compute_trial_budget(tb_cfg)
+            tb_cfg_eff = dict(tb_cfg)
+            if regime_trials > 0:
+                tb_cfg_eff["within_run_trials"] = (
+                    int(tb_cfg_eff.get("within_run_trials", 1) or 1) + regime_trials
+                )
+            budget = compute_trial_budget(tb_cfg_eff)
             effective_n = budget.effective_trials
             dsr_trials = budget.effective_trials
             out["trial_budget"] = _json_safe(budget.to_dict())
@@ -181,8 +204,14 @@ def build_hardening_metadata(
         honest_passed = bool(honest.get("passed", False)) if honest_required else True
         holdout_required = bool((cfg.get("holdout") or {}).get("require_holdout_passed", False))
         holdout_passed = bool((holdout_eval or {}).get("passed", False)) if holdout_required else True
+        regime_required = bool(cfg.get("require_regime_scoping_passed", False))
+        regime_passed = bool(regime_scoping.get("passed", False)) if regime_required else True
         out["passed"] = bool(
-            validation.passed and stress_passed and honest_passed and holdout_passed
+            validation.passed
+            and stress_passed
+            and honest_passed
+            and holdout_passed
+            and regime_passed
         )
         if stress_required and not stress_passed:
             out["issues"].append("hard gate failed: slippage_stress")
@@ -190,6 +219,8 @@ def build_hardening_metadata(
             out["issues"].append("hard gate failed: honest_execution")
         if holdout_required and not holdout_passed:
             out["issues"].append("hard gate failed: holdout")
+        if regime_required and not regime_passed:
+            out["issues"].append("hard gate failed: regime_scoping")
     except Exception as exc:
         out["passed"] = False
         out["issues"].append(f"hardening failed: {type(exc).__name__}: {exc}")
