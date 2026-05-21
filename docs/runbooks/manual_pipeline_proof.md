@@ -164,6 +164,46 @@ Exit for B: one candidate has gone survivor → realized `.cs` → compile-clean
 optimizer evidence → a written manager decision, with every manual step and
 breakage logged.
 
+### Runbook B run — 2026-05-21
+
+**Step 2 outcome — realization path.** Confirmed all three paths:
+`StrategyDiscoveryFilter` (`nt_template_generator.py`) emits a parameter
+template for a generic EMA-entry strategy — triage-only, not ORB evidence;
+`NinjatraderDocScrapper` is design-intent only (`authoring.render_source`
+raises for any family lacking an in-tree renderer; the doc-scrapper is not
+wired); the only in-tree renderer is `sma_cross`. **Finding: the
+`orb_failure_reclaim` family has no faithful automated realization path** —
+exactly the gap step 2 anticipates. Operator chose the **seam-proof** path:
+run the loop with the generic `sma_cross` strategy to prove the seam, and
+record the realization-path gap.
+
+**Steps 3–5 — seam proof.** `ensure-nt-ready` → ready. `full-loop` on a
+generic `sma_cross` spec (`.ta_artifacts/phase0_seam_probe.spec.json`):
+
+- ✅ author → install → **compile-clean** (`error_count: 0`, both runs;
+  session `loop_20260521_194011_phase0seamprobe`).
+- ✅ seed-template generation.
+- ❌ **optimizer leg broke twice** (defects #14, #15). After fixing #14 the
+  re-run reached NinjaTrader's Strategy Analyzer, which rejected it with a
+  modal popup: *"Tried to run strategy analyzer on strategy from unknown
+  category 'NinjaScript'"*.
+
+**Bottom line:** the discovery→NT seam is proven through compile-clean and
+seed generation; the **optimizer leg does not yet run end-to-end**. No
+optimizer CSV, no guardrail verdict.
+
+**Step 6/7 — manager decision.** Candidate `c_1acc69ea578ff672_001`
+(`orb_failure_reclaim`) **does not advance to an NT-validated state.** Two
+independent blockers: (a) the family has no faithful realization path, so no
+honest ORB `.cs` exists to test; (b) even the generic seam cannot reach
+optimizer evidence (#15). Combined with the Runbook A holdout-lock-bypass
+finding (defect #2 — its holdout provenance is a backfill and its holdout
+month decays, PF 3.89→1.88), the candidate stays in shadow as "watch", and
+**Phase 0's Runbook B exit criterion is not met.** Closing it needs: a
+realization path for `orb_failure_reclaim`, and the optimizer-leg fixes
+(#15). No generic-strategy evidence was attached to the candidate's
+`notes_json` — per step 2 it must not count as that candidate's NT evidence.
+
 ## Defect log
 
 Record every breakage. This list — not the conductor design — is the real
@@ -176,7 +216,7 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 | 3 | tooling | hardening + holdout journaled tools (`promote_to_hardening`, `request_locked_holdout`, `run_probe` hardened/holdout) have never run | high | **resolved** 2026-05-21 — proven end to end on a sandbox ledger by `scripts/phase0_journaled_tooling_proof.py` (Runbook A step 4). All journaled tools fire and journal correctly; the `not_a_survivor` precondition and the one-shot holdout lock both behave. Earlier (2026-05-20) the report-CLI hardening path was also confirmed. NOTE: `run_probe`'s `mode` arg is a pure ledger label — it is *not* passed to the CLI, so a `hardened` and a `locked_holdout` run of the same YAML are compute-identical; the holdout is defined entirely by YAML content. |
 | 4 | discovery | journaled tooling's full track record is 7 hypotheses → all retired no-trades → 0 survivors; the real pipeline has never produced a tradeable candidate | high | **re-framed 2026-05-21** — the 0-survivor record is **structural wiring, not signal selectivity**. The journaled path is broken in three places (defects #9 / #10 / #11): author_probe emits a config-less YAML, the Sweep Operator never ingests the sidecar, and the verdict mapper never returns `survivor` for a fast probe. The 2026-05-20 probes that "diagnosed signal selectivity" ran the **report-CLI path directly**, bypassing all three breaks — so they measured engine quality, not the journaled pipeline. Engine/signal quality is fine (`orb_failure_reclaim` reproduces the survivor, dev PF 3.89); the journaled pipeline simply never delivered a sidecar's candidates to the ledger with a promotable verdict. **Root cause resolved 2026-05-21:** #9 / #10 / #11 all fixed; `scripts/phase0_journaled_pipeline_check.py` confirms the journaled pipeline now produces a survivor **unaided** — the real Sweep Operator authored → ran `run_probe` (fast + hardened) → ingested both sidecars → 2 survivor candidates in the ledger (dev PF 3.89 / n146, OOS PF 5.24 / n87). Verified for `orb_failure_reclaim` only; the other 12 families still need templates (Phase 1). |
 | 5 | inputs | `--input` NT-export folder was undocumented / ad-hoc | low | **resolved** 2026-05-20 — created `inputs/nt_exports/` + README |
-| 6 | NT validation | no ledger schema for NT evidence; NT validation never run | med | open — Phase 1 (schema) + Runbook B (first run) |
+| 6 | NT validation | no ledger schema for NT evidence; NT validation never run | med | **partially addressed** 2026-05-21 — Runbook B run for the first time (see "Runbook B run" above). The seam is proven through compile-clean + seed generation; the optimizer leg breaks (#14, #15). Still open: a first-class ledger schema for NT evidence (Phase 1), and a clean end-to-end optimizer run. |
 | 7 | hardening | the hardening regime-scoping gate and the per-candidate regime breakdown were dormant — the CLI never passed `bars_with_regime` to any family sweep, so every regime join silently received `None` | med | **resolved** 2026-05-20 — `cli/main.py` now computes `compute_bar_regime` once and threads it through all discovery modules (incl. `lcr`) |
 | 8 | reporting | discovery sidecar metric fields `expectancy_ticks` / `avg_win_ticks` / `avg_loss_ticks` / `max_drawdown_ticks` hold **dollar** values, not ticks (they are `avg_trade` / `avg_winner` / … from `compute_evaluation_metrics`, in `profit_net` dollars). The mislabel propagates into the research ledger via `sidecar_parser.py` (`expectancy_dev = metrics.get("expectancy_ticks")`) | med | open — misleads by a factor of `tick_value` (5×); no P&L or gate impact. Fix = rename keys or convert to true ticks; rippling change deferred. |
 | 9 | tooling | `author_probe` emits `discovery/generated/<hypothesis_id>.yaml` containing **only** a `pre_registration:` block — no `orb_discovery:` / `candle_discovery:` / etc. sweep config. `resolve_yaml_path_via_author_probe` (the Sweep Operator's default resolver) points `run_probe` straight at that file, so the CLI runs with nothing to sweep and produces zero candidates. | high | **resolved** 2026-05-21 — per-family template + substitution. New `discovery/templates/orb_failure_reclaim.yaml` skeleton + `agent/tools/probe_config.py` (`build_probe_config`); `author_probe` now emits a full runnable single-combo discovery config for `orb_failure_reclaim` and returns `runnable: True`. Families without a template still register but return `runnable: False` + a `config_note` (explicit gap, not a silent one). Scoped to the one proven family; other families' templates are Phase 1. |
@@ -184,11 +224,18 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 | 11 | tooling | `sidecar_parser._derive_gate_verdict` maps tier ids `qualified`/`strong` → `survivor`, but the discovery pipeline actually emits tier id `high_quality` (fast probe) and `most_robust` (hardened). Every fast-probe candidate falls through to `pending`, so `promote_to_hardening` (precondition `gate_verdict=='survivor'`) can never fire from a fast probe. | high | **resolved** 2026-05-21 — `_derive_gate_verdict`'s allowlist aligned with the five live tier ids (`most_robust`/`high_quality` → survivor, `marginal`/`rejected` → rejected, `solid` → pending; legacy ids kept). |
 | 12 | design | candidate identity is **per-run**: `candidate_id = c_<run_short>_<rank>`. A hypothesis hardened after a fast probe produces a *new* candidate row at the hardened stage — no single candidate persists across `fast_probe`/`hardened`/`locked_holdout`. The runbook's "promote a candidate then harden it" language implies a continuous identity that the schema does not provide. | med | open — discovered 2026-05-21. Not a bug, but the conductor must thread `hypothesis_id` (stable) and pick the right per-run candidate at each stage, not a single `candidate_id`. Phase 1 design input. |
 | 13 | tooling | `research_ledger/backfill.py:131` calls `infer_family(parsed)` passing a `ParsedSidecar`, but `sidecar_parser.infer_family(yaml_filename: str, signal_name=None)` expects a filename string — `AttributeError: 'ParsedSidecar' object has no attribute 'lower'`. Backfill is currently broken; `test_backfill.py` fails 10/10. | med | open — discovered 2026-05-21 while fixing #9/#10/#11 (pre-existing on the `CandleDiscovery` branch, not introduced here). Fix = call `infer_family(sidecar_path.name, first_signal)` or add a `ParsedSidecar` overload. Untouched — outside the #9/#10/#11 scope. |
+| 14 | NT validation | the optimizer **chunk-template writer** lost the analyzer category: `optimizer_template_writer.py` removes `<BacktestType>` then calls `_replace_tag_text(text, "Category", ...)` — a no-op when the seed has no `<Category>` — so chunks reached preflight with neither tag (`Optimizer preflight failed: chunk_001.xml … category is '<missing>'`). | high | **resolved** 2026-05-21 — line now uses `_replace_or_insert_top_level_tag`, which inserts `<Category>Optimize</Category>` after `</OptimizationFitness>` when absent. `test_optimizer_template_writer.py` 16/16 green. NOTE: this fix lands in the operator's in-flight `web/optimizer_*` code — flagged for that workstream to reconcile. |
+| 15 | NT validation | with #14 fixed the seam reached NinjaTrader's Strategy Analyzer, which rejected the run with a modal popup: *"Tried to run strategy analyzer on strategy from unknown category 'NinjaScript'"*. Root cause: `nt_strategy_loop/seed_template.py` emits a `<NinjaTrader>`-root optimizer template whose `<Strategy><Name>` element has **no `<Category>` strategy-property**; NT defaults it to 'NinjaScript' and the Strategy Analyzer rejects it. (The working `nt_template_generator.py` path carries `<Category>Backtest</Category>` *inside* the strategy element — a different XML format entirely.) The Python preflight's top-level `<Category>` (#14) and NT's strategy-property `<Category>` are two distinct fields the optimizer code conflates. | high | open — discovered 2026-05-21 (Runbook B). Not fixed: resolving it needs NT-template-format expertise + iteration against NinjaTrader, and the optimizer subsystem is the operator's active workstream. Fix direction = add the strategy-property `<Category>` to the `seed_template.py` strategy element (value to be confirmed against NT — `nt_template_generator` uses `Backtest`), and reconcile the two `Category` notions. **This blocks the Runbook B optimizer leg.** |
 
 ## Exit criteria for Phase 0
 
 - Every `survivor` verdict is backed by real evidence or reclassified.
-- One candidate has a complete, honest manager decision with NT evidence.
+- **[partial 2026-05-21]** One candidate has a complete, honest manager
+  decision — see "Runbook B run". The decision is written and honest, but it
+  is *negative*: `c_1acc69ea578ff672_001` does **not** advance, because the
+  `orb_failure_reclaim` family has no realization path and the optimizer leg
+  (#15) cannot produce NT evidence. A *positive*, NT-evidenced advancement is
+  still blocked on #15 + a realization path.
 - The defect log is complete and Phase 1 scope is derived from it.
 - **[done 2026-05-21]** A dry-run command exists that lists eligible
   candidates and the next legal transition for each — and triggers no runs:
