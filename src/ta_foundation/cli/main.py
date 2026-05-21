@@ -552,6 +552,29 @@ def main() -> int:
             print(f"[ta_foundation] {label} complete: "
                   f"{disc.get('n_combinations_run', 0)} combos, "
                   f"{disc.get('n_results', 0)} results.")
+            # Step 4 Version 0 — offline candidate-context profiler. Reads the
+            # sweep's own results and attaches per-candidate context profiles
+            # plus the cross-candidate context matrix. No live influence.
+            try:
+                from ta_foundation.analysis.strategy_discovery.candidate_context_profile import (
+                    profile_candidates,
+                )
+                candidates = disc.get("sweep_results") or disc.get("results") or []
+                profile = profile_candidates(candidates)
+                disc["candidate_context_profile"] = profile
+                summ = profile.get("summary") or {}
+                if summ.get("n_candidates"):
+                    best = (summ.get("best_contexts") or [{}])[0].get("context", "—")
+                    print(
+                        f"[ta_foundation]   context profile: "
+                        f"{summ.get('n_with_a_strong_context', 0)}/{summ['n_candidates']} "
+                        f"candidates have a strong context; top context: {best}"
+                    )
+            except Exception as e:
+                print(
+                    f"[ta_foundation] WARNING candidate_context_profile failed: "
+                    f"{type(e).__name__}: {e}"
+                )
             for pkg in result.packages.values():
                 pkg.metadata.setdefault("derived", {})[key] = disc
             if create_placeholder and not result.packages:

@@ -95,17 +95,25 @@ package; (b) that profiler overlaps step 3's `regime_scoping` — unify them,
 don't build two regime-analysis paths; (c) step 4 depends on steps 1–3 and must
 not start before them.
 
-**Version 0 progress — adaptation_alpha measurement — DONE.** Per note (b), the
-blueprint's `adaptation_alpha` metric was landed inside `regime_scoping` rather
-than as a parallel module: each candidate now reports `adaptation_alpha` —
-the honest result of trading only the edge regimes (the regime-suppression
-decision) minus the honest result of trading every classified trade (the
-baseline). Reports `expectancy_delta`, `net_profit_delta`,
-`profit_factor_delta`, and `n_trades_delta` so the suppression trade-off is
-explicit. Still needed for Version 0: the cross-candidate context profiler
-(strong / weak / unknown contexts per candidate) and the regime/session
-performance-matrix report surface — both need an architecture decision on
-where a candidate corpus is read from, which is the natural next handoff point.
+**Version 0 progress.** Two of the three Version 0 deliverables are done:
+
+- *adaptation_alpha* — landed inside `regime_scoping` per note (b): each
+  candidate reports the honest result of trading only its edge regimes minus
+  trading every classified trade (`expectancy_delta`, `net_profit_delta`, …).
+- *Candidate-context profiler* —
+  `analysis/strategy_discovery/candidate_context_profile.py`: reads each
+  candidate's already-computed regime / session / direction breakdowns and
+  classifies every context cell strong / marginal / weak / unknown, with
+  per-candidate warnings; aggregates a cross-candidate context matrix and a
+  `best_contexts` ranking (the "regime/session performance matrix"). It is a
+  *reader* over the existing breakdowns — no second regime-analysis path, per
+  note (b). The candidate corpus is the discovery sweep results (ledger-free);
+  the CLI runs it offline after every sweep and attaches it to
+  `pkg.metadata["derived"][<family>_discovery]["candidate_context_profile"]`.
+
+Remaining for Version 0: an HTML report surface to render the context matrix
+(the data already attaches to metadata; a report section can consume it).
+Then Version 1 (shadow-only adaptive decisions) per the blueprint.
 
 ### Deferred — full tick-replay outcome resolution
 
