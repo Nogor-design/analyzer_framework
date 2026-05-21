@@ -67,6 +67,24 @@ def parse_summary_body(body: dict, *, raw_path: str = "") -> ParsedSidecar:
     return _parse_body(body, raw_path=raw_path)
 
 
+def candidate_id_for(run_id: str, rank_in_run: int) -> str:
+    """Deterministic candidate id (`c_<run_short>_<rank:03d>`) - the convention
+    the backfill importer established."""
+    return f"c_{run_id.split('_')[-1]}_{rank_in_run:03d}"
+
+
+def candidate_dicts_for_run(sidecar_path: Path | str, run_id: str) -> list[dict]:
+    """Parse a sidecar and return candidate dicts ready for the
+    `record_candidates_for_run` write tool - i.e. each carrying a minted
+    `candidate_id`. The bare parser omits `candidate_id` because it has no
+    run_id; this is the run-aware adapter the Sweep Operator needs."""
+    parsed = parse_summary_sidecar(sidecar_path)
+    return [
+        {**c, "candidate_id": candidate_id_for(run_id, c["rank_in_run"])}
+        for c in parsed.candidates
+    ]
+
+
 # ---- Internals -------------------------------------------------------------
 
 
@@ -172,15 +190,24 @@ def _ranking_to_candidate_dict(r: dict, instrument: dict) -> dict:
 
 
 def _derive_gate_verdict(hardening: dict, tier: dict) -> str:
-    """Return 'survivor' | 'rejected' | 'pending'."""
+    """Return 'survivor' | 'rejected' | 'pending'.
+
+    When hardening ran, the pass/fail flag is authoritative. Otherwise fall
+    back to the discovery tier. The tier ids are the five emitted by
+    ``ta_foundation.web.discovery_summary.classify_tier`` -
+    most_robust > high_quality > solid > marginal > rejected. A fast probe's
+    job is to surface candidates worth hardening, so the two research-grade
+    tiers map to ``survivor`` (= promotable); the noise tiers map to
+    ``rejected``; ``solid`` is left ``pending`` for triage to judge.
+    (Legacy ids qualified/strong/reject/noise are kept for old sidecars.)
+    """
     enabled = bool(hardening.get("enabled"))
     if enabled:
         return "survivor" if hardening.get("passed") is True else "rejected"
-    # Fall back to tier when hardening was not run (e.g., fast probes).
     tier_id = (tier.get("id") or "").lower()
-    if tier_id in {"qualified", "strong"}:
+    if tier_id in {"most_robust", "high_quality", "qualified", "strong"}:
         return "survivor"
-    if tier_id in {"reject", "marginal", "noise"}:
+    if tier_id in {"rejected", "reject", "marginal", "noise"}:
         return "rejected"
     return "pending"
 

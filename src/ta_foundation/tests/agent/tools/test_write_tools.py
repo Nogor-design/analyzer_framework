@@ -111,11 +111,65 @@ def _author_inputs(**overrides) -> dict:
     return base
 
 
+def _orb_author_inputs(**overrides) -> dict:
+    base = {
+        "hypothesis_id": "h_orb_001",
+        "family": "orb_failure_reclaim",
+        "instrument": "NQ",
+        "timeframe": "1m",
+        "session_window": "ny_open_0730_1000_denver",
+        "direction": "both",
+        "params": {
+            "fill_mode": "body_midpoint",
+            "orb_minutes": 5,
+            "sweep_min_ticks": 4,
+            "reclaim_within_bars": 1,
+            "stop_ticks": 20,
+            "target_ticks": 150,
+        },
+        "mechanism": (
+            "Opening-range breakouts that fail and reclaim the range trap "
+            "breakout traders; their forced exits power the reverse move."
+        ),
+        "registered_by": "test",
+    }
+    base.update(overrides)
+    return base
+
+
 def test_author_probe_happy(repo: Repository, tmp_path: Path) -> None:
     out = author_probe(repo, **_author_inputs())
     assert out["ok"] and out["result"]["registered"] is True
     yaml_path = Path(out["result"]["yaml_path"])
     assert yaml_path.exists()
+
+
+def test_author_probe_emits_runnable_config_for_supported_family(
+    repo: Repository, tmp_path: Path
+) -> None:
+    """Phase 0 defect #9: a family with a discovery-config template gets a
+    fully runnable probe YAML, not a pre_registration-only stub."""
+    import yaml as _yaml
+
+    out = author_probe(repo, **_orb_author_inputs())
+    assert out["ok"] and out["result"]["runnable"] is True
+    body = _yaml.safe_load(Path(out["result"]["yaml_path"]).read_text("utf-8"))
+    # Carries both the drift-check anchor and a real sweep config.
+    assert body["pre_registration"]["hypothesis_id"] == "h_orb_001"
+    assert body["orb_discovery"]["enabled"] is True
+    assert body["orb_discovery"]["orb"]["orb_minutes"] == [5]
+    assert body["orb_discovery"]["outcome"]["ticks"]["stop"] == [20]
+
+
+def test_author_probe_non_template_family_is_not_runnable(
+    repo: Repository, tmp_path: Path
+) -> None:
+    """A family without a template still registers, but the result flags
+    runnable=False with a note - an explicit gap, not a silent one."""
+    out = author_probe(repo, **_author_inputs())
+    assert out["ok"] and out["result"]["registered"] is True
+    assert out["result"]["runnable"] is False
+    assert "vwap_reject_fade" in (out["result"]["config_note"] or "")
 
 
 def test_author_probe_unknown_family(repo: Repository) -> None:

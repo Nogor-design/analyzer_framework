@@ -114,11 +114,18 @@ journaled tooling is proven to work on one real candidate.
    candidate (`holdout_attempted = 0`) stay in shadow, or must it re-acquire
    the lock via `request_locked_holdout` and re-run the holdout? Document the
    answer — it sets the precedent the conductor will inherit.
-4. **Exercise the journaled tooling once.** Register one fresh test hypothesis
-   and drive it by hand through `run_probe(fast_probe)` → `agent triage-pass`
-   → `promote_to_hardening` → `run_probe(hardened)` → `request_locked_holdout`.
-   Confirm the preconditions and the one-shot lock actually fire. This is the
-   first time these tools will have produced a ledger row.
+4. **[done 2026-05-21]** Exercised the journaled tooling end to end against a
+   **sandbox copy** of the ledger (`scripts/phase0_journaled_tooling_proof.py`,
+   run log `outputs/phase0_proof_run.log`). One fresh test hypothesis was driven
+   through `author_probe` → `run_probe(fast_probe)` → `record_candidates_for_run`
+   → `promote_to_hardening` → `run_probe(hardened)` → `request_locked_holdout` →
+   `run_probe(locked_holdout)`. Every journaled tool fired and wrote a
+   `tool_journal` row; the `not_a_survivor` precondition rejected a pending
+   candidate; the one-shot lock returned `lock_acquired=True` then `False`.
+   `agent triage-pass` was deliberately skipped — it needs Ollama and only sets
+   `triage_state`, not `gate_verdict`, so it is not on the critical path. The
+   chain only *completed* because the proof script supplied glue the production
+   roles lack — see defects #9 / #10 / #11.
 5. Write every breakage into the [defect log](#defect-log).
 
 Exit for A: every `survivor` verdict is real or reclassified; the journaled
@@ -165,12 +172,17 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 |---|---|---|---|---|
 | 1 | audit | 20 survivors mislabeled (fast_probe, no OOS) | high | **resolved** 2026-05-20 — reclassified to `pending` |
 | 2 | audit | shadow candidate bypassed the one-shot holdout lock (`holdout_attempted=0`) | high | open — Runbook A step 3 (operator decision). 2026-05-20: candidate re-hardened via the report-CLI path with a real holdout — passes (holdout PF 1.88) but the holdout month is materially softer than dev (PF 3.89→1.88, win 38%→23%): a decay signal, not a clean durable verdict. |
-| 3 | tooling | hardening + holdout journaled tools (`promote_to_hardening`, `request_locked_holdout`, `run_probe` hardened/holdout) have never run | high | partially addressed 2026-05-20 — the **report-CLI hardening path** (`hardening: enabled` YAML) was run end to end on the survivor and works (walk-forward, MC, slippage stress, honest execution, locked holdout all execute and gate). The **journaled ledger tools** themselves still unproven — Runbook A step 4. |
-| 4 | discovery | journaled tooling's full track record is 7 hypotheses → all retired no-trades → 0 survivors; the real pipeline has never produced a tradeable candidate | high | **diagnosed** 2026-05-20 — orchestration/engine are sound; the bottleneck is **signal selectivity**. Two probes on 144,972 real NQ 1m bars: `liquidity_sweep_failure` → 168 candidates, best PF 0.55 (~22k trades = noise, fires every ~6 bars); `orb_failure_reclaim` → 25 high-quality/robust candidates, top PF 3.89, reproduces the lone survivor. Loosely-thresholded mechanical signals get swept into the noise regime; selective session-bounded structural signals produce edge. The "7 retired no-trades" symptom did not reproduce — both probe families produced abundant trades — so it is specific to those 7 configs (over-tight thresholds or a bad session/date filter), not a general engine fault. |
+| 3 | tooling | hardening + holdout journaled tools (`promote_to_hardening`, `request_locked_holdout`, `run_probe` hardened/holdout) have never run | high | **resolved** 2026-05-21 — proven end to end on a sandbox ledger by `scripts/phase0_journaled_tooling_proof.py` (Runbook A step 4). All journaled tools fire and journal correctly; the `not_a_survivor` precondition and the one-shot holdout lock both behave. Earlier (2026-05-20) the report-CLI hardening path was also confirmed. NOTE: `run_probe`'s `mode` arg is a pure ledger label — it is *not* passed to the CLI, so a `hardened` and a `locked_holdout` run of the same YAML are compute-identical; the holdout is defined entirely by YAML content. |
+| 4 | discovery | journaled tooling's full track record is 7 hypotheses → all retired no-trades → 0 survivors; the real pipeline has never produced a tradeable candidate | high | **re-framed 2026-05-21** — the 0-survivor record is **structural wiring, not signal selectivity**. The journaled path is broken in three places (defects #9 / #10 / #11): author_probe emits a config-less YAML, the Sweep Operator never ingests the sidecar, and the verdict mapper never returns `survivor` for a fast probe. The 2026-05-20 probes that "diagnosed signal selectivity" ran the **report-CLI path directly**, bypassing all three breaks — so they measured engine quality, not the journaled pipeline. Engine/signal quality is fine (`orb_failure_reclaim` reproduces the survivor, dev PF 3.89); the journaled pipeline simply never delivered a sidecar's candidates to the ledger with a promotable verdict. **Root cause resolved 2026-05-21:** #9 / #10 / #11 all fixed; `scripts/phase0_journaled_pipeline_check.py` confirms the journaled pipeline now produces a survivor **unaided** — the real Sweep Operator authored → ran `run_probe` (fast + hardened) → ingested both sidecars → 2 survivor candidates in the ledger (dev PF 3.89 / n146, OOS PF 5.24 / n87). Verified for `orb_failure_reclaim` only; the other 12 families still need templates (Phase 1). |
 | 5 | inputs | `--input` NT-export folder was undocumented / ad-hoc | low | **resolved** 2026-05-20 — created `inputs/nt_exports/` + README |
 | 6 | NT validation | no ledger schema for NT evidence; NT validation never run | med | open — Phase 1 (schema) + Runbook B (first run) |
 | 7 | hardening | the hardening regime-scoping gate and the per-candidate regime breakdown were dormant — the CLI never passed `bars_with_regime` to any family sweep, so every regime join silently received `None` | med | **resolved** 2026-05-20 — `cli/main.py` now computes `compute_bar_regime` once and threads it through all discovery modules (incl. `lcr`) |
 | 8 | reporting | discovery sidecar metric fields `expectancy_ticks` / `avg_win_ticks` / `avg_loss_ticks` / `max_drawdown_ticks` hold **dollar** values, not ticks (they are `avg_trade` / `avg_winner` / … from `compute_evaluation_metrics`, in `profit_net` dollars). The mislabel propagates into the research ledger via `sidecar_parser.py` (`expectancy_dev = metrics.get("expectancy_ticks")`) | med | open — misleads by a factor of `tick_value` (5×); no P&L or gate impact. Fix = rename keys or convert to true ticks; rippling change deferred. |
+| 9 | tooling | `author_probe` emits `discovery/generated/<hypothesis_id>.yaml` containing **only** a `pre_registration:` block — no `orb_discovery:` / `candle_discovery:` / etc. sweep config. `resolve_yaml_path_via_author_probe` (the Sweep Operator's default resolver) points `run_probe` straight at that file, so the CLI runs with nothing to sweep and produces zero candidates. | high | **resolved** 2026-05-21 — per-family template + substitution. New `discovery/templates/orb_failure_reclaim.yaml` skeleton + `agent/tools/probe_config.py` (`build_probe_config`); `author_probe` now emits a full runnable single-combo discovery config for `orb_failure_reclaim` and returns `runnable: True`. Families without a template still register but return `runnable: False` + a `config_note` (explicit gap, not a silent one). Scoped to the one proven family; other families' templates are Phase 1. |
+| 10 | tooling | the Sweep Operator never ingests the sidecar. `run_one_hypothesis` calls `run_probe` then immediately `repo.list_candidates(run_id=...)` — but nothing ever calls `record_candidates_for_run`, so the list is always empty and every hypothesis is retired as `no_trades`. `record_candidates_for_run` is an orphan tool: the runbook's stage map lists it, but no journaled role invokes it. | high | **resolved** 2026-05-21 — `ingest_run_candidates` added to `sweep_operator.py` (finds the sidecar, parses, mints `candidate_id`s via `sidecar_parser.candidate_dicts_for_run`, calls `record_candidates_for_run`) and wired into `run_one_hypothesis` after each `run_probe`. Also fixed a latent operator bug: `run_one_hypothesis` could not read a truncated `run_probe` payload — now unwrapped via `_unwrap_tool_payload`. |
+| 11 | tooling | `sidecar_parser._derive_gate_verdict` maps tier ids `qualified`/`strong` → `survivor`, but the discovery pipeline actually emits tier id `high_quality` (fast probe) and `most_robust` (hardened). Every fast-probe candidate falls through to `pending`, so `promote_to_hardening` (precondition `gate_verdict=='survivor'`) can never fire from a fast probe. | high | **resolved** 2026-05-21 — `_derive_gate_verdict`'s allowlist aligned with the five live tier ids (`most_robust`/`high_quality` → survivor, `marginal`/`rejected` → rejected, `solid` → pending; legacy ids kept). |
+| 12 | design | candidate identity is **per-run**: `candidate_id = c_<run_short>_<rank>`. A hypothesis hardened after a fast probe produces a *new* candidate row at the hardened stage — no single candidate persists across `fast_probe`/`hardened`/`locked_holdout`. The runbook's "promote a candidate then harden it" language implies a continuous identity that the schema does not provide. | med | open — discovered 2026-05-21. Not a bug, but the conductor must thread `hypothesis_id` (stable) and pick the right per-run candidate at each stage, not a single `candidate_id`. Phase 1 design input. |
+| 13 | tooling | `research_ledger/backfill.py:131` calls `infer_family(parsed)` passing a `ParsedSidecar`, but `sidecar_parser.infer_family(yaml_filename: str, signal_name=None)` expects a filename string — `AttributeError: 'ParsedSidecar' object has no attribute 'lower'`. Backfill is currently broken; `test_backfill.py` fails 10/10. | med | open — discovered 2026-05-21 while fixing #9/#10/#11 (pre-existing on the `CandleDiscovery` branch, not introduced here). Fix = call `infer_family(sidecar_path.name, first_signal)` or add a `ParsedSidecar` overload. Untouched — outside the #9/#10/#11 scope. |
 
 ## Exit criteria for Phase 0
 
@@ -183,7 +195,14 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 ## What Phase 0 explicitly does NOT do
 
 - No conductor, state machine, or `autonomous_loop/` package.
-- No new hypotheses registered, no new probes beyond re-running hardening to
-  fix mislabeled survivors.
-- No locked holdout spent on a new candidate.
+- No new hypotheses registered **in the canonical ledger**, no new probes
+  beyond re-running hardening to fix mislabeled survivors.
+- No locked holdout spent on a new candidate **in the canonical ledger**.
 - No Sim101 / paper / live execution.
+
+> **Reconciliation note (2026-05-21):** Runbook A step 4 requires registering a
+> test hypothesis and exercising the one-shot holdout lock — which the two
+> bullets above otherwise forbid. The contradiction is resolved by running the
+> step-4 tooling proof against a **throwaway sandbox copy** of the ledger
+> (`research_ledger.sandbox.db`); the canonical ledger gains no hypothesis and
+> spends no lock. The "does NOT do" bullets apply to the canonical ledger only.

@@ -9,8 +9,10 @@ Preconditions (code-side):
       a `revival_reason` ≥ 30 chars is required.
 
 The tool writes a hypothesis row to the ledger and a YAML file to
-`discovery/generated/<hypothesis_id>.yaml` with a `pre_registration:` block
-the CLI drift check will validate.
+`discovery/generated/<hypothesis_id>.yaml`. The YAML carries a
+`pre_registration:` block the CLI drift check validates, and - when the
+family has a discovery-config template (Phase 0 defect #9) - a full runnable
+discovery sweep config so the probe actually tests something.
 """
 
 from __future__ import annotations
@@ -24,6 +26,10 @@ from ta_foundation.agent.tools._decorators import (
     Precondition,
     ToolFailure,
     journaled_tool,
+)
+from ta_foundation.agent.tools.probe_config import (
+    ConfigBuildError,
+    build_probe_config,
 )
 from ta_foundation.research_ledger import (
     DuplicateHypothesisError,
@@ -159,33 +165,61 @@ def author_probe(
             "dedupe_hash": exc.dedupe_hash,
         }
 
-    yaml_path = _emit_probe_yaml(h, params=params, mechanism=mechanism,
-                                 revival_reason=revival_reason)
+    yaml_path, runnable, config_note = _emit_probe_yaml(
+        h, params=params, mechanism=mechanism, revival_reason=revival_reason)
     return {
         "registered": True,
         "hypothesis_id": h.hypothesis_id,
         "dedupe_hash": h.dedupe_hash,
         "yaml_path": str(yaml_path),
+        "runnable": runnable,
+        "config_note": config_note,
     }
 
 
 def _emit_probe_yaml(hypothesis, *, params: dict, mechanism: str,
-                     revival_reason: Optional[str]) -> Path:
+                     revival_reason: Optional[str]) -> tuple[Path, bool, Optional[str]]:
+    """Write the probe YAML. Returns (path, runnable, config_note).
+
+    When the family has a discovery-config template the YAML is a full,
+    runnable sweep config plus the pre_registration block. Otherwise it falls
+    back to a pre_registration-only YAML (not runnable) - registration still
+    succeeds, but `runnable=False` and `config_note` say why, so the gap is
+    explicit rather than a silently-broken probe (Phase 0 defect #9).
+    """
     GENERATED_PROBE_DIR.mkdir(parents=True, exist_ok=True)
     target = GENERATED_PROBE_DIR / f"{hypothesis.hypothesis_id}.yaml"
-    block: dict = {
-        "pre_registration": {
-            "hypothesis_id": hypothesis.hypothesis_id,
-            "family": hypothesis.family,
-            "instrument": hypothesis.instrument,
-            "timeframe": hypothesis.timeframe,
-            "session_window": hypothesis.session_window,
-            "direction": hypothesis.direction,
-            "params": params,
-            "pre_reg_mechanism": mechanism,
-        }
+
+    pre_registration: dict = {
+        "hypothesis_id": hypothesis.hypothesis_id,
+        "family": hypothesis.family,
+        "instrument": hypothesis.instrument,
+        "timeframe": hypothesis.timeframe,
+        "session_window": hypothesis.session_window,
+        "direction": hypothesis.direction,
+        "params": params,
+        "pre_reg_mechanism": mechanism,
     }
     if revival_reason:
-        block["pre_registration"]["revival_reason"] = revival_reason
-    target.write_text(_yaml.safe_dump(block, sort_keys=True), encoding="utf-8")
-    return target
+        pre_registration["revival_reason"] = revival_reason
+
+    runnable = False
+    config_note: Optional[str] = None
+    try:
+        config = build_probe_config(
+            hypothesis_id=hypothesis.hypothesis_id,
+            family=hypothesis.family,
+            instrument=hypothesis.instrument,
+            timeframe=hypothesis.timeframe,
+            session_window=hypothesis.session_window,
+            direction=hypothesis.direction,
+            params=params,
+        )
+        runnable = True
+    except ConfigBuildError as exc:
+        config = {}
+        config_note = str(exc)
+
+    config["pre_registration"] = pre_registration
+    target.write_text(_yaml.safe_dump(config, sort_keys=True), encoding="utf-8")
+    return target, runnable, config_note

@@ -43,7 +43,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from ta_foundation.agent.tools.write.run_probe import record_candidates_for_run
 from ta_foundation.research_ledger.repository import Repository
+from ta_foundation.research_ledger.sidecar_parser import candidate_dicts_for_run
 
 # A `run_probe_call` matches the signature of the journaled run_probe wrapper:
 #     run_probe(repo, **kwargs) -> {"ok": bool, "result"|"error": ...}
@@ -212,7 +214,7 @@ def run_one_hypothesis(
                             or "run_probe rejected")
         return record
 
-    fast_result = fast_call.get("result") or {}
+    fast_result = _unwrap_tool_payload(fast_call)
     fast_run_id = fast_result.get("run_id")
     record.fast_run_id = fast_run_id
     if not fast_result.get("ok_subprocess"):
@@ -222,7 +224,13 @@ def run_one_hypothesis(
                             f"exit={fast_result.get('exit_code')}")
         return record
 
-    # ---- Step 2: assess candidates from the fast run -----------------------
+    # ---- Step 2: ingest the sidecar, then assess candidates ---------------
+    # run_probe writes a sidecar but does not ledger candidate rows; the
+    # Operator must (Phase 0 defect #10).
+    if fast_run_id:
+        ingest = ingest_run_candidates(
+            repo, fast_run_id, fast_result.get("artifact_dir") or output_dir)
+        record.notes.append(_ingest_note("fast", ingest))
     fast_candidates = (
         repo.list_candidates(run_id=fast_run_id, limit=200)
         if fast_run_id else []
@@ -274,7 +282,7 @@ def run_one_hypothesis(
                             "run_probe rejected")
         return record
 
-    hardened_result = hardened_call.get("result") or {}
+    hardened_result = _unwrap_tool_payload(hardened_call)
     hardened_run_id = hardened_result.get("run_id")
     record.hardened_run_id = hardened_run_id
     if not hardened_result.get("ok_subprocess"):
@@ -284,6 +292,11 @@ def run_one_hypothesis(
                             f"exit={hardened_result.get('exit_code')}")
         return record
 
+    if hardened_run_id:
+        ingest = ingest_run_candidates(
+            repo, hardened_run_id,
+            hardened_result.get("artifact_dir") or output_dir)
+        record.notes.append(_ingest_note("hardened", ingest))
     hardened_candidates = (
         repo.list_candidates(run_id=hardened_run_id, limit=200)
         if hardened_run_id else []
@@ -373,6 +386,75 @@ def resolve_yaml_path_via_author_probe(hypothesis_id: str) -> Optional[str]:
     """
     candidate = Path("discovery/generated") / f"{hypothesis_id}.yaml"
     return str(candidate) if candidate.is_file() else None
+
+
+# ---- Sidecar ingestion -----------------------------------------------------
+
+
+def _unwrap_tool_payload(payload: dict) -> dict:
+    """Return a journaled tool's `result`, transparently loading the spill
+    file when `@journaled_tool` truncated a large output to disk. Returns {}
+    when the tool itself failed (`ok=False`)."""
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return {}
+    if payload.get("truncated"):
+        try:
+            full = json.loads(
+                Path(payload["artifact_path"]).read_text(encoding="utf-8"))
+            return full.get("result") or {}
+        except (OSError, ValueError, KeyError):
+            return {}
+    return payload.get("result") or {}
+
+
+def _find_sidecar(artifact_dir: Path) -> Optional[Path]:
+    """Newest discovery summary sidecar under a run's artifact directory."""
+    if not artifact_dir.is_dir():
+        return None
+    found = sorted(
+        artifact_dir.rglob("*_summary.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return found[0] if found else None
+
+
+def ingest_run_candidates(
+    repo: Repository, run_id: str, artifact_dir: str
+) -> dict:
+    """Parse the discovery sidecar a run produced and feed it to the journaled
+    `record_candidates_for_run` tool.
+
+    This is the seam the Operator was missing (Phase 0 defect #10): `run_probe`
+    writes a sidecar but never ledgers candidate rows, so the Operator's
+    `list_candidates(run_id=...)` always came back empty and every hypothesis
+    was retired as `no_trades`. Graceful by design — a run that produced no
+    sidecar (no discovery block, or a failed sweep) returns `sidecar=None` and
+    the caller's existing no-candidates path handles it.
+    """
+    sidecar = _find_sidecar(Path(artifact_dir))
+    if sidecar is None:
+        return {"sidecar": None, "ingested": 0, "rejected": 0, "ok": True}
+    cand_dicts = candidate_dicts_for_run(sidecar, run_id)
+    payload = record_candidates_for_run(repo, run_id=run_id,
+                                        candidates=cand_dicts)
+    result = _unwrap_tool_payload(payload)
+    return {
+        "sidecar": str(sidecar),
+        "ingested": result.get("n_inserted", 0),
+        "rejected": result.get("n_rejected", 0),
+        "ok": bool(payload.get("ok")),
+        "error": None if payload.get("ok") else payload.get("error"),
+    }
+
+
+def _ingest_note(stage: str, ingest: dict) -> str:
+    if ingest.get("sidecar") is None:
+        return f"{stage}: no discovery sidecar found in artifact_dir"
+    if not ingest.get("ok"):
+        return f"{stage}: sidecar ingest failed — {ingest.get('error')}"
+    return (f"{stage}: ingested {ingest.get('ingested', 0)} candidates "
+            f"({ingest.get('rejected', 0)} rejected)")
 
 
 # ---- Internals -------------------------------------------------------------

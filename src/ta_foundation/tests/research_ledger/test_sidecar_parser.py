@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 
 from ta_foundation.research_ledger.sidecar_parser import (
+    candidate_dicts_for_run,
+    candidate_id_for,
     infer_family,
     parse_summary_body,
     parse_summary_sidecar,
@@ -122,6 +124,53 @@ def test_parse_fast_probe_no_hardening() -> None:
     assert c["gate_verdict"] == "rejected"
     assert c["slippage_stress_pass"] is None
     assert c["pf_oos"] is None
+
+
+@pytest.mark.parametrize(
+    "tier_id, expected_verdict",
+    [
+        # Live tier ids emitted by discovery_summary.classify_tier.
+        ("most_robust", "survivor"),
+        ("high_quality", "survivor"),
+        ("solid", "pending"),
+        ("marginal", "rejected"),
+        ("rejected", "rejected"),
+        # Legacy ids kept for old sidecars.
+        ("qualified", "survivor"),
+        ("strong", "survivor"),
+    ],
+)
+def test_fast_probe_tier_to_verdict_mapping(tier_id: str, expected_verdict: str) -> None:
+    """A fast probe has no hardening block, so gate_verdict comes from the
+    discovery tier. Regression guard for defect #11: the parser used to only
+    recognise qualified/strong and silently dropped high_quality/most_robust
+    candidates to 'pending', making them unpromotable."""
+    body = _fast_probe_body()
+    body["rankings"][0]["tier"] = {"id": tier_id, "label": tier_id,
+                                   "verdict": "x", "criteria_met": []}
+    out = parse_summary_body(body, raw_path="x.json")
+    assert out.candidates[0]["gate_verdict"] == expected_verdict
+
+
+def test_candidate_id_for_uses_run_short_and_rank() -> None:
+    assert candidate_id_for("r_h_demo_fast_probe_20260521T0_abcd1234", 1) \
+        == "c_abcd1234_001"
+    assert candidate_id_for("r_x_hardened_t_ff00 aa11".replace(" ", ""), 12) \
+        == "c_ff00aa11_012"
+
+
+def test_candidate_dicts_for_run_mints_ids(tmp_path: Path) -> None:
+    """The run-aware adapter the Sweep Operator uses (defect #10): the bare
+    parser omits candidate_id; this attaches the minted id."""
+    sc = tmp_path / "probe_summary.json"
+    sc.write_text(json.dumps(_fast_probe_body()), encoding="utf-8")
+    dicts = candidate_dicts_for_run(sc, run_id="r_h_demo_fast_probe_t_abcd1234")
+    assert len(dicts) == 1
+    d = dicts[0]
+    assert d["candidate_id"] == "c_abcd1234_001"
+    assert d["rank_in_run"] == 1
+    # The keys record_candidates_for_run requires are all present.
+    assert {"candidate_id", "rank_in_run", "params", "gate_verdict"} <= d.keys()
 
 
 def test_parse_preserves_notes_metadata() -> None:

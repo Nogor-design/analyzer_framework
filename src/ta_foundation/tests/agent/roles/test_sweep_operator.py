@@ -2,13 +2,15 @@
 
 The real run_probe write tool spawns a subprocess; here we inject a stub via
 the `run_probe_call` parameter so the Operator's logic is exercised without
-touching the discovery CLI. Candidate rows are written directly to the
-ledger via the repository to simulate the post-run sidecar ingest that the
-CLI does in production.
+touching the discovery CLI. Most tests seed candidate rows directly via the
+repository — that simulates the *post-ingestion* ledger state. The
+`ingest_run_candidates` seam itself (Phase 0 defect #10) is covered by its
+own tests, which feed a real sidecar file.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -19,6 +21,7 @@ from ta_foundation.agent.roles.sweep_operator import (
     HypothesisRunRecord,
     OperatorReport,
     discover_accepted_hypotheses,
+    ingest_run_candidates,
     resolve_yaml_path_via_author_probe,
     run_one_hypothesis,
     run_operator_pass,
@@ -256,6 +259,99 @@ def test_zero_candidates_retires_hypothesis_not_graveyards(
     assert [c["mode"] for c in probe.calls] == ["fast_probe"]
     # No candidate rows means there is nothing in the graveyard either.
     assert repo.list_graveyard(family="vwap_reject_fade", limit=10) == []
+
+
+# ============================================================================
+# Sidecar ingestion (Phase 0 defect #10)
+# ============================================================================
+
+
+def _fast_probe_sidecar(*, tiers: tuple[str, ...] = ("solid", "marginal")) -> dict:
+    """A minimal fast-probe sidecar (no hardening) with one ranking per tier.
+    gate_verdict is derived by the parser from the tier id."""
+    return {
+        "schema_version": 1,
+        "stage": {"id": "04_ny_open", "label": "NY", "ordinal": 4, "kind": "funnel"},
+        "instrument": {"symbol": "NQ", "tick_size": 0.25},
+        "rankings": [
+            {
+                "rank": i + 1, "family": "orb", "signal": "orb",
+                "direction": "both", "timeframe": "1m",
+                "params": {"orb_minutes": 5, "rank": i + 1},
+                "metrics": {"trade_count": 40, "profit_factor": 1.3,
+                             "expectancy_ticks": 3.0},
+                "hardening": {"enabled": False},
+                "tier": {"id": tier, "label": tier, "verdict": "x",
+                          "criteria_met": []},
+            }
+            for i, tier in enumerate(tiers)
+        ],
+    }
+
+
+def _start_run(repo: Repository, hyp: str, run_id: str, artifact_dir: str) -> None:
+    repo.start_run(run_id=run_id, hypothesis_id=hyp, mode="fast_probe",
+                   config_hash="c" * 64, yaml_path="x", artifact_dir=artifact_dir)
+    repo.complete_run(run_id)
+
+
+def test_ingest_run_candidates_records_from_sidecar(
+    repo: Repository, hyp: str, tmp_path: Path
+) -> None:
+    run_id = f"r_{hyp}_fast_probe_t_dead1234"
+    _start_run(repo, hyp, run_id, str(tmp_path))
+    (tmp_path / "probe_summary.json").write_text(
+        json.dumps(_fast_probe_sidecar()), encoding="utf-8")
+
+    out = ingest_run_candidates(repo, run_id, str(tmp_path))
+
+    assert out["ok"] is True
+    assert out["ingested"] == 2
+    cands = repo.list_candidates(run_id=run_id, limit=50)
+    assert len(cands) == 2
+    assert {c.candidate_id for c in cands} == {"c_dead1234_001", "c_dead1234_002"}
+
+
+def test_ingest_run_candidates_no_sidecar_is_graceful(
+    repo: Repository, hyp: str, tmp_path: Path
+) -> None:
+    run_id = f"r_{hyp}_fast_probe_t_beef5678"
+    _start_run(repo, hyp, run_id, str(tmp_path))
+    # tmp_path holds no *_summary.json.
+    out = ingest_run_candidates(repo, run_id, str(tmp_path))
+    assert out == {"sidecar": None, "ingested": 0, "rejected": 0, "ok": True}
+    assert repo.list_candidates(run_id=run_id, limit=50) == []
+
+
+def test_run_one_hypothesis_ingests_sidecar(
+    repo: Repository, hyp: str, yaml_and_dirs: dict
+) -> None:
+    """Wiring proof for defect #10: the Operator populates candidates by
+    ingesting the sidecar — no direct repo.record_candidate seeding here."""
+    def probe(repo_: Repository, **kw: Any) -> dict:
+        run_id = f"r_{hyp}_{kw['mode']}_1"
+        repo_.start_run(run_id=run_id, hypothesis_id=hyp, mode=kw["mode"],
+                        config_hash="c" * 64, yaml_path=kw["yaml_path"],
+                        artifact_dir=kw["output_dir"])
+        repo_.complete_run(run_id)
+        # run_probe writes a sidecar but never ledgers candidates.
+        (Path(kw["output_dir"]) / "probe_summary.json").write_text(
+            json.dumps(_fast_probe_sidecar()), encoding="utf-8")
+        return {"ok": True, "result": {"run_id": run_id, "exit_code": 0,
+                                        "ok_subprocess": True,
+                                        "artifact_dir": kw["output_dir"]}}
+
+    rec = run_one_hypothesis(
+        repo, hypothesis_id=hyp,
+        yaml_path=yaml_and_dirs["yaml_path"],
+        input_dir=yaml_and_dirs["input_dir"],
+        output_dir=yaml_and_dirs["output_dir"],
+        run_probe_call=probe,
+    )
+    assert rec.status == "completed_fast_only"
+    assert rec.n_candidates_fast == 2
+    assert rec.n_survivors_fast == 0
+    assert any("ingested 2 candidates" in n for n in rec.notes)
 
 
 # ============================================================================
