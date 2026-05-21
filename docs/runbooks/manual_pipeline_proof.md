@@ -94,6 +94,7 @@ subfolder (empty is acceptable).
 | NT validation | `nt_strategy_loop.cli full-loop` (needs `ensure-nt-ready` first) | **none yet — gap** |
 | Shadow | `agent/tools/write/shadow.py`, `shadow/runner.py`; `agent shadow-scribe-pass` | `shadow_signals`, `triage_state = shadow` |
 | Inspect | `python -m ta_foundation.research_ledger.cli_summary` | read-only |
+| Dry-run | `python -m ta_foundation.research_ledger.cli_next_actions` | read-only — next legal transition per candidate |
 
 ## Runbook A — Ledger reconciliation + tooling proof
 
@@ -189,8 +190,12 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 - Every `survivor` verdict is backed by real evidence or reclassified.
 - One candidate has a complete, honest manager decision with NT evidence.
 - The defect log is complete and Phase 1 scope is derived from it.
-- A dry-run command exists that lists eligible candidates and the next legal
-  transition for each — and triggers no runs.
+- **[done 2026-05-21]** A dry-run command exists that lists eligible
+  candidates and the next legal transition for each — and triggers no runs:
+  `python -m ta_foundation.research_ledger.cli_next_actions`. Read-only
+  (only `list_candidates`); transition rules mirror the journaled tools'
+  preconditions. On the canonical ledger today: 327 → `triage-pass`,
+  99 → `set_triage_state(graveyard)`, 1 → terminal `shadow`.
 
 ## What Phase 0 explicitly does NOT do
 
