@@ -123,6 +123,95 @@ def extract_strategy_parameters(source_text: str) -> list[StrategyParameter]:
     return parameters
 
 
+# The ~70 base-class fields NinjaTrader 8 serializes for every strategy inside
+# a saved Strategy Analyzer template, transcribed verbatim from a real
+# NinjaTrader-saved optimizer template (the proven web-optimizer seed format).
+# `{name}`, `{instrument}`, `{from_date}`, `{to_date}` are the only per-run
+# substitutions. Crucially this carries `<Category>Optimize</Category>` as a
+# strategy property — without it NinjaTrader's Strategy Analyzer rejects the
+# run with "unknown category 'NinjaScript'".
+_STRATEGY_BOILERPLATE = """\
+      <IsVisible>true</IsVisible>
+      <calculate2>OnBarClose</calculate2>
+      <AreLinesConfigurable>true</AreLinesConfigurable>
+      <ArePlotsConfigurable>true</ArePlotsConfigurable>
+      <BarsPeriodSerializable>
+        <BarsPeriodTypeSerialize>4</BarsPeriodTypeSerialize>
+        <BaseBarsPeriodType>Minute</BaseBarsPeriodType>
+        <BaseBarsPeriodValue>1</BaseBarsPeriodValue>
+        <VolumetricDeltaType>BidAsk</VolumetricDeltaType>
+        <MarketDataType>Last</MarketDataType>
+        <PointAndFigurePriceType>Close</PointAndFigurePriceType>
+        <ReversalType>Tick</ReversalType>
+        <Value>1</Value>
+        <Value2>1</Value2>
+      </BarsPeriodSerializable>
+      <BarsToLoad>0</BarsToLoad>
+      <Calculate>OnBarClose</Calculate>
+      <Displacement>0</Displacement>
+      <DisplayInDataBox>true</DisplayInDataBox>
+      <From>{from_date}</From>
+      <IsAutoScale>true</IsAutoScale>
+      <Lines />
+      <MaximumBarsLookBack>TwoHundredFiftySix</MaximumBarsLookBack>
+      <Name>{name}</Name>
+      <Panel>-1</Panel>
+      <Plots />
+      <ScaleJustification>Right</ScaleJustification>
+      <ShowTransparentPlotsInDataBox>false</ShowTransparentPlotsInDataBox>
+      <To>{to_date}</To>
+      <IsDataSeriesRequired>true</IsDataSeriesRequired>
+      <IsOverlay>true</IsOverlay>
+      <SelectedValueSeries>0</SelectedValueSeries>
+      <Gtd>1800-01-01T00:00:00</Gtd>
+      <Template />
+      <TimeInForce>Gtc</TimeInForce>
+      <BarsPeriodParameter>
+        <Increment>1</Increment>
+        <Max xsi:type="xsd:int">0</Max>
+        <Min xsi:type="xsd:int">0</Min>
+        <Name />
+        <ParameterTypeSerializable>System.Int32, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</ParameterTypeSerializable>
+        <ValueSerializable>0</ValueSerializable>
+      </BarsPeriodParameter>
+      <BarsRequiredToTrade>20</BarsRequiredToTrade>
+      <Category>Optimize</Category>
+      <ConnectionLossHandling>Recalculate</ConnectionLossHandling>
+      <DaysToLoad>5</DaysToLoad>
+      <DefaultQuantity>1</DefaultQuantity>
+      <DisconnectDelaySeconds>10</DisconnectDelaySeconds>
+      <EntriesPerDirection>1</EntriesPerDirection>
+      <EntryHandling>AllEntries</EntryHandling>
+      <ExitOnSessionCloseSeconds>30</ExitOnSessionCloseSeconds>
+      <IncludeCommission>false</IncludeCommission>
+      <InstrumentOrInstrumentList>{instrument}</InstrumentOrInstrumentList>
+      <IsAggregated>false</IsAggregated>
+      <IsExitOnSessionCloseStrategy>true</IsExitOnSessionCloseStrategy>
+      <IsFillLimitOnTouch>false</IsFillLimitOnTouch>
+      <IsOptimizeDataSeries>false</IsOptimizeDataSeries>
+      <IsStableSession>true</IsStableSession>
+      <IsTickReplay>false</IsTickReplay>
+      <IsTradingHoursBreakLineVisible>true</IsTradingHoursBreakLineVisible>
+      <IsWaitUntilFlat>false</IsWaitUntilFlat>
+      <NumberRestartAttempts>4</NumberRestartAttempts>
+      <OptimizationPeriod>10</OptimizationPeriod>
+      <OrderFillResolution>Standard</OrderFillResolution>
+      <OrderFillResolutionType>Minute</OrderFillResolutionType>
+      <OrderFillResolutionValue>1</OrderFillResolutionValue>
+      <RestartsWithinMinutes>5</RestartsWithinMinutes>
+      <SetOrderQuantity>Strategy</SetOrderQuantity>
+      <Slippage>0</Slippage>
+      <StartBehavior>WaitUntilFlat</StartBehavior>
+      <StopTargetHandling>PerEntryExecution</StopTargetHandling>
+      <SupportsOptimizationGraph>true</SupportsOptimizationGraph>
+      <TestPeriod>28</TestPeriod>
+      <TradingHoursSerializable />
+      <DrawOnPricePanel>false</DrawOnPricePanel>
+      <ZOrder>-2147483648</ZOrder>"""
+
+_XML_NS = 'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+
+
 def render_seed_template(
     *,
     strategy_name: str,
@@ -134,59 +223,112 @@ def render_seed_template(
     from_date: str,
     to_date: str,
 ) -> str:
+    """Render a NinjaTrader 8 Strategy Analyzer optimizer template.
+
+    Emits the `<StrategyTemplate>` format NinjaTrader actually accepts — the
+    same shape a user-saved optimizer template has — not the legacy synthetic
+    `<NinjaTrader>` shape, which NT rejected with "unknown category
+    'NinjaScript'" because it lacked the strategy's `<Category>` property.
+    """
+    name = escape(strategy_name)
     strategy_values = "\n".join(
         f"      <{escape(parameter.name)}>{escape(_strategy_value(parameter.default))}</{escape(parameter.name)}>"
         for parameter in parameters
     )
-    optimizer_parameters = "\n".join(_parameter_xml(parameter) for parameter in parameters)
+    optimization_parameters = "\n".join(_parameter_xml(parameter) for parameter in parameters)
+    boilerplate = _STRATEGY_BOILERPLATE.format(
+        name=name,
+        instrument=escape(instrument),
+        from_date=escape(from_date),
+        to_date=escape(to_date),
+    )
     return f"""<?xml version="1.0" encoding="utf-8"?>
-<!-- Generated by ta_foundation.nt_strategy_loop.seed_template. Replace with a NinjaTrader-saved seed for production optimization. -->
-<NinjaTrader>
-  <StrategyType>NinjaTrader.NinjaScript.Strategies.{escape(strategy_name)}</StrategyType>
-  <BacktestType>Optimize</BacktestType>
+<StrategyTemplate>
+  <StrategyType>NinjaTrader.NinjaScript.Strategies.{name}</StrategyType>
   <OptimizerType>{escape(optimizer_type)}</OptimizerType>
-  <OptimizationFitness>{escape(optimization_fitness)}</OptimizationFitness>
-  <Strategy>
-    <{escape(strategy_name)}>
-      <BarsPeriodSerializable>
-        <BarsPeriodTypeSerialize>4</BarsPeriodTypeSerialize>
-        <BaseBarsPeriodType>Minute</BaseBarsPeriodType>
-        <BaseBarsPeriodValue>1</BaseBarsPeriodValue>
-        <Value>1</Value>
-        <Value2>1</Value2>
-      </BarsPeriodSerializable>
-      <BarsToLoad>0</BarsToLoad>
-      <From>{escape(from_date)}</From>
-      <InstrumentOrInstrumentList>{escape(instrument)}</InstrumentOrInstrumentList>
-      <To>{escape(to_date)}</To>
-{strategy_values}
-    </{escape(strategy_name)}>
-  </Strategy>
   <OptimizerParameters>
-    <ParameterWrapper>
-      <Name>KeepBestResults</Name>
-      <Value>{int(keep_best_results)}</Value>
-    </ParameterWrapper>
+    <ArrayOfParameterWrapper {_XML_NS}>
+      <ParameterWrapper>
+        <DisplayName>IsStrategyGenerator</DisplayName>
+        <Name>IsStrategyGenerator</Name>
+        <Value xsi:type="xsd:boolean">false</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Keep best # results</DisplayName>
+        <Name>KeepBestResults</Name>
+        <Value xsi:type="xsd:int">{int(keep_best_results)}</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>LogTypeName</DisplayName>
+        <Name>LogTypeName</Name>
+        <Value xsi:type="xsd:string">Optimizer</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Visible</DisplayName>
+        <Name>IsVisible</Name>
+        <Value xsi:type="xsd:boolean">true</Value>
+      </ParameterWrapper>
+      <ParameterWrapper>
+        <DisplayName>Name</DisplayName>
+        <Name>Name</Name>
+        <Value xsi:type="xsd:string">Default</Value>
+      </ParameterWrapper>
+    </ArrayOfParameterWrapper>
   </OptimizerParameters>
+  <OptimizationFitness>{escape(optimization_fitness)}</OptimizationFitness>
   <OptimizationParameters>
-    <ArrayOfParameter>
-{optimizer_parameters}
+    <ArrayOfParameter {_XML_NS}>
+{optimization_parameters}
     </ArrayOfParameter>
   </OptimizationParameters>
-</NinjaTrader>
+  <Strategy>
+    <{name} {_XML_NS}>
+{boilerplate}
+{strategy_values}
+    </{name}>
+  </Strategy>
+</StrategyTemplate>
 """
 
 
 def _parameter_xml(parameter: StrategyParameter) -> str:
-    type_name = escape(parameter.type_name)
+    """Render one `<OptimizationParameters>` `<Parameter>` block in NT's order."""
+    xsd = _xsd_type(parameter.type_name)
+    full_type = (
+        f"{parameter.type_name}, mscorlib, Version=4.0.0.0, "
+        "Culture=neutral, PublicKeyToken=b77a5c561934e089"
+    )
     return f"""      <Parameter>
-        <Name>{escape(parameter.name)}</Name>
-        <Min>{escape(parameter.minimum)}</Min>
-        <Max>{escape(parameter.maximum)}</Max>
+        <EnumValuesSerializable />
         <Increment>{escape(parameter.increment)}</Increment>
-        <ValueSerializable>{escape(parameter.default)}</ValueSerializable>
-        <ParameterTypeSerializable>{type_name}</ParameterTypeSerializable>
+        <Max xsi:type="{xsd}">{escape(parameter.maximum)}</Max>
+        <Min xsi:type="{xsd}">{escape(parameter.minimum)}</Min>
+        <Name>{escape(parameter.name)}</Name>
+        <ParameterTypeSerializable>{escape(full_type)}</ParameterTypeSerializable>
+        <ValueSerializable>{escape(_value_serializable(parameter))}</ValueSerializable>
       </Parameter>"""
+
+
+def _xsd_type(dotnet_type: str) -> str:
+    """Map a .NET type name to the xsi:type used on <Min>/<Max>."""
+    return {
+        "System.Int32": "xsd:int",
+        "System.Int64": "xsd:long",
+        "System.Int16": "xsd:short",
+        "System.Double": "xsd:double",
+        "System.Single": "xsd:float",
+        "System.Decimal": "xsd:decimal",
+        "System.Boolean": "xsd:boolean",
+        "System.String": "xsd:string",
+    }.get(dotnet_type, "xsd:string")
+
+
+def _value_serializable(parameter: StrategyParameter) -> str:
+    """`<ValueSerializable>` text. NT writes capitalised True/False for bools
+    here (unlike the lowercase form used inside the <Strategy> element)."""
+    if parameter.type_name == "System.Boolean":
+        return "True" if parameter.default.strip().lower() in {"true", "1", "yes"} else "False"
+    return parameter.default
 
 
 def _detect_strategy_name(source_text: str) -> str:
