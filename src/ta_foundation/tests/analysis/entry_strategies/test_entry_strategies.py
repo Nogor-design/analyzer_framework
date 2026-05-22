@@ -450,6 +450,137 @@ class TestOutcomeSimulator:
         assert trades["outcome_mode"].str.startswith("ticks_").any()
 
 
+class TestFillBarExposure:
+    """Regression: a limit entry is live exposure on the bar it fills on.
+    A fill bar that dips to the stop must be a loss, not silently skipped
+    (Phase 0 fix -- the old code scanned only from entry_bar_idx + 1)."""
+
+    def _scenario(self, fill_bar_low: float):
+        from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+
+        start = pd.Timestamp("2026-04-14 07:40", tz="America/Denver")
+        dts = [start + pd.Timedelta(minutes=k) for k in range(5)]
+        # A long limit at 100.0 fills on bar 1 (high 101 >= 100). Bars 2+
+        # run up through the 110 target. Only bar 1's low varies.
+        bars = pd.DataFrame({
+            "dt":     dts,
+            "open":   [100, 100, 100, 115, 115],
+            "high":   [100, 101, 116, 116, 116],
+            "low":    [100, fill_bar_low, 100, 114, 114],
+            "close":  [100, 100, 115, 115, 115],
+            "volume": [1] * 5,
+        })
+        pending = pd.DataFrame([{
+            "dt": dts[0], "direction": 1, "timing_mode": "body_midpoint",
+            "limit_price": 100.0, "fill_timeout_bars": 3,
+        }])
+        cfg = {
+            "atr": {"enabled": False},
+            "ticks": {"enabled": True, "take_profit": [40], "stop": [10]},
+            "max_bars_timeout": 10, "timeout_result": "loss",
+            "tick_size": 0.25, "tick_value": 5.0,
+            "commission_per_side": 0.0, "slippage_ticks": 0,
+        }
+        return simulate_outcomes(pending, bars, cfg)
+
+    def test_fill_bar_dip_to_stop_is_a_loss(self):
+        # fill bar low 97.0 is below the stop (100 - 10*0.25 = 97.5)
+        trades = self._scenario(fill_bar_low=97.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "loss"
+        assert trades.iloc[0]["profit_ticks"] == -10.0
+
+    def test_fill_bar_without_dip_reaches_target(self):
+        # fill bar low 99.0 stays above the stop -> trade survives to target
+        trades = self._scenario(fill_bar_low=99.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "win"
+        assert trades.iloc[0]["profit_ticks"] == 40.0
+
+    def _next_open_scenario(self, entry_bar_low: float):
+        from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+
+        start = pd.Timestamp("2026-04-14 07:40", tz="America/Denver")
+        dts = [start + pd.Timedelta(minutes=k) for k in range(5)]
+        # signal on bar 0; next_open entry at bar 1's open (100.0). Only bar 1's
+        # low varies; bars 2+ run up through the 110 target.
+        bars = pd.DataFrame({
+            "dt":     dts,
+            "open":   [100, 100, 100, 115, 115],
+            "high":   [100, 101, 116, 116, 116],
+            "low":    [100, entry_bar_low, 100, 114, 114],
+            "close":  [100, 100, 115, 115, 115],
+            "volume": [1] * 5,
+        })
+        pending = pd.DataFrame([{
+            "dt": dts[0], "direction": 1, "timing_mode": "next_open",
+            "entry_price": 100.0,
+        }])
+        cfg = {
+            "atr": {"enabled": False},
+            "ticks": {"enabled": True, "take_profit": [40], "stop": [10]},
+            "max_bars_timeout": 10, "timeout_result": "loss",
+            "tick_size": 0.25, "tick_value": 5.0,
+            "commission_per_side": 0.0, "slippage_ticks": 0,
+        }
+        return simulate_outcomes(pending, bars, cfg)
+
+    def test_next_open_entry_bar_is_scanned(self):
+        # A next_open entry is in at the entry bar's open -> that whole bar is
+        # exposure. The fast path scans from signal+1 (= the entry bar), so a
+        # dip to the stop on the entry bar must be a loss, not skipped.
+        trades = self._next_open_scenario(entry_bar_low=97.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "loss"
+        assert trades.iloc[0]["profit_ticks"] == -10.0
+
+    def test_next_open_without_dip_reaches_target(self):
+        trades = self._next_open_scenario(entry_bar_low=99.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "win"
+        assert trades.iloc[0]["profit_ticks"] == 40.0
+
+    def _atr_scenario(self, fill_bar_low: float):
+        from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+
+        start = pd.Timestamp("2026-04-14 07:40", tz="America/Denver")
+        dts = [start + pd.Timedelta(minutes=k) for k in range(5)]
+        # body_midpoint limit at 100.0 fills on bar 1; ATR stop = 100 - 1.0*2.0
+        # = 98.0, target = 100 + 4.0*2.0 = 108.0; bars 2+ run past the target.
+        bars = pd.DataFrame({
+            "dt":     dts,
+            "open":   [100, 100, 100, 110, 110],
+            "high":   [100, 101, 116, 116, 116],
+            "low":    [100, fill_bar_low, 100, 109, 109],
+            "close":  [100, 100, 112, 112, 112],
+            "volume": [1] * 5,
+        })
+        pending = pd.DataFrame([{
+            "dt": dts[0], "direction": 1, "timing_mode": "body_midpoint",
+            "limit_price": 100.0, "fill_timeout_bars": 3, "signal_atr": 2.0,
+        }])
+        cfg = {
+            "atr": {"enabled": True, "target_mult": 4.0, "stop_mult": 1.0},
+            "ticks": {"enabled": False},
+            "max_bars_timeout": 10, "timeout_result": "loss",
+            "tick_size": 0.25, "tick_value": 5.0,
+            "commission_per_side": 0.0, "slippage_ticks": 0,
+        }
+        return simulate_outcomes(pending, bars, cfg)
+
+    def test_atr_fill_bar_dip_to_stop_is_a_loss(self):
+        # the ATR outcome path had the same fill-bar-skip bug as the tick path
+        trades = self._atr_scenario(fill_bar_low=97.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "loss"
+        assert trades.iloc[0]["profit_ticks"] == -8.0
+
+    def test_atr_fill_bar_without_dip_reaches_target(self):
+        trades = self._atr_scenario(fill_bar_low=99.0)
+        assert not trades.empty
+        assert trades.iloc[0]["result"] == "win"
+
+
 # ===========================================================================
 # 6. ma/features.py
 # ===========================================================================

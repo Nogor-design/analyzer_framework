@@ -179,3 +179,276 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 register_family("sma_cross_smoke", _sma_cross_renderer)
 register_family("sma_cross", _sma_cross_renderer)
+
+
+def _orb_failure_reclaim_renderer(spec: StrategySpec) -> str:
+    """Faithful NinjaScript realization of the `orb_failure_reclaim` family.
+
+    Built to validate discovery candidate `c_1acc69ea578ff672_001` (NQ 1m) in
+    NinjaTrader — the realization-path gap Runbook B step 2 surfaced (see
+    `docs/runbooks/manual_pipeline_proof.md`).
+
+    Fidelity caveat: the discovery engine groups bars in `America/Denver` local
+    time. This strategy gates the session window by the *bar timestamp's*
+    wall-clock minute-of-day, so the NinjaTrader data series must be loaded in
+    the same timezone the discovery used. Body-midpoint entry is a limit order
+    at `(Open + Close) / 2` of the reclaim bar, cancelled after
+    `FillTimeoutBars` unfilled bars — mirroring the outcome simulator's
+    `_fill_limit_order` window.
+    """
+    name = spec.strategy_name
+    p = spec.parameters
+    params = {
+        "OrbMinutes": int(p.get("OrbMinutes", 5)),
+        "SessionOpenHour": int(p.get("SessionOpenHour", 7)),
+        "SessionOpenMinute": int(p.get("SessionOpenMinute", 30)),
+        "SessionCloseHour": int(p.get("SessionCloseHour", 10)),
+        "MinRangeTicks": int(p.get("MinRangeTicks", 8)),
+        "MinSweepTicks": float(p.get("MinSweepTicks", 4.0)),
+        "CloseBackTicks": float(p.get("CloseBackTicks", 0.0)),
+        "MaxReclaimBars": int(p.get("MaxReclaimBars", 1)),
+        "FillTimeoutBars": int(p.get("FillTimeoutBars", 5)),
+        "MaxBarsInTrade": int(p.get("MaxBarsInTrade", 90)),
+        "TradeDirection": int(p.get("TradeDirection", p.get("Direction", 0))),
+        "TargetTicks": int(p.get("TargetTicks", 150)),
+        "StopTicks": int(p.get("StopTicks", 20)),
+    }
+    return f"""using System;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using NinjaTrader.Cbi;
+using NinjaTrader.Data;
+using NinjaTrader.NinjaScript;
+
+namespace NinjaTrader.NinjaScript.Strategies
+{{
+    // ORB failure-reclaim. Each session builds an opening range over the first
+    // OrbMinutes after the session open; after a sweep beyond the range that
+    // closes back inside within MaxReclaimBars, enter on a limit order at the
+    // reclaim bar's body midpoint. One signal per side per day.
+    public class {name} : Strategy
+    {{
+        private DateTime currentDay = DateTime.MinValue;
+        private double orbHigh;
+        private double orbLow;
+        private int orbBarsSeen;
+        private bool orbReady;
+        private bool orbDone;
+        private bool firedLong;
+        private bool firedShort;
+        private int longSweepBar;
+        private int shortSweepBar;
+        private int entrySubmitBar;
+        private Order entryOrder;
+
+        protected override void OnStateChange()
+        {{
+            if (State == State.SetDefaults)
+            {{
+                Name = "{name}";
+                Description = "ORB failure-reclaim realization for discovery validation.";
+                Calculate = Calculate.OnBarClose;
+                // Resolve intrabar fills with tick data: a body-midpoint limit
+                // can fill and then hit the stop inside the same 1-minute bar.
+                // Standard (minute) resolution mis-fills that collision badly.
+                OrderFillResolution = OrderFillResolution.High;
+                OrderFillResolutionType = BarsPeriodType.Tick;
+                OrderFillResolutionValue = 1;
+                EntriesPerDirection = 1;
+                EntryHandling = EntryHandling.AllEntries;
+                IsExitOnSessionCloseStrategy = true;
+                ExitOnSessionCloseSeconds = 30;
+                BarsRequiredToTrade = 20;
+                DefaultQuantity = 1;
+                OrbMinutes = {params["OrbMinutes"]};
+                SessionOpenHour = {params["SessionOpenHour"]};
+                SessionOpenMinute = {params["SessionOpenMinute"]};
+                SessionCloseHour = {params["SessionCloseHour"]};
+                MinRangeTicks = {params["MinRangeTicks"]};
+                MinSweepTicks = {params["MinSweepTicks"]};
+                CloseBackTicks = {params["CloseBackTicks"]};
+                MaxReclaimBars = {params["MaxReclaimBars"]};
+                FillTimeoutBars = {params["FillTimeoutBars"]};
+                MaxBarsInTrade = {params["MaxBarsInTrade"]};
+                TradeDirection = {params["TradeDirection"]};
+                TargetTicks = {params["TargetTicks"]};
+                StopTicks = {params["StopTicks"]};
+            }}
+            else if (State == State.Configure)
+            {{
+                SetProfitTarget(CalculationMode.Ticks, TargetTicks);
+                SetStopLoss(CalculationMode.Ticks, StopTicks);
+            }}
+        }}
+
+        protected override void OnBarUpdate()
+        {{
+            if (CurrentBar < BarsRequiredToTrade)
+                return;
+
+            if (Time[0].Date != currentDay)
+            {{
+                currentDay = Time[0].Date;
+                orbHigh = double.MinValue;
+                orbLow = double.MaxValue;
+                orbBarsSeen = 0;
+                orbReady = false;
+                orbDone = false;
+                firedLong = false;
+                firedShort = false;
+                longSweepBar = -1;
+                shortSweepBar = -1;
+                entryOrder = null;
+            }}
+
+            int tod = Time[0].Hour * 60 + Time[0].Minute;
+            int openTod = SessionOpenHour * 60 + SessionOpenMinute;
+
+            // Build the opening range; never trade a bar still inside it.
+            if (!orbDone)
+            {{
+                if (tod >= openTod && tod < openTod + OrbMinutes)
+                {{
+                    orbHigh = Math.Max(orbHigh, High[0]);
+                    orbLow = Math.Min(orbLow, Low[0]);
+                    orbBarsSeen++;
+                }}
+                else if (tod >= openTod + OrbMinutes && orbBarsSeen > 0)
+                {{
+                    orbDone = true;
+                    orbReady = (orbHigh - orbLow) >= MinRangeTicks * TickSize;
+                }}
+                return;
+            }}
+
+            // Cancel a stale, still-working entry limit order.
+            if (entryOrder != null && entryOrder.OrderState == OrderState.Working
+                && CurrentBar - entrySubmitBar > FillTimeoutBars)
+            {{
+                CancelOrder(entryOrder);
+                entryOrder = null;
+            }}
+
+            // Time-based exit.
+            if (Position.MarketPosition != MarketPosition.Flat
+                && BarsSinceEntryExecution() >= MaxBarsInTrade)
+            {{
+                if (Position.MarketPosition == MarketPosition.Long)
+                    ExitLong("OrbTimeExit", "OrbLong");
+                else
+                    ExitShort("OrbTimeExit", "OrbShort");
+                return;
+            }}
+
+            if (!orbReady)
+                return;
+            if (Time[0].Hour >= SessionCloseHour)
+                return;
+            if (Position.MarketPosition != MarketPosition.Flat)
+                return;
+            if (entryOrder != null && entryOrder.OrderState == OrderState.Working)
+                return;
+
+            double sweepDist = MinSweepTicks * TickSize;
+            double closeBack = CloseBackTicks * TickSize;
+            double midPrice = (Open[0] + Close[0]) / 2.0;
+
+            // Short: price sweeps above orbHigh, then closes back inside.
+            if (TradeDirection <= 0 && !firedShort)
+            {{
+                if (shortSweepBar >= 0 && CurrentBar - shortSweepBar > MaxReclaimBars)
+                    shortSweepBar = -1;
+                if (High[0] >= orbHigh + sweepDist && shortSweepBar < 0)
+                    shortSweepBar = CurrentBar;
+                if (shortSweepBar >= 0 && Close[0] <= orbHigh - closeBack)
+                {{
+                    EnterShortLimit(0, true, 1, midPrice, "OrbShort");
+                    entrySubmitBar = CurrentBar;
+                    firedShort = true;
+                    return;
+                }}
+            }}
+
+            // Long: price sweeps below orbLow, then closes back inside.
+            if (TradeDirection >= 0 && !firedLong)
+            {{
+                if (longSweepBar >= 0 && CurrentBar - longSweepBar > MaxReclaimBars)
+                    longSweepBar = -1;
+                if (Low[0] <= orbLow - sweepDist && longSweepBar < 0)
+                    longSweepBar = CurrentBar;
+                if (longSweepBar >= 0 && Close[0] >= orbLow + closeBack)
+                {{
+                    EnterLongLimit(0, true, 1, midPrice, "OrbLong");
+                    entrySubmitBar = CurrentBar;
+                    firedLong = true;
+                }}
+            }}
+        }}
+
+        protected override void OnOrderUpdate(Order order, double limitPrice, double stopPrice,
+            int quantity, int filled, double averageFillPrice, OrderState orderState,
+            DateTime time, ErrorCode error, string comment)
+        {{
+            if (order.Name == "OrbLong" || order.Name == "OrbShort")
+                entryOrder = order;
+        }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "OrbMinutes", GroupName = "Parameters", Order = 1)]
+        public int OrbMinutes {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "SessionOpenHour", GroupName = "Parameters", Order = 2)]
+        public int SessionOpenHour {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "SessionOpenMinute", GroupName = "Parameters", Order = 3)]
+        public int SessionOpenMinute {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "SessionCloseHour", GroupName = "Parameters", Order = 4)]
+        public int SessionCloseHour {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "MinRangeTicks", GroupName = "Parameters", Order = 5)]
+        public int MinRangeTicks {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "MinSweepTicks", GroupName = "Parameters", Order = 6)]
+        public double MinSweepTicks {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "CloseBackTicks", GroupName = "Parameters", Order = 7)]
+        public double CloseBackTicks {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "MaxReclaimBars", GroupName = "Parameters", Order = 8)]
+        public int MaxReclaimBars {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "FillTimeoutBars", GroupName = "Parameters", Order = 9)]
+        public int FillTimeoutBars {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "MaxBarsInTrade", GroupName = "Parameters", Order = 10)]
+        public int MaxBarsInTrade {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "TradeDirection", GroupName = "Parameters", Order = 11)]
+        public int TradeDirection {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(20, 400)]
+        [Display(Name = "TargetTicks", GroupName = "Parameters", Order = 12)]
+        public int TargetTicks {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(4, 100)]
+        [Display(Name = "StopTicks", GroupName = "Parameters", Order = 13)]
+        public int StopTicks {{ get; set; }}
+    }}
+}}
+"""
+
+
+register_family("orb_failure_reclaim", _orb_failure_reclaim_renderer)

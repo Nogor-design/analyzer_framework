@@ -192,27 +192,35 @@ def _fill_limit_order(
     bars_1m: pd.DataFrame,
     signal_idx: int,
     fill_timeout_bars: int,
+    timing_mode: str = "break_extreme",
 ) -> Tuple[Optional[int], Optional[pd.Timestamp]]:
     """
-    Scan up to *fill_timeout_bars* 1m bars from *signal_idx* to fill a limit order.
+    Scan up to *fill_timeout_bars* 1m bars from *signal_idx* to fill a pending
+    entry order. The trigger side depends on the order type:
 
-    Long limit (break_extreme): fills when bar_high >= limit_price
-    Short limit (break_extreme): fills when bar_low <= limit_price
-    Body midpoint (both dirs): fills when bar range includes limit_price
+    break_extreme places a STOP beyond the signal bar's extreme -- it fills
+    when price breaks out to the trigger (long: bar_high >= price).
+    body_midpoint places a LIMIT inside the bar's body -- it fills when price
+    pulls back to the limit (long: bar_low <= price).
+
+    Applying the break_extreme rule to body_midpoint (the old behaviour)
+    fabricated an instant fill at a price better than market and inflated
+    every body_midpoint candidate.
 
     Returns (bar_idx_of_fill, fill_dt) or (None, None) if not filled.
     """
     end = min(signal_idx + fill_timeout_bars + 1, len(bars_1m))
+    is_limit = timing_mode == "body_midpoint"
     for i in range(signal_idx + 1, end):
         bar = bars_1m.iloc[i]
         bar_high = float(bar["high"])
         bar_low  = float(bar["low"])
         if direction == 1:
-            if bar_high >= limit_price:
-                return i, bar["dt"]
+            filled = bar_low <= limit_price if is_limit else bar_high >= limit_price
         else:
-            if bar_low <= limit_price:
-                return i, bar["dt"]
+            filled = bar_high >= limit_price if is_limit else bar_low <= limit_price
+        if filled:
+            return i, bar["dt"]
     return None, None
 
 
@@ -263,7 +271,10 @@ def _build_forward_windows(
 
     Parameters
     ----------
-    bar_indices : (n,) entry bar positions (scan starts at bar_indices + 1)
+    bar_indices : (n,) **signal** bar positions. The scan starts at
+        bar_indices + 1 -- for a next_open entry that bar IS the entry bar
+        (the entry fills at the next bar's open), so the entry bar's full
+        range is included in the TP/SL scan. This is correct, not a skip.
     highs, lows, closes : (n_bars,) price arrays
     n_bars : total number of bars
     max_bars : timeout window size
@@ -400,7 +411,7 @@ def _simulate_tick_outcomes_slow(
         if np.isnan(limit_price):
             continue
         fill_idx, fill_dt = _fill_limit_order(
-            limit_price, direction, bars, signal_bar_idx, fill_timeout_bars
+            limit_price, direction, bars, signal_bar_idx, fill_timeout_bars, timing_mode
         )
         if fill_idx is None:
             continue
@@ -408,16 +419,32 @@ def _simulate_tick_outcomes_slow(
         entry_bar_idx = fill_idx
         fill_bars_n   = fill_idx - signal_bar_idx
         entry_dt      = fill_dt
+        fill_bar_high = float(bars.iloc[entry_bar_idx]["high"])
+        fill_bar_low  = float(bars.iloc[entry_bar_idx]["low"])
 
         for tp_ticks, sl_ticks in combos:
             stop_price   = entry_price - direction * sl_ticks * tick_size
             target_price = entry_price + direction * tp_ticks * tick_size
 
-            result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
-                entry_price, direction, stop_price, target_price,
-                bars, entry_bar_idx + 1, max_bars,
-                timeout_result, tick_size, tick_value, comm, slip_ticks,
-            )
+            # The bar the limit fills on is live exposure: once filled, the
+            # stop can be hit on that same bar. A limit entry placed after a
+            # sweep routinely fills into a bar that still carries a large
+            # adverse excursion, so the fill bar itself must be checked --
+            # scanning only from entry_bar_idx + 1 silently ignored it and
+            # inflated every limit-entry candidate. Conservative: assume the
+            # adverse side resolves first within the fill bar.
+            if (fill_bar_low <= stop_price if direction == 1
+                    else fill_bar_high >= stop_price):
+                result       = "loss"
+                exit_price   = stop_price
+                profit_ticks = (exit_price - entry_price) * direction / tick_size
+                exit_dt      = entry_dt
+            else:
+                result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
+                    entry_price, direction, stop_price, target_price,
+                    bars, entry_bar_idx + 1, max_bars,
+                    timeout_result, tick_size, tick_value, comm, slip_ticks,
+                )
 
             pnet = _net_profit(profit_ticks, tick_value, comm, slip_ticks, tick_size)
 
@@ -522,7 +549,8 @@ def simulate_atr_outcomes(
             if np.isnan(limit_price):
                 continue
             fill_idx, fill_dt = _fill_limit_order(
-                limit_price, direction, bars, signal_bar_idx, fill_timeout_bars
+                limit_price, direction, bars, signal_bar_idx,
+                fill_timeout_bars, timing_mode,
             )
             if fill_idx is None:
                 continue  # unfilled
@@ -535,12 +563,30 @@ def simulate_atr_outcomes(
         stop_price   = entry_price - direction * stop_mult   * atr_val
         target_price = entry_price + direction * target_mult * atr_val
 
+        # A limit entry is live exposure on the bar it fills on -- check that
+        # bar's adverse extreme before scanning forward (mirrors the fixed
+        # tick path). next_open enters at the bar open, so its whole bar is
+        # already covered by the entry_bar_idx + 1 scan and needs no check.
+        fill_bar_stopped = False
+        if timing_mode != "next_open":
+            fb = bars.iloc[entry_bar_idx]
+            fill_bar_stopped = (
+                float(fb["low"]) <= stop_price if direction == 1
+                else float(fb["high"]) >= stop_price
+            )
+
         # Resolve outcome
-        result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
-            entry_price, direction, stop_price, target_price,
-            bars, entry_bar_idx + 1, max_bars,
-            timeout_result, tick_size, tick_value, comm, slip_ticks,
-        )
+        if fill_bar_stopped:
+            result       = "loss"
+            exit_price   = stop_price
+            profit_ticks = (exit_price - entry_price) * direction / tick_size
+            exit_dt      = entry_dt
+        else:
+            result, profit_ticks, exit_price, exit_dt = _resolve_outcome(
+                entry_price, direction, stop_price, target_price,
+                bars, entry_bar_idx + 1, max_bars,
+                timeout_result, tick_size, tick_value, comm, slip_ticks,
+            )
 
         pnet = _net_profit(profit_ticks, tick_value, comm, slip_ticks, tick_size)
 

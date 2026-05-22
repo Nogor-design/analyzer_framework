@@ -195,8 +195,8 @@ _STRATEGY_BOILERPLATE = """\
       <IsWaitUntilFlat>false</IsWaitUntilFlat>
       <NumberRestartAttempts>4</NumberRestartAttempts>
       <OptimizationPeriod>10</OptimizationPeriod>
-      <OrderFillResolution>Standard</OrderFillResolution>
-      <OrderFillResolutionType>Minute</OrderFillResolutionType>
+      <OrderFillResolution>High</OrderFillResolution>
+      <OrderFillResolutionType>Tick</OrderFillResolutionType>
       <OrderFillResolutionValue>1</OrderFillResolutionValue>
       <RestartsWithinMinutes>5</RestartsWithinMinutes>
       <SetOrderQuantity>Strategy</SetOrderQuantity>

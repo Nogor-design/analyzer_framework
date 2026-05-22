@@ -198,17 +198,101 @@ error**. See defects #14 / #15.
 strategy** — compile-clean → optimizer evidence → guardrail verdict. What
 remains is a faithful realization path for `orb_failure_reclaim` itself.
 
-**Step 6/7 — manager decision.** Candidate `c_1acc69ea578ff672_001`
-(`orb_failure_reclaim`) **does not advance to an NT-validated state.** Two
-independent blockers: (a) the family has no faithful realization path, so no
-honest ORB `.cs` exists to test; (b) even the generic seam cannot reach
-optimizer evidence (#15). Combined with the Runbook A holdout-lock-bypass
-finding (defect #2 — its holdout provenance is a backfill and its holdout
-month decays, PF 3.89→1.88), the candidate stays in shadow as "watch", and
-**Phase 0's Runbook B exit criterion is not met.** Closing it needs: a
-realization path for `orb_failure_reclaim`, and the optimizer-leg fixes
-(#15). No generic-strategy evidence was attached to the candidate's
-`notes_json` — per step 2 it must not count as that candidate's NT evidence.
+**Step 2 follow-up — realization path built (2026-05-21).** The gap step 2
+surfaced is now closed in code: `authoring.py` registers an
+`orb_failure_reclaim` family renderer — a faithful NinjaScript realization of
+candidate `c_1acc69ea578ff672_001`'s rule (per-day opening range, sweep +
+within-`MaxReclaimBars` reclaim detection, body-midpoint limit entry with a
+`FillTimeoutBars` cancel, TP/SL/bar-timeout exits). Numeric knobs are exposed
+as `[NinjaScriptProperty]`; only `TargetTicks`/`StopTicks` carry `[Range]`, so
+`seed_template.extract_strategy_parameters` produces a focused 3×3 optimizer
+grid around the discovered point with no template-side changes. Verified:
+render → `generate_seed_template_from_source` emits a valid `<StrategyTemplate>`
+carrying `<Category>Optimize</Category>`; regression-locked by
+`test_authoring.py` (`test_orb_failure_reclaim_*`). Spec for the loop:
+`discovery/_phase0_proof/orb_failure_reclaim_candidate.spec.json`.
+**Fidelity caveat:** the discovery engine groups bars in `America/Denver`
+local time; the renderer gates the session window by the bar timestamp's
+wall-clock minute-of-day, so the NQ 1m series must be loaded in the same
+timezone — a documented seam, not an exact match. **Remaining live step:**
+`ensure-nt-ready` → `full-loop --spec <that spec>` against a running
+NinjaTrader to actually produce the candidate's NT evidence (not yet run).
+
+**Step 6/7 — manager decision: superseded by the 2026-05-22 run below.**
+
+### Runbook B — NT validation run + reconciliation (2026-05-22)
+
+The candidate's realization (the `orb_failure_reclaim` renderer, Step 2
+follow-up) was driven through `full-loop` end to end against a running
+NinjaTrader: author → **compile-clean** → seed template → optimizer (9-row
+3×3 grid) → guardrail verdict. The seam runs for the real candidate.
+
+**The first verdict was wrong — and catching that is the point.** The
+optimizer returned `archive` (best row −$885, PF 0.575). A controlled
+comparison — the *same* params and window (NQ, 2026-04-14…05-14) through the
+Python discovery engine — disagreed flatly: the engine showed **+$3,260**,
+same ~30 trades, same session. The verdict was not trustworthy, so it was
+investigated, not recorded.
+
+**Diagnosis (trade-by-trade vs the NT Strategy Analyzer grid).** Not a logic
+bug, not a timezone bug — NT runs the correct 07:30 MT session (grid entries
+are 07:37–08:54). The divergence is entirely in **exit modelling**:
+
+- *NT side:* `OrderFillResolution=Standard` cannot sequence a limit fill and
+  its managed stop inside one 1-minute bar. On a deep-sweep bar the stop
+  fills catastrophically — 10 of 30 trades lost far more than the 21-tick
+  stop (−92, −71, −68 ticks…), ~$1,160 of pure artifact loss.
+- *Discovery-engine side:* the outcome simulator was systematically
+  optimistic — it skipped the bar a limit fills on (`_resolve_outcome`
+  scanned from `entry_bar_idx + 1`), and `_fill_limit_order` applied
+  breakout/stop fill semantics to `body_midpoint` limit orders. Both inflate
+  every limit-entry candidate.
+
+All three are fixed (defects #16 / #17 / #18). The discovery-engine fixes
+(#17/#18) cut its window result from a fantasy +$4,485 to a conservative
++$395. **The renderer fix (#16) was then verified live (2026-05-22):**
+re-running `full-loop` with `OrderFillResolution=High` flipped all nine
+optimizer rows from losers to winners — the best row (T151/S21) now nets
+**+$1,105, PF 1.41** (was −$885, PF 0.575); the exact-params row T150/S20
+nets **+$355, PF 1.13**. The catastrophic same-bar stop fills are gone.
+
+**Corrected manager decision.** Candidate `c_1acc69ea578ff672_001` **does not
+advance** — but it is a *modest real edge*, not the disaster the first run
+showed nor the PF 3.88 the ledger claimed. Modelled with correct fills
+(NT tick-resolution) it is **PF ~1.1–1.4** on the validation window; NT
+archives it only because PF 1.41 misses the 1.5 guardrail — an honest
+near-miss. The original `archive` verdict (−$885) is **retracted** as a
+fill-resolution artifact; the negative verdict now stands for the correct
+reason. Phase 0 / Runbook B did exactly its job — a "survivor" with a
+headline PF 3.88 is, modelled honestly, a marginal edge that does not clear
+the bar. No NT evidence is written to the canonical ledger pending the
+operator's call.
+
+**Ledger re-score — orb family (2026-05-22).** With the engine fixed, the
+109 orb `body_midpoint`/`break_extreme` ledger candidates were re-scored:
+detect + emit run once, then `simulate_outcomes` run with the pre-fix
+simulator (git HEAD) vs the fixed one on identical pending entries over the
+same window — so the old/new ratio isolates the bug. Result: **median PF
+inflation 4.7×**; **all 109 fail the 1.5 guardrail** honestly scored (median
+fixed PF 0.38) and **99 of 109 are outright losing** (PF < 1.0). The
+old-recompute median (1.30) tracks the stored `pf_dev` median (1.57),
+confirming the reconstruction is faithful. The fixed engine is a
+*conservative* lower bound (the fill-bar check assumes adverse-first), but
+a 4.7× inflation across 109/109 candidates is unambiguous. **Conclusion:
+the orb family's ledger "edges" are almost entirely fill-modelling
+artifacts — there is no real orb edge in the ledger, including the former
+survivor `c_1acc69ea578ff672_001` (stored 3.88 → fixed 0.58).** Report:
+`.ta_artifacts/orb_rescore_report.csv`.
+
+The bug is in the **shared** `simulate_outcomes` — every family's sweep
+(`orb_sweep`, `bb_sweep`, `_sweep_base` for level/pullback) calls it
+identically — so it is engine-wide, not orb-specific; the 25 bb/level/pullback
+`body_midpoint` candidates are inflated by the same mechanism. A faithful
+per-candidate re-score of those is blocked by defect #19. **All 429 ledger
+candidates were flagged 2026-05-22** (`phase0.flag_stale_metrics`, journaled;
+backup `research_ledger.db.bak_2026-05-22_rescore_flag`): 136 carry
+`rescore_flag.affected_by_fill_bug = true`, 293 are marked predates-audit.
+Nothing in the ledger should be promoted on its stored metrics.
 
 ## Defect log
 
@@ -222,7 +306,7 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 | 3 | tooling | hardening + holdout journaled tools (`promote_to_hardening`, `request_locked_holdout`, `run_probe` hardened/holdout) have never run | high | **resolved** 2026-05-21 — proven end to end on a sandbox ledger by `scripts/phase0_journaled_tooling_proof.py` (Runbook A step 4). All journaled tools fire and journal correctly; the `not_a_survivor` precondition and the one-shot holdout lock both behave. Earlier (2026-05-20) the report-CLI hardening path was also confirmed. NOTE: `run_probe`'s `mode` arg is a pure ledger label — it is *not* passed to the CLI, so a `hardened` and a `locked_holdout` run of the same YAML are compute-identical; the holdout is defined entirely by YAML content. |
 | 4 | discovery | journaled tooling's full track record is 7 hypotheses → all retired no-trades → 0 survivors; the real pipeline has never produced a tradeable candidate | high | **re-framed 2026-05-21** — the 0-survivor record is **structural wiring, not signal selectivity**. The journaled path is broken in three places (defects #9 / #10 / #11): author_probe emits a config-less YAML, the Sweep Operator never ingests the sidecar, and the verdict mapper never returns `survivor` for a fast probe. The 2026-05-20 probes that "diagnosed signal selectivity" ran the **report-CLI path directly**, bypassing all three breaks — so they measured engine quality, not the journaled pipeline. Engine/signal quality is fine (`orb_failure_reclaim` reproduces the survivor, dev PF 3.89); the journaled pipeline simply never delivered a sidecar's candidates to the ledger with a promotable verdict. **Root cause resolved 2026-05-21:** #9 / #10 / #11 all fixed; `scripts/phase0_journaled_pipeline_check.py` confirms the journaled pipeline now produces a survivor **unaided** — the real Sweep Operator authored → ran `run_probe` (fast + hardened) → ingested both sidecars → 2 survivor candidates in the ledger (dev PF 3.89 / n146, OOS PF 5.24 / n87). Verified for `orb_failure_reclaim` only; the other 12 families still need templates (Phase 1). |
 | 5 | inputs | `--input` NT-export folder was undocumented / ad-hoc | low | **resolved** 2026-05-20 — created `inputs/nt_exports/` + README |
-| 6 | NT validation | no ledger schema for NT evidence; NT validation never run | med | **partially addressed** 2026-05-21 — Runbook B run for the first time (see "Runbook B run" above). The discovery→NT seam now runs **end-to-end for a generic strategy** (author → compile-clean → optimizer → guardrail verdict; #14/#15 fixed). Still open: a first-class ledger schema for NT evidence (Phase 1), and a faithful realization path for `orb_failure_reclaim` so the actual candidate can be validated. |
+| 6 | NT validation | no ledger schema for NT evidence; NT validation never run | med | **partially addressed** 2026-05-21 — Runbook B run for the first time (see "Runbook B run" above). The discovery→NT seam now runs **end-to-end for a generic strategy** (author → compile-clean → optimizer → guardrail verdict; #14/#15 fixed). The `orb_failure_reclaim` realization-path gap is now closed in code (Step 2 follow-up: `authoring.py` registers an `orb_failure_reclaim` renderer; spec at `discovery/_phase0_proof/orb_failure_reclaim_candidate.spec.json`). Still open: a first-class ledger schema for NT evidence (Phase 1), and the **live `full-loop` run** of the candidate spec against a running NinjaTrader to actually produce its NT evidence. |
 | 7 | hardening | the hardening regime-scoping gate and the per-candidate regime breakdown were dormant — the CLI never passed `bars_with_regime` to any family sweep, so every regime join silently received `None` | med | **resolved** 2026-05-20 — `cli/main.py` now computes `compute_bar_regime` once and threads it through all discovery modules (incl. `lcr`) |
 | 8 | reporting | discovery sidecar metric fields `expectancy_ticks` / `avg_win_ticks` / `avg_loss_ticks` / `max_drawdown_ticks` hold **dollar** values, not ticks (they are `avg_trade` / `avg_winner` / … from `compute_evaluation_metrics`, in `profit_net` dollars). The mislabel propagates into the research ledger via `sidecar_parser.py` (`expectancy_dev = metrics.get("expectancy_ticks")`) | med | open — misleads by a factor of `tick_value` (5×); no P&L or gate impact. Fix = rename keys or convert to true ticks; rippling change deferred. |
 | 9 | tooling | `author_probe` emits `discovery/generated/<hypothesis_id>.yaml` containing **only** a `pre_registration:` block — no `orb_discovery:` / `candle_discovery:` / etc. sweep config. `resolve_yaml_path_via_author_probe` (the Sweep Operator's default resolver) points `run_probe` straight at that file, so the CLI runs with nothing to sweep and produces zero candidates. | high | **resolved** 2026-05-21 — per-family template + substitution. New `discovery/templates/orb_failure_reclaim.yaml` skeleton + `agent/tools/probe_config.py` (`build_probe_config`); `author_probe` now emits a full runnable single-combo discovery config for `orb_failure_reclaim` and returns `runnable: True`. Families without a template still register but return `runnable: False` + a `config_note` (explicit gap, not a silent one). Scoped to the one proven family; other families' templates are Phase 1. |
@@ -232,16 +316,23 @@ output of Phase 0; Phase 1+ tasks should be derived from it.
 | 13 | tooling | `research_ledger/backfill.py:131` calls `infer_family(parsed)` passing a `ParsedSidecar`, but `sidecar_parser.infer_family(yaml_filename: str, signal_name=None)` expects a filename string — `AttributeError: 'ParsedSidecar' object has no attribute 'lower'`. Backfill is currently broken; `test_backfill.py` fails 10/10. | med | open — discovered 2026-05-21 while fixing #9/#10/#11 (pre-existing on the `CandleDiscovery` branch, not introduced here). Fix = call `infer_family(sidecar_path.name, first_signal)` or add a `ParsedSidecar` overload. Untouched — outside the #9/#10/#11 scope. |
 | 14 | NT validation | the optimizer **chunk-template writer** lost the analyzer category: `optimizer_template_writer.py` removes `<BacktestType>` then calls `_replace_tag_text(text, "Category", ...)` — a no-op when the seed has no `<Category>` — so chunks reached preflight with neither tag (`Optimizer preflight failed: chunk_001.xml … category is '<missing>'`). | high | **resolved** 2026-05-21 — root cause was the malformed seed (#15), not the chunk writer. Once `seed_template.py` emits the proven format the seed already carries `<Category>Optimize</Category>` inside `<Strategy>`, which `_replace_tag_text` finds and the preflight's `.//Category` finds. The interim one-line change to `optimizer_template_writer.py` was **reverted** — that file is unchanged, the whole fix lives in `seed_template.py`. |
 | 15 | NT validation | the seam reached NinjaTrader's Strategy Analyzer, which rejected the run: *"Tried to run strategy analyzer on strategy from unknown category 'NinjaScript'"*. Root cause: `nt_strategy_loop/seed_template.py` emitted a **synthetic `<NinjaTrader>`-root** optimizer template that bore no resemblance to NT's real saved format — wrong root element, a stub `<Strategy>` with ~5 fields, and no `<Category>` strategy-property — so NT defaulted the category to 'NinjaScript' and rejected it. (This is the recurring bug: the synthetic format was never NT's format.) | high | **resolved** 2026-05-21 — `render_seed_template` rewritten to emit the **proven `<StrategyTemplate>` format**, transcribed field-for-field from a real NinjaTrader-saved optimizer template (`opt_5bab6a5ee1ea`'s working chunks): `<StrategyTemplate>` root, `<OptimizerParameters><ArrayOfParameterWrapper>`, `<OptimizationParameters><ArrayOfParameter>` with full `xsi:type`/assembly-qualified types, and a complete `<Strategy>` serialization carrying `<Category>Optimize</Category>`. Regression-locked by `test_seed_template.py`. **Verified live**: `SeamProbeOne` ran the full loop — compile-clean → optimizer **finished, 162 rows**, CSV written, guardrail verdict — no category error. |
+| 16 | NT validation | `OrderFillResolution=Standard` (the seed-template default) cannot sequence a limit fill and its managed stop within one 1-minute bar. On a deep-sweep bar NT fills the stop far past its level — 10/30 trades in the `orb_failure_reclaim` run lost −92/−71/−68… ticks against a 21-tick stop, ~$1,160 of artifact loss, flipping the candidate's NT verdict to a false `archive`. | high | **resolved 2026-05-22** — the `orb_failure_reclaim` renderer (`authoring.py`) and the shared `seed_template.py` boilerplate now set `OrderFillResolution=High` / `OrderFillResolutionType=Tick` / value 1 so NT resolves intrabar fills with tick data. Dependency: NT must have tick data for the instrument/period. **Verified live 2026-05-22** — re-running `full-loop` flipped all 9 optimizer rows from losers (−$885…−$1,675) to winners (+$345…+$1,105); best row T151/S21 PF 0.575 → 1.41. |
+| 17 | discovery | the tick outcome simulator (`_simulate_tick_outcomes_slow`) scanned TP/SL from `entry_bar_idx + 1`, **skipping the bar the limit fills on**. A limit entry placed after a sweep routinely fills into a bar still carrying a large adverse excursion — silently ignored — so every limit-entry (`body_midpoint`/`break_extreme`) candidate was inflated. | high | **resolved 2026-05-22** — a conservative fill-bar stop check added before `_resolve_outcome`; regression-locked by `TestFillBarExposure`. The ATR outcome path (`simulate_atr_outcomes`) had the identical fill-bar skip — initially missed, caught during the orb re-score, and given the same fix. The vectorized `next_open` fast path (`_simulate_tick_outcomes` / `_build_forward_windows`) was checked 2026-05-22 and is **correct** — `_build_forward_windows` receives the *signal* bar index, so its `+1` scan start lands on the next_open entry bar (which the entry fills at the open of); the entry bar's range is already included. Regression-locked by `test_next_open_entry_bar_is_scanned`. The misleading "entry bar positions" docstring was corrected. |
+| 18 | discovery | `_fill_limit_order` applied break_extreme stop-fill semantics (long: `bar_high>=P`) to `body_midpoint` limit orders, which must fill on a pullback (long: `bar_low<=P`). For a midpoint below market this fabricated an instant fill at a price better than market. | high | **resolved 2026-05-22** — `timing_mode` threaded into `_fill_limit_order`; `body_midpoint` now fills on the pullback. Combined effect of #17+#18: the candidate's window P&L fell from a fantasy +$4,485 to an honest +$395, reconciling with the corrected NT run (≈ +$275). |
+| 19 | tooling / data | `backfill.py` did not record `signal_id` / `pattern_id` into candidate `notes_json` — every backfilled bb/level/pullback candidate carries `signal_id: null`. Each of those families has 3–7 detectors, so the detector that produced a candidate is unrecoverable from the ledger alone (only inferable from param-key sets), which blocks faithful per-candidate re-scoring. | med | open — discovered 2026-05-22 during the re-score. orb was unaffected (single detector path, re-scored fine). Fix = have backfill capture `signal_id`; until then, re-score bb/level/pullback by re-running their source discovery configs (which carry `signal_id`), not by ledger reconstruction. |
 
 ## Exit criteria for Phase 0
 
 - Every `survivor` verdict is backed by real evidence or reclassified.
-- **[partial 2026-05-21]** One candidate has a complete, honest manager
-  decision — see "Runbook B run". The decision is written and honest, but it
-  is *negative*: `c_1acc69ea578ff672_001` does **not** advance, because the
-  `orb_failure_reclaim` family has no realization path and the optimizer leg
-  (#15) cannot produce NT evidence. A *positive*, NT-evidenced advancement is
-  still blocked on #15 + a realization path.
+- **[met 2026-05-22]** One candidate has gone survivor → realized `.cs` →
+  compile-clean → optimizer evidence → a written, evidenced manager decision,
+  with every step and breakage logged — see "Runbook B — NT validation run +
+  reconciliation". The decision for `c_1acc69ea578ff672_001` is **negative
+  and honest**: modelled with correct fills (verified live, NT
+  tick-resolution) the candidate is a modest edge — PF ~1.1–1.4, archived
+  for missing the 1.5 guardrail — not the PF 3.88 the ledger claimed. Three
+  fill-modelling defects (#16/#17/#18) were found and fixed in the process —
+  the real output of the exercise.
 - The defect log is complete and Phase 1 scope is derived from it.
 - **[done 2026-05-21]** A dry-run command exists that lists eligible
   candidates and the next legal transition for each — and triggers no runs:
