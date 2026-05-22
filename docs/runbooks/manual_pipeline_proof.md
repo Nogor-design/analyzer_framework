@@ -294,6 +294,57 @@ backup `research_ledger.db.bak_2026-05-22_rescore_flag`): 136 carry
 `rescore_flag.affected_by_fill_bug = true`, 293 are marked predates-audit.
 Nothing in the ledger should be promoted on its stored metrics.
 
+## Edge search — can the fixed engine find a genuine edge? (2026-05-22)
+
+The re-score killed every ledger candidate. The open question: with the
+engine fixed, can the discovery approach find a *real* edge? An honest search
+was run on ~5 months of NQ 1m data (NQ 03-26 Dec–Mar as in-sample, NQ 06-26
+Mar–May as out-of-sample — disjoint in time and contract).
+
+1. **IS appears to predict OOS — but it is mostly an artifact.** A 567-combo
+   ORB sweep (corrected engine, real costs) showed Spearman **+0.80** IS→OOS.
+   That looks like signal, but IS and OOS were the *same instrument in
+   adjacent, regime-similar periods* — a strategy fit to NQ's character
+   persists within NQ without being a real edge.
+
+2. **Cross-instrument validation breaks the best candidate.** The top
+   candidate (`failure_reclaim / 15-min ORB / next-open / TP80 SL40`,
+   PF 1.39 IS → 1.31 OOS on NQ) is profitable on **NQ only** — breakeven or
+   losing on ES/RTY/YM/MNQ, and its NQ t-stat is ~1.0 (not significant).
+
+3. **No genuine ORB edge exists.** A cross-instrument robust search — all 567
+   combos on a 4-instrument panel (NQ/ES/RTY/YM), trades pooled in
+   cost-adjusted ticks — found **zero** combos with a statistically
+   significant pooled result (best pooled t = 1.03, threshold 2.0).
+
+**Conclusion / the discovery-approach fix.** Same-instrument IS/OOS
+validation is too weak — it manufactured a +0.80 correlation and a fake edge.
+A genuine edge must hold *across correlated instruments*. This is now a
+first-class capability: `analysis/strategy_discovery/cross_instrument.py`
+(`evaluate_cross_instrument`) pools per-trade tick P&L across an instrument
+panel and passes a strategy only if pooled t ≥ 2.0, PF ≥ 1.2, profitable on
+≥ 75% of the panel, and n ≥ 150 — regression-tested by
+`test_cross_instrument.py`.
+
+**Multi-family scan — extended (2026-05-22).** The cross-instrument gate was
+then applied across all remaining families (ma, breakout, level, pullback,
+bb, candle — 31 signal types, 504 leaf combos including timing and TP/SL on
+the NQ/ES/RTY/YM panel). The result is unambiguous: **zero combos pass the
+genuine-edge gate, across all 8 families.** The best pooled t-stats are
+actually *negative* (best is `level/failed_reference_breakout` at t = −1.45,
+PF 0.94) — the discovery space's closest-to-significant results are losing
+strategies. Combined with the ORB result this is an exhaustive search of
+the strategy space: **no genuine intraday edge exists in any of the 8
+entry families on the available 3–5 months of NQ/ES/RTY/YM data.** The
+fixed approach correctly identifies that and refuses to promote noise.
+
+**Open / Phase 1:** wire `evaluate_cross_instrument` in as a hardening gate
+inside the discovery pipeline (rather than as a standalone check). Note the
+standing constraint — 3–5 months of data is short for edge discovery
+regardless of methodology; cross-instrument pooling lifts trade count ~4×,
+but real discovery needs multi-year, multi-regime history. Report:
+`.ta_artifacts/edge_scan_families_report.csv`.
+
 ## Defect log
 
 Record every breakage. This list — not the conductor design — is the real
