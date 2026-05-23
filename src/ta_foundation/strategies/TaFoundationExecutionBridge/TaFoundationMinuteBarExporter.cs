@@ -17,10 +17,20 @@ namespace NinjaTrader.NinjaScript.Indicators
     ///
     /// Minute bar output:  <OutputDirectory>\NQ 06-26.Last.txt
     ///   Format: yyyyMMdd HHmmss;open;high;low;close;volume
+    ///   Streaming: rewritten every closed minute bar, contains the most recent
+    ///   LookbackBars bars (capped at 20000).
     ///
     /// Tick output (optional): <OutputDirectory>\NQ 06-26 Tick.Last.txt
     ///   Format: yyyyMMdd HHmmss fffffff;last;bid;ask;volume
     ///   Written once per minute-bar close — NOT on every tick — to avoid I/O stalls.
+    ///
+    /// Backfill mode (BackfillOnce = true): on the first real-time bar (after
+    /// NinjaTrader finishes loading historical bars), dump the FULL historical
+    /// bar series to <OutputDirectory>\<INSTR>.Full.txt — one-shot per indicator
+    /// lifetime. Uses a streaming writer so multi-year dumps don't balloon memory.
+    /// Workflow: load a chart with multi-year history, attach this indicator with
+    /// BackfillOnce=true, wait for the first live bar; the Full.txt file then
+    /// contains every bar in the chart's history.
     /// </summary>
     public class TaFoundationMinuteBarExporter : Indicator
     {
@@ -29,7 +39,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private string resolvedBarsFilePath  = string.Empty;
         private string resolvedTickFilePath  = string.Empty;
+        private string resolvedBackfillBarsPath = string.Empty;
         private DateTime lastLoggedBarUtc    = DateTime.MinValue;
+        private bool backfillBarsDone        = false;
 
         protected override void OnStateChange()
         {
@@ -45,6 +57,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 LookbackBars     = 5000;
                 ExportTicks      = false;
                 TickLookback     = 50000;
+                BackfillOnce     = false;
             }
             else if (State == State.Configure)
             {
@@ -64,6 +77,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                     baseName + ".Last.txt");
                 resolvedTickFilePath = Path.Combine(OutputDirectory ?? string.Empty,
                     baseName + " Tick.Last.txt");
+                resolvedBackfillBarsPath = Path.Combine(OutputDirectory ?? string.Empty,
+                    baseName + ".Full.txt");
             }
         }
 
@@ -74,6 +89,14 @@ namespace NinjaTrader.NinjaScript.Indicators
             // tick data is harvested from BarsArray[TickSeriesIndex] at minute-bar close.
             if (BarsInProgress != 0)
                 return;
+
+            // First real-time bar after historical processing completes:
+            // dump the full historical bar series (one-shot per indicator life).
+            if (BackfillOnce && !backfillBarsDone && !Historical && CurrentBar >= 0)
+            {
+                WriteBackfillBars();
+                backfillBarsDone = true;
+            }
 
             if (Historical)
                 return;
@@ -128,6 +151,51 @@ namespace NinjaTrader.NinjaScript.Indicators
                     newestUtc,
                     CurrentBar + 1));
             }
+        }
+
+        // ── Backfill (one-shot full historical dump) ─────────────────────────
+
+        private void WriteBackfillBars()
+        {
+            if (string.IsNullOrWhiteSpace(resolvedBackfillBarsPath))
+                return;
+
+            int totalBars = CurrentBar + 1;
+            if (totalBars <= 0)
+                return;
+
+            string tmpPath = resolvedBackfillBarsPath + ".tmp";
+
+            // StreamWriter so multi-year dumps (millions of bars) do not balloon
+            // memory the way a single StringBuilder would.
+            using (var sw = new StreamWriter(tmpPath, false, Encoding.UTF8))
+            {
+                for (int barIndex = 0; barIndex <= CurrentBar; barIndex++)
+                {
+                    int barsAgo     = CurrentBar - barIndex;
+                    DateTime barUtc = NormalizeToUtc(Time[barsAgo]);
+                    sw.WriteLine(string.Format(
+                        CultureInfo.InvariantCulture,
+                        "{0:yyyyMMdd HHmmss};{1:0.########};{2:0.########};{3:0.########};{4:0.########};{5}",
+                        barUtc,
+                        Open[barsAgo],
+                        High[barsAgo],
+                        Low[barsAgo],
+                        Close[barsAgo],
+                        Volume[barsAgo]));
+                }
+            }
+
+            if (File.Exists(resolvedBackfillBarsPath))
+                File.Delete(resolvedBackfillBarsPath);
+            File.Move(tmpPath, resolvedBackfillBarsPath);
+
+            Print(string.Format(
+                CultureInfo.InvariantCulture,
+                "{0:o}|BACKFILL_BARS|file={1}|bars={2}",
+                DateTime.UtcNow,
+                resolvedBackfillBarsPath,
+                totalBars));
         }
 
         // ── Tick data ────────────────────────────────────────────────────────
@@ -229,5 +297,13 @@ namespace NinjaTrader.NinjaScript.Indicators
         [Display(Name = "TickLookback", Order = 4, GroupName = "Parameters",
             Description = "Number of recent ticks to include in the Tick.Last.txt snapshot. Default 50000 ≈ one NQ session.")]
         public int TickLookback { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "BackfillOnce", Order = 5, GroupName = "Parameters",
+            Description = "On the first real-time bar, write the FULL historical bar series " +
+                          "to <instrument>.Full.txt (one-shot per indicator life). " +
+                          "Load the chart with multi-year history before attaching to backfill " +
+                          "years of bars in a single dump.")]
+        public bool BackfillOnce { get; set; }
     }
 }

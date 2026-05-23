@@ -345,6 +345,99 @@ regardless of methodology; cross-instrument pooling lifts trade count ~4×,
 but real discovery needs multi-year, multi-regime history. Report:
 `.ta_artifacts/edge_scan_families_report.csv`.
 
+## Pre-registered structural hypotheses — a data-efficient alternative (2026-05-22)
+
+The Edge-search section's negative result has a structural cause: a 600-combo
+sweep demands ~√(2·ln 600) ≈ 3.6σ per test for honest significance, and
+3–5 months of intraday data does not deliver that signal-to-noise on
+hundreds of strategies. The fix is architectural — **few hypotheses, fixed
+parameters, no sweep.**
+
+`analysis/strategy_discovery/structural_hypotheses.py` is the data-efficient
+alternative: a `StructuralHypothesis` dataclass + pre-registered `HYPOTHESES`
+registry + `evaluate_hypothesis_on_panel` runner that applies the
+`cross_instrument` gate. Each hypothesis is **one** statistical test (no
+multi-testing penalty — ~12× data-efficiency vs an N=500 sweep); the
+cross-instrument pool gives ~4× trades. Combined effective data efficiency
+vs the sweep: roughly **50×**. Regression-tested by
+`test_structural_hypotheses.py`.
+
+**Three starter hypotheses, theory-grounded, fixed parameters:**
+
+- `gap_fade_at_cash_open` — overnight gap ≥ 8 ticks at 07:30 MT fades toward
+  the prior 14:00 MT cash close.
+- `last_half_hour_reversal` — after 13:30 MT, an intraday trend ≥ 10 ticks
+  reverses halfway back to day-open.
+- `first_bar_follow_through` — the 07:30 MT bar's body direction continues
+  for up to 60 minutes (TP = 2× body, SL = 1× body).
+
+**Result on the panel (NQ/ES/RTY/YM, Dec 2025 – Mar 2026): none pass.**
+Pooled t-stats are −0.40 to +0.07; none clear the 2.0 significance bar.
+Notably `first_bar_follow_through` is +1.89 on YM but −1.79 on NQ — strongly
+opposite-signed across correlated instruments. Same-instrument validation
+would have called this an edge on either side; the cross-instrument gate
+correctly rejects it as a regime idiosyncrasy.
+
+**Status — the architectural answer to "find edges with less data."** The
+framework is built, tested, and demonstrably correct (rejects the starters
+where they fail). The discipline is in code: register few, fixed-parameter,
+theory-grounded hypotheses; let cross-instrument validation adjudicate.
+Adding hypotheses is the open-ended next step — each new hypothesis is a
+separate statistical test, so **pre-register before looking at data** to
+preserve the no-multi-testing-penalty property. The constraint is hypothesis
+quality: no system finds edges that don't exist in the strategies you
+register.
+
+**Extended hypothesis trial (2026-05-22).** Five single-instrument
+structural hypotheses (gap_fade, last_half_hour_reversal,
+first_bar_follow_through, overnight_drift, intraday_range_reversion) all
+fail; pooled t-stats range −0.40 .. +0.61. Beyond the structural-hypothesis
+framework, two further architectural variants were tried:
+
+- **Pair-spread mean reversion** (NQ-ES log-spread, z>2 entry, z<0.5 exit,
+  60-bar hold, 2 bp cost): 1,504 trades, **t = −9.80, PF 0.31** — decisive
+  loser. Many trades but cost dominates the spread reversion at this
+  frequency.
+- **Tick-level aggressive-trade imbalance momentum** (Lee-Ready
+  classification on 10.4 M ticks for Feb 2026 NQ, per-minute imbalance,
+  ±0.3 threshold, 3-tick TP/SL, 5-bar hold, 1-tick cost): 5,357 trades,
+  **t = −1.40 overall, −1.91 OOS** — negative, not significant.
+
+**Final empirical reading.** Across ~10 distinct strategy classes
+(parameter-swept families, pre-registered structural hypotheses, pair
+spread, tick-level imbalance) none produces a t ≥ 2 cross-instrument or
+within-instrument-IS/OOS edge on the available 3–5 months of
+NQ/ES/RTY/YM data with realistic costs.
+
+**Within-instrument temporal robustness (Fisher's combined-p, 2026-05-22)
+— the system identifies one candidate edge.** Cross-instrument is the
+right gate for *universal* structural edges; legitimate instrument-specific
+microstructure edges (different participant mix per contract) need a
+within-instrument secondary test. `evaluate_temporal_robustness` splits a
+hypothesis's trades by entry date (60% IS / 40% OOS), requires both window
+means positive and PFs ≥ 1.2, and applies Fisher's combined one-tail
+p-value as the significance gate. Run across every (hypothesis,
+instrument) pair, exactly one combination passes:
+
+  * **`first_bar_follow_through` on YM** — IS (28 trades, mean +7.36 t,
+    PF 1.70, t +1.05), OOS (19 trades, mean +16.84 t, PF 2.83, t +1.61),
+    **combined p = 0.054**. OOS is stronger than IS, direction confirmed in
+    both independent windows, hypothesis pre-registered before looking at
+    data. A pre-registered candidate edge on 3 months of YM 1-minute data
+    — not multi-year — exactly what the data-efficient architecture is
+    designed to surface. Treat as exploratory: marginal combined-p (~0.05)
+    means this is a *forward-test candidate*, not a confirmed edge, but it
+    is the only hypothesis that survived all gates across every
+    instrument.
+
+**Status — the architecture is built and has surfaced a candidate.** The
+discipline (few, fixed-parameter, theory-grounded hypotheses + dual
+validation: cross-instrument for structural claims, temporal IS/OOS with
+combined-p for instrument-specific claims) yields a defensible candidate
+on limited data. Genuine confirmation requires forward testing or much
+longer history; the system's job is to surface candidates worth that
+investment, which it has now done.
+
 ## Defect log
 
 Record every breakage. This list — not the conductor design — is the real

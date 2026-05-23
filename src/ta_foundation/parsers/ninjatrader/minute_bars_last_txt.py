@@ -30,17 +30,25 @@ class MinuteBarsLastTxtParser:
     target_tz: str = "America/Denver"
 
     def can_parse(self, path: Path, header: str) -> bool:
-        if not path.name.endswith(".Last.txt"):
+        stem = self._strip_suffix(path.name)
+        if stem is None:
             return False
-        stem = path.name[:-len(".Last.txt")]
         parts = stem.split(" ")
         if len(parts) != 2:
             return False
         contract = parts[1].strip()
         return len(contract) == 5 and contract[2] == "-"
 
+    @staticmethod
+    def _strip_suffix(name: str) -> Optional[str]:
+        """Accept ``.Last.txt`` (streaming) and ``.Full.txt`` (NT backfill)."""
+        for suffix in (".Last.txt", ".Full.txt"):
+            if name.endswith(suffix):
+                return name[:-len(suffix)]
+        return None
+
     def parse(self, path: Path, run_id: Optional[str]) -> ParsedArtifact:
-        stem = path.name[:-len(".Last.txt")]
+        stem = self._strip_suffix(path.name) or path.stem
         instrument, contract = stem.split(" ", 1)
         instrument = instrument.strip()
         contract = contract.strip()
