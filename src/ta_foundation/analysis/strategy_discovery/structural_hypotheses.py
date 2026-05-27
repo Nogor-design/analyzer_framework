@@ -342,6 +342,113 @@ def overnight_drift(
     return trades
 
 
+def closing_auction_reversal(
+    bars: pd.DataFrame,
+    tick_size: float,
+    *,
+    trigger_hour: int = 13,
+    trigger_minute: int = 50,
+    lookback_minutes: int = 60,
+    close_hour: int = 14,
+    trend_threshold_ticks: int = 8,
+    stop_ticks: int = 6,
+    target_revert_fraction: float = 0.5,
+    max_bars: int = 10,
+) -> List[Trade]:
+    """At 13:50 MT, fade the *prior 60-minute* direction into the cash close.
+
+    Theory: the last 10 minutes of the US cash session carry concentrated
+    rebalancing flow (institutional benchmark trades, ETF rebalancing,
+    closing-auction matching pressure). Distinct from
+    `last_half_hour_reversal` -- this fades only the recent hour's move
+    (not the whole day's), uses a 10-minute hold, and rides
+    closing-auction-specific flows. Fixed parameters.
+    """
+    b = _denver_frame(bars)
+    days = list(dict.fromkeys(b["_date"].tolist()))
+    trades: List[Trade] = []
+    for day in days:
+        day_bars = b[b["_date"] == day].reset_index(drop=True)
+        tr_i = _bar_index_at(day_bars, trigger_hour, trigger_minute)
+        if tr_i < 0 or tr_i + 1 >= len(day_bars):
+            continue
+        lookback_i = max(0, tr_i - lookback_minutes)
+        prior_close = float(day_bars.iloc[lookback_i]["close"])
+        trigger_close = float(day_bars.iloc[tr_i]["close"])
+        trend = trigger_close - prior_close
+        if abs(trend) < trend_threshold_ticks * tick_size:
+            continue
+        direction = -1 if trend > 0 else 1
+        entry_row = day_bars.iloc[tr_i + 1]
+        entry_price = float(entry_row["open"])
+        # halfway back toward the prior-hour close
+        tp_price = trigger_close - (1.0 - target_revert_fraction) * trend
+        sl_price = entry_price - direction * stop_ticks * tick_size
+        bars_after = day_bars.iloc[tr_i + 1:].reset_index(drop=True)
+        bars_after = bars_after[bars_after["_hour"] < close_hour].reset_index(drop=True)
+        exit_dt, exit_price, result = _walk_to_exit(
+            bars_after, entry_price, direction, tp_price, sl_price, max_bars
+        )
+        if exit_dt is None:
+            continue
+        trades.append(_build_trade(day, direction, entry_row, exit_dt, exit_price, result))
+    return trades
+
+
+def large_gap_continuation(
+    bars: pd.DataFrame,
+    tick_size: float,
+    *,
+    gap_threshold_ticks: int = 30,
+    sl_fraction: float = 0.3,
+    tp_fraction: float = 0.5,
+    open_hour: int = 7,
+    open_minute: int = 30,
+    prior_close_hour: int = 14,
+    prior_close_minute: int = 0,
+    max_bars: int = 60,
+) -> List[Trade]:
+    """Overnight gaps >= 30 ticks at the cash open *continue* (not fade).
+
+    Theory: small/moderate overnight gaps in equity-index futures (covered
+    by `gap_fade_at_cash_open` at 8 ticks) typically reflect liquidity-
+    driven overshoots and mean-revert. *Large* gaps (>= 30 ticks ~ 7.5
+    points on NQ) reflect real news / regime shift / earnings cluster /
+    macro release, and tend to continue as more participants react during
+    the cash session. Opposite-regime test from gap_fade.
+    """
+    b = _denver_frame(bars)
+    days = list(dict.fromkeys(b["_date"].tolist()))
+    trades: List[Trade] = []
+    for di, day in enumerate(days):
+        if di == 0:
+            continue
+        prior_bars = b[b["_date"] == days[di - 1]].reset_index(drop=True)
+        day_bars = b[b["_date"] == day].reset_index(drop=True)
+        pc_i = _bar_index_at(prior_bars, prior_close_hour, prior_close_minute)
+        op_i = _bar_index_at(day_bars, open_hour, open_minute)
+        if pc_i < 0 or op_i < 0 or op_i + 1 >= len(day_bars):
+            continue
+        prior_close = float(prior_bars.iloc[pc_i]["close"])
+        open_price = float(day_bars.iloc[op_i]["open"])
+        gap = open_price - prior_close
+        if abs(gap) < gap_threshold_ticks * tick_size:
+            continue
+        direction = 1 if gap > 0 else -1   # CONTINUE in gap direction
+        entry_row = day_bars.iloc[op_i + 1]
+        entry_price = float(entry_row["open"])
+        tp_price = entry_price + direction * tp_fraction * abs(gap)
+        sl_price = entry_price - direction * sl_fraction * abs(gap)
+        bars_after = day_bars.iloc[op_i + 1:].reset_index(drop=True)
+        exit_dt, exit_price, result = _walk_to_exit(
+            bars_after, entry_price, direction, tp_price, sl_price, max_bars
+        )
+        if exit_dt is None:
+            continue
+        trades.append(_build_trade(day, direction, entry_row, exit_dt, exit_price, result))
+    return trades
+
+
 def intraday_range_reversion(
     bars: pd.DataFrame,
     tick_size: float,
@@ -436,6 +543,18 @@ HYPOTHESES: List[StructuralHypothesis] = [
                     "already exceeds ~0.5% of open price and current price "
                     "is at the extreme (volatility mean reversion)",
         fn=intraday_range_reversion,
+    ),
+    StructuralHypothesis(
+        name="closing_auction_reversal",
+        description="at 13:50 MT, fade the prior 60-minute direction "
+                    "(closing-auction rebalancing pressure)",
+        fn=closing_auction_reversal,
+    ),
+    StructuralHypothesis(
+        name="large_gap_continuation",
+        description="overnight gap >= 30 ticks continues in the gap direction "
+                    "(news-driven regime, opposite of gap_fade_at_cash_open)",
+        fn=large_gap_continuation,
     ),
 ]
 

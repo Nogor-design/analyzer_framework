@@ -438,6 +438,34 @@ on limited data. Genuine confirmation requires forward testing or much
 longer history; the system's job is to surface candidates worth that
 investment, which it has now done.
 
+**Second hypothesis batch — 2026-05-27.** Two additional pre-registered
+hypotheses occupying distinct mechanism territory:
+
+- `closing_auction_reversal` — at 13:50 MT, fade prior-60-min direction
+  (institutional rebalancing in last 10 min). **Cross-instrument: pooled
+  t = −11.17, PF 0.18, 0/4 profitable** — catastrophic loss on every
+  instrument. The information-rich null: the registered direction is
+  *structurally wrong*; closing-auction flows *continue* the prior-hour
+  direction rather than reverse it. Flipping the direction is not
+  defensible (post-hoc), but the *inverse* (closing-auction continuation)
+  is a clean pre-register for a fresh independent test.
+
+- `large_gap_continuation` — overnight gap >= 30 ticks continues, not
+  fades. Cross-instrument: pooled t = −1.14, mixed signs (NQ −2.02, YM
+  +1.47). **Temporal IS/OOS on YM: IS 1.92/+1.08, OOS 2.12/+0.97,
+  combined p = 0.121** — narrowly outside the 0.10 threshold.
+
+**YM-specific signal pattern.** Both `first_bar_follow_through` and
+`large_gap_continuation` show their strongest results on YM (Dow futures).
+The Dow's microstructure differs materially from Nasdaq/S&P/Russell:
+fewer constituents (30 vs 100/500/2000), heavier index-fund/ETF
+rebalancing per name, more institutional/less retail flow. The
+cross-instrument gate correctly resists single-instrument idiosyncrasy,
+but the *pattern* of YM-specific signals across multiple independent
+hypotheses suggests a real YM-specific microstructure effect worth
+investigating with longer YM history (the `BackfillOnce` exporter, once
+the AddOn DLL is rebuilt, will unlock this).
+
 ## Defect log
 
 Record every breakage. This list — not the conductor design — is the real

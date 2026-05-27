@@ -112,7 +112,65 @@ def test_registry_lists_all_hypotheses():
                      "last_half_hour_reversal",
                      "first_bar_follow_through",
                      "overnight_drift",
-                     "intraday_range_reversion"}
+                     "intraday_range_reversion",
+                     "closing_auction_reversal",
+                     "large_gap_continuation"}
+
+
+class TestClosingAuctionReversal:
+    def test_upward_prior_hour_fades_short(self):
+        from ta_foundation.analysis.strategy_discovery.structural_hypotheses import closing_auction_reversal
+        # prior-hour close at 12:50 = 100, trigger 13:50 close = 105 (trend +20 ticks)
+        bars = _bars([
+            ("2026-01-06 12:50", 100.0, 100.0, 100.0, 100.0),
+            ("2026-01-06 13:50", 104.5, 105.0, 104.5, 105.0),  # trigger
+            ("2026-01-06 13:51", 105.0, 105.0, 104.0, 104.0),  # entry @ 105
+            ("2026-01-06 13:52", 103.5, 103.5, 102.0, 102.5),  # low hits TP at 102.5
+        ])
+        trades = closing_auction_reversal(bars, tick_size=0.25)
+        assert len(trades) == 1
+        t = trades[0]
+        assert t.direction == -1
+        assert t.entry_price == 105.0
+        assert t.exit_price == 102.5  # trigger_close - 0.5*trend = 105 - 2.5
+        assert t.result == "tp"
+
+    def test_weak_prior_hour_no_trade(self):
+        from ta_foundation.analysis.strategy_discovery.structural_hypotheses import closing_auction_reversal
+        bars = _bars([
+            ("2026-01-06 12:50", 100.0, 100.0, 100.0, 100.0),
+            ("2026-01-06 13:50", 100.5, 101.0, 100.5, 101.0),  # 4-tick trend < 8 threshold
+            ("2026-01-06 13:51", 101.0, 101.0, 101.0, 101.0),
+        ])
+        assert closing_auction_reversal(bars, tick_size=0.25) == []
+
+
+class TestLargeGapContinuation:
+    def test_large_positive_gap_continues_long(self):
+        from ta_foundation.analysis.strategy_discovery.structural_hypotheses import large_gap_continuation
+        # prior day close 100, today open 110 -> gap +10 = 40 ticks > 30 threshold
+        bars = _bars([
+            ("2026-01-05 14:00", 100.0, 100.0, 100.0, 100.0),
+            ("2026-01-06 07:30", 110.0, 110.0, 110.0, 110.0),
+            ("2026-01-06 07:31", 110.0, 110.0, 110.0, 110.0),  # entry @ 110
+            ("2026-01-06 07:32", 113.0, 115.5, 113.0, 115.0),  # high hits TP @ 115
+        ])
+        trades = large_gap_continuation(bars, tick_size=0.25)
+        assert len(trades) == 1
+        t = trades[0]
+        assert t.direction == 1
+        assert t.entry_price == 110.0
+        assert t.exit_price == 115.0  # entry + 0.5*|gap| = 110 + 5
+        assert t.result == "tp"
+
+    def test_small_gap_below_threshold_no_trade(self):
+        from ta_foundation.analysis.strategy_discovery.structural_hypotheses import large_gap_continuation
+        bars = _bars([
+            ("2026-01-05 14:00", 100.0, 100.0, 100.0, 100.0),
+            ("2026-01-06 07:30", 105.0, 105.0, 105.0, 105.0),  # 20-tick gap < 30 threshold
+            ("2026-01-06 07:31", 105.0, 105.0, 105.0, 105.0),
+        ])
+        assert large_gap_continuation(bars, tick_size=0.25) == []
 
 
 class TestIntradayRangeReversion:
