@@ -407,9 +407,21 @@ def _unwrap_tool_payload(payload: dict) -> dict:
     return payload.get("result") or {}
 
 
-def _find_sidecar(artifact_dir: Path) -> Optional[Path]:
-    """Newest discovery summary sidecar under a run's artifact directory."""
+def _find_sidecar(artifact_dir: Path, hypothesis_id: Optional[str] = None) -> Optional[Path]:
+    """Newest discovery summary sidecar under a run's artifact directory, matching the hypothesis_id."""
     if not artifact_dir.is_dir():
+        return None
+    if hypothesis_id:
+        target = artifact_dir / f"{hypothesis_id}_summary.json"
+        if target.is_file():
+            return target
+        found = sorted(
+            artifact_dir.rglob(f"*{hypothesis_id}*_summary.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if found:
+            return found[0]
         return None
     found = sorted(
         artifact_dir.rglob("*_summary.json"),
@@ -432,7 +444,9 @@ def ingest_run_candidates(
     sidecar (no discovery block, or a failed sweep) returns `sidecar=None` and
     the caller's existing no-candidates path handles it.
     """
-    sidecar = _find_sidecar(Path(artifact_dir))
+    run = repo.get_run(run_id)
+    hypothesis_id = run.hypothesis_id if run else None
+    sidecar = _find_sidecar(Path(artifact_dir), hypothesis_id)
     if sidecar is None:
         return {"sidecar": None, "ingested": 0, "rejected": 0, "ok": True}
     cand_dicts = candidate_dicts_for_run(sidecar, run_id)

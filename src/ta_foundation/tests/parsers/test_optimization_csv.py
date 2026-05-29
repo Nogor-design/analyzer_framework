@@ -174,6 +174,23 @@ class TestParseParameters:
         # Should still parse up to min(values, names)
         assert len(param_map) == 2
 
+    def test_slash_formatted_datetime_values(self):
+        """NT may serialize DateTime params as M/D/YYYY time in slash-delimited values."""
+        raw = (
+            "0/5/100/6/1/2025 2:00:00 AM/6/1/2025 6:00:00 AM/1 "
+            "(Period FastMa SlowMa StartTime EndTime Contracts )"
+        )
+        param_map, warns = parse_parameters(raw)
+        assert warns == []
+        assert param_map == {
+            "Period": 0,
+            "FastMa": 5,
+            "SlowMa": 100,
+            "StartTime": "6/1/2025 2:00:00 AM",
+            "EndTime": "6/1/2025 6:00:00 AM",
+            "Contracts": 1,
+        }
+
     def test_duplicate_param_names_handled(self):
         """Duplicate names should be de-duplicated with _2 suffix."""
         dup = "1/2/3 (A A A )"
@@ -280,6 +297,22 @@ class TestNinjaTraderOptimizationCsvParser:
         assert row["param_UseTrend"]        == False  # noqa: E712  (position 8 → False)
         assert row["param_averageFast"]     == 5
         assert row["param_Bot_Name"]        == "Iron Aphrodite Hunter"
+
+    def test_slash_datetime_params_in_csv_parse_cleanly(self, tmp_path):
+        raw = (
+            "0/5/100/6/1/2025 2:00:00 AM/6/1/2025 6:00:00 AM/1 "
+            "(Period FastMa SlowMa StartTime EndTime Contracts )"
+        )
+        csv = _make_csv([{"Instrument": "NQ 06-26", "Parameters": raw}])
+        art = self._write_and_parse(tmp_path, csv)
+        row = art.df.iloc[0]
+        assert row["parse_ok"]
+        assert row["parse_warnings"] == ""
+        assert row["param_FastMa"] == 5
+        assert row["param_SlowMa"] == 100
+        assert row["param_StartTime"] == "6/1/2025 2:00:00 AM"
+        assert row["param_EndTime"] == "6/1/2025 6:00:00 AM"
+        assert row["param_Contracts"] == 1
 
     def test_parse_ok_flag_set(self, tmp_path):
         csv = _make_csv([{"Instrument": "NQ 06-26"}])

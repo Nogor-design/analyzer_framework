@@ -41,8 +41,12 @@ class MinuteBarsLastTxtParser:
 
     @staticmethod
     def _strip_suffix(name: str) -> Optional[str]:
-        """Accept ``.Last.txt`` (streaming) and ``.Full.txt`` (NT backfill)."""
-        for suffix in (".Last.txt", ".Full.txt"):
+        """Accept the three NT-export naming patterns:
+        * ``.Last.txt`` -- live streaming Indicator
+        * ``.Full.txt`` -- Indicator BackfillOnce one-shot
+        * ``.Export.txt`` -- TaFoundationDataExportStrategy Strategy Analyzer dump
+        """
+        for suffix in (".Last.txt", ".Full.txt", ".Export.txt"):
             if name.endswith(suffix):
                 return name[:-len(suffix)]
         return None

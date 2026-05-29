@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -55,6 +56,44 @@ def _coerce_scalar(raw: str) -> Any:
     except ValueError:
         pass
     return s
+
+
+_DATE_FRAGMENT_RE = re.compile(r"^\d{4}(?:\s+.+)?$")
+
+
+def _looks_like_slash_date(parts: list[str], idx: int) -> bool:
+    if idx + 2 >= len(parts):
+        return False
+    month = parts[idx].strip()
+    day = parts[idx + 1].strip()
+    year_and_time = parts[idx + 2].strip()
+    if not (month.isdigit() and day.isdigit() and _DATE_FRAGMENT_RE.match(year_and_time)):
+        return False
+    month_i = int(month)
+    day_i = int(day)
+    return 1 <= month_i <= 12 and 1 <= day_i <= 31
+
+
+def _split_parameter_values(values_str: str, names: list[str]) -> list[str]:
+    raw_values = [v.strip() for v in values_str.split("/")]
+    if len(raw_values) <= len(names):
+        return raw_values
+
+    repaired: list[str] = []
+    idx = 0
+    while idx < len(raw_values):
+        remaining_values = len(raw_values) - idx
+        remaining_names = len(names) - len(repaired)
+        if remaining_values == remaining_names:
+            repaired.extend(raw_values[idx:])
+            break
+        if _looks_like_slash_date(raw_values, idx):
+            repaired.append("/".join(raw_values[idx : idx + 3]))
+            idx += 3
+            continue
+        repaired.append(raw_values[idx])
+        idx += 1
+    return repaired
 
 
 # ---------------------------------------------------------------------------
@@ -118,8 +157,8 @@ def parse_parameters(raw: str) -> tuple[dict[str, Any], list[str]]:
     names_str  = s[open_idx + 1 : close_idx].strip()
 
     # Step 3: split
-    raw_values = [v.strip() for v in values_str.split("/")]
     names      = names_str.split()  # whitespace split; names like Start_Time_(HH) are single tokens
+    raw_values = _split_parameter_values(values_str, names)
 
     if len(raw_values) != len(names):
         warnings.append(

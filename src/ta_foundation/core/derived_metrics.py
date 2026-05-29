@@ -251,8 +251,8 @@ def compute_and_attach_derived_metrics(packages: Dict[str, AnalysisPackage]) -> 
         # if profit_stop is not None and max_tp_dollars is not None:
         #     max_potential_profit = profit_stop - 1.0 + max_tp_dollars
 
-        # print(f"usekill: {sm.get("usekill")}")
-        # print(f"use_kill: {sm.get("use_kill")}")
+        # print(f"usekill: {sm.get('usekill")}")
+        # print(f"use_kill: {sm.get('use_kill")}")
         derived = {
             "instrument": symbol,
             "tick_value_usd": tick_value,

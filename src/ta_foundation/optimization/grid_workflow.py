@@ -402,6 +402,7 @@ def _evaluate_row(index: int, row: pd.Series, config: OptimizationGridConfig) ->
 
 def _candidate_strategy_values(candidate: OptimizationGridCandidate) -> dict[str, Any]:
     return {
+        "UseTimeFilter": True,
         "StartTimeH": candidate.start_hour,
         "StartTimeM": 0,
         "DurationTimeH": candidate.duration_hours,
@@ -564,6 +565,7 @@ def _write_final_batch_command(destination: Path, template_dir: Path) -> None:
         "action": "RunBatch",
         "sourceFolder": str(template_dir),
         "destFolder": str(result_dir),
+        "closeTempTabs": True,
     }
     (destination / "nt8_run_batch_command.json").write_text(json.dumps(command, indent=2), encoding="utf-8")
     lines = [
