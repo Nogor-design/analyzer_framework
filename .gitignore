@@ -23,6 +23,10 @@ $null
 # Editor scratch files (atomic-save temp files).
 *.tmp.*
 
+# Per-machine fixture path overrides (point at large local market data
+# files outside the repo). Test discovery loads these if present.
+*.local.json
+
 # Ad-hoc per-invocation output / runs directories. The committed
 # `outputs/` plural is excluded by `outputs*/` above; this catches the
 # singular forms that the CLI / discovery / strategy_lifecycle scripts
