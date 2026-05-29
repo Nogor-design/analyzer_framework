@@ -11,6 +11,8 @@ For a new task, read only these first:
 - `docs/AI_REPO_INDEX.md`
 - `docs/AI_CAPABILITY_MAP.md` when the task touches web UI, RAG/docs, reports, prediction, strategy templates, or strategy discovery
 - `docs/designs/real_edge_discovery_program.md` when the task touches edge discovery, probes, hardening, shadow runner, or the graveyard
+- `docs/designs/agentic_nt_strategy_knowledge_base.md` when the task touches agentic strategy research, NinjaTrader strategy generation, StrategyDiscoveryFilter, the Strategy Factory, NT optimizer loops, shadow promotion, NinjaAccountManager, or execution bridge automation
+- `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md` when the task asks to build the full autonomous loop from discovery through NT validation, shadow, and Sim101 paper trading
 - The specific source and tests identified from the relevant category
 
 Avoid opening the entire repository tree or large generated output folders.
@@ -142,3 +144,4 @@ Do not flatten the project into "report generation." Route by capability first:
 - Strategy Templates: `analysis/strategy_composer/`, web `/api/generate`, `/api/backtest`, `/api/validate`, template schema.
 - Strategy Discovery: `analysis/strategy_discovery/`, `strategy_discovery_report.yaml`, and `strategy_discovery_*` report sections.
 - Web Orchestration: `web/app.py`, `web/jobs.py`, `web/prediction_jobs.py`, `web/report_catalog.py`, `web/templates/index.html`.
+- Agentic NT Strategy Loop: start with `docs/designs/agentic_nt_strategy_knowledge_base.md`, then route to `src/ta_foundation/agent/`, `src/ta_foundation/research_ledger/`, `src/ta_foundation/shadow/`, `src/ta_foundation/nt_strategy_loop/`, `src/ta_foundation/strategies/StrategyDiscoveryFilter/`, `src/ta_foundation/strategies/TaFoundationExecutionBridge/`, or external `D:\NinjaAccountManager` as needed.

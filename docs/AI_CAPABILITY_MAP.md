@@ -12,7 +12,8 @@ Use this map before changing web UI, RAG, docs, CLI orchestration, or AI-facing 
 | Strategy discovery reports | Run ranking, validation, entry/filter/exit discovery, and NT template report sections | Usually yes for run ranking; can also use market-discovery signal corpus | Yes | `ta_foundation.cli.main` with `strategy_discovery:` YAML | Strategy Discovery tab |
 | Prediction and horizon system | Run daily/horizon prediction jobs, score outcomes, build horizon stores and prediction reports | No | Yes | `ta_foundation.prediction.run_prediction`, `run_multi_agent`, `backtest_horizon_predictions` | Prediction tab |
 | Strategy template building | Generate/edit a structured strategy template and run local template backtests | No direct report-package ingest | Yes, for template backtest bars | `analysis.strategy_composer.*`, web `/api/generate`, `/api/backtest`, `/api/validate` | Strategy Templates tab |
-| Execution bridge | Send/monitor execution messages for NinjaTrader shell integration | No | Runtime shell/state/log data | `strategies/TaFoundationExecutionBridge/*`, `cli/bridge_operator.py` | Separate operator/tooling surface |
+| Agentic NT strategy loop | Promote research candidates into deterministic NinjaTrader validation, optimizer runs, shadow monitoring, and supervised execution handoff | Yes, through optimizer/Strategy Analyzer evidence | Yes | `src/ta_foundation/agent/`, `src/ta_foundation/nt_strategy_loop/`, `docs/designs/agentic_nt_strategy_knowledge_base.md`, `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md`, external `D:\NinjaAccountManager` | Manager/operator workflow |
+| Execution bridge | Send/monitor execution messages for NinjaTrader shell/runtime integration | No | Runtime shell/state/log data | `strategies/TaFoundationExecutionBridge/*`, `cli/bridge_operator.py`, external `D:\NinjaAccountManager` | Separate operator/tooling surface |
 | Market data dashboard | Inspect market data file freshness and availability | No | Yes | `market_data_dashboard.py` | Separate dashboard |
 
 ## Backtest Reports
@@ -97,5 +98,6 @@ Search terms that usually route correctly:
 - Prediction: `prediction run_prediction horizon config agent store`
 - Strategy templates: `strategy_composer template generate backtest validate`
 - Strategy discovery: `strategy_discovery orchestrator report yaml entry filter exit validation`
+- Agentic NT strategy loop: `agentic nt strategy loop Strategy Factory StrategyDiscoveryFilter optimizer bridge shadow execution NinjaAccountManager`
 - Web orchestration: `web app report_builder report_catalog jobs prediction_jobs`
 

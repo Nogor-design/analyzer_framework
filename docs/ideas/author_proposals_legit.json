@@ -1,0 +1,37 @@
+{
+  "proposals": [
+    {
+      "direction": "both",
+      "family": "orb_failure_reclaim",
+      "instrument": "NQ",
+      "mechanism": "An opening range breakout that fails to sustain momentum and quickly reclaims back inside the opening range signals trapped traders. Entry is taken on the reclaim bar close, aiming to capitalize on the resulting squeeze as breakout chasers exit.",
+      "params": {
+        "fill_mode": "reclaim_close",
+        "orb_minutes": 15,
+        "reclaim_within_bars": 3,
+        "stop_ticks": 26,
+        "sweep_min_ticks": 6,
+        "target_ticks": 90
+      },
+      "revival_reason": null,
+      "session_window": "ny_open_0730_0830_denver",
+      "timeframe": "5m"
+    },
+    {
+      "direction": "both",
+      "family": "compression_then_expansion",
+      "instrument": "NQ",
+      "mechanism": "A quiet period of compression with 5 bars coiling within a maximum 35-tick range indicates resting institutional liquidity. A breakout sweep with a 6-tick buffer triggers to catch the early momentum before expansion is crowded.",
+      "params": {
+        "breakout_buffer_ticks": 6,
+        "compression_bars": 5,
+        "compression_range_ticks_max": 35,
+        "stop_ticks": 26,
+        "target_ticks": 90
+      },
+      "revival_reason": null,
+      "session_window": "rth_morning_0730_1100_denver",
+      "timeframe": "5m"
+    }
+  ]
+}

@@ -1,0 +1,790 @@
+You are working inside my existing TA Foundation / NinjaTrader optimizer system.
+
+Goal:
+Design and implement a new optional optimizer mode called something like:
+
+- Recipe Optimizer
+- Matrix Optimizer
+- Sequenced Optimizer
+- Meta Optimizer
+
+This must NOT replace the current optimizer flow. The current optimizer already works and should remain intact. The new mode should sit above the current optimizer as a planning/sequencing layer that generates structured NinjaTrader optimizer XML templates, runs them through the existing NinjaTrader AddOn workflow, ingests results using the existing result parsers, and saves artifacts using the existing session/deployment-package structure.
+
+Important existing system behavior:
+- TA Foundation is the control plane.
+- NinjaTrader is the execution worker.
+- The web optimizer currently saves runs under:
+
+  .ta_artifacts/web_optimizer/sessions/<session_id>/
+    session.json
+    plan.json
+    generated_templates/
+    nt_output/
+    run.json
+    deployment_package/
+
+- The optimizer currently:
+  1. Lets the user select strategy, seed template, instrument, parameter modes, guardrails, and chunking.
+  2. Builds a deterministic plan.
+  3. Generates NinjaTrader XML templates by patching the seed XML.
+  4. Sends generated templates to NinjaTrader through the AddOn.
+  5. Reads NinjaTrader CSV output.
+  6. Filters/scoring optimizer rows.
+  7. Builds later-stage templates and final fixed Backtest templates.
+  8. Preserves lineage and decision artifacts.
+
+Do not break this.
+
+New capability:
+I want a higher-level optimizer mode where I can define a matrix of separate optimizer jobs.
+
+Example 1:
+I want the best PF for every 4-hour time slice of the day, with Reverse false and Reverse true.
+
+That means:
+
+StartTimeH values:
+0, 4, 8, 12, 16, 20
+
+DurationTimeH:
+4
+
+Reverse:
+false, true
+
+This produces:
+
+6 time slices × 2 reverse states = 12 base templates
+
+Each template should then optimize internal parameters such as:
+- averageFast
+- averageSlow
+- MaxStop
+- MaxTPRatio
+- ProfitStop
+- LossStop
+- MaxTrades
+- Long
+- Short
+
+Example 2:
+I may also want to split by Slow MA family instead of optimizing averageSlow inside each template.
+
+StartTimeH:
+0, 4, 8, 12, 16, 20
+
+Reverse:
+false, true
+
+averageSlow:
+50, 100, 150, 200, 250, 300, 350, 400
+
+This produces:
+
+6 time slices × 2 reverse states × 8 slow MA values = 96 base templates
+
+Each template would then optimize the remaining internal parameters.
+
+Core design concept:
+Parameters need roles, not just fixed/optimized.
+
+Add support for parameter roles such as:
+
+1. fixed
+   - Same value in every generated template.
+
+2. matrix_axis
+   - Expands into separate templates.
+   - Example: StartTimeH, Reverse, averageSlow.
+
+3. optimize_inside_template
+   - NinjaTrader sweeps this inside each generated XML.
+   - Example: averageFast, MaxStop, MaxTPRatio.
+
+4. inherited_from_parent_result
+   - Later stage receives this value from a selected parent optimizer row.
+
+5. refine_around_parent_result
+   - Later stage creates a tighter range around the parent winner.
+   - Example: winner averageFast ± 5 step 1.
+
+6. validation_only
+   - Used only for final fixed Backtest validation or review.
+
+This needs to be dynamic for any NinjaTrader strategy.
+Do not hardcode Pantheon-only parameters as the system design.
+The UI may show Pantheon examples, but the engine should derive strategy parameters from the selected seed XML/session parameter catalog.
+
+Desired user workflow:
+1. User selects existing strategy and seed optimizer XML.
+2. User selects the new Recipe/Matrix optimizer mode.
+3. User assigns parameter roles:
+   - Matrix axes
+   - Fixed parameters
+   - Parameters optimized inside each template
+   - Later-stage refinement parameters
+4. User enters target final result count or selection rules.
+5. User previews:
+   - Number of matrix templates.
+   - Combinations per template.
+   - Total estimated NinjaTrader combinations.
+   - Chunk/stage structure.
+6. User generates XML templates.
+7. User runs on NinjaTrader using the existing AddOn path.
+8. System ingests results using existing parser/OptimizationStore.
+9. System groups results by matrix bucket.
+10. System selects winners per bucket.
+11. User can generate linked child-stage templates from selected results.
+12. Final candidates eventually flow into the existing final fixed Backtest validation/package process.
+
+Saving and artifact requirements:
+The new mode must save using the current session structure.
+
+Do not create a separate unrelated storage layout.
+
+Recommended additions under the existing session folder:
+
+.ta_artifacts/web_optimizer/sessions/<session_id>/
+  session.json
+  plan.json
+  recipe.json
+  recipe_plan.json
+  generated_templates/
+    stage_1/
+      ...
+    stage_2/
+      ...
+    stage_3/
+      ...
+  nt_output/
+    stage_1/
+      ...
+    stage_2/
+      ...
+    stage_3/
+      ...
+  run.json
+  recipe_lineage.csv
+  recipe_lineage.json
+  recipe_selection.csv
+  recipe_selection.json
+  deployment_package/
+    ...
+
+The exact names may be adjusted to fit existing conventions, but the principle is:
+- Keep everything inside the existing session folder.
+- Preserve session resumability.
+- Preserve prior-run detection if possible.
+- Preserve stable plan hashes.
+- Preserve template/result lineage.
+- Preserve compatibility with existing deployment package generation.
+- Do not orphan files outside the normal `.ta_artifacts/web_optimizer/sessions/<session_id>/` tree except for the existing NinjaTrader command/status handoff files.
+
+Recipe file concept:
+Create a saved recipe schema similar to:
+
+{
+  "recipe_version": 1,
+  "mode": "matrix_sequence",
+  "recipe_name": "Time Reverse SlowMA Bucket Search",
+  "target_final_candidates": 12,
+  "base_matrix": [
+    {
+      "param": "StartTimeH",
+      "role": "matrix_axis",
+      "values": [0, 4, 8, 12, 16, 20]
+    },
+    {
+      "param": "DurationTimeH",
+      "role": "fixed",
+      "value": 4
+    },
+    {
+      "param": "Reverse",
+      "role": "matrix_axis",
+      "values": [false, true]
+    }
+  ],
+  "stages": [
+    {
+      "stage_id": "stage_1",
+      "stage_type": "optimizer",
+      "description": "Broad bucket search",
+      "optimize_inside_template": {
+        "averageSlow": { "min": 50, "max": 400, "step": 50 },
+        "averageFast": { "min": 2, "max": 50, "step": 2 },
+        "MaxStop": { "min": 50, "max": 350, "step": 50 },
+        "MaxTPRatio": { "min": 0.5, "max": 2.0, "step": 0.5 }
+      },
+      "selection": {
+        "group_by": ["StartTimeH", "Reverse"],
+        "keep_per_group": 3,
+        "min_trades": 20,
+        "min_profit_factor": 1.3,
+        "max_drawdown": 2500,
+        "min_net_profit": 0,
+        "rank_by": "portfolio_score"
+      }
+    },
+    {
+      "stage_id": "stage_2",
+      "stage_type": "optimizer",
+      "description": "Refine around selected parent rows",
+      "from": "stage_1.selected_rows",
+      "pin": ["StartTimeH", "DurationTimeH", "Reverse"],
+      "refine_around_parent_result": {
+        "averageSlow": { "source": "parent", "radius": 50, "step": 25 },
+        "averageFast": { "source": "parent", "radius": 5, "step": 1 },
+        "MaxStop": { "source": "parent", "radius": 50, "step": 25 },
+        "MaxTPRatio": { "source": "parent", "radius": 0.5, "step": 0.25 }
+      },
+      "add_optimize": {
+        "Long": [true, false],
+        "Short": [true, false]
+      },
+      "selection": {
+        "group_by": ["parent_candidate_id"],
+        "keep_per_group": 1,
+        "rank_by": "portfolio_score"
+      }
+    },
+    {
+      "stage_id": "stage_3",
+      "stage_type": "optimizer",
+      "description": "Daily risk behavior",
+      "from": "stage_2.selected_rows",
+      "pin_best_values": true,
+      "optimize_inside_template": {
+        "ProfitStop": { "min": 500, "max": 5000, "step": 500 },
+        "LossStop": { "min": 500, "max": 2500, "step": 250 },
+        "MaxTrades": { "min": 1, "max": 20, "step": 1 }
+      }
+    },
+    {
+      "stage_id": "final_backtest",
+      "stage_type": "fixed_backtest",
+      "from": "stage_3.selected_rows",
+      "description": "Generate final fixed Backtest templates using existing final validation flow"
+    }
+  ]
+}
+
+Implementation expectations:
+1. First inspect the existing optimizer code before changing anything.
+
+Focus areas likely include:
+- src/ta_foundation/web/optimizer_session.py
+- src/ta_foundation/web/optimizer_plan.py
+- src/ta_foundation/web/optimizer_template_writer.py
+- src/ta_foundation/web/optimizer_runner.py
+- src/ta_foundation/web/optimizer_results.py
+- src/ta_foundation/web/optimizer_deployment_package.py
+- src/ta_foundation/optimization/grid_workflow.py
+- src/ta_foundation/optimization/evaluator.py
+- src/ta_foundation/optimization/recommendations.py
+- src/ta_foundation/optimization/review.py
+
+2. Identify the least invasive integration point.
+
+The new Recipe/Matrix optimizer should probably reuse:
+- Existing seed XML patching.
+- Existing parameter catalog logic.
+- Existing generated template folder conventions.
+- Existing NinjaTrader AddOn RunBatch command.
+- Existing result ingestion.
+- Existing guardrails.
+- Existing deployment package/final Backtest flow.
+
+3. Do not create a new NinjaTrader execution path unless absolutely required.
+
+The current AddOn should still receive generated XML templates and export CSV results.
+
+4. Add schema/versioning carefully.
+
+The existing session.json should remain backward-compatible.
+
+Possible approach:
+- Add `optimizer_mode`: "standard" | "recipe_matrix"
+- Add optional `recipe_config_path`
+- Add optional `recipe_state`
+- Keep old sessions readable.
+- New fields must have defaults.
+
+5. Add planning support.
+
+Create a recipe planner that:
+- Expands matrix axes into base template jobs.
+- Computes combinations per template.
+- Computes total estimated combinations.
+- Produces stable job IDs.
+- Produces stable plan hash.
+- Produces human-readable preview rows.
+
+Example generated job IDs:
+- stage1_start00_dur04_reverseFalse
+- stage1_start00_dur04_reverseTrue
+- stage1_start04_dur04_reverseFalse
+- stage1_start04_dur04_reverseTrue
+
+If averageSlow is also a matrix axis:
+- stage1_start00_dur04_reverseFalse_slow050
+- stage1_start00_dur04_reverseFalse_slow100
+
+6. Add XML generation support.
+
+For each matrix job:
+- Patch fixed/matrix-axis values into the strategy node.
+- Patch optimize_inside_template parameters into OptimizationParameters.
+- Clamp fixed parameters so NinjaTrader does not accidentally sweep them.
+- Preserve optimizer type, optimization fitness, instrument, date range, and contract handling from the seed template.
+- Preserve the full contract, e.g. `NQ 06-26`, not generic `NQ`.
+
+7. Add result grouping and selection.
+
+After NinjaTrader exports optimizer CSVs:
+- Ingest using existing parser.
+- Attach matrix bucket metadata to each row.
+- Group by configured fields.
+- Apply hard guardrails:
+  - max drawdown
+  - min trades
+  - min profit factor
+  - min net profit
+- Rank candidates using an existing or new score.
+- Support ranking by PF, net profit, drawdown-adjusted score, or portfolio_score.
+- Save selected rows to:
+  - recipe_selection.csv
+  - recipe_selection.json
+- Save lineage showing:
+  - generated template
+  - stage
+  - bucket
+  - parent candidate if any
+  - selected child rows
+
+8. Add linked child-stage generation.
+
+For every selected parent row:
+- Generate child optimizer templates.
+- Pin configured parent values.
+- Refine configured parameters around parent result.
+- Add new sweeps where configured.
+- Clamp ranges safely to parameter bounds if known.
+- Detect boundary winners.
+
+Boundary rule:
+If a selected value is at the min or max of the previous range, flag it in lineage and optionally recommend expanding the range.
+
+Example:
+If averageSlow was optimized 50..400 and winner is 400, flag:
+"winner_at_upper_boundary": true
+
+Do not silently assume 400 is optimal.
+
+9. Add UI carefully.
+
+The existing optimizer UI should remain usable as-is.
+
+Add a new optional section/mode:
+- Standard optimizer
+- Recipe/Matrix optimizer
+
+Recipe UI should support:
+- Matrix axes editor.
+- Optimized-inside-template editor.
+- Stage sequence editor, at least initially simple.
+- Target final candidates.
+- Selection rules.
+- Preview plan.
+- Generate XMLs.
+- Run selected stage on NinjaTrader.
+- Refresh stage results.
+- Generate next stage from selected rows.
+
+MVP UI can be simple and text/config driven if needed.
+It is acceptable for the first implementation to support recipe JSON editing/import before building a full visual editor.
+
+10. Add tests.
+
+Create tests for:
+- Matrix expansion count:
+  - 4-hour windows x Reverse = 12
+  - 4-hour windows x Reverse x 8 slow values = 96
+- Stable job ID generation.
+- Stable plan hash.
+- Backward compatibility of standard sessions.
+- Recipe session save/load.
+- XML patching for matrix-axis fixed values.
+- XML patching for optimize_inside_template ranges.
+- Result grouping by bucket.
+- Selection top N per bucket.
+- Child-stage template generation from parent row.
+- Boundary detection.
+- Existing standard optimizer behavior remains unchanged.
+
+11. Acceptance criteria.
+
+The implementation is successful when:
+
+- Existing optimizer mode still works without changes to user behavior.
+- A user can create a recipe that generates 12 templates:
+  StartTimeH 0,4,8,12,16,20 × Reverse false,true.
+- A user can create a recipe that generates 96 templates:
+  StartTimeH 0,4,8,12,16,20 × Reverse false,true × averageSlow 50..400 step 50.
+- The generated templates are saved inside the current session folder structure.
+- NinjaTrader can run the generated templates through the existing AddOn workflow.
+- Results are saved/loaded under the current session structure.
+- The system can group optimizer results by matrix bucket.
+- The system can select top candidates per bucket.
+- The system can generate a linked next-stage template set from selected results.
+- Lineage is saved so every final candidate can be traced back to:
+  recipe -> stage -> matrix bucket -> template -> optimizer row -> child template -> final backtest.
+- The deployment package flow can still produce operator-facing final validation artifacts.
+
+Development style:
+Do not immediately perform a large refactor.
+First produce:
+1. Architecture/design notes.
+2. Proposed schema changes.
+3. File/module change list.
+4. Migration/backward-compatibility plan.
+5. Test plan.
+6. Then implement in small commits.
+
+Be especially careful not to break:
+- Current standard optimizer sessions.
+- Current XML patching behavior.
+- Contract handling.
+- KeepBestResults handling.
+- OptimizerType and OptimizationFitness preservation.
+- Existing deployment package generation.
+- Existing final fixed Backtest validation.
+
+
+Important correction to workflow:
+
+The Recipe/Matrix optimizer should support autonomous execution.
+
+Do NOT design this as a manual-only flow where the user must click:
+1. Generate XMLs
+2. Run on NinjaTrader
+3. Refresh results
+4. Pick winners
+5. Generate next stage
+
+Instead, the intended workflow is:
+
+1. User configures the full recipe.
+2. User defines selection rules, guardrails, target candidate count, max runtime/combination limits, and stop conditions.
+3. User starts the recipe run.
+4. System generates stage templates.
+5. System runs the generated templates through the existing NinjaTrader AddOn workflow.
+6. System monitors NinjaTrader status/output.
+7. System ingests completed results.
+8. System applies the user-defined selection rules.
+9. System saves selected candidates and lineage.
+10. System generates the next child-stage templates.
+11. System runs the next child stage automatically.
+12. System repeats until the recipe reaches final fixed Backtest validation or a configured stop condition.
+
+This should be an autonomous loop, not a wizard that requires user clicks between every stage.
+
+The user should still be able to inspect, pause, resume, rerun, clone, or override any stage after the fact.
+
+Add an orchestration layer.
+
+Suggested concept:
+
+RecipeRunOrchestrator
+
+Responsibilities:
+- Load session.json and recipe.json.
+- Build or load recipe_plan.json.
+- Determine current recipe state.
+- Generate templates for the current stage if needed.
+- Submit the current stage to the existing NinjaTrader AddOn.
+- Monitor run status through the existing command/status files and output folders.
+- Detect completed result files.
+- Ingest results using the existing optimizer result parser.
+- Apply stage-specific selection rules.
+- Persist selected rows and lineage.
+- Generate the next stage from selected parent rows.
+- Continue automatically until complete, failed, paused, or stopped.
+
+The orchestrator should be resumable.
+
+If the app restarts, the system should be able to inspect the saved session folder and determine:
+
+- recipe not started
+- stage templates generated
+- stage running
+- stage completed but results not ingested
+- stage results ingested
+- stage selection completed
+- next child stage generated
+- final validation needed
+- recipe complete
+- recipe failed
+- recipe paused
+- recipe stopped by user
+
+Do not rely only on in-memory state.
+
+Persist state inside the normal session folder.
+
+Recommended additional files:
+
+.ta_artifacts/web_optimizer/sessions/<session_id>/
+  recipe.json
+  recipe_plan.json
+  recipe_run.json
+  recipe_state.json
+  recipe_events.jsonl
+  recipe_lineage.csv
+  recipe_lineage.json
+  recipe_selection.csv
+  recipe_selection.json
+  generated_templates/
+    stage_1/
+    stage_2/
+    stage_3/
+    final_backtest/
+  nt_output/
+    stage_1/
+    stage_2/
+    stage_3/
+    final_backtest/
+  deployment_package/
+
+The exact filenames can be adjusted to match existing project conventions, but all recipe state must stay inside the existing optimizer session folder.
+
+Autonomous loop state machine:
+
+Suggested states:
+
+- draft
+- planned
+- ready_to_generate_stage
+- generating_stage_templates
+- ready_to_run_stage
+- running_stage
+- waiting_for_results
+- ingesting_results
+- selecting_candidates
+- generating_child_stage
+- ready_for_final_backtest
+- running_final_backtest
+- reviewing_final_backtest
+- complete
+- paused
+- failed
+- stopped
+
+The system should transition through these states automatically after the user starts the recipe run.
+
+User controls:
+
+The UI should expose:
+
+- Start recipe
+- Pause after current template
+- Stop recipe
+- Resume recipe
+- Rerun current stage
+- Rerun selected child stage
+- Clone stage into new recipe/session
+- View stage results
+- View selected candidates
+- View rejected candidates
+- View lineage
+- Force promote selected rows if the user manually overrides selection
+
+Important:
+Because the NinjaTrader AddOn may not be able to interrupt a currently running Strategy Analyzer job, pause/stop may only take effect between templates. The UI should represent this honestly.
+
+Selection must be automatic by default.
+
+The user sets selection logic before the run starts.
+
+Example selection config:
+
+{
+  "selection": {
+    "group_by": ["StartTimeH", "Reverse"],
+    "keep_per_group": 3,
+    "target_total_candidates": 12,
+    "hard_filters": {
+      "min_trades": 20,
+      "min_profit_factor": 1.3,
+      "max_drawdown": 2500,
+      "min_net_profit": 0
+    },
+    "rank_by": "portfolio_score",
+    "tie_breakers": [
+      "lower_drawdown",
+      "higher_trade_count",
+      "higher_net_profit"
+    ],
+    "diversity": {
+      "prefer_unique": ["StartTimeH", "Reverse", "averageSlow"],
+      "avoid_exact_parameter_clones": true
+    }
+  }
+}
+
+The system should use these rules to choose winners automatically.
+
+The user can inspect and rerun afterward, but the primary design should not require manual winner picking.
+
+Child stage behavior:
+
+For each selected parent candidate, the system should generate child-stage templates according to the recipe.
+
+Example:
+Stage 1 finds a winner:
+
+StartTimeH = 8
+DurationTimeH = 4
+Reverse = false
+averageSlow = 200
+averageFast = 12
+MaxStop = 150
+MaxTPRatio = 1.5
+
+Stage 2 should be generated automatically from that winner:
+
+Pinned:
+- StartTimeH = 8
+- DurationTimeH = 4
+- Reverse = false
+
+Refined:
+- averageSlow = 150 to 250 by 25
+- averageFast = 7 to 17 by 1
+- MaxStop = 100 to 200 by 25
+- MaxTPRatio = 1.0 to 2.0 by 0.25
+
+Additional sweeps:
+- Long true/false
+- Short true/false
+
+Every child template must retain a parent_candidate_id.
+
+Lineage requirements:
+
+Every result must be traceable:
+
+recipe_id
+stage_id
+template_id
+bucket_id
+parent_candidate_id
+optimizer_csv_file
+optimizer_row_id
+selected/rejected status
+generated_child_template_id
+final_backtest_template_id if applicable
+
+This is critical because the user needs to be able to go back and understand why a child stage exists and which parent row created it.
+
+UI requirements for inspection:
+
+The user should be able to open a recipe run and see:
+
+1. Stage overview
+   - stage status
+   - template count
+   - completed templates
+   - failed templates
+   - total rows parsed
+   - selected candidates
+
+2. Bucket view
+   - each time slice / reverse / slow MA bucket
+   - best PF
+   - best net
+   - best score
+   - selected candidate
+   - rejected candidates
+
+3. Child lineage view
+   - parent row
+   - generated child template
+   - child-stage results
+   - promoted child candidate
+
+4. Rerun controls
+   - rerun this template
+   - rerun this stage
+   - clone this branch
+   - expand range and rerun
+   - manually promote candidate
+
+The autonomous system should save enough information for these views without needing to reparse everything from scratch every time.
+
+Failure handling:
+
+The autonomous loop should stop or pause safely when:
+
+- NinjaTrader AddOn is not responding.
+- Expected output files are missing.
+- XML generation fails.
+- Result parsing fails.
+- No candidates pass guardrails.
+- Too many templates would be generated.
+- Estimated combinations exceed configured cap.
+- Runtime exceeds configured cap.
+- Contract mismatch is detected.
+- Required seed template values are missing.
+- Final Backtest dates are missing when required.
+
+Each failure should be written to recipe_events.jsonl and recipe_state.json.
+
+The user should be able to resume after fixing the problem.
+
+Do not build this as a black box.
+
+Even though the run is autonomous, every step must leave artifacts:
+- generated XMLs
+- run command
+- status snapshots if useful
+- parsed results
+- selected rows
+- rejected rows
+- scoring details
+- lineage
+- child-stage generation rules
+- final decision package
+
+Integration priority:
+
+Use the existing optimizer system wherever possible.
+
+The new autonomous recipe loop should reuse:
+- current session storage structure
+- current seed XML patching
+- current generated_templates conventions
+- current NinjaTrader AddOn command/status handoff
+- current result ingestion/parser
+- current guardrails
+- current deployment package and final fixed Backtest flow
+
+The current standard optimizer should remain unchanged and usable.
+
+Acceptance criteria additions:
+
+- User can configure a 12-template time/reverse recipe and click Start Recipe once.
+- System generates the 12 stage-1 templates automatically.
+- System runs them through NinjaTrader automatically.
+- System detects completion.
+- System ingests results.
+- System selects candidates per configured bucket rules.
+- System generates stage-2 child templates automatically.
+- System runs stage 2 automatically.
+- System continues until the configured final stage.
+- User can pause/resume between templates or stages.
+- User can open stage results after completion.
+- User can inspect child-stage lineage.
+- User can rerun a specific stage/template/branch.
+- All artifacts stay under the existing session folder.
+- Existing standard optimizer sessions still work.

@@ -1,0 +1,96 @@
+{
+  "candidates": [
+    {
+      "adverse_tests": [
+        "Long/short side split.",
+        "First 30 minutes versus full first hour.",
+        "One-bar entry delay.",
+        "+1 to +4 tick slippage ladder.",
+        "2024-2026 holdout."
+      ],
+      "direction": "both",
+      "falsifiable_claim": "This fixed ORB failure-reclaim variant should produce non-negative expectancy after realistic NQ friction and entry delay across multiple market regimes.",
+      "family": "orb_failure_reclaim",
+      "instrument": "NQ",
+      "mechanism": "An opening range breakout that cannot hold beyond the range traps early breakout participants. Reclaim into the range forces those late entries to exit, and a body-midpoint pullback attempts to avoid chasing the immediate reversal.",
+      "params": {
+        "fill_mode": "body_midpoint",
+        "orb_minutes": 5,
+        "reclaim_within_bars": 2,
+        "stop_ticks": 24,
+        "sweep_min_ticks": 4,
+        "target_ticks": 80
+      },
+      "rationale": "Strong family fit and directly supported by the registry.",
+      "session_window": "ny_open_0730_0830_denver",
+      "source_confidence": "medium",
+      "source_notes": [
+        "ORB has the strongest source trail in the LDR report.",
+        "Failure-reclaim mechanics are plausible but require local validation."
+      ],
+      "status": "draft",
+      "timeframe": "5m",
+      "title": "ORB Failure Reclaim, Body-Midpoint Fill"
+    },
+    {
+      "adverse_tests": [
+        "Random-time matched baseline.",
+        "Compression bars 3/4/5.",
+        "Breakout buffer sensitivity.",
+        "Volatility regime split.",
+        "No-trade first 10 minutes overlay."
+      ],
+      "direction": "both",
+      "falsifiable_claim": "A fixed compression-window expansion rule should beat random breakout entries with the same time-of-day distribution after cost.",
+      "family": "compression_then_expansion",
+      "instrument": "NQ",
+      "mechanism": "A short compression window can represent coiled liquidity and reduced realized volatility. A buffered breakout attempts to capture directional expansion before the move is crowded.",
+      "params": {
+        "breakout_buffer_ticks": 4,
+        "compression_bars": 4,
+        "compression_range_ticks_max": 40,
+        "stop_ticks": 24,
+        "target_ticks": 80
+      },
+      "rationale": "Useful non-reference-level diversification candidate.",
+      "session_window": "rth_morning_0730_1100_denver",
+      "source_confidence": "medium",
+      "source_notes": [
+        "Mechanism is generic but registry-compatible and easy to falsify."
+      ],
+      "status": "draft",
+      "timeframe": "5m",
+      "title": "Compression Then Expansion"
+    }
+  ],
+  "source": {
+    "extracted_text_path": null,
+    "imported_at": "2026-05-22T12:56:12Z",
+    "predecessor_run_id": null,
+    "prompt_hash": "fdad978462473a5b1ae716e1fb3788d73293d0a1ae75d786c0bb455a5a7c91ef",
+    "report_path": "d:\\Backup\\projects\\PythonProject\\ta_foundation\\docs\\ideas\\test_ldr_report.md",
+    "run_id": "test_ldr_run_001",
+    "tool": "local_deep_research"
+  },
+  "summary": "Local Deep Research intake converted the report into reviewable candidate drafts. No ledger rows were registered.",
+  "validations": [
+    {
+      "errors": [],
+      "family": "orb_failure_reclaim",
+      "title": "ORB Failure Reclaim, Body-Midpoint Fill",
+      "valid": true,
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "family": "compression_then_expansion",
+      "title": "Compression Then Expansion",
+      "valid": true,
+      "warnings": []
+    }
+  ],
+  "warnings": [
+    "Report contains performance language; rewrite all such language as hypotheses before ledger registration.",
+    "Report cites low-confidence retail/social sources; use them only for mechanism vocabulary or implementation examples."
+  ]
+}

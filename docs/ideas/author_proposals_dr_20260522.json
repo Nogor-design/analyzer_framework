@@ -1,0 +1,50 @@
+{
+  "proposals": [
+    {
+      "direction": "both",
+      "family": "trend_pullback_continuation",
+      "instrument": "NQ",
+      "mechanism": "A strong RTH opening drive followed by a shallow pullback to VWAP traps early countertrend traders while late continuation participants defend the developing volume-weighted reference. Continuation after the pullback should outperform unconditional VWAP pullbacks only when the first impulse and session participation are strong.",
+      "params": {
+        "pullback_max_ticks": 36,
+        "pullback_target": "vwap",
+        "stop_ticks": 28,
+        "target_ticks": 100
+      },
+      "revival_reason": null,
+      "session_window": "rth_open_0730_0930_denver",
+      "timeframe": "5m"
+    },
+    {
+      "direction": "both",
+      "family": "compression_then_expansion",
+      "instrument": "NQ",
+      "mechanism": "A narrow morning balance inside a VWAP-centered auction can represent compressed participation. A buffered breakout from a short compression window attempts to capture the transition from balance to initiative trade before the move becomes crowded.",
+      "params": {
+        "breakout_buffer_ticks": 4,
+        "compression_bars": 5,
+        "compression_range_ticks_max": 36,
+        "stop_ticks": 26,
+        "target_ticks": 90
+      },
+      "revival_reason": null,
+      "session_window": "rth_morning_0800_1100_denver",
+      "timeframe": "5m"
+    },
+    {
+      "direction": "both",
+      "family": "vwap_reject_fade",
+      "instrument": "NQ",
+      "mechanism": "A probe far from VWAP that fails to hold extension can trap late momentum participants. A bounded VWAP rejection fade should work only when the distance is large enough to pay for friction but not so large that the session has become a clean trend day.",
+      "params": {
+        "max_distance_ticks": 96,
+        "min_distance_ticks": 18,
+        "stop_ticks": 26,
+        "target_ticks": 76
+      },
+      "revival_reason": null,
+      "session_window": "rth_morning_0730_1030_denver",
+      "timeframe": "5m"
+    }
+  ]
+}

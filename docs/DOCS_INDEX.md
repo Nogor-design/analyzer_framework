@@ -42,16 +42,22 @@ check git history before relying on it.
 | `docs/designs/agentic_phase_b_read_only_agents.md` | Phase B spec — Triage + Scribe agents (read-only). |
 | `docs/designs/agentic_phase_c_authoring_agents.md` | Phase C spec — Hypothesis Author + Sweep Operator (authoring, HITL-gated). |
 | `docs/designs/agentic_phase_d_forward_observation.md` | Phase D spec — shadow loop, daily health, edge-decay detection. |
+| `docs/designs/agentic_nt_strategy_knowledge_base.md` | Knowledge-base map for reusing the existing agentic research, StrategyDiscoveryFilter, Strategy Factory, NinjaTrader strategy loop, optimizer AddOn, NinjaAccountManager runtime, shadow, and execution bridge components. Read before adding autonomous strategy-generation, NT validation, or execution automation. |
 
 ### Active design docs
 
 | Path | Role |
 |---|---|
 | `docs/designs/ai_integration_architecture_v2.md` | Active staged AI integration design (research → paper → shadow → live), with local-LLM enrichment scoped to non-critical display paths only. |
+| `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md` | Build plan for the autonomous loop from pure discovery through Deep Research intake, NinjaTrader validation, locked holdout, shadow, NinjaAccountManager Sim101 paper trading, and manager decisions. |
+| `docs/designs/autonomous_ninjatrader_strategy_loop.md` | Build design for the closed-loop NinjaTrader strategy authoring system: generate/install/compile/repair, then optimize/analyze/refine without manual compiler-error copying or Strategy Analyzer babysitting. |
 | `docs/designs/discovery_web_ui.md` | Web UI design for discovery surfaces. |
 | `docs/designs/ninjatrader_optimizer_web_ui.md` | Architecture reference for the `/optimizer` web control plane. Updated 2026-05-16: Phases 1–5 shipped; includes module-by-module status table and open-gap list. Pair with the runbook below. |
+| `docs/designs/optimizer_process_explained.md` | Future-use explainer for how the current optimizer moves from session setup through phase 1, phase 2, phase 3, final fixed Backtests, recommendations, and operator decision artifacts. Read before changing optimizer process behavior. |
+| `docs/designs/recipe_matrix_optimizer_design.md` | Proposed design for an optional autonomous Recipe/Matrix optimizer mode that sits above the shipped optimizer, expands matrix-axis templates, runs staged NinjaTrader jobs, selects winners automatically, and preserves lineage through final validation. |
 | `docs/designs/pantheon_optimizer_handoff_plan.md` | Engine design for the standalone Pantheon optimizer (phase 1→2→3→final). Updated 2026-05-16 with web layer additions, the BatchControl path-length fix, and the proven `opt_5bab6a5ee1ea` reference session. |
 | `docs/designs/optimizer_known_issues.md` | Living list of unfixed/operational issues in the optimizer (NT custom-optimizer bool-sweep, cancel mid-template, etc.) plus resolved-item history. Open this when something behaves unexpectedly. |
+| `docs/runbooks/recipe_optimizer_user_guide.md` | Screenshot-driven operator guide for the Recipe Optimizer flow: final results, final report, final `.xml` template list/download, and on-disk artifact paths. |
 | `docs/runbooks/pantheon_web_optimizer_full_run.md` | Operator runbook for the `/optimizer` web flow end to end — session config → preflight → RunBatch → phase 2/3 → final fixed Backtests → operator decision package. |
 | `docs/runbooks/pantheon_custom_optimizer_full_run.md` | Operator runbook for the equivalent CLI flow (`ta_foundation.optimization.*`). Use when the web UI is not desired. |
 | `docs/direction_policy_semantics.md` | Direction-policy semantics across signal/entry/outcome layers. |
