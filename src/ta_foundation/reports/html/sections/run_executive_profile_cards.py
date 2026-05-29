@@ -519,7 +519,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             direction_bias = "—"
 
         label = sm.get("label","-")
-        chart_values = f" {sm.get("value", "-")}  {sm.get("type","-")} "
+        chart_values = f" {sm.get('value', '-')}  {sm.get('type', '-')} "
         chart_type = sm.get("type","-")
         chart_value = sm.get("value", "-")
         max_trades = sm.get("maxtrades", "—")

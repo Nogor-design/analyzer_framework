@@ -162,7 +162,7 @@ def render_run_card_catalog(ctx: Dict[str, Any]) -> str:
 
         # derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
         card_uri = derived.get("card_image_uri")
-        # print(f"path: {derived.get("card_image_uri")}")
+        # print(f"path: {derived.get('card_image_uri")}")
         if hide_missing_cards and not card_uri:
             continue
 

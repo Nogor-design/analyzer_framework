@@ -23,7 +23,7 @@ def render_run_snapshot_clipboard(ctx: dict) -> str:
           - columns: int (grid columns for desktop; default 2)
           - emphasize_negatives: bool (color negatives; default True)
     """
-    print(f"Options: {ctx.get("options", {})}")
+    print(f"Options: {ctx.get('options', {})}")
     packages: dict[str, AnalysisPackage] = ctx["packages"]
     options: dict[str, Any] = ctx.get("options", {}) or {}
 
