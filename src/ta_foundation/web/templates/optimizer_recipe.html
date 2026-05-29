@@ -2428,8 +2428,12 @@ function maybeAutoAdvanceRecipe(state, progress) {
 
   // States that need NT to finish (progress.complete) before we advance
   const waitingForNT = ["running_stage", "waiting_for_results", "running_final_backtest"];
-  // States that are instant hand-off transitions — advance immediately, no wait needed
-  const instantTransition = ["generating_child_stage", "ready_for_final_backtest"];
+  // States that are instant hand-off transitions — advance immediately, no wait needed.
+  // `generating_child_stage` is intentionally NOT auto-advanced: it's persisted by
+  // the Decision-Dashboard refine endpoint to gate on a single operator Advance click.
+  // In the normal Stage N→N+1 flow it's transient (advance_once chains through it
+  // synchronously into running_stage), so excluding it here does not break that path.
+  const instantTransition = ["ready_for_final_backtest"];
 
   if (waitingForNT.includes(value)) {
     if (!progress || !progress.complete) return;
