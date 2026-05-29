@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,7 +39,8 @@ IGNORE_FILES = {
 
 DOC_EXTENSIONS = {".md", ".txt"}
 CONFIG_EXTENSIONS = {".yaml", ".yml", ".toml", ".json"}
-INDEX_EXTENSIONS = {".py", *DOC_EXTENSIONS, *CONFIG_EXTENSIONS}
+CSHARP_EXTENSIONS = {".cs"}
+INDEX_EXTENSIONS = {".py", *DOC_EXTENSIONS, *CONFIG_EXTENSIONS, *CSHARP_EXTENSIONS}
 
 
 @dataclass
@@ -50,12 +52,22 @@ class PythonSummary:
 
 
 @dataclass
+class CsharpSummary:
+    path: Path
+    doc: str = ""
+    classes: list[str] = field(default_factory=list)
+    nt_kind: str = ""
+    properties: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Category:
     name: str
     description: str
     roots: tuple[str, ...]
     files: list[Path] = field(default_factory=list)
     python: list[PythonSummary] = field(default_factory=list)
+    csharp: list[CsharpSummary] = field(default_factory=list)
 
 
 CATEGORIES: tuple[Category, ...] = (
@@ -177,6 +189,90 @@ def summarize_python(root: Path, rel: Path) -> PythonSummary:
     return summary
 
 
+_CS_CLASS_RE = re.compile(
+    r"^\s*public\s+(?:static\s+|sealed\s+|abstract\s+|partial\s+)*class\s+"
+    r"(?P<name>[A-Za-z_][\w]*)\s*(?::\s*(?P<base>[A-Za-z_][\w\.]*))?",
+    re.MULTILINE,
+)
+_CS_NS_PROP_RE = re.compile(
+    r"\[NinjaScriptProperty[^\]]*\][\s\S]{0,400}?"
+    r"public\s+[\w\.<>\[\]]+\s+(?P<name>[A-Za-z_][\w]*)\s*\{",
+)
+_CS_XML_SUMMARY_RE = re.compile(
+    r"///\s*<summary>\s*(?P<text>.*?)\s*</summary>",
+    re.IGNORECASE | re.DOTALL,
+)
+_CS_BLOCK_COMMENT_RE = re.compile(r"/\*+\s*(?P<body>.*?)\s*\*+/", re.DOTALL)
+
+
+def _first_meaningful_csharp_doc(text: str) -> str:
+    head = text[:8000]
+    m = _CS_XML_SUMMARY_RE.search(head)
+    if m:
+        cleaned = " ".join(
+            line.lstrip("/ ").strip()
+            for line in m.group("text").splitlines()
+            if line.strip()
+        )
+        if cleaned:
+            return cleaned[:240]
+    m = _CS_BLOCK_COMMENT_RE.search(head)
+    if m:
+        body_lines = [
+            line.lstrip(" *\t").strip()
+            for line in m.group("body").splitlines()
+            if line.strip(" *\t")
+        ]
+        for line in body_lines:
+            if not line:
+                continue
+            stripped = line.lstrip("=─━═").strip()
+            if stripped and not all(ch in "=─━═#-_*" for ch in stripped):
+                return stripped[:240]
+    for raw in head.splitlines():
+        s = raw.strip()
+        if s.startswith("///"):
+            t = s.lstrip("/").strip()
+            if t and not t.startswith("<"):
+                return t[:240]
+    return ""
+
+
+def _detect_nt_kind(text: str, classes: list[tuple[str, str | None]]) -> str:
+    for _name, base in classes:
+        if base is None:
+            continue
+        base_tail = base.rsplit(".", 1)[-1]
+        if base_tail in {"Indicator", "Strategy", "AddOn", "AddOnPage"}:
+            return base_tail
+    if "AddDataSeries(" in text and "protected override void OnBarUpdate" in text:
+        return "NinjaScript"
+    return ""
+
+
+def summarize_csharp(root: Path, rel: Path) -> CsharpSummary:
+    summary = CsharpSummary(path=rel)
+    try:
+        text = (root / rel).read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return summary
+
+    raw_classes: list[tuple[str, str | None]] = []
+    for m in _CS_CLASS_RE.finditer(text):
+        raw_classes.append((m.group("name"), m.group("base")))
+    summary.classes = [name for name, _ in raw_classes]
+    summary.nt_kind = _detect_nt_kind(text, raw_classes)
+    summary.doc = _first_meaningful_csharp_doc(text)
+
+    seen: set[str] = set()
+    for m in _CS_NS_PROP_RE.finditer(text):
+        name = m.group("name")
+        if name not in seen:
+            seen.add(name)
+            summary.properties.append(name)
+    return summary
+
+
 def matches_root(rel: Path, root_pattern: str) -> bool:
     rel_posix = rel.as_posix()
     if root_pattern.endswith("/"):
@@ -197,14 +293,18 @@ def reset_categories() -> None:
     for category in CATEGORIES:
         category.files.clear()
         category.python.clear()
+        category.csharp.clear()
 
 
 def add_files(root: Path, files: list[Path]) -> None:
     for rel in files:
         category = assign_category(rel)
         category.files.append(rel)
-        if rel.suffix.lower() == ".py":
+        suffix = rel.suffix.lower()
+        if suffix == ".py":
             category.python.append(summarize_python(root, rel))
+        elif suffix in CSHARP_EXTENSIONS:
+            category.csharp.append(summarize_csharp(root, rel))
 
 
 def format_path(path: Path) -> str:
@@ -222,6 +322,7 @@ def render_category(category: Category, max_python: int) -> list[str]:
     docs = [path for path in category.files if path.suffix.lower() in DOC_EXTENSIONS]
     configs = [path for path in category.files if path.suffix.lower() in CONFIG_EXTENSIONS]
     py_files = [path for path in category.files if path.suffix.lower() == ".py"]
+    cs_files = [path for path in category.files if path.suffix.lower() in CSHARP_EXTENSIONS]
 
     if docs:
         lines.append("- Key docs: " + ", ".join(f"`{format_path(path)}`" for path in docs[:12]))
@@ -229,6 +330,8 @@ def render_category(category: Category, max_python: int) -> list[str]:
         lines.append("- Key configs: " + ", ".join(f"`{format_path(path)}`" for path in configs[:12]))
     if py_files:
         lines.append("- Python files: " + str(len(py_files)))
+    if cs_files:
+        lines.append("- C#/NinjaScript files: " + str(len(cs_files)))
 
     summaries = [item for item in category.python if item.doc or item.classes or item.functions]
     if summaries:
@@ -245,6 +348,23 @@ def render_category(category: Category, max_python: int) -> list[str]:
         if len(summaries) > max_python:
             lines.append(f"- ... {len(summaries) - max_python} more summarized modules")
 
+    cs_summaries = [
+        item for item in category.csharp if item.doc or item.classes or item.nt_kind or item.properties
+    ]
+    if cs_summaries:
+        lines.extend(["", "C#/NinjaScript components:"])
+        for item in cs_summaries:
+            details: list[str] = []
+            if item.nt_kind:
+                details.append(f"NinjaScript {item.nt_kind}")
+            if item.doc:
+                details.append(item.doc)
+            if item.classes:
+                details.append("classes: " + ", ".join(item.classes[:6]))
+            if item.properties:
+                details.append("NinjaScriptProperties: " + ", ".join(item.properties[:10]))
+            lines.append(f"- `{format_path(item.path)}` - {'; '.join(details)}")
+
     lines.append("")
     return lines
 
@@ -254,6 +374,7 @@ def render_index(root: Path, files: list[Path], max_python: int) -> str:
     python_count = sum(1 for path in files if path.suffix.lower() == ".py")
     doc_count = sum(1 for path in files if path.suffix.lower() in DOC_EXTENSIONS)
     config_count = sum(1 for path in files if path.suffix.lower() in CONFIG_EXTENSIONS)
+    csharp_count = sum(1 for path in files if path.suffix.lower() in CSHARP_EXTENSIONS)
 
     lines = [
         "# AI Repo Index",
@@ -275,6 +396,7 @@ def render_index(root: Path, files: list[Path], max_python: int) -> str:
         f"- Generated: {generated_at}",
         f"- Indexed files: {len(files)}",
         f"- Python files: {python_count}",
+        f"- C#/NinjaScript files: {csharp_count}",
         f"- Docs/text files: {doc_count}",
         f"- Config files: {config_count}",
         "",
