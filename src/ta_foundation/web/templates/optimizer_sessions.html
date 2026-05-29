@@ -38,7 +38,7 @@
     <span class="text-gray-500 text-sm">/ Sessions</span>
   </div>
   <div class="flex items-center gap-3 text-xs">
-    <a href="/optimizer" class="btn-ghost px-3 py-1.5 rounded">Back to current session</a>
+    <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded">Open recipe optimizer</a>
   </div>
 </header>
 
@@ -49,13 +49,15 @@
   </div>
   <p class="text-gray-400 text-sm mb-6">
     Each session is one NinjaTrader optimization workspace. The decision state shows where the package is along the
-    phase&nbsp;1 &rarr; phase&nbsp;2 &rarr; phase&nbsp;3 &rarr; final&nbsp;Backtest &rarr; operator review chain. Resume to switch the active session, then continue from <code>/optimizer</code>.
+    phase&nbsp;1 &rarr; phase&nbsp;2 &rarr; phase&nbsp;3 &rarr; final&nbsp;Backtest &rarr; operator review chain. Resume to open the recipe optimizer for a session.
   </p>
 
   {% if not sessions %}
     <div class="p-8 border border-dashed border-gray-700 rounded text-center text-gray-400">
       <div class="text-base mb-2">No sessions yet.</div>
-      <a href="/optimizer" class="btn-primary px-4 py-1.5 rounded inline-block no-underline">Start a new session</a>
+      <div class="flex items-center justify-center gap-2 flex-wrap">
+        <a href="/optimizer/recipe" class="btn-primary px-4 py-1.5 rounded inline-block no-underline">Start a recipe</a>
+      </div>
     </div>
   {% else %}
     <div class="flex flex-col gap-3">
@@ -95,6 +97,13 @@
           <div class="flex flex-col gap-2 items-stretch min-w-[160px]">
             <a href="/optimizer/sessions/{{ s.session_id }}/resume"
                class="btn-primary px-3 py-1.5 rounded text-sm font-semibold text-center no-underline">Resume</a>
+            {% if s.has_decision_dashboard %}
+              <a href="/optimizer/sessions/{{ s.session_id }}/decision"
+                 class="btn-ghost px-3 py-1.5 rounded text-xs text-center no-underline"
+                 title="Open the Decision Dashboard for this finished session. Pick finalists there to spawn a refinement stage without cloning.">
+                Decision dashboard
+              </a>
+            {% endif %}
             <button type="button" data-session-id="{{ s.session_id }}"
                     class="btn-ghost px-3 py-1.5 rounded text-xs clone-btn">Clone &amp; refine</button>
             <button type="button" data-session-id="{{ s.session_id }}"

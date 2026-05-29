@@ -384,6 +384,27 @@ class OptimizerSession:
             }
         plan = self.load_plan() or {}
         manifest = self._load_manifest()
+        # ``manifest.json`` is the legacy standalone-optimizer artifact and is
+        # absent for recipe-mode sessions. Detect recipe-mode finished sessions
+        # directly from disk so the Sessions list can surface a Decision
+        # Dashboard link for every session that has finished a final backtest,
+        # not just the few that happened to write the old manifest.
+        final_manifest = (
+            self._dir / "generated_templates" / "final_backtest"
+            / "recipe_template_manifest.json"
+        )
+        final_review_dir = (
+            self._dir / "deployment_package" / "final_backtest_handoff"
+            / "final_backtest_review"
+        )
+        session_report = self._dir / "deployment_package" / "session_candidate_report.html"
+        has_decision_dashboard = (
+            bool(manifest.get("final_validation_status"))
+            or int(manifest.get("final_recommendation_count") or 0) > 0
+            or final_manifest.exists()
+            or final_review_dir.exists()
+            or session_report.exists()
+        )
         return {
             "session_id": doc.session_id,
             "label": doc.label,
@@ -400,6 +421,8 @@ class OptimizerSession:
             "phase2_template_count": int(manifest.get("phase2_refinement_template_count") or 0),
             "phase3_template_count": int(manifest.get("phase3_risk_template_count") or 0),
             "final_template_count": int(manifest.get("final_backtest_template_count") or 0),
+            "has_decision_dashboard": has_decision_dashboard,
+            "has_final_backtest_manifest": final_manifest.exists(),
         }
 
     def _load_manifest(self) -> dict[str, Any]:
@@ -454,10 +477,13 @@ def clone_session(
     """Create a fresh session that inherits the source's strategy, seed,
     parameter config, guardrails, chunking, instrument, and OOS dates.
 
-    Plan, generated templates, NT outputs, and the deployment package are
-    NOT copied — the clone starts at "configure & run". This is the entry
-    point for Phase 6 refinement: clone a session, narrow specific
-    parameter ranges, and run the refined plan.
+    Also carries the saved ``recipe.json`` over with a fresh ``recipe_id``
+    so the Recipe Setup page restores the same Stage 1 sweep config the
+    operator just ran instead of resetting every parameter role to
+    "Fixed". Plan, generated templates, NT outputs, parsed_results, and
+    the deployment package are intentionally **not** copied — the clone
+    starts at "configure & run" with the inherited recipe as a starting
+    point, not a re-run of the parent's results.
     """
     src_doc = source.load_document()
     new_session_id = "opt_" + secrets.token_hex(6)
@@ -485,6 +511,33 @@ def clone_session(
     )
     new_session = OptimizerSession(new_dir)
     new_session.save_document(new_doc)
+
+    # Carry the source recipe over. Mint a new recipe_id so it cannot be
+    # confused with the parent's history, but keep every stage, sweep
+    # config, base_matrix entry, and selection rule. Without this the
+    # recipe editor falls back to defaults (every parameter "Fixed") and
+    # the operator has to re-enter the entire Stage 1 setup from memory.
+    # Lazy import to avoid an ``optimizer_session`` <-> ``optimizer_recipe``
+    # circular dependency at module load.
+    from ta_foundation.web.optimizer_recipe import RECIPE_FILENAME
+
+    src_recipe_path = source.directory / RECIPE_FILENAME
+    if src_recipe_path.exists():
+        try:
+            recipe_data = json.loads(src_recipe_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            recipe_data = None
+        if isinstance(recipe_data, dict):
+            recipe_data = dict(recipe_data)
+            old_id = str(recipe_data.get("recipe_id") or "")
+            recipe_data["recipe_id"] = f"{old_id or 'rec'}__clone_{secrets.token_hex(3)}"
+            if not recipe_data.get("recipe_name"):
+                recipe_data["recipe_name"] = new_label
+            (new_dir / RECIPE_FILENAME).write_text(
+                json.dumps(recipe_data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
     return new_session
 
 

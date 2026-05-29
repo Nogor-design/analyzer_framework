@@ -21,6 +21,10 @@ class TemplateInstrumentCheck:
     instrument: str
     status: str
     message: str = ""
+    from_date: str = ""
+    to_date: str = ""
+    backtest_type: str = ""
+    category: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -65,27 +69,43 @@ def run_preflight(session: OptimizerSession) -> OptimizerPreflight:
 
     for xml in xmls:
         instrument = _instrument_from_xml(xml)
+        from_date, to_date = _date_range_from_xml(xml)
+        backtest_type, category = _analyzer_type_from_xml(xml)
         status = "ok"
-        message = ""
+        messages: list[str] = []
         if not instrument:
-            status = "warning"
-            message = "No InstrumentOrInstrumentList tag found; NinjaTrader may rely on command instrument."
-            warnings.append(f"{xml.name}: missing InstrumentOrInstrumentList")
+            status = "error"
+            messages.append("No InstrumentOrInstrumentList tag found; generated optimizer chunks must carry a full contract.")
+            errors.append(f"{xml.name}: missing InstrumentOrInstrumentList")
         elif _is_generic_instrument(instrument):
             status = "error"
-            message = f"Generic instrument {instrument!r}; expected full NinjaTrader contract."
-            errors.append(f"{xml.name}: {message}")
+            messages.append(f"Generic instrument {instrument!r}; expected full NinjaTrader contract.")
+            errors.append(f"{xml.name}: {messages[-1]}")
         elif resolved and instrument != resolved:
             status = "warning"
-            message = f"Template instrument {instrument!r} differs from command instrument {resolved!r}."
-            warnings.append(f"{xml.name}: {message}")
+            messages.append(f"Template instrument {instrument!r} differs from command instrument {resolved!r}.")
+            warnings.append(f"{xml.name}: {messages[-1]}")
+        if (backtest_type or category) != "Optimize":
+            status = "error"
+            found = backtest_type or category or "<missing>"
+            messages.append(f"Template analyzer category is {found!r}; optimizer chunks must use 'Optimize'.")
+            errors.append(f"{xml.name}: {messages[-1]}")
+        date_error = _date_range_error(from_date, to_date)
+        if date_error:
+            status = "error"
+            messages.append(date_error)
+            errors.append(f"{xml.name}: {date_error}")
         checks.append(
             TemplateInstrumentCheck(
                 path=str(xml),
                 name=xml.name,
                 instrument=instrument,
                 status=status,
-                message=message,
+                message=" ".join(messages),
+                from_date=from_date,
+                to_date=to_date,
+                backtest_type=backtest_type,
+                category=category,
             )
         )
 
@@ -128,7 +148,66 @@ def _instrument_from_xml(path: Path) -> str:
         root = ET.parse(path).getroot()
     except Exception:
         return ""
-    node = root.find(".//InstrumentOrInstrumentList")
-    if node is None or node.text is None:
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1]
+        if tag == "InstrumentOrInstrumentList":
+            return (elem.text or "").strip()
+    return ""
+
+
+def _date_range_from_xml(path: Path) -> tuple[str, str]:
+    if not path.exists() or not path.is_file():
+        return "", ""
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return "", ""
+    from_date = ""
+    to_date = ""
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1]
+        if tag == "From":
+            from_date = (elem.text or "").strip()
+        elif tag == "To":
+            to_date = (elem.text or "").strip()
+    return from_date, to_date
+
+
+def _analyzer_type_from_xml(path: Path) -> tuple[str, str]:
+    if not path.exists() or not path.is_file():
+        return "", ""
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return "", ""
+    backtest_type = ""
+    category = ""
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1]
+        if tag == "BacktestType":
+            backtest_type = (elem.text or "").strip()
+        elif tag == "Category":
+            category = (elem.text or "").strip()
+    return backtest_type, category
+
+
+def _date_range_error(from_date: str, to_date: str) -> str:
+    if not from_date or not to_date:
         return ""
-    return node.text.strip()
+    try:
+        from_dt = _parse_xml_date(from_date)
+        to_dt = _parse_xml_date(to_date)
+    except ValueError:
+        return ""
+    if to_dt <= from_dt:
+        return f"Invalid Strategy Analyzer date range: From {from_date!r} must be before To {to_date!r}."
+    return ""
+
+
+def _parse_xml_date(value: str):
+    from datetime import datetime
+
+    text = str(value or "").strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    return datetime.fromisoformat(text)

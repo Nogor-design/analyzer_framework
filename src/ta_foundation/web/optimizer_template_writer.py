@@ -135,6 +135,11 @@ def _patch_sweep(text: str, sweep: dict[str, Any]) -> str:
         return text
     minimum = _serialize(sweep.get("minimum"), sweep.get("type_name"))
     maximum = _serialize(sweep.get("maximum"), sweep.get("type_name"))
+    if not minimum or not maximum:
+        raise TemplateWriteError(
+            f"Parameter '{name}' has empty or invalid sweep bounds (min: '{sweep.get('minimum')}', max: '{sweep.get('maximum')}'). "
+            f"Empty bounds are prohibited to prevent unconstrained sweeps with millions of combinations in NinjaTrader."
+        )
     # Increment is always numeric, never a bool. NT bool sweeps use
     # Min=false, Max=true, Increment=1 — running the type-aware serializer
     # would emit Increment=true and collapse the sweep to a single value.
@@ -288,3 +293,72 @@ def _truthy(value: Any) -> bool:
     if isinstance(value, (int, float)):
         return value != 0
     return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def _has_tag(text: str, tag: str) -> bool:
+    """Check if a tag exists in the XML text."""
+    return f"<{tag}>" in text or f"<{tag} " in text
+
+
+def _remove_top_level_tag(text: str, tag: str) -> str:
+    """Remove a top-level tag from the XML.
+
+    NinjaTrader's saved Strategy Analyzer optimizer templates may include
+    a BacktestType node. The recipe seed should not have this; the optimizer
+    can infer Optimize from the OptimizationParameters block.
+    """
+    pattern = r"\n\s*<" + re.escape(tag) + r"(?:\s+[^>]*)?>.*?</" + re.escape(tag) + r">"
+    return re.sub(pattern, "", text, count=1, flags=re.DOTALL)
+
+
+def _replace_or_insert_top_level_tag(text: str, tag: str, value: str) -> str:
+    """Replace a top-level tag's value, or insert it if missing.
+
+    Top-level tags are those directly under <StrategyTemplate>.
+    """
+    patched = _replace_tag_text(text, tag, value, count=1)
+    if patched != text or _has_tag(text, tag):
+        return patched
+    if "<StrategyTemplate>" in text:
+        return text.replace(
+            "<StrategyTemplate>",
+            f"<StrategyTemplate>\n  <{tag}>{value}</{tag}>",
+            1,
+        )
+    return text
+
+
+def _replace_or_insert_strategy_tag(text: str, tag: str, value: str) -> str:
+    """Replace a <Strategy> child tag's value, or insert if missing.
+
+    Strategy tags are those directly under <Strategy>.
+    """
+    patched = _replace_tag_text(text, tag, value, count=1)
+    if patched != text or _has_tag(text, tag):
+        return patched
+    anchors = [
+        ("<IncludeCommission", "</IncludeCommission>"),
+        ("<Category", "</Category>"),
+    ]
+    for open_tag, close_tag in anchors:
+        if close_tag in text:
+            return text.replace(
+                close_tag,
+                f"{close_tag}\n    <{tag}>{value}</{tag}>",
+                1,
+            )
+    if "</Strategy>" in text:
+        return text.replace(
+            "</Strategy>",
+            f"    <{tag}>{value}</{tag}>\n  </Strategy>",
+            1,
+        )
+    return text
+
+
+def _align_bars_period_parameter(text: str) -> str:
+    """Ensure the BarsPeriod parameter has a non-zero Value.
+
+    Strategy Analyzer requires this for data series lookback.
+    """
+    return text

@@ -23,6 +23,20 @@ from ta_foundation.web.optimizer_runner import (
 from ta_foundation.web.optimizer_session import create_session
 
 
+def _valid_chunk_xml(instrument: str = "NQ 06-26") -> str:
+    return (
+        "<StrategyTemplate>"
+        "<BacktestType>Optimize</BacktestType>"
+        "<Strategy><FakeStrategy>"
+        "<Category>Optimize</Category>"
+        f"<InstrumentOrInstrumentList>{instrument}</InstrumentOrInstrumentList>"
+        "<From>2026-04-14T00:00:00</From>"
+        "<To>2026-05-14T00:00:00</To>"
+        "</FakeStrategy></Strategy>"
+        "</StrategyTemplate>"
+    )
+
+
 @pytest.fixture(autouse=True)
 def isolate_storage(tmp_path: Path):
     opt_session.set_storage_root(tmp_path / "sessions")
@@ -35,7 +49,7 @@ def _make_session_with_templates(*, count: int = 3):
     gen_dir = session.directory / GENERATED_DIRNAME
     gen_dir.mkdir(parents=True, exist_ok=True)
     for i in range(count):
-        (gen_dir / f"chunk_{i:03d}.xml").write_text("<x/>", encoding="utf-8")
+        (gen_dir / f"chunk_{i:03d}.xml").write_text(_valid_chunk_xml(), encoding="utf-8")
     return session
 
 
@@ -152,6 +166,18 @@ def test_start_run_keeps_explicit_full_contract_over_seed(tmp_path: Path):
     assert payload["instrument"] == "ES 06-26"
 
 
+def test_start_run_passes_chunk_runtime_timeout_seconds(tmp_path: Path):
+    session = _make_session_with_templates(count=1)
+    session.update(chunking={"max_runtime_minutes_per_chunk": 12})
+    cmd_path = tmp_path / "fake_temp" / "nt8_command.json"
+
+    record = start_run(session, command_file=cmd_path)
+
+    payload = json.loads(cmd_path.read_text(encoding="utf-8"))
+    assert payload["timeoutSeconds"] == 720
+    assert record.timeout_seconds == 720
+
+
 # ---------------------------------------------------------------------------
 # get_status
 # ---------------------------------------------------------------------------
@@ -204,6 +230,27 @@ def test_get_status_finished_when_all_have_summary(tmp_path: Path):
     # persisted finish time
     record = load_run(session)
     assert record.finished_at is not None
+
+
+def test_get_status_surfaces_batch_summary_timeout(tmp_path: Path):
+    session = _make_session_with_templates(count=1)
+    start_run(session, command_file=tmp_path / "nt8_command.json")
+    _drop_summary(session, "chunk_000")
+    output = session.directory / NT_OUTPUT_DIRNAME
+    (output / "BatchRunSummary.csv").write_text(
+        "Template,Status,Strategy,Instrument,Backtest start,Backtest end,"
+        "Total net profit,Trades,Profit factor,Max drawdown,Run start time,Run end time,Output folder,Error\n"
+        "chunk_000,TimedOut,,,2025-03-08,2025-03-14,,,,,2026-05-20 23:10:46,"
+        "2026-05-20 23:20:48,C:\\out,timed out waiting for results\n",
+        encoding="utf-8",
+    )
+
+    status = get_status(session)
+
+    assert status.state == "timed_out"
+    assert status.batch_run_statuses[0]["status"] == "TimedOut"
+    assert "TimedOut" in status.last_error
+    assert load_run(session).finished_at is not None
 
 
 def test_get_status_stale_when_recent_write_is_old(tmp_path: Path):

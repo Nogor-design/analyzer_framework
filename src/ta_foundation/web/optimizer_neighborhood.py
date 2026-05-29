@@ -248,6 +248,7 @@ def generate_neighborhood_templates(
         "sourceFolder": str(templates_dir.resolve()),
         "destFolder": str(nt_output_dir.resolve()),
         "instrument": doc.instrument,
+        "closeTempTabs": True,
     }
     (out_dir / NB_COMMAND_FILENAME).write_text(json.dumps(command, indent=2), encoding="utf-8")
 
@@ -313,6 +314,7 @@ def trigger_neighborhood_run(
         "sourceFolder": str(templates_dir.resolve()),
         "destFolder": str(nt_output_dir.resolve()),
         "instrument": doc.instrument,
+        "closeTempTabs": True,
     }
     target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return {"command_file": str(target), "payload": payload}

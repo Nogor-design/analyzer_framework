@@ -64,10 +64,14 @@ SEED_TEMPLATE_XML = """<?xml version="1.0"?>
   <StrategyType>NinjaTrader.NinjaScript.Strategies.FakeStrategy</StrategyType>
   <OptimizerType>NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer</OptimizerType>
   <OptimizationFitness>NinjaTrader.NinjaScript.OptimizationFitnesses.NetProfit</OptimizationFitness>
+  <BacktestType>Optimize</BacktestType>
   <Strategy>
     <Strategy>
       <Reverse>false</Reverse>
+      <Category>Optimize</Category>
       <InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>
+      <From>2026-04-14T00:00:00</From>
+      <To>2026-05-14T00:00:00</To>
       <StartTimeH>8</StartTimeH>
       <DurationTimeH>4</DurationTimeH>
     </Strategy>
@@ -145,6 +149,53 @@ def test_get_strategy_detail_extracts_parameter_metadata(nt_install):
     assert ratio.description == "Take-profit multiple"
 
 
+def test_get_strategy_detail_extracts_multiline_nt_property_declarations(tmp_path: Path):
+    source = tmp_path / "Strategies"
+    templates = tmp_path / "templates" / "Strategy"
+    source.mkdir(parents=True)
+    templates.mkdir(parents=True)
+    (source / "MaStyle.cs").write_text(
+        """
+namespace NinjaTrader.NinjaScript.Strategies
+{
+    public class MaStyle : Strategy
+    {
+        protected override void OnStateChange()
+        {
+            if (State == State.SetDefaults)
+            {
+                FastMa = 1;
+                StartTime = DateTime.Parse("07:00", System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+
+        [NinjaScriptProperty]
+        [Range(1, int.MaxValue)]
+        [Display(Name="FastMa", Order=1, GroupName="Parameters")]
+        public int FastMa
+        { get; set; }
+
+        [NinjaScriptProperty]
+        [PropertyEditor("NinjaTrader.Gui.Tools.TimeEditorKey")]
+        [Display(Name="StartTime", Order=2, GroupName="Parameters")]
+        public DateTime StartTime
+        { get; set; }
+    }
+}
+""",
+        encoding="utf-8",
+    )
+
+    detail = get_strategy_detail("MaStyle", source_dir=source, template_dir=templates)
+
+    assert detail is not None
+    by_name = {p.name: p for p in detail.parameters}
+    assert by_name["FastMa"].type_name == "int"
+    assert by_name["FastMa"].range_min == 1.0
+    assert by_name["StartTime"].type_name == "DateTime"
+    assert by_name["StartTime"].default == "07:00"
+
+
 def test_get_strategy_detail_summarizes_seed_templates(nt_install):
     source, templates = nt_install
     detail = get_strategy_detail("FakeStrategy", source_dir=source, template_dir=templates)
@@ -156,11 +207,93 @@ def test_get_strategy_detail_summarizes_seed_templates(nt_install):
     assert seed.instrument_or_instrument_list == "NQ 06-26"
     assert seed.start_hour == 8
     assert seed.duration_hours == 4
+    assert seed.backtest_type == "Optimize"
+    assert seed.category == "Optimize"
+    assert seed.from_date == "2026-04-14T00:00:00"
+    assert seed.to_date == "2026-05-14T00:00:00"
+    assert seed.is_optimizer_seed is True
+    assert seed.seed_issues == []
     assert "averageSlow" in seed.swept_parameter_names
     # 50,100,150,200 → 4 combinations; MaxStop is not swept (min==max)
     assert seed.estimated_combinations == 4
 
 
+def test_get_strategy_detail_marks_regular_ninjascript_template_invalid(nt_install):
+    source, templates = nt_install
+    bad = templates / "FakeStrategy" / "RegularSettings.xml"
+    bad.write_text(
+        SEED_TEMPLATE_XML
+        .replace("<BacktestType>Optimize</BacktestType>", "")
+        .replace("<Category>Optimize</Category>", "<Category>NinjaScript</Category>")
+        .replace("<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>", ""),
+        encoding="utf-8",
+    )
+
+    detail = get_strategy_detail("FakeStrategy", source_dir=source, template_dir=templates)
+    assert detail is not None
+    seeds = {seed.name: seed for seed in detail.seed_templates}
+    bad_seed = seeds["RegularSettings"]
+    assert bad_seed.is_optimizer_seed is False
+    assert "not_optimize_template:NinjaScript" in bad_seed.seed_issues
+    assert "missing_instrument" in bad_seed.seed_issues
+
+
 def test_get_strategy_detail_returns_none_for_unknown_id(nt_install):
     source, templates = nt_install
     assert get_strategy_detail("NoSuchStrategy", source_dir=source, template_dir=templates) is None
+
+
+def test_get_strategy_detail_handles_split_brace_property_declaration(tmp_path: Path):
+    """NinjaTrader's own strategy templates write the property body on a
+    separate line (``public T Name`` then ``{ get; set; }``). Recipe Setup must
+    extract those parameters as well — otherwise CandleBenderV5ReverseV2 reports
+    5 parameters when it actually exposes 38.
+    """
+    source = tmp_path / "src"
+    templates = tmp_path / "tpl"
+    source.mkdir()
+    templates.mkdir()
+    (source / "SplitBrace.cs").write_text(
+        """
+namespace NinjaTrader.NinjaScript.Strategies
+{
+    public class SplitBrace : Strategy
+    {
+        protected override void OnStateChange()
+        {
+            if (State == State.SetDefaults)
+            {
+                MaxLoss = 200;
+                PLRatio = 0.8;
+                UseTrend = true;
+            }
+        }
+
+        [NinjaScriptProperty]
+        [Range(1, double.MaxValue)]
+        [Display(Name="Max Loss", Order=1, GroupName="Parameters")]
+        public double MaxLoss
+        { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0, double.MaxValue)]
+        public double PLRatio
+        { get; set; }
+
+        [NinjaScriptProperty]
+        public bool UseTrend { get; set; }
+    }
+}
+""",
+        encoding="utf-8",
+    )
+
+    detail = get_strategy_detail("SplitBrace", source_dir=source, template_dir=templates)
+    assert detail is not None
+    by_name = {p.name: p for p in detail.parameters}
+    assert set(by_name) == {"MaxLoss", "PLRatio", "UseTrend"}
+    assert by_name["MaxLoss"].type_name == "double"
+    assert by_name["MaxLoss"].default == 200
+    assert by_name["PLRatio"].default == 0.8
+    assert by_name["UseTrend"].type_name == "bool"
+    assert by_name["UseTrend"].default is True

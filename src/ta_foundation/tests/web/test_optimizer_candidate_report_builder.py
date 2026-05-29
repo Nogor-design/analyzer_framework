@@ -94,3 +94,41 @@ def test_report_builder_post_renders_only_selected_sections(client):
     assert "run_kpi_cards" in html
     assert "run_settings_table" not in html
     assert "analysis_chart_replica" not in html
+
+
+@needs_fixture
+def test_candidate_report_route_serves_generated_html(client):
+    test_client, _session_dir = client
+    build = test_client.post(
+        f"/api/optimizer/sessions/{FIXTURE_SESSION}/candidates/F_008/report-builder",
+        json={"sections": ["run_kpi_cards"]},
+    )
+    assert build.status_code == 200
+
+    res = test_client.get(
+        f"/optimizer/sessions/{FIXTURE_SESSION}/candidates/F_008/report"
+    )
+
+    assert res.status_code == 200
+    assert res.mimetype == "text/html"
+    assert "run_kpi_cards" in res.get_data(as_text=True)
+
+
+@needs_fixture
+def test_session_candidate_report_route_serves_generated_html(client):
+    test_client, _session_dir = client
+    build = test_client.post(
+        f"/api/optimizer/sessions/{FIXTURE_SESSION}/candidate-session-report",
+        json={},
+    )
+    payload = build.get_json()
+    assert build.status_code == 200
+    assert payload["result"]["package_count"] == 8
+
+    res = test_client.get(f"/optimizer/sessions/{FIXTURE_SESSION}/candidate-report")
+
+    assert res.status_code == 200
+    assert res.mimetype == "text/html"
+    body = res.get_data(as_text=True)
+    assert "comparison_overview" in body
+    assert "F_001" in body

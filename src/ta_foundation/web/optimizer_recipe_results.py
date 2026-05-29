@@ -1,0 +1,201 @@
+from __future__ import annotations
+
+"""Result ingestion for Recipe/Matrix optimizer stages."""
+
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from ta_foundation.core.pipeline import ingest_folder
+from ta_foundation.core.registry import ParserRegistry
+from ta_foundation.parsers.ninjatrader.optimization_csv import NinjaTraderOptimizationCsvParser
+from ta_foundation.web.optimizer_recipe import load_recipe
+from ta_foundation.web.optimizer_recipe_templates import MANIFEST_FILENAME
+from ta_foundation.web.optimizer_session import OptimizerSession
+
+
+GENERATED_DIRNAME = "generated_templates"
+NT_OUTPUT_DIRNAME = "nt_output"
+PARSED_RESULTS_DIRNAME = "parsed_results"
+
+
+class RecipeResultsError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class RecipeStageResults:
+    recipe_id: str
+    stage_id: str
+    output_dir: str
+    row_count: int
+    batch_count: int
+    parse_warnings: int
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    parsed_rows_csv: str | None = None
+    parsed_rows_json: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def load_recipe_stage_results(
+    session: OptimizerSession,
+    *,
+    stage_id: str,
+    persist: bool = True,
+) -> RecipeStageResults:
+    recipe = load_recipe(session)
+    output_dir = session.directory / NT_OUTPUT_DIRNAME / stage_id
+    if not output_dir.exists():
+        raise RecipeResultsError(f"No NinjaTrader output folder found: {output_dir}")
+
+    registry = ParserRegistry(parsers=[NinjaTraderOptimizationCsvParser()])
+    result = ingest_folder(output_dir, registry=registry, recursive=True, load_tick_data=False)
+    store = result.optimization_store
+    combined = store.combined_results() if store else None
+    if combined is None:
+        combined = pd.DataFrame()
+
+    manifest = _load_template_manifest(session, stage_id)
+    enriched = _enrich_results(combined, recipe_id=recipe.recipe_id, stage_id=stage_id, manifest=manifest)
+    
+    rows = [_json_safe(row) for row in enriched.to_dict(orient="records")] if not enriched.empty else []
+    parsed_csv: str | None = None
+    parsed_json: str | None = None
+    if persist:
+        parsed_dir = session.directory / PARSED_RESULTS_DIRNAME / stage_id
+        parsed_dir.mkdir(parents=True, exist_ok=True)
+        parsed_csv_path = parsed_dir / "scored_rows.csv"
+        parsed_json_path = parsed_dir / "scored_rows.json"
+        enriched.to_csv(parsed_csv_path, index=False)
+        parsed_json_path.write_text(
+            json.dumps(rows, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        parsed_csv = str(parsed_csv_path)
+        parsed_json = str(parsed_json_path)
+
+    notes: list[str] = []
+    if combined.empty:
+        notes.append("No optimizer rows were parsed from the stage output folder.")
+    if not manifest:
+        notes.append("No recipe template manifest was found; lineage metadata is limited.")
+
+    return RecipeStageResults(
+        recipe_id=recipe.recipe_id,
+        stage_id=stage_id,
+        output_dir=str(output_dir),
+        row_count=len(rows),
+        batch_count=len(store.batches) if store else 0,
+        parse_warnings=sum(len(batch.warnings) for batch in store.batches.values()) if store else 0,
+        rows=rows,
+        notes=notes,
+        parsed_rows_csv=parsed_csv,
+        parsed_rows_json=parsed_json,
+    )
+
+
+def _load_template_manifest(session: OptimizerSession, stage_id: str) -> dict[str, dict[str, Any]]:
+    path = session.directory / GENERATED_DIRNAME / stage_id / MANIFEST_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    templates = payload.get("templates") if isinstance(payload, dict) else None
+    if not isinstance(templates, list):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for item in templates:
+        if not isinstance(item, dict):
+            continue
+        template_id = str(item.get("template_id") or "")
+        if template_id:
+            out[template_id] = item
+    return out
+
+
+def _enrich_results(
+    df: pd.DataFrame,
+    *,
+    recipe_id: str,
+    stage_id: str,
+    manifest: dict[str, dict[str, Any]],
+) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+
+    enriched = df.copy()
+    enriched.insert(0, "recipe_id", recipe_id)
+    enriched.insert(1, "stage_id", stage_id)
+
+    template_ids: list[str] = []
+    bucket_ids: list[str] = []
+    parent_ids: list[str | None] = []
+    optimizer_targets: list[str] = []
+    optimizer_csv_files: list[str] = []
+    metadata_rows: list[dict[str, Any]] = []
+
+    for _, row in enriched.iterrows():
+        template_id = str(row.get("batch_id") or "")
+        meta = manifest.get(template_id, {})
+        template_ids.append(template_id)
+        bucket_ids.append(str(meta.get("bucket_id") or template_id))
+        parent_ids.append(meta.get("parent_candidate_id"))
+        optimizer_targets.append(str(meta.get("optimization_target") or _target_from_template_id(template_id)))
+        optimizer_csv_files.append(str(row.get("source_file") or ""))
+
+        metadata_row: dict[str, Any] = {}
+        metadata_row.update(dict(meta.get("matrix_values") or {}))
+        metadata_row.update(dict(meta.get("fixed_values") or {}))
+        metadata_rows.append(metadata_row)
+
+    enriched.insert(2, "template_id", template_ids)
+    enriched.insert(3, "bucket_id", bucket_ids)
+    enriched.insert(4, "parent_candidate_id", parent_ids)
+    enriched.insert(5, "optimizer_csv_file", optimizer_csv_files)
+    enriched.insert(6, "optimizer_target", optimizer_targets)
+
+    metadata_keys = sorted({key for row in metadata_rows for key in row.keys()})
+    for name in metadata_keys:
+        values = [row.get(name) for row in metadata_rows]
+        if name not in enriched.columns:
+            enriched[name] = values
+
+    row_numbers = enriched.groupby("template_id").cumcount() + 1
+    enriched.insert(6, "optimizer_row_id", row_numbers)
+    enriched.insert(
+        7,
+        "candidate_id",
+        [
+            f"{stage_id}__{template_id}__row{int(row_number):05d}"
+            for template_id, row_number in zip(template_ids, row_numbers)
+        ],
+    )
+    if "max_drawdown" in enriched.columns and "drawdown_abs" not in enriched.columns:
+        enriched["drawdown_abs"] = pd.to_numeric(enriched["max_drawdown"], errors="coerce").abs()
+    return enriched
+
+
+def _json_safe(row: dict[str, Any]) -> dict[str, Any]:
+    clean: dict[str, Any] = {}
+    for key, value in row.items():
+        if pd.isna(value):
+            clean[key] = None
+        elif hasattr(value, "item"):
+            clean[key] = value.item()
+        else:
+            clean[key] = value
+    return clean
+
+
+def _target_from_template_id(template_id: str) -> str:
+    if "__opt_" not in template_id:
+        return "MaxProfitFactor"
+    return template_id.rsplit("__opt_", 1)[-1]

@@ -49,11 +49,27 @@ from ta_foundation.web.optimizer_session import OptimizerSession
 
 
 PER_CANDIDATE_REPORTS_DIRNAME = "per_candidate_reports"
+SESSION_CANDIDATE_REPORT_FILENAME = "session_candidate_report.html"
+DEFAULT_PORTRAIT_DIRS: tuple[Path, ...] = (
+    Path.home() / "Pictures" / "NewGodImages",
+    Path.home() / "Pictures" / "God images",
+)
 
 DEFAULT_FINALIST_SECTIONS: list[str] = [
     "exec_card_god_banner",
     "run_kpi_cards",
     "analysis_chart_replica",
+    "run_metadata_cards",
+    "daily_scoreboard",
+    "daily_winner_spotlight",
+    "daily_leaderboard_cards",
+    "run_settings_table",
+]
+
+DEFAULT_SESSION_CANDIDATE_SECTIONS: list[str] = [
+    "comparison_overview",
+    "equity_curve_comparison",
+    "run_kpi_cards",
     "run_metadata_cards",
     "daily_scoreboard",
     "daily_winner_spotlight",
@@ -145,6 +161,18 @@ class CandidateReportBatchResult:
         }
 
 
+@dataclass(frozen=True)
+class SessionCandidateReportResult:
+    session_id: str
+    html_path: str | None
+    sections_rendered: list[str]
+    package_count: int
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def group_sections_by_bucket() -> list[dict[str, Any]]:
     """Return report sections grouped for the on-demand picker page."""
     buckets: list[dict[str, Any]] = [
@@ -228,14 +256,18 @@ def build_candidate_report(
     instrument = (doc.instrument or "").strip()
     market_root = instrument.split()[0] if instrument else (doc.market_suffix or "").strip()
 
+    resolved_images_dir = _resolve_images_dir(images_dir)
+
     base_options: dict[str, Any] = {
         "run_id": run_id,
         "label": pkg.summary.kpis_all.get("strategy") if pkg.summary else run_id,
         "analysis_csv_path": str(analysis_csv) if analysis_csv.exists() else None,
         "template_path": str(template_path) if template_path else None,
-        "images_dir": str(images_dir) if images_dir else None,
+        "images_dir": resolved_images_dir,
         "market_suffix": market_root or None,
     }
+    if not images_dir and resolved_images_dir:
+        notes.append(f"Using default portrait images dir(s): {resolved_images_dir}")
     if not analysis_csv.exists():
         notes.append(f"Analysis.csv not present for {run_id}; chart-replica section will degrade.")
     if template_path is None:
@@ -339,6 +371,91 @@ def build_all_candidate_reports(
     )
 
 
+def build_session_candidate_report(
+    session: OptimizerSession,
+    *,
+    sections: list[str] | None = None,
+    output_path: Path | None = None,
+) -> SessionCandidateReportResult:
+    """Build one HTML report that ingests every final candidate together.
+
+    This powers comparison-oriented sections that need multiple packages in
+    ``ctx["packages"]`` instead of the single-package context used by
+    per-candidate reports.
+    """
+    pkg_dir = session.directory / "deployment_package"
+    results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
+    out_path = output_path or (pkg_dir / SESSION_CANDIDATE_REPORT_FILENAME)
+    notes: list[str] = []
+
+    if not results_dir.exists():
+        return SessionCandidateReportResult(
+            session_id=session.id,
+            html_path=None,
+            sections_rendered=[],
+            package_count=0,
+            notes=[f"No final-Backtest results at {results_dir}; nothing to render."],
+        )
+
+    requested = sections or DEFAULT_SESSION_CANDIDATE_SECTIONS
+    registry = _build_registry()
+    ingest = ingest_folder(
+        results_dir,
+        registry=registry,
+        recursive=True,
+        include_run_images=False,
+        load_tick_data=False,
+    )
+    if not ingest.packages:
+        raise CandidateReportError(
+            f"Ingest produced no packages for {results_dir}"
+        )
+    if ingest.unparsed_files:
+        notes.append(f"{len(ingest.unparsed_files)} non-report file(s) skipped during ingest.")
+
+    html_sections: list[HtmlSection] = []
+    rendered: list[str] = []
+    for sec_id in requested:
+        section_def = SECTION_REGISTRY.get(sec_id)
+        if section_def is None:
+            notes.append(f"Unknown section id: {sec_id}")
+            continue
+        html_sections.append(HtmlSection(
+            id=section_def.id,
+            title=section_def.default_title,
+            render_fn=section_def.render_fn,
+            options={},
+        ))
+        rendered.append(sec_id)
+
+    if not html_sections:
+        raise CandidateReportError(
+            "No valid sections in the requested list; nothing to render."
+        )
+
+    builder = HtmlReportBuilder(
+        report_title=f"{session.id} — all finalist templates",
+        sections=html_sections,
+    )
+    html = builder.build({
+        "packages": ingest.packages,
+        "market": ingest.market,
+        "options": {},
+        "all_options": {},
+    })
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding="utf-8")
+
+    return SessionCandidateReportResult(
+        session_id=session.id,
+        html_path=str(out_path),
+        sections_rendered=rendered,
+        package_count=len(ingest.packages),
+        notes=notes,
+    )
+
+
 def list_existing_candidate_reports(session: OptimizerSession) -> dict[str, str]:
     """Return run_id → HTML path for reports already on disk. Useful
     for the decision dashboard to decide which rows get a link."""
@@ -349,6 +466,10 @@ def list_existing_candidate_reports(session: OptimizerSession) -> dict[str, str]
         p.stem: str(p) for p in sorted(out_dir.glob("*.html"))
         if p.is_file()
     }
+
+
+def session_candidate_report_path(session: OptimizerSession) -> Path:
+    return session.directory / "deployment_package" / SESSION_CANDIDATE_REPORT_FILENAME
 
 
 # ---------------------------------------------------------------------------
@@ -365,15 +486,29 @@ def _build_registry() -> ParserRegistry:
     ])
 
 
+def _resolve_images_dir(images_dir: Path | str | None) -> str | None:
+    if images_dir:
+        return str(images_dir)
+    defaults = [str(path) for path in DEFAULT_PORTRAIT_DIRS if path.exists() and path.is_dir()]
+    return "\n".join(defaults) if defaults else None
+
+
 def _find_template_path_for_run_id(
     session: OptimizerSession, run_id: str,
 ) -> Path | None:
-    """Find the named_backtest_template XML that produced this run.
+    """Find the final template XML that produced this run.
 
     Templates are named like ``01_Breakout_PantheonMasterBotV01TesterV2.xml``
     where the leading number maps to ``F_<num:03d>``. The first match
-    by leading-number is returned.
+    by leading-number is returned. If the operator has run the Decision page
+    final-template renamer, prefer its indexed ``F_xxx__semantic.xml`` output.
     """
+    from ta_foundation.web.optimizer_final_templates import find_renamed_template_for_run_id
+
+    renamed = find_renamed_template_for_run_id(session, run_id)
+    if renamed is not None:
+        return renamed
+
     named_dir = (session.directory / "deployment_package" / "final_backtest_handoff"
                  / "named_backtest_templates")
     if not named_dir.exists():

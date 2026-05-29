@@ -99,6 +99,8 @@ class DecisionDashboard:
     rejected_count: int
     candidate_rows: list[CandidateRow]
     artifact_links: dict[str, str]   # display-name -> relative path
+    template_links: dict[str, Any]
+    session_report_url: str | None
     status: str               # "ok" | "no_review" | "no_session"
     status_reason: str = ""
 
@@ -116,6 +118,8 @@ class DecisionDashboard:
             "rejected_count": self.rejected_count,
             "candidate_rows": [c.to_dict() for c in self.candidate_rows],
             "artifact_links": dict(self.artifact_links),
+            "template_links": dict(self.template_links),
+            "session_report_url": self.session_report_url,
             "status": self.status,
             "status_reason": self.status_reason,
         }
@@ -169,7 +173,13 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
                              key="comparisons")
 
     from ta_foundation.web.optimizer_candidate_report import list_existing_candidate_reports
+    from ta_foundation.web.optimizer_candidate_report import session_candidate_report_path
+    from ta_foundation.web.optimizer_final_templates import final_template_links
     existing_reports = list_existing_candidate_reports(session)
+    session_report_url = (
+        f"/optimizer/sessions/{session.id}/candidate-report"
+        if session_candidate_report_path(session).exists() else None
+    )
 
     unranked_rows: list[CandidateRow] = []
     for run_id, eval_row in by_id_eval.items():
@@ -237,6 +247,8 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
         rejected_count=len([r for r in rows if r.status == "rejected"]),
         candidate_rows=rows,
         artifact_links=_collect_artifact_links(pkg),
+        template_links=final_template_links(session),
+        session_report_url=session_report_url,
         status="ok",
     )
 
@@ -449,6 +461,317 @@ def _empty_dashboard(
         rejected_count=0,
         candidate_rows=[],
         artifact_links={},
+        template_links={},
+        session_report_url=None,
         status="no_review",
         status_reason=reason,
     )
+
+
+# ---------------------------------------------------------------------------
+# Refine-from-decision-dashboard helper
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DecisionRefineProposal:
+    """Output of :func:`build_refine_from_decision_proposal`.
+
+    Carries everything the route needs to:
+    1. Write the new ``parsed_results/<parent>/selected.json``.
+    2. Splice the new stage into ``recipe.json`` just before the
+       final fixed-backtest stage.
+    3. Hand the operator a focus URL into the recipe editor with the
+       new stage already selected.
+    """
+
+    parent_stage_id: str
+    new_stage_id: str
+    new_stage_dict: dict[str, Any]
+    selected_rows: list[dict[str, Any]]
+    resolved_finalists: list[dict[str, Any]]
+
+
+class DecisionRefineError(Exception):
+    pass
+
+
+def build_refine_from_decision_proposal(
+    session: OptimizerSession,
+    *,
+    candidate_ids: list[str],
+) -> DecisionRefineProposal:
+    """Resolve final-stage candidate ids (``F_001`` etc.) back to the parent
+    optimizer rows and assemble a ready-to-save refinement-stage spec.
+
+    Hard requirements:
+
+    * Every candidate id must appear in the session final_backtest manifest.
+    * All resolved candidates must share a single ``parent_stage_id`` —
+      a recipe stage has exactly one ``from`` ref. Mixing parents requires
+      picking each parent separately.
+    * The parent stage must exist in the saved recipe (otherwise the new
+      stage ``from`` would dangle).
+
+    The new stage:
+
+    * Pins every base-matrix axis from the recipe so each finalist bucket
+      combo (e.g. ``StartTimeH=0, Reverse=false``) stays locked.
+    * Refines around the parent value for each parameter the parent stage
+      swept. Radius defaults to 10 percent of the parent ``(max-min)``
+      span, floored at one ``step`` so the refined sweep always contains
+      parent +/- step (three points minimum).
+    * Inherits the parent selection criteria so winners propagate through
+      the same gates.
+    """
+    from ta_foundation.web.optimizer_recipe import load_recipe
+    from ta_foundation.web.optimizer_recipe_templates import MANIFEST_FILENAME
+
+    if not candidate_ids:
+        raise DecisionRefineError("candidate_ids must be a non-empty list.")
+
+    manifest_path = (
+        session.directory
+        / "generated_templates"
+        / "final_backtest"
+        / MANIFEST_FILENAME
+    )
+    if not manifest_path.exists():
+        raise DecisionRefineError(
+            "Final backtest manifest not found. Run the recipe through "
+            "final_backtest before refining from the decision dashboard."
+        )
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DecisionRefineError(
+            f"Could not read final backtest manifest: {exc}"
+        ) from exc
+
+    finalists_by_short = _index_finalists_by_short_id(manifest.get("templates") or [])
+    resolved: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for raw_id in candidate_ids:
+        cid = str(raw_id or "").strip()
+        if not cid:
+            continue
+        entry = finalists_by_short.get(cid) or finalists_by_short.get(cid.upper())
+        if entry is None:
+            missing.append(cid)
+            continue
+        resolved.append(entry)
+    if missing:
+        raise DecisionRefineError(
+            f"Unknown finalist id(s) in final_backtest manifest: {sorted(set(missing))}"
+        )
+    if not resolved:
+        raise DecisionRefineError("No finalist ids resolved from the manifest.")
+
+    # The manifest carries two stage references per finalist and they
+    # often disagree:
+    #
+    # * ``parent_stage_id`` is the stage that final_backtest reads ``from``
+    #   (e.g. ``stage_3`` when the final stage has
+    #   ``from: stage_3.selected_rows``).
+    # * ``final_selection_source_stage`` is the stage whose ``scored_rows``
+    #   the ``parent_candidate_id`` actually lives in (often ``stage_1``
+    #   when the final selection walker promoted a row straight from the
+    #   matrix stage instead of through a refinement).
+    #
+    # We need the second one. When the field is missing (older manifests)
+    # we fall back to the candidate_id prefix, which encodes the source
+    # stage as the first ``stage_N__`` segment.
+    source_by_short_id: dict[str, str] = {}
+    for entry in resolved:
+        src_stage = _source_stage_for_finalist(entry)
+        if not src_stage:
+            raise DecisionRefineError(
+                "Selected finalists have no resolvable source stage in the "
+                "manifest. Re-run the final backtest to regenerate it."
+            )
+        short = (
+            _short_finalist_id(str(entry.get("template_id") or ""))
+            or str(entry.get("template_id") or "")
+        )
+        source_by_short_id[short] = src_stage
+
+    source_stages = set(source_by_short_id.values())
+    if len(source_stages) > 1:
+        examples = ", ".join(
+            f"{cid} (from {stage})"
+            for cid, stage in sorted(source_by_short_id.items())[:6]
+        )
+        raise DecisionRefineError(
+            "Selection spans multiple source stages "
+            f"({sorted(source_stages)}). Refine each source stage separately. "
+            f"Example mapping: {examples}."
+        )
+    parent_stage_id = next(iter(source_stages))
+
+    parent_dir = session.directory / "parsed_results" / parent_stage_id
+    scored_path = parent_dir / "scored_rows.json"
+    if not scored_path.exists():
+        raise DecisionRefineError(
+            f"Parent stage results missing: {scored_path}. "
+            "Cannot resolve finalists back to optimizer rows."
+        )
+    try:
+        scored_rows = json.loads(scored_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DecisionRefineError(
+            f"Could not read parent scored rows: {exc}"
+        ) from exc
+    rows_by_candidate = {
+        str(row.get("candidate_id") or ""): row
+        for row in scored_rows
+        if isinstance(row, dict)
+    }
+
+    selected_rows: list[dict[str, Any]] = []
+    for entry in resolved:
+        pcid = str(entry.get("parent_candidate_id") or "")
+        parent_row = rows_by_candidate.get(pcid)
+        if parent_row is None:
+            raise DecisionRefineError(
+                f"Finalist {entry.get('template_id')!r} references parent "
+                f"candidate {pcid!r} that is not in {scored_path.name}."
+            )
+        row = dict(parent_row)
+        row["selection_status"] = "selected"
+        row["selection_reason"] = (
+            f"Hand-picked from Decision Dashboard finalist "
+            f"{_short_finalist_id(str(entry.get('template_id') or ''))}"
+        )
+        selected_rows.append(row)
+
+    recipe = load_recipe(session)
+    parent_recipe_stage = next(
+        (s for s in recipe.stages if s.stage_id == parent_stage_id),
+        None,
+    )
+    if parent_recipe_stage is None:
+        raise DecisionRefineError(
+            f"Parent stage {parent_stage_id!r} is not in the saved recipe. "
+            "The recipe may have been edited since the finalists ran."
+        )
+
+    pin_names = sorted({
+        entry.param
+        for entry in recipe.base_matrix
+        if entry.role == "matrix_axis"
+    })
+
+    refine_around: dict[str, dict[str, Any]] = {}
+    for name, cfg in parent_recipe_stage.optimize_inside_template.items():
+        radius, step = _radius_and_step_from_parent_cfg(cfg)
+        refine_around[name] = {
+            "source": "parent",
+            "min": cfg.get("min"),
+            "max": cfg.get("max"),
+            "step": step,
+            "radius": radius,
+        }
+
+    new_stage_id = _next_optimizer_stage_id(recipe)
+    new_stage_dict: dict[str, Any] = {
+        "stage_id": new_stage_id,
+        "stage_type": "optimizer",
+        "description": (
+            f"Refinement around {len(selected_rows)} Decision-Dashboard "
+            f"finalist(s) from {parent_stage_id}."
+        ),
+        "from": f"{parent_stage_id}.selected_rows",
+    }
+    if pin_names:
+        new_stage_dict["pin"] = pin_names
+    if refine_around:
+        new_stage_dict["refine_around_parent_result"] = refine_around
+    if parent_recipe_stage.selection:
+        new_stage_dict["selection"] = dict(parent_recipe_stage.selection)
+
+    return DecisionRefineProposal(
+        parent_stage_id=parent_stage_id,
+        new_stage_id=new_stage_id,
+        new_stage_dict=new_stage_dict,
+        selected_rows=selected_rows,
+        resolved_finalists=resolved,
+    )
+
+
+def _index_finalists_by_short_id(templates: list[Any]) -> dict[str, dict[str, Any]]:
+    """Index manifest entries by both short (``F_001``) and full
+    (``final_backtest__F_001``) template ids so the route accepts either."""
+    out: dict[str, dict[str, Any]] = {}
+    for item in templates:
+        if not isinstance(item, dict):
+            continue
+        tid = str(item.get("template_id") or "")
+        if not tid:
+            continue
+        out[tid] = item
+        short = _short_finalist_id(tid)
+        if short:
+            out[short] = item
+    return out
+
+
+def _short_finalist_id(template_id: str) -> str:
+    """``final_backtest__F_001`` becomes ``F_001``; non-``F_`` ids return ``""``."""
+    tail = template_id.rsplit("__", 1)[-1]
+    return tail if tail.startswith("F_") else ""
+
+
+def _source_stage_for_finalist(entry: dict[str, Any]) -> str:
+    """Return the stage whose ``scored_rows`` the finalist's parent row lives in.
+
+    The manifest's ``parent_stage_id`` is unreliable for this — it carries the
+    stage the final_backtest reads ``from`` (typically the last refinement
+    stage), not the stage that actually scored the parent row. Prefer
+    ``final_selection_source_stage`` when present; fall back to parsing the
+    ``parent_candidate_id`` prefix, which always starts with ``stage_N__`` and
+    encodes the truly-scoring stage.
+    """
+    explicit = str(entry.get("final_selection_source_stage") or "").strip()
+    if explicit:
+        return explicit
+    parent_cid = str(entry.get("parent_candidate_id") or "")
+    head, sep, _ = parent_cid.partition("__")
+    if sep and head.startswith("stage_"):
+        return head
+    # Final fallback: the manifest's nominal parent_stage_id. Not ideal but
+    # better than refusing finalists from older manifests outright.
+    nominal = str(entry.get("parent_stage_id") or "").strip()
+    return nominal
+
+
+def _radius_and_step_from_parent_cfg(cfg: dict[str, Any]) -> tuple[Any, Any]:
+    """Pick a refine radius and step for a parent sweep block.
+
+    Radius defaults to 10 percent of ``(max - min)``, floored to at least
+    one ``step`` so the refined sweep always contains parent +/- step.
+    Booleans and unparseable values get radius = step = 1, which keeps the
+    sweep domain unchanged after pinning the parent value.
+    """
+    step = cfg.get("step", cfg.get("increment", 1))
+    try:
+        mn = float(cfg.get("min"))
+        mx = float(cfg.get("max"))
+    except (TypeError, ValueError):
+        return 1, step
+    try:
+        step_f = float(step)
+    except (TypeError, ValueError):
+        step_f = 1.0
+    span = max(mx - mn, 0.0)
+    radius = max(span * 0.10, step_f)
+    if step_f and step_f == int(step_f) and radius == int(radius):
+        return int(radius), step
+    return radius, step
+
+
+def _next_optimizer_stage_id(recipe: "OptimizerRecipeDocument") -> str:
+    """Pick ``stage_N`` so the new id does not collide with existing stages."""
+    used = {s.stage_id for s in recipe.stages}
+    n = sum(1 for s in recipe.stages if s.stage_type == "optimizer") + 1
+    while f"stage_{n}" in used:
+        n += 1
+    return f"stage_{n}"

@@ -246,6 +246,7 @@ def generate_walk_forward_templates(
         "sourceFolder": str(templates_dir.resolve()),
         "destFolder": str(nt_output_dir.resolve()),
         "instrument": doc.instrument,
+        "closeTempTabs": True,
     }
     (out_dir / WF_COMMAND_FILENAME).write_text(json.dumps(command, indent=2), encoding="utf-8")
 
@@ -306,6 +307,7 @@ def trigger_walk_forward_run(
         "sourceFolder": str(templates_dir.resolve()),
         "destFolder": str(nt_output_dir.resolve()),
         "instrument": doc.instrument,
+        "closeTempTabs": True,
     }
     target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return {"command_file": str(target), "payload": payload}

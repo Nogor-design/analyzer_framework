@@ -16,6 +16,8 @@
     .btn-primary:hover { background: #fbbf24; }
     .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
     .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button:disabled:hover { border-color: #374151; color: inherit; background: inherit; }
     .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
     th { color: #6b7280; text-align: left; font-weight: 500; }
@@ -32,6 +34,24 @@
     <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
   </div>
   <div class="flex items-center gap-3 text-xs">
+    <button type="button"
+            data-build-reports-btn
+            class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold"
+            title="Regenerate per-candidate HTML reports without rebuilding the full deployment package.">
+      Build per-candidate reports
+    </button>
+    <button type="button"
+            data-build-session-report-btn
+            class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold"
+            title="Generate one report from all final candidate templates for comparison sections.">
+      Build final report
+    </button>
+    {% if summary.session_candidate_report_url %}
+      <a href="{{ summary.session_candidate_report_url }}" target="_blank" rel="noopener"
+         class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">
+        View final report
+      </a>
+    {% endif %}
     <a href="/optimizer/sessions/{{ session.session_id }}/decision"
        class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Decision dashboard</a>
     <a href="/optimizer/sessions/{{ session.session_id }}/resume"
@@ -79,6 +99,10 @@
       <div class="text-xs text-gray-500">No plan saved.</div>
     {% endif %}
   </section>
+
+  {% with recipe_section_class='card', recipe_subtitle='' %}
+    {% include '_optimizer_recipe_panel.html' %}
+  {% endwith %}
 
   <section class="card">
     <h2 class="text-amber-400 font-semibold text-sm mb-2">Parameters</h2>
@@ -431,8 +455,10 @@
       <button id="clone-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Clone &amp; refine</button>
       <button id="rebuild-btn" class="btn-ghost px-3 py-1.5 rounded text-xs"
               title="Re-runs the full package build: refresh review, recommendations, and auto-generate per-candidate HTML reports.">Rebuild deployment package</button>
-      <button id="build-reports-btn" class="btn-ghost px-3 py-1.5 rounded text-xs"
+      <button type="button" data-build-reports-btn class="btn-ghost px-3 py-1.5 rounded text-xs"
               title="Just regenerate the per-candidate HTML reports; skip the full package rebuild.">Build per-candidate reports</button>
+      <button type="button" data-build-session-report-btn class="btn-ghost px-3 py-1.5 rounded text-xs"
+              title="Generate one report from all final candidates; comparison sections use every run.">Build final report</button>
       <button id="delete-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Delete</button>
     </div>
     <div id="action-status" class="text-xs text-gray-500 mt-2"></div>
@@ -443,6 +469,206 @@
 <script>
 const SID = "{{ session.session_id }}";
 const $ = (id) => document.getElementById(id);
+let RECIPE_POLL_TIMER = null;
+let RECIPE_AUTO_ADVANCING_RUN = null;
+
+async function fetchRecipeStatus() {
+  const [recipeRes, statusRes] = await Promise.all([
+    fetch("/api/optimizer/sessions/" + SID + "/recipe"),
+    fetch("/api/optimizer/sessions/" + SID + "/recipe/status"),
+  ]);
+  const recipeBody = await recipeRes.json();
+  const statusBody = await statusRes.json();
+  renderRecipePanel(recipeBody, statusBody);
+}
+
+function renderRecipePanel(recipeBody, statusBody) {
+  const hasRecipe = !!(recipeBody && recipeBody.recipe);
+  $("recipe-empty").classList.toggle("hidden", hasRecipe);
+  $("recipe-panel").classList.toggle("hidden", !hasRecipe);
+  updateRecipeButtons(statusBody && statusBody.state, hasRecipe);
+  if (!hasRecipe) {
+    updateRecipePolling(false, {});
+    $("recipe-status").textContent = "";
+    return;
+  }
+  const state = statusBody.state || {};
+  const run = statusBody.run || {};
+  const progress = statusBody.progress || {};
+  const stageResults = statusBody.stage_results || {};
+  const finalReview = statusBody.final_review || {};
+  const artifacts = statusBody.artifacts || {};
+  const timeline = statusBody.timeline || [];
+  const events = statusBody.events || [];
+  $("recipe-state").textContent = state.state || "(not started)";
+  $("recipe-stage").textContent = state.current_stage_id || "";
+  $("recipe-run").textContent = run.run_id || "";
+  $("recipe-run-state").textContent = progress.run_state || run.state || "";
+  $("recipe-progress").textContent = formatRecipeProgress(progress, run);
+  $("recipe-selection-counts").textContent = formatSelectionCounts(stageResults);
+  $("recipe-stage-results").textContent = formatStageResults(stageResults);
+  $("recipe-stage-timeline").innerHTML = renderRecipeTimeline(timeline);
+  $("recipe-final-review").innerHTML = renderFinalReview(finalReview);
+  $("recipe-artifact-links").innerHTML = renderRecipeArtifactLinks(artifacts, finalReview);
+  $("recipe-last-event").textContent = events.length ? "Last event: " + (events[events.length - 1].event_type || "") + " - " + (events[events.length - 1].message || "") : "";
+  if (state.current_stage_id && !stageResults.row_count) {
+    fetch("/api/optimizer/sessions/" + SID + "/recipe/stages/" + state.current_stage_id + "/results")
+      .then((r) => r.ok ? r.json() : null)
+      .then((stage) => {
+        if (!stage || !stage.row_count) return;
+        $("recipe-selection-counts").textContent = formatSelectionCounts(stage);
+        $("recipe-stage-results").textContent =
+          "Rows " + stage.row_count + " · selected " + stage.selected_count + " · rejected " + stage.rejected_count;
+      })
+      .catch(() => {});
+  }
+  $("recipe-events").innerHTML = events.slice().reverse().map((event) => {
+    const stage = event.stage_id ? " [" + escapeHtml(event.stage_id) + "]" : "";
+    return "<div class='border-b border-gray-800 pb-1'><span class='text-gray-500'>" +
+      escapeHtml(event.event_type || "") + stage + "</span> " +
+      escapeHtml(event.message || "") + "</div>";
+  }).join("");
+  maybeAutoAdvanceRecipe(state, progress);
+  updateRecipePolling(hasRecipe, state);
+}
+
+function updateRecipeButtons(state, hasRecipe) {
+  const value = (state && state.state) || "";
+  const pauseRequested = !!(state && state.pause_requested);
+  const active = ["generating_stage_templates", "ready_to_run_stage", "running_stage", "waiting_for_results", "ingesting_results", "selecting_candidates", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest", "reviewing_final_backtest"].includes(value);
+  const canAdvance = ["running_stage", "waiting_for_results", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest"].includes(value);
+  const canPause = ["running_stage", "waiting_for_results", "running_final_backtest"].includes(value);
+  const complete = value === "complete";
+  const paused = value === "paused" || pauseRequested;
+  $("recipe-create-btn").disabled = false;
+  $("recipe-start-btn").disabled = !hasRecipe || active || complete || paused;
+  $("recipe-advance-btn").disabled = !hasRecipe || !canAdvance || complete || paused || value === "stopped";
+  $("recipe-pause-btn").disabled = !hasRecipe || !canPause || paused || complete || value === "stopped";
+  $("recipe-resume-btn").disabled = !hasRecipe || !paused;
+  $("recipe-stop-btn").disabled = !hasRecipe || complete || value === "stopped" || !(active || paused);
+}
+
+function formatRecipeProgress(progress, run) {
+  const done = progress.completed_templates || 0;
+  const total = progress.total_templates || run.total_templates || 0;
+  if (!total) return "";
+  const current = progress.current_template ? " / " + progress.current_template : "";
+  const source = progress.source === "heartbeat" ? " live" : "";
+  return done + "/" + total + " (" + (progress.percent || 0) + "%)" + source + current;
+}
+
+function formatSelectionCounts(stage) {
+  if (!stage || !stage.row_count) return "";
+  return (stage.selected_count || 0) + "/" + (stage.row_count || 0);
+}
+
+function formatStageResults(stage) {
+  if (!stage || !stage.row_count) return "";
+  return "Stage " + (stage.stage_id || "") + ": rows " + (stage.row_count || 0) +
+    " / selected " + (stage.selected_count || 0) + " / rejected " + (stage.rejected_count || 0);
+}
+
+function renderRecipeTimeline(timeline) {
+  if (!timeline.length) return "";
+  return timeline.map((item) => {
+    const total = item.total_templates || 0;
+    const progress = total ? (item.completed_templates || 0) + "/" + total : "";
+    const state = item.state ? " " + escapeHtml(item.state) : "";
+    const error = item.last_error ? " title='" + escapeHtml(item.last_error) + "'" : "";
+    return "<span class='pill pill-state'" + error + ">" + escapeHtml(item.stage_id || "") + state + (progress ? " " + progress : "") + "</span>";
+  }).join("");
+}
+
+function renderFinalReview(review) {
+  if (!review || !review.exists) return "";
+  const status = review.validation_status ? "status " + escapeHtml(review.validation_status) : "review ready";
+  const recs = Number.isFinite(Number(review.recommendation_count)) ? " / recommendations " + review.recommendation_count : "";
+  return "Final review: " + status + recs;
+}
+
+function renderRecipeArtifactLinks(artifacts, review) {
+  const links = [];
+  if (review && review.summary_url) links.push("<a class='text-amber-300 hover:text-amber-200' href='" + review.summary_url + "' target='_blank' rel='noopener'>Review summary</a>");
+  if (review && review.decision_url) links.push("<a class='text-amber-300 hover:text-amber-200' href='" + review.decision_url + "'>Decision dashboard</a>");
+  if (artifacts.recipe_selection_json) links.push("<a class='text-amber-300 hover:text-amber-200' href='" + artifacts.recipe_selection_json + "' target='_blank' rel='noopener'>Selection JSON</a>");
+  if (artifacts.recipe_selection_csv) links.push("<a class='text-amber-300 hover:text-amber-200' href='" + artifacts.recipe_selection_csv + "' target='_blank' rel='noopener'>Selection CSV</a>");
+  if (artifacts.final_templates) links.push("<a class='text-amber-300 hover:text-amber-200' href='" + artifacts.final_templates + "' target='_blank' rel='noopener'>Final templates</a>");
+  return links.join("");
+}
+
+function shouldPollRecipe(state) {
+  const value = (state && state.state) || "";
+  return ["generating_stage_templates", "ready_to_run_stage", "running_stage", "waiting_for_results", "ingesting_results", "selecting_candidates", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest", "reviewing_final_backtest"].includes(value);
+}
+
+function updateRecipePolling(hasRecipe, state) {
+  if (hasRecipe && shouldPollRecipe(state)) {
+    if (!RECIPE_POLL_TIMER) {
+      RECIPE_POLL_TIMER = setInterval(() => fetchRecipeStatus().catch(() => {}), 4000);
+    }
+    return;
+  }
+  if (RECIPE_POLL_TIMER) {
+    clearInterval(RECIPE_POLL_TIMER);
+    RECIPE_POLL_TIMER = null;
+  }
+}
+
+function maybeAutoAdvanceRecipe(state, progress) {
+  const box = $("recipe-auto-advance");
+  if (!box || !box.checked || !progress || !progress.complete) return;
+  const stateValue = (state && state.state) || "";
+  if (!["running_stage", "waiting_for_results", "running_final_backtest"].includes(stateValue)) return;
+  const runKey = progress.run_id || ((state.current_stage_id || "") + ":" + progress.completed_templates + ":" + progress.total_templates);
+  if (!runKey || RECIPE_AUTO_ADVANCING_RUN === runKey) return;
+  RECIPE_AUTO_ADVANCING_RUN = runKey;
+  recipeAction("advance");
+}
+
+async function recipeAction(action) {
+  const labels = {
+    start: "Starting recipe...",
+    advance: "Advancing recipe...",
+    pause: "Pausing recipe...",
+    resume: "Resuming recipe...",
+    stop: "Stopping recipe...",
+  };
+  $("recipe-status").textContent = labels[action] || "Working...";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/recipe/" + action, { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) {
+    $("recipe-status").textContent = "Recipe " + action + " failed: " + (body.error || res.status);
+    await fetchRecipeStatus();
+    return;
+  }
+  renderRecipePanel({recipe: true}, body);
+  $("recipe-status").textContent = "Recipe " + action + " complete.";
+}
+
+async function createRecipeFromSession() {
+  $("recipe-status").textContent = "Creating recipe from current session...";
+  const res = await fetch("/api/optimizer/sessions/" + SID + "/recipe/from-session", {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    $("recipe-status").textContent = "Create recipe failed: " + (body.error || res.status);
+    return;
+  }
+  renderRecipePanel({ recipe: body.recipe }, { state: null, run: null, events: [] });
+  $("recipe-status").textContent =
+    "Created recipe with " + ((body.plan && body.plan.template_count) || 0) + " template stage job(s).";
+}
+
+$("recipe-create-btn").addEventListener("click", createRecipeFromSession);
+$("recipe-start-btn").addEventListener("click", () => recipeAction("start"));
+$("recipe-advance-btn").addEventListener("click", () => recipeAction("advance"));
+$("recipe-pause-btn").addEventListener("click", () => recipeAction("pause"));
+$("recipe-resume-btn").addEventListener("click", () => recipeAction("resume"));
+$("recipe-stop-btn").addEventListener("click", () => recipeAction("stop"));
+fetchRecipeStatus().catch(() => {
+  $("recipe-status").textContent = "Recipe status unavailable.";
+});
 
 $("clone-btn").addEventListener("click", async () => {
   $("action-status").textContent = "Cloning…";
@@ -470,12 +696,19 @@ $("rebuild-btn").addEventListener("click", async () => {
     " recs=" + (body.package && body.package.final_recommendation_count || 0);
 });
 
-$("build-reports-btn").addEventListener("click", async () => {
+for (const buildReportsBtn of document.querySelectorAll("[data-build-reports-btn]")) {
+  buildReportsBtn.addEventListener("click", async () => {
   $("action-status").textContent = "Building per-candidate reports…";
+  for (const btn of document.querySelectorAll("[data-build-reports-btn]")) {
+    btn.disabled = true;
+  }
   const r = await fetch("/api/optimizer/sessions/" + SID + "/candidate-reports", {
     method: "POST", headers: {"Content-Type":"application/json"}, body: "{}",
   });
   const body = await r.json();
+  for (const btn of document.querySelectorAll("[data-build-reports-btn]")) {
+    btn.disabled = false;
+  }
   if (!r.ok) {
     $("action-status").textContent = "Report build failed: " + (body.error || r.status);
     return;
@@ -487,7 +720,34 @@ $("build-reports-btn").addEventListener("click", async () => {
     "Built " + built + " per-candidate report(s). " +
     (noteLines ? "Notes: " + noteLines + " · " : "") +
     "<a href='/optimizer/sessions/" + SID + "/decision' class='text-amber-300 underline'>Open decision dashboard</a>";
-});
+  });
+}
+
+for (const buildSessionReportBtn of document.querySelectorAll("[data-build-session-report-btn]")) {
+  buildSessionReportBtn.addEventListener("click", async () => {
+    $("action-status").textContent = "Building final report...";
+    for (const btn of document.querySelectorAll("[data-build-session-report-btn]")) {
+      btn.disabled = true;
+    }
+    const r = await fetch("/api/optimizer/sessions/" + SID + "/candidate-session-report", {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: "{}",
+    });
+    const body = await r.json();
+    for (const btn of document.querySelectorAll("[data-build-session-report-btn]")) {
+      btn.disabled = false;
+    }
+    if (!r.ok) {
+      $("action-status").textContent = "All-template report build failed: " + (body.error || r.status);
+      return;
+    }
+    const result = body.result || {};
+    const noteLines = (result.notes || []).slice(0, 3).join(" Â· ");
+    $("action-status").innerHTML =
+      "Built final report from " + (result.package_count || 0) + " candidate package(s). " +
+      (noteLines ? "Notes: " + noteLines + " Â· " : "") +
+      "<a href='/optimizer/sessions/" + SID + "/candidate-report' target='_blank' rel='noopener' class='text-amber-300 underline'>View final report</a>";
+  });
+}
 
 function fmtVal(v, digits) {
   if (v == null || v === "") return "";

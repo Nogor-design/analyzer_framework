@@ -46,11 +46,40 @@
   </div>
   <div class="flex items-center gap-3 text-xs">
     {% if dashboard.status == "ok" %}
+      <button id="rename-final-templates-btn"
+              class="btn-primary px-3 py-1.5 rounded text-xs font-semibold"
+              title="Rename the final fixed Backtest XML templates before building reports.">
+        Rename final templates
+      </button>
+      {% if dashboard.template_links and dashboard.template_links["count"] %}
+        <a href="{{ dashboard.template_links["list_url"] }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+           title="Open the final NinjaTrader template folder listing.">
+          Open final templates
+        </a>
+        <a href="{{ dashboard.template_links["download_url"] }}"
+           class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+           title="Download the final NinjaTrader templates as a ZIP.">
+          Download templates
+        </a>
+      {% endif %}
       <button id="build-reports-btn"
               class="btn-primary px-3 py-1.5 rounded text-xs font-semibold"
               title="(Re)generate the per-candidate HTML reports linked from each row below.">
         Build per-candidate reports
       </button>
+      <button id="build-session-report-btn"
+              class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
+              title="Generate one report from all final candidate templates so comparison sections have every run.">
+        Build final report
+      </button>
+      {% if dashboard.session_report_url %}
+        <a href="{{ dashboard.session_report_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+           title="Open the generated all-template finalist report.">
+          View final report
+        </a>
+      {% endif %}
     {% endif %}
     <span class="text-gray-500">Generated {{ dashboard.generated_at }}</span>
   </div>
@@ -85,6 +114,14 @@
         {% endif %}
         <div>{{ dashboard.recommended_count }} recommended &middot; {{ dashboard.rejected_count }} rejected</div>
       </div>
+      {% if dashboard.template_links %}
+        <div class="mt-3 text-xs text-gray-400">
+          Final NinjaTrader templates:
+          <span class="text-gray-200">{{ dashboard.template_links["count"] }}</span>
+          <span class="text-gray-500">{{ "renamed" if dashboard.template_links["renamed"] else "original names" }}</span>
+          <span class="pathish text-gray-500 ml-2">{{ dashboard.template_links["active_dir"] }}</span>
+        </div>
+      {% endif %}
       {% if dashboard.headline or dashboard.decision_notes %}
         <div class="mt-3 text-sm text-gray-200">
           {% if dashboard.headline %}<div class="mb-1">Decision state: <code class="text-amber-300">{{ dashboard.headline }}</code></div>{% endif %}
@@ -98,15 +135,36 @@
     </section>
 
     <section class="card">
-      <h2 class="text-amber-400 font-semibold text-sm mb-1">Candidates</h2>
-      <div class="text-xs text-gray-500 mb-3">
-        Sorted by robustness-adjusted rank: lower is better. The engine's recommendation pill is shown for
-        comparison &mdash; when the two disagree by 2+ positions you'll see a &#x2B06;/&#x2B07; marker.
+      <div class="flex items-start justify-between flex-wrap gap-3 mb-1">
+        <div>
+          <h2 class="text-amber-400 font-semibold text-sm">Candidates</h2>
+          <div class="text-xs text-gray-500 mt-1">
+            Sorted by robustness-adjusted rank: lower is better. The engine's recommendation pill is shown for
+            comparison &mdash; when the two disagree by 2+ positions you'll see a &#x2B06;/&#x2B07; marker.
+            <br />
+            Tick the rows you want to refine further, then hit
+            <span class="text-amber-300 font-semibold">Refine selected</span>. The system will spawn a refinement
+            stage in <em>this</em> session (no clone), seed it from the picked finalists' parent rows, splice it
+            in just before the final backtest, and drop you on the recipe Stages tab with the new stage already
+            focused.
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap shrink-0">
+          <span id="decision-refine-count" class="text-xs text-gray-400">0 selected</span>
+          <button id="decision-refine-btn" type="button" disabled
+                  class="px-3 py-1.5 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+            Refine selected &rarr;
+          </button>
+        </div>
       </div>
+      <div id="decision-refine-status" class="text-xs text-amber-300 mb-2 min-h-[1em]"></div>
       <div class="overflow-x-auto">
         <table class="text-xs w-full">
           <thead>
             <tr class="border-b border-gray-700">
+              <th class="pr-3 w-6">
+                <input type="checkbox" id="decision-refine-toggle-all" title="Select / deselect all" />
+              </th>
               <th class="pr-3">Adj #</th>
               <th class="pr-3">Status</th>
               <th class="pr-3">Run</th>
@@ -127,6 +185,11 @@
           <tbody>
             {% for row in dashboard.candidate_rows %}
               <tr class="border-b border-gray-800 align-top">
+                <td class="pr-2">
+                  <input type="checkbox" class="decision-refine-checkbox" value="{{ row.run_id }}"
+                         data-status="{{ row.status }}"
+                         title="Include {{ row.run_id }} in the next refinement stage" />
+                </td>
                 <td>
                   <span class="pill pill-adj">#{{ row.adjusted_rank }}</span>
                   {% if row.rank is not none and row.adjusted_rank is not none and (row.adjusted_rank - row.rank)|abs >= 2 %}
@@ -156,6 +219,11 @@
                          class="text-amber-300 hover:text-amber-200 no-underline"
                          title="Open the auto-generated finalist HTML report (new tab)">
                         {{ row.run_id }} &#x2197;
+                      </a>
+                      <a href="{{ row.report_url }}" target="_blank" rel="noopener"
+                         class="btn-ghost px-2 py-1 rounded text-[11px] no-underline font-sans"
+                         title="Open this candidate's generated HTML report">
+                        View report
                       </a>
                       <a href="/optimizer/sessions/{{ dashboard.session_id }}/candidates/{{ row.run_id }}/report-builder"
                          class="text-gray-400 hover:text-amber-300 no-underline font-sans"
@@ -242,14 +310,48 @@
 
 <script>
 (function() {
+  const renameBtn = document.getElementById("rename-final-templates-btn");
   const btn = document.getElementById("build-reports-btn");
+  const sessionBtn = document.getElementById("build-session-report-btn");
   const status = document.getElementById("build-status");
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
+  if (renameBtn) renameBtn.addEventListener("click", async () => {
+    const sid = {{ dashboard.session_id | tojson }};
+    renameBtn.disabled = true;
+    if (btn) btn.disabled = true;
+    if (sessionBtn) sessionBtn.disabled = true;
+    renameBtn.textContent = "Renaming...";
+    status.textContent = "Naming final NinjaTrader templates before report generation...";
+    try {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/final-templates/rename", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        status.textContent = "Rename failed: " + (body.error || r.status);
+        renameBtn.textContent = "Rename final templates";
+        renameBtn.disabled = false;
+        if (btn) btn.disabled = false;
+        if (sessionBtn) sessionBtn.disabled = false;
+        return;
+      }
+      const result = body.result || {};
+      const noteLines = (result.notes || []).slice(0, 5).join(" - ");
+      status.textContent = "Renamed " + (result.template_count || 0) + " template(s). " +
+        (noteLines ? "Notes: " + noteLines + " " : "") + "Reloading...";
+      setTimeout(() => window.location.reload(), 700);
+    } catch (e) {
+      status.textContent = "Rename failed: " + e;
+      renameBtn.textContent = "Rename final templates";
+      renameBtn.disabled = false;
+      if (btn) btn.disabled = false;
+      if (sessionBtn) sessionBtn.disabled = false;
+    }
+  });
+  if (btn) btn.addEventListener("click", async () => {
     const sid = {{ dashboard.session_id | tojson }};
     btn.disabled = true;
-    btn.textContent = "Building…";
-    status.textContent = "Generating per-candidate HTML reports…";
+    btn.textContent = "Building...";
+    status.textContent = "Generating per-candidate HTML reports...";
     try {
       const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-reports", {
         method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
@@ -263,14 +365,116 @@
       }
       const batch = body.batch || {};
       const built = (batch.per_candidate || []).length;
-      const noteLines = (batch.notes || []).slice(0, 5).join(" · ");
+      const noteLines = (batch.notes || []).slice(0, 5).join(" - ");
       status.textContent = "Built " + built + " report(s). " + (noteLines ? "Notes: " + noteLines : "") +
-        " Reloading…";
+        " Reloading...";
       setTimeout(() => window.location.reload(), 600);
     } catch (e) {
       status.textContent = "Build failed: " + e;
       btn.textContent = "Build per-candidate reports";
       btn.disabled = false;
+    }
+  });
+  if (sessionBtn) sessionBtn.addEventListener("click", async () => {
+    const sid = {{ dashboard.session_id | tojson }};
+    sessionBtn.disabled = true;
+    sessionBtn.textContent = "Building...";
+    status.textContent = "Generating one all-template finalist report...";
+    try {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-session-report", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        status.textContent = "Build failed: " + (body.error || r.status);
+        sessionBtn.textContent = "Build final report";
+        sessionBtn.disabled = false;
+        return;
+      }
+      const result = body.result || {};
+      const noteLines = (result.notes || []).slice(0, 5).join(" - ");
+      status.innerHTML = "Built final report from " + (result.package_count || 0) + " candidate package(s). " +
+        (noteLines ? "Notes: " + noteLines + " " : "") +
+        "<a class='text-amber-300 underline' target='_blank' rel='noopener' href='/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-report'>View final report</a>";
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e) {
+      status.textContent = "Build failed: " + e;
+      sessionBtn.textContent = "Build final report";
+      sessionBtn.disabled = false;
+    }
+  });
+})();
+
+(function () {
+  // Decision Dashboard refinement picker: lets the operator pick finalists
+  // and spawn a refinement stage *inside this session* without cloning.
+  // POSTs to /api/optimizer/sessions/<sid>/decision/refine and redirects
+  // to the recipe editor with the new stage focused.
+  const refineBtn = document.getElementById("decision-refine-btn");
+  const refineCount = document.getElementById("decision-refine-count");
+  const refineStatus = document.getElementById("decision-refine-status");
+  const toggleAll = document.getElementById("decision-refine-toggle-all");
+  if (!refineBtn || !refineCount || !refineStatus || !toggleAll) {
+    return;  // dashboard has no candidates
+  }
+
+  const checkboxes = Array.from(document.querySelectorAll(".decision-refine-checkbox"));
+  if (!checkboxes.length) {
+    return;
+  }
+
+  function selectedIds() {
+    return checkboxes.filter((c) => c.checked).map((c) => c.value);
+  }
+
+  function updateCount() {
+    const ids = selectedIds();
+    refineCount.textContent = ids.length + " selected";
+    refineBtn.disabled = ids.length === 0;
+  }
+
+  checkboxes.forEach((c) => c.addEventListener("change", updateCount));
+
+  toggleAll.addEventListener("change", () => {
+    checkboxes.forEach((c) => { c.checked = toggleAll.checked; });
+    updateCount();
+  });
+
+  refineBtn.addEventListener("click", async () => {
+    const ids = selectedIds();
+    if (!ids.length) return;
+
+    const sid = {{ dashboard.session_id | tojson }};
+    if (!sid) {
+      refineStatus.textContent = "Refine failed: could not resolve session id.";
+      return;
+    }
+
+    refineBtn.disabled = true;
+    refineStatus.textContent = "Spawning refinement stage from " + ids.length + " finalist(s)...";
+    try {
+      const res = await fetch(
+        "/api/optimizer/sessions/" + encodeURIComponent(sid) + "/decision/refine",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate_ids: ids }),
+        },
+      );
+      const body = await res.json();
+      if (!res.ok) {
+        refineStatus.textContent = "Refine failed: " + (body.error || res.status);
+        refineBtn.disabled = false;
+        return;
+      }
+      refineStatus.textContent =
+        "Spawned " + body.new_stage_id + " from " + body.selected_count +
+        " finalist(s). Redirecting to recipe Stages tab...";
+      window.location.href = body.focus_url
+        || ("/optimizer/recipe?focus_stage=" + encodeURIComponent(body.new_stage_id || ""));
+    } catch (e) {
+      refineStatus.textContent = "Refine failed: " + (e.message || e);
+      refineBtn.disabled = false;
     }
   });
 })();

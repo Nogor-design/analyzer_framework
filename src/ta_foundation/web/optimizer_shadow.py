@@ -214,6 +214,7 @@ def generate_shadow_templates(
         "action": "RunBatch",
         "sourceFolder": str(shadow_templates_dir),
         "destFolder": str(nt_output_dir),
+        "closeTempTabs": True,
     }
     (shadow_dir / SHADOW_COMMAND_FILENAME).write_text(
         json.dumps(command, indent=2), encoding="utf-8"
@@ -276,6 +277,7 @@ def trigger_shadow_run(
         # instrument and silently clobbers the template's own
         # <InstrumentOrInstrumentList> override.
         "instrument": doc.instrument,
+        "closeTempTabs": True,
     }
     target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return {"command_file": str(target), "payload": payload}

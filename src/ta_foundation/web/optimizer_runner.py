@@ -21,6 +21,7 @@ AddOn loaded. If the command file already exists from a prior run, it is
 overwritten with the new payload.
 """
 
+import csv
 import json
 import os
 import re
@@ -40,7 +41,8 @@ from ta_foundation.web.optimizer_session import OptimizerSession
 # Filesystem constants — overridable in tests
 # ---------------------------------------------------------------------------
 
-DEFAULT_COMMAND_FILE = Path(r"C:\temp\nt8_command.json")
+REAL_NT_COMMAND_FILE = Path(r"C:\temp\nt8_command.json")
+DEFAULT_COMMAND_FILE = REAL_NT_COMMAND_FILE
 DEFAULT_STATUS_FILE = Path(r"C:\temp\nt8_status.json")
 GENERATED_DIRNAME = "generated_templates"
 NT_OUTPUT_DIRNAME = "nt_output"
@@ -65,7 +67,7 @@ class OptimizerRunnerError(Exception):
 class RunRecord:
     """Persisted view of a run. Lives at ``<session>/run.json``."""
     run_id: str
-    state: str  # "requested" | "starting" | "running" | "finished" | "stale" | "cancelled"
+    state: str  # "requested" | "starting" | "running" | "finished" | "timed_out" | "stale" | "cancelled"
     started_at: str
     finished_at: str | None = None
     source_folder: str = ""
@@ -76,6 +78,7 @@ class RunRecord:
     last_observed_completed: int = 0
     last_error: str | None = None
     cancelled_at: str | None = None
+    timeout_seconds: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -95,6 +98,7 @@ class RunRecord:
             last_observed_completed=int(data.get("last_observed_completed") or 0),
             last_error=data.get("last_error"),
             cancelled_at=data.get("cancelled_at"),
+            timeout_seconds=_safe_optional_int(data.get("timeout_seconds")),
         )
 
 
@@ -114,6 +118,9 @@ class RunStatus:
     source_folder: str = ""
     dest_folder: str = ""
     source: str = "folder"  # "heartbeat" | "folder"
+    ui_findings: list[dict[str, str]] = field(default_factory=list)
+    batch_run_statuses: list[dict[str, str]] = field(default_factory=list)
+    timeout_seconds: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -168,7 +175,14 @@ def start_run(
         "runId": run_id,
         "sourceFolder": str(source),
         "destFolder": str(dest),
+        # Always close per-template tabs in the Strategy Analyzer after each
+        # run. Optimizer batches generate one tab per template; leaving them
+        # open accumulates memory and crashes NinjaTrader on long runs.
+        "closeTempTabs": True,
     }
+    timeout_seconds = _timeout_seconds_for(session)
+    if timeout_seconds:
+        payload["timeoutSeconds"] = timeout_seconds
     instrument = _command_instrument_for(session)
     if instrument:
         payload["instrument"] = instrument
@@ -183,6 +197,7 @@ def start_run(
         command_file=str(cmd_path),
         status_file=str(status_path),
         total_templates=len(xmls),
+        timeout_seconds=timeout_seconds,
     )
     _save_run(session, run)
     return run
@@ -312,6 +327,7 @@ def get_status(
             source_folder=run.source_folder,
             dest_folder=run.dest_folder,
             source="heartbeat",
+            timeout_seconds=run.timeout_seconds,
         )
     else:
         # No heartbeat — original folder-watching state machine.
@@ -338,7 +354,10 @@ def get_status(
             source_folder=run.source_folder,
             dest_folder=run.dest_folder,
             source="folder",
+            timeout_seconds=run.timeout_seconds,
         )
+
+    _attach_batch_run_summary(status, run)
 
     # Persist progress so cancel/restart can see how far we got.
     dirty = False
@@ -351,13 +370,14 @@ def get_status(
     if status.last_error and run.last_error != status.last_error:
         run.last_error = status.last_error
         dirty = True
-    if status.state == "finished" and not run.finished_at:
+    if status.state in {"finished", "timed_out", "finished_with_issues"} and not run.finished_at:
         run.finished_at = moment.isoformat(timespec="microseconds")
         status.finished_at = run.finished_at
         dirty = True
     if dirty:
         _save_run(session, run)
 
+    _attach_ui_findings(status, run)
     return status
 
 
@@ -404,6 +424,27 @@ def _command_instrument_for(session: OptimizerSession) -> str:
     if seed_instrument:
         return seed_instrument
     return saved
+
+
+def _timeout_seconds_for(session: OptimizerSession) -> int | None:
+    """Return the per-template AddOn timeout requested by this session.
+
+    The optimizer UI stores the knob as minutes because that is how traders
+    think about a Strategy Analyzer chunk. The AddOn command carries seconds.
+    ``None`` means "let the installed AddOn use its default".
+    """
+    try:
+        doc = session.load_document()
+    except Exception:
+        return None
+    minutes = doc.chunking.max_runtime_minutes_per_chunk
+    if minutes is None:
+        return None
+    try:
+        seconds = int(float(minutes) * 60)
+    except (TypeError, ValueError):
+        return None
+    return max(5, seconds)
 
 
 def _is_generic_instrument(value: str) -> bool:
@@ -579,4 +620,96 @@ def _status_from_run(
         source_folder=run.source_folder,
         dest_folder=run.dest_folder,
         source="folder",
+        timeout_seconds=run.timeout_seconds,
     )
+
+
+def _attach_batch_run_summary(status: RunStatus, run: RunRecord) -> None:
+    if str(status.state or "").strip().lower() in {"requested", "running", "starting"}:
+        return
+    rows = _batch_run_statuses(Path(run.dest_folder or ""))
+    if not rows:
+        return
+    status.batch_run_statuses = rows
+
+    incomplete = [
+        row for row in rows
+        if str(row.get("status") or "").strip().lower() not in {"", "completed"}
+    ]
+    timed_out = [
+        row for row in rows
+        if str(row.get("status") or "").strip().lower() == "timedout"
+    ]
+    if timed_out:
+        status.state = "timed_out"
+        if not status.last_error:
+            status.last_error = _format_batch_issue(timed_out[0])
+        return
+
+    if incomplete and status.state == "finished":
+        status.state = "finished_with_issues"
+        if not status.last_error:
+            status.last_error = _format_batch_issue(incomplete[0])
+
+
+def _batch_run_statuses(dest: Path) -> list[dict[str, str]]:
+    path = dest / "BatchRunSummary.csv"
+    if not path.exists():
+        return []
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            return [
+                {
+                    "template": str(row.get("Template") or "").strip(),
+                    "status": str(row.get("Status") or "").strip(),
+                    "strategy": str(row.get("Strategy") or "").strip(),
+                    "instrument": str(row.get("Instrument") or "").strip(),
+                    "backtest_start": str(row.get("Backtest start") or "").strip(),
+                    "backtest_end": str(row.get("Backtest end") or "").strip(),
+                    "output_folder": str(row.get("Output folder") or "").strip(),
+                    "error": str(row.get("Error") or "").strip(),
+                }
+                for row in reader
+            ]
+    except OSError:
+        return []
+
+
+def _format_batch_issue(row: dict[str, str]) -> str:
+    template = row.get("template") or "unknown template"
+    status = row.get("status") or "unknown status"
+    error = row.get("error") or ""
+    if error:
+        return f"{template}: {status} ({error})"
+    return f"{template}: {status}"
+
+
+def _attach_ui_findings(status: RunStatus, run: RunRecord) -> None:
+    if status.state not in {"running", "stale", "requested"}:
+        return
+    if status.total and status.completed >= status.total:
+        return
+    if run.command_file and Path(run.command_file) != REAL_NT_COMMAND_FILE:
+        return
+    try:
+        from ta_foundation.nt_strategy_loop.nt_ui_monitor import scan_ninjatrader_error_text
+
+        findings = [finding.to_dict() for finding in scan_ninjatrader_error_text()]
+    except Exception:
+        findings = []
+    if not findings:
+        return
+    status.ui_findings = findings
+    status.state = "blocked"
+    if not status.last_error:
+        status.last_error = findings[0].get("text") or "NinjaTrader is waiting on a modal/error dialog."
+
+
+def _safe_optional_int(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

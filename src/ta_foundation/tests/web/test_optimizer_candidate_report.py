@@ -16,11 +16,15 @@ import pytest
 from ta_foundation.web import optimizer_session as opt_session
 from ta_foundation.web.optimizer_candidate_report import (
     DEFAULT_FINALIST_SECTIONS,
+    DEFAULT_SESSION_CANDIDATE_SECTIONS,
     PER_CANDIDATE_REPORTS_DIRNAME,
+    SESSION_CANDIDATE_REPORT_FILENAME,
     CandidateReportError,
     build_all_candidate_reports,
     build_candidate_report,
+    build_session_candidate_report,
     list_existing_candidate_reports,
+    _resolve_images_dir,
 )
 
 
@@ -104,6 +108,20 @@ def test_batch_builds_all_finalists(fixture_session):
 
 
 @needs_fixture
+def test_session_candidate_report_ingests_all_finalists(fixture_session):
+    result = build_session_candidate_report(fixture_session)
+    assert result.html_path is not None
+    assert Path(result.html_path).name == SESSION_CANDIDATE_REPORT_FILENAME
+    assert Path(result.html_path).exists()
+    assert result.package_count == 8
+    assert result.sections_rendered == DEFAULT_SESSION_CANDIDATE_SECTIONS
+    html = Path(result.html_path).read_text(encoding="utf-8")
+    assert "comparison_overview" in html
+    assert "F_001" in html
+    assert "F_008" in html
+
+
+@needs_fixture
 def test_list_existing_after_batch(fixture_session):
     build_all_candidate_reports(fixture_session)
     existing = list_existing_candidate_reports(fixture_session)
@@ -132,3 +150,26 @@ def test_batch_with_no_results_returns_empty(tmp_path: Path):
         assert any("nothing to render" in n.lower() for n in result.notes)
     finally:
         opt_session.set_storage_root(None)
+
+
+def test_resolve_images_dir_uses_existing_default_portrait_dirs(tmp_path: Path, monkeypatch):
+    new_god = tmp_path / "NewGodImages"
+    legacy = tmp_path / "God images"
+    new_god.mkdir()
+    legacy.mkdir()
+    monkeypatch.setattr(
+        "ta_foundation.web.optimizer_candidate_report.DEFAULT_PORTRAIT_DIRS",
+        (new_god, legacy),
+    )
+
+    assert _resolve_images_dir(None) == f"{new_god}\n{legacy}"
+
+
+def test_resolve_images_dir_honors_explicit_path(tmp_path: Path, monkeypatch):
+    explicit = tmp_path / "custom"
+    monkeypatch.setattr(
+        "ta_foundation.web.optimizer_candidate_report.DEFAULT_PORTRAIT_DIRS",
+        (tmp_path / "NewGodImages",),
+    )
+
+    assert _resolve_images_dir(explicit) == str(explicit)

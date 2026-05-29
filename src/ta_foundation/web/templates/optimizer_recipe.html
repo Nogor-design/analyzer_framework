@@ -1,0 +1,3694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Recipe Optimizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0b0f19; color: #f8fafc; font-family: 'Inter', system-ui, sans-serif; }
+    input[type="text"], input[type="number"], input[type="date"], input[type="time"], select {
+      background: #0f172a; border: 1px solid #334155; color: #f8fafc;
+      border-radius: 6px; padding: 4px 10px; font-size: 12px;
+      transition: all 0.15s ease-in-out;
+    }
+    input:focus, select:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+    .btn-primary { background: #f59e0b; color: #0f172a; transition: all 0.2s; }
+    .btn-primary:hover { background: #fbbf24; transform: translateY(-1px); }
+    .btn-ghost { border: 1px solid #334155; color: #cbd5e1; transition: all 0.2s; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .btn-danger { border: 1px solid #7f1d1d; color: #fca5a5; transition: all 0.2s; }
+    .btn-danger:hover { background: #7f1d1d; color: #ffffff; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pill { font-size: 11px; padding: 2px 10px; border-radius: 999px; font-weight: 500; }
+    .pill-fixed { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .pill-opt { background: #1e3a8a; color: #93c5fd; border: 1px solid #2563eb; }
+    .pill-warn { background: #7c2d12; color: #fde047; border: 1px solid #b45309; }
+    .group-row td { background: #131b2e; color: #e2e8f0; font-weight: 600; font-size: 12px; }
+    .tab-active { border-bottom: 2px solid #f59e0b; color: #f59e0b; font-weight: 600; }
+    .stage-tab-active { background: #1e293b; border-color: #f59e0b; color: #f59e0b; }
+    .glass-panel { backdrop-filter: blur(12px); background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(51, 65, 85, 0.5); }
+    
+    /* Table styling */
+    .table-hdr th { font-weight: 600; color: #94a3b8; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; padding-bottom: 8px; border-bottom: 1px solid #1e293b; }
+    .table-row td { padding: 8px 4px; border-bottom: 1px solid #111827; }
+    .table-row:hover td { background: rgba(30, 41, 59, 0.25); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-slate-400 hover:text-amber-400 text-xs transition">&larr; Workbench</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Recipe Optimizer</span>
+    <span class="text-slate-500 text-sm font-medium">/ autonomous strategy tuning</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions" class="btn-ghost px-3 py-1.5 rounded-md">Sessions</a>
+    <span class="text-slate-400 bg-slate-900 px-2.5 py-1 rounded-md border border-slate-800">
+      session <span class="font-mono text-slate-300">{{ session_id }}</span>
+    </span>
+  </div>
+</header>
+
+<!-- Premium Tab Navigation -->
+<nav class="border-b border-slate-800/60 bg-slate-900/30 px-6 flex gap-6 text-xs sticky top-[57px] z-40 backdrop-blur-sm">
+  <button id="tab-setup" class="py-3 tab-active" onclick="switchTab('setup')">Recipe Setup</button>
+  <button id="tab-roles" class="py-3 text-slate-400 hover:text-amber-400" onclick="switchTab('roles')">Stage 1 Setup</button>
+  <button id="tab-plan" class="py-3 text-slate-400 hover:text-amber-400" onclick="switchTab('plan')">Stage Plan</button>
+  <button id="tab-run" class="py-3 text-slate-400 hover:text-amber-400" onclick="switchTab('run')">Run Dashboard</button>
+  <button id="tab-results" class="py-3 text-slate-400 hover:text-amber-400" onclick="switchTab('results')">Candidate Results</button>
+</nav>
+
+<main class="flex-1 max-w-6xl mx-auto w-full p-6 space-y-6">
+
+  <!-- ==================== TAB: SETUP ==================== -->
+  <div id="panel-setup" class="space-y-6">
+    <section class="glass-panel rounded-xl p-6">
+      <div class="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 tracking-tight">Set up the recipe</h2>
+          <p class="text-xs text-slate-400 mt-1">Define the recipe once. The system generates templates, runs NinjaTrader, ingests results, selects winners, and feeds them into the next stage — all the way to final validation.</p>
+        </div>
+        <div id="page-status" class="text-xs text-slate-500 font-mono"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Strategy</label>
+          <select id="strategy-select" class="w-full">
+            <option value="">- pick a strategy -</option>
+          </select>
+          <div id="strategy-info" class="text-[11px] text-slate-500 mt-1 font-mono pathish"></div>
+        </div>
+        <div>
+          <div class="flex items-end justify-between gap-2 mb-1.5">
+            <label class="block text-xs font-semibold text-slate-400">Seed template (saved Optimize template)</label>
+            <div class="flex items-center gap-3">
+              <button id="clear-seeds-btn" type="button" onclick="clearRecipeSeeds()" class="text-[11px] text-rose-300 hover:text-rose-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Delete recipe-generated seeds (*_recipe_seed.xml). NinjaTrader templates are kept.">Clear recipe seeds</button>
+              <button id="regenerate-seed-btn" type="button" onclick="regenerateRecipeSeed()" class="text-[11px] text-amber-300 hover:text-amber-200 font-semibold disabled:opacity-40 disabled:cursor-not-allowed" disabled title="Build a fresh recipe seed from the repo baseline">Regenerate seed</button>
+            </div>
+          </div>
+          <select id="seed-select" class="w-full" disabled>
+            <option value="">- pick a seed -</option>
+          </select>
+          <div id="seed-info" class="text-[11px] text-slate-500 mt-1"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Recipe name</label>
+          <input id="recipe-name" type="text" class="w-full" value="Dynamic Matrix Sequence" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Label</label>
+          <input id="session-label" type="text" class="w-full" value="Recipe optimizer" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Contract / instrument</label>
+          <input id="instrument" type="text" class="w-full" value="NQ 06-26" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-5 mt-5 pt-4 border-t border-slate-800/40">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Final Backtest Start (optional)</label>
+          <input id="start-date" type="date" class="w-full" />
+          <div class="text-[11px] text-slate-500 mt-1">Leave blank to use the seed template From date.</div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Final Backtest End (optional)</label>
+          <input id="end-date" type="date" class="w-full" />
+          <div class="text-[11px] text-slate-500 mt-1">Leave blank to use the seed template To date.</div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Entries per direction</label>
+          <input id="entries-per-direction" type="number" class="w-full" value="1" min="1" step="1" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 mb-1.5">Market suffix</label>
+          <input id="market-suffix" type="text" class="w-full" value="NQ" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Stage Sequence Overview Cards -->
+    <section class="glass-panel rounded-xl p-6">
+      <div class="text-amber-400 font-bold mb-4 text-xs tracking-wider uppercase">Recipe Run Path</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-4 text-xs space-y-1">
+          <div class="text-amber-400 font-bold">Stage 1: Broad Search</div>
+          <p class="text-slate-400 leading-normal">Generates one NinjaTrader Optimize template per matrix bucket and runs the configured parameter ranges.</p>
+        </div>
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-4 text-xs space-y-1">
+          <div class="text-amber-400 font-bold">Guardrail Filters</div>
+          <p class="text-slate-400 leading-normal">Applies profit factor, drawdown, trade count, and net-profit filters after NinjaTrader returns rows.</p>
+        </div>
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-4 text-xs space-y-1">
+          <div class="text-amber-400 font-bold">Final Fixed Backtests</div>
+          <p class="text-slate-400 leading-normal">Optionally locks selected candidates into fixed Backtest templates for final validation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scope Estimation Footer -->
+    <section class="glass-panel rounded-xl p-5 flex items-center justify-between gap-4 flex-wrap">
+      <div>
+        <div class="text-slate-400 text-xs font-medium">Estimated Scope (Stage 1)</div>
+        <div class="text-slate-300 text-sm mt-1">
+          <span id="matrix-count-display" class="font-bold text-slate-100 font-mono">0</span> Base Templates &bull; 
+          <span id="stage1-combos-display" class="font-bold text-slate-100 font-mono">0</span> Total Backtests
+        </div>
+      </div>
+      <button onclick="switchTab('roles')" class="btn-primary px-5 py-2.5 rounded-lg text-xs font-bold shadow-lg shadow-amber-500/10">Continue to Stage 1 Setup &rarr;</button>
+    </section>
+  </div>
+
+  <!-- ==================== TAB: ROLES ==================== -->
+  <div id="panel-roles" class="space-y-6 hidden">
+    <!-- Matrix Axes Cards & Tag Editor -->
+    <section class="glass-panel rounded-xl p-6 space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-200 tracking-tight">Stage 1 Matrix Axes</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Choose bucket values that should become separate NinjaTrader Optimize templates.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold text-slate-400">Add matrix axis:</label>
+          <select id="add-matrix-select" class="w-48 bg-slate-950 border border-slate-800 text-xs rounded px-2.5 py-1 text-slate-200">
+            <option value="">- choose parameter -</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Matrix Axes Cards Grid -->
+      <div id="matrix-axes-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Axis cards loaded here -->
+      </div>
+
+      <div class="text-amber-400 font-bold mb-2 mt-4 text-[10px] tracking-wider uppercase">Matrix Dimensions Multiplier Preview</div>
+      <div id="matrix-math-box" class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 text-center font-mono text-xs text-slate-300">
+        No matrix axes defined yet. Pick role "Matrix axis" below or use the dropdown.
+      </div>
+      
+      <!-- Safety Cap Alert Box -->
+      <div id="safety-cap-alert" class="hidden mt-4 p-4 bg-red-950/60 border border-red-800/80 rounded-xl text-xs text-red-200">
+        <div class="flex items-start gap-2.5">
+          <svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+          </svg>
+          <div>
+            <span class="font-bold text-red-300">Safety Cap Exceeded!</span> 
+            Your Stage 1 recipe is estimated to run <span id="safety-combo-count" class="font-mono font-bold text-red-100"></span> backtests. 
+            This exceeds the safety cap of <span class="font-bold font-mono text-red-100">250,000</span> combinations. 
+            Plan generation, saving, and autonomous execution have been locked for safety. Please adjust optimization increments or remove matrix axes.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stage-wise Tabs & Parameter Tables -->
+    <section class="glass-panel rounded-xl p-6">
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-200 tracking-tight">Stage 1 Parameter Ranges</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Fix setup values, choose Stage 1 Optimize ranges, and keep matrix axes pinned to their bucket values.</p>
+        </div>
+        <button id="add-refine-stage-btn" onclick="addRefineStage()" class="bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900 border border-emerald-500/30 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+          <svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+          + Add Refine Stage
+        </button>
+      </div>
+
+      <!-- Stage Sub-tabs Bar -->
+      <div class="flex flex-wrap gap-2 border-b border-slate-800/80 pb-3 mb-5" id="stage-tabs-container">
+        <!-- Stage tabs dynamically rendered here -->
+      </div>
+
+      <!-- Active Stage Parameter Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-left text-slate-400 border-b border-slate-800">
+              <th class="py-2.5 pr-2 font-semibold">Parameter</th>
+              <th class="py-2.5 pr-2 font-semibold">Type</th>
+              <th class="py-2.5 pr-2 font-semibold">Role</th>
+              <th class="py-2.5 pr-2 font-semibold" id="col-header-fixed">Fixed / Pin Value</th>
+              <th class="py-2.5 pr-2 font-semibold" id="col-header-min">Min Bound / Clamp</th>
+              <th class="py-2.5 pr-2 font-semibold" id="col-header-max">Max Bound / Clamp</th>
+              <th class="py-2.5 pr-2 font-semibold" id="col-header-inc">Increment / Radius</th>
+            </tr>
+          </thead>
+          <tbody id="recipe-param-table">
+            <tr><td colspan="7" class="text-slate-500 py-4 text-center">Please pick a strategy.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Stage Candidate Selection Rules Card (embedded inside active stage tab) -->
+      <div class="mt-6 pt-5 border-t border-slate-800/50 space-y-4" id="selection-rules-section">
+        
+        <!-- New Stage 1 Optimizer & Fitness Targets Card -->
+        <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-5 mb-4 hidden" id="stage-1-optimizer-settings">
+          <h4 class="text-xs font-bold text-amber-400 tracking-wider uppercase mb-4">NinjaTrader Optimize-On Targets</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 hidden">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">Optimizer Type</label>
+              <select id="optimizer-type" class="w-full bg-slate-900 text-slate-200" onchange="updateRecipeTopField('optimizer_type', this.value)">
+                <option value="Default">Default (Standard Exhaustive)</option>
+                <option value="Genetic">Genetic</option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 mb-1.5">Keep Best Results (# results inside NinjaTrader)</label>
+              <input id="keep-best-results" type="number" class="w-full bg-slate-900 text-slate-200" value="1000" min="1" onchange="updateRecipeTopField('keep_best_results', this.value)" />
+            </div>
+            <div>
+              <!-- Empty spacer to align grid nicely -->
+            </div>
+          </div>
+
+          <div class="mt-5 pt-4 border-t border-slate-900/60">
+            <label class="block text-xs font-semibold text-slate-400 mb-3">Each selected target creates a separate NinjaTrader template run for the same Stage 1 bucket.</label>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <!-- Primary Target (Always Active) -->
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="accent-amber-500" checked disabled />
+                <div class="flex-1">
+                  <label class="block text-[11px] text-slate-400 mb-1">Primary Target</label>
+                  <select id="target-1-dropdown" class="w-full bg-slate-900 text-slate-200" onchange="syncActiveTargetsFromUI()"></select>
+                </div>
+              </div>
+
+              <!-- 2nd Target (Opt-In Checkbox) -->
+              <div class="flex items-center gap-2">
+                <input type="checkbox" id="target-2-checkbox" class="accent-amber-500 cursor-pointer" onchange="toggleTargetDropdown(2)" />
+                <div class="flex-1">
+                  <label class="block text-[11px] text-slate-400 mb-1">Add 2nd Target</label>
+                  <select id="target-2-dropdown" class="w-full bg-slate-900 text-slate-200 opacity-45" disabled onchange="syncActiveTargetsFromUI()"></select>
+                </div>
+              </div>
+
+              <!-- 3rd Target (Opt-In Checkbox) -->
+              <div class="flex items-center gap-2">
+                <input type="checkbox" id="target-3-checkbox" class="accent-amber-500 cursor-pointer" onchange="toggleTargetDropdown(3)" />
+                <div class="flex-1">
+                  <label class="block text-[11px] text-slate-400 mb-1">Add 3rd Target</label>
+                  <select id="target-3-dropdown" class="w-full bg-slate-900 text-slate-200 opacity-45" disabled onchange="syncActiveTargetsFromUI()"></select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-5">
+          <h4 class="text-xs font-bold text-amber-400 tracking-wider uppercase mb-4">Guardrail Filters After NinjaTrader Results</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1.5 font-medium">Keep per group</label>
+              <input id="stage-keep-per-group" type="number" class="w-full" value="1" min="1" onchange="updateStageSelectionField('keep_per_group', this.value)" />
+              <div class="text-[9px] text-slate-500 mt-1">Candidate rows retained after filters pass</div>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1.5 font-medium">Min trades</label>
+              <input id="stage-min-trades" type="number" class="w-full" value="20" min="0" onchange="updateStageSelectionField('min_trades', this.value)" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1.5 font-medium">Min profit factor</label>
+              <input id="stage-min-pf" type="number" class="w-full" value="1.2" step="0.1" onchange="updateStageSelectionField('min_pf', this.value)" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1.5 font-medium">Max drawdown ($)</label>
+              <input id="stage-max-dd" type="number" class="w-full" value="2500" min="0" onchange="updateStageSelectionField('max_dd', this.value)" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1.5 font-medium">Min net profit ($)</label>
+              <input id="stage-min-net" type="number" class="w-full" value="0" onchange="updateStageSelectionField('min_net', this.value)" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5 pt-4 border-t border-slate-900">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-2 font-medium">Additional Stage 1 grouping</label>
+              <select id="stage-group-by-dropdown" class="w-full" onchange="updateStageSelectionField('group_by_param', this.value)">
+                <option value="">- none (global group) -</option>
+              </select>
+              <div class="text-[10px] text-slate-500 mt-1.5 leading-normal">Use this for the next rank level after matrix axes, such as Slow MA after Time Slice and Reverse.</div>
+            </div>
+            
+            <div id="stage-refine-fitness-metrics">
+              <label class="block text-[11px] text-slate-400 mb-2 font-medium">Refinement ranking metrics</label>
+              <div class="flex flex-wrap gap-4 text-xs mt-1">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" value="profit_factor" class="accent-amber-500 fitness-checkbox" onchange="handleFitnessCheckboxChange(this)" />
+                  Profit Factor
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" value="total_net_profit" class="accent-amber-500 fitness-checkbox" onchange="handleFitnessCheckboxChange(this)" />
+                  Net Profit
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" value="drawdown_abs" class="accent-amber-500 fitness-checkbox" onchange="handleFitnessCheckboxChange(this)" />
+                  Drawdown
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" value="total_trades" class="accent-amber-500 fitness-checkbox" onchange="handleFitnessCheckboxChange(this)" />
+                  Trades
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" value="portfolio_score" class="accent-amber-500 fitness-checkbox" onchange="handleFitnessCheckboxChange(this)" />
+                  Portfolio Score
+                </label>
+              </div>
+              <div class="text-[10px] text-slate-500 mt-1.5 leading-normal">Used only for optional refinement stages after Stage 1 candidates exist.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Control Actions -->
+    <div class="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <button onclick="switchTab('setup')" class="btn-ghost px-4 py-2 rounded-lg text-xs font-semibold">&larr; Back to Setup</button>
+      <div>
+        <label class="text-xs text-slate-400 mr-4">Final per bucket: <input id="target-final" type="number" class="w-16 ml-1.5 text-center" value="2" min="1" /></label>
+        <button id="preview-btn-panel" onclick="saveAndPreviewRecipe()" class="btn-primary px-5 py-2.5 rounded-lg text-xs font-bold shadow-lg shadow-amber-500/10">Save &amp; Preview Plan &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TAB: PLAN ==================== -->
+  <div id="panel-plan" class="space-y-6 hidden">
+    <section class="glass-panel rounded-xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-200 tracking-tight">Generated Stage Plan</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Plan expanded based on your matrix axes. Review estimated combinations and stage weights before starting.</p>
+        </div>
+      </div>
+      <div id="plan-summary" class="text-xs text-slate-400 bg-slate-950 p-4 border border-slate-800 rounded">
+        Save/preview your recipe on the Stage 1 Setup tab to view the stage plan.
+      </div>
+    </section>
+
+    <div class="flex justify-between items-center bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <button onclick="switchTab('roles')" class="btn-ghost px-4 py-2 rounded-lg text-xs font-semibold">&larr; Back to Stage 1 Setup</button>
+      <button onclick="switchTab('run')" class="btn-primary px-5 py-2.5 rounded-lg text-xs font-bold shadow-lg shadow-amber-500/10">Start &amp; Monitor Run &rarr;</button>
+    </div>
+  </div>
+
+  <!-- ==================== TAB: RUN ==================== -->
+  <div id="panel-run" class="space-y-6 hidden">
+    {% set recipe_section_class = 'glass-panel rounded-xl p-6' %}
+    {% set recipe_subtitle = 'Start a recipe run to autonomously monitor stage iterations, CSV parsing, candidate promotion, and validation.' %}
+    {% set recipe_create_label = 'Save / preview recipe' %}
+    {% set recipe_empty_message = 'Configure your recipe and save it on the Roles tab first.' %}
+    {% include '_optimizer_recipe_panel.html' %}
+  </div>
+
+  <!-- ==================== TAB: RESULTS ==================== -->
+  <div id="panel-results" class="space-y-6 hidden">
+    <section class="glass-panel rounded-xl p-6">
+      <div class="flex items-center justify-between flex-wrap gap-4 mb-6 border-b border-slate-800/80 pb-4">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 tracking-tight">Candidate Results</h2>
+          <p class="text-xs text-slate-400 mt-1">Review NinjaTrader rows after ingestion and guardrail filtering. Review auto-selected winners, override selections, or trigger suggested refinements.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="text-xs font-semibold text-slate-400">Execution Stage:</label>
+          <select id="results-stage-select" class="w-64" onchange="loadStageResults(this.value)">
+            <option value="">- select stage -</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Showcase Grid of Top Winners -->
+      <div id="winner-showcase-container" class="hidden mb-6">
+        <div class="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-3">Top Recommended Winner Candidates</div>
+        <div id="winner-showcase-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Top 3 winner cards rendered here -->
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" id="results-layout-grid">
+        <!-- Left column: Filters & Results Grid -->
+        <div class="lg:col-span-2 space-y-6">
+          <!-- Bucket and Target Tab-Filters (opt-in multipliers) -->
+          <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 mb-1 hidden" id="results-drilldown-container">
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div>
+                <div class="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Guided Winner Drilldown</div>
+                <div class="text-[10px] text-slate-500 mt-1">Slice results in the same order you designed the recipe, then promote the rows that still look strong inside that slice.</div>
+              </div>
+              <button onclick="clearResultsDrilldown()" class="bg-slate-950 border border-slate-800 hover:border-slate-700 hover:text-amber-400 text-slate-300 px-2.5 py-1.5 rounded text-[11px] font-semibold transition">Clear Slice</button>
+            </div>
+            <div id="results-drilldown-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <!-- Hierarchy filters rendered here -->
+            </div>
+            <div id="results-slice-summary" class="text-[10px] text-slate-500 mt-3 font-mono"></div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-1" id="results-categories-filters">
+            <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4">
+              <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Filter by Original Bucket</label>
+              <select id="results-bucket-filter" class="w-full bg-slate-900 text-slate-200" onchange="applyResultsClientFilters()">
+                <option value="">Show All Buckets</option>
+              </select>
+            </div>
+            <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4">
+              <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Filter by Optimizer Target</label>
+              <select id="results-target-filter" class="w-full bg-slate-900 text-slate-200" onchange="applyResultsClientFilters()">
+                <option value="">Show All Targets</option>
+                <option value="MaxProfitFactor">Max. profit factor</option>
+                <option value="MaxNetProfit">Max. net profit</option>
+                <option value="MinDrawDown">Min. draw down</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Live Filters Card -->
+          <div class="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 mb-2">
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Post-NT Guardrail Filters</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1 font-medium">Min Trades</label>
+                <input id="filter-min-trades" type="number" class="w-full" value="" placeholder="e.g. 20" oninput="applyResultsClientFilters()" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1 font-medium">Min Profit Factor</label>
+                <input id="filter-min-pf" type="number" class="w-full" value="" placeholder="e.g. 1.2" step="0.1" oninput="applyResultsClientFilters()" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1 font-medium">Max Drawdown ($)</label>
+                <input id="filter-max-dd" type="number" class="w-full" value="" placeholder="e.g. 2500" oninput="applyResultsClientFilters()" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1 font-medium">Min Net Profit ($)</label>
+                <input id="filter-min-net" type="number" class="w-full" value="" placeholder="e.g. 500" oninput="applyResultsClientFilters()" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Selection actions container -->
+          <div id="selection-actions-container" class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex justify-between items-center text-xs text-slate-400 px-4 mb-2 flex-wrap gap-3 hidden">
+            <div id="results-count-status" class="font-mono text-[11px]">No results loaded. Pick a stage above.</div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="results-selected-count-display" class="font-bold text-amber-400 mr-2">Selected: 0 candidates</span>
+              <button onclick="selectAllResults(true)" class="bg-slate-950 border border-slate-800 hover:border-slate-700 hover:text-amber-400 text-slate-300 px-2.5 py-1.5 rounded text-[11px] font-semibold transition">Select All</button>
+              <button onclick="selectAllResults(false)" class="bg-slate-950 border border-slate-800 hover:border-slate-700 hover:text-amber-400 text-slate-300 px-2.5 py-1.5 rounded text-[11px] font-semibold transition">Deselect All</button>
+              <button onclick="configureSelectedForRefinement()" id="promote-selected-btn" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition shadow-lg shadow-emerald-500/10 cursor-pointer disabled:opacity-50" disabled>Configure Refinement</button>
+              <button onclick="sendSelectedToFinalOutput()" id="send-final-btn" class="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition shadow-lg shadow-sky-500/10 cursor-pointer disabled:opacity-50" disabled>Send to Final</button>
+            </div>
+          </div>
+
+                <div id="final-workflow-actions" class="hidden bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-4 mb-2">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-[10px] uppercase tracking-widest font-bold text-emerald-300">Final Review Next Steps</div>
+                <div id="final-workflow-note" class="text-[11px] text-slate-400 mt-1 max-w-2xl">
+                  Use the decision dashboard to rename final templates for NinjaTrader, build Python reports, compare winners, and decide whether to deploy or refine.
+                </div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <a id="final-decision-dashboard-link" href="#" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3 py-2 rounded-lg text-xs transition no-underline">Decision dashboard</a>
+                <a id="final-session-detail-link" href="#" class="bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:text-emerald-300 text-slate-300 px-3 py-2 rounded-lg text-xs font-semibold transition no-underline">Reports & refine</a>
+                <button id="final-build-session-report-btn" type="button" onclick="buildFinalSessionReport()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-2 rounded-lg text-xs transition">Build final report</button>
+                <a id="final-session-report-link" href="#" target="_blank" rel="noopener" class="bg-slate-950 border border-slate-800 hover:border-amber-500/50 hover:text-amber-300 text-slate-300 px-3 py-2 rounded-lg text-xs font-semibold transition no-underline">View final report</a>
+                <a id="final-template-list-link" href="#" target="_blank" rel="noopener" class="bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:text-emerald-300 text-slate-300 px-3 py-2 rounded-lg text-xs font-semibold transition no-underline">Open templates</a>
+                <a id="final-template-download-link" href="#" class="bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:text-emerald-300 text-slate-300 px-3 py-2 rounded-lg text-xs font-semibold transition no-underline">Download templates</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scrollable Candidates Grid -->
+          <div class="overflow-x-auto border border-slate-800/80 rounded-lg max-h-[500px]">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="bg-slate-950/80 sticky top-0 z-10 text-left border-b border-slate-800 text-slate-400 font-mono tracking-tight" id="results-table-header">
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition" onclick="sortResultsBy('rank')">Rank</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition" onclick="sortResultsBy('candidate_id')">Candidate ID</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-center" onclick="sortResultsBy('optimizer_target')">Target</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right" onclick="sortResultsBy('profit_factor')">PF</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right" onclick="sortResultsBy('total_net_profit')">Net Profit</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right" onclick="sortResultsBy('drawdown_abs')">Max DD</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right" onclick="sortResultsBy('total_trades')">Trades</th>
+                  <th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right" onclick="sortResultsBy('portfolio_score')">Score</th>
+                  <th class="p-3 font-semibold select-none">Reason</th>
+                </tr>
+              </thead>
+              <tbody id="results-table-body">
+                <tr><td colspan="10" class="text-slate-500 py-10 text-center">Select an execution stage in the dropdown above to load data.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right column: AI Suggested Refinements -->
+        <div class="lg:col-span-1">
+          <div id="ai-refinement-card" class="glass-panel rounded-xl p-5 border-amber-500/20 bg-amber-500/5 hidden flex flex-col justify-between space-y-4">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></div>
+                <h3 class="text-xs font-bold text-amber-400 tracking-wider uppercase">AI Suggested Refinements</h3>
+              </div>
+              <p class="text-[11px] text-slate-400 leading-normal mb-3">
+                We analyzed the top-performing candidates from this run. Clustering and boundary metrics suggest the following search parameter bounds for the next stage.
+              </p>
+              
+              <div id="ai-suggestion-body" class="space-y-3">
+                <!-- Dynamic suggestions -->
+              </div>
+            </div>
+            
+            <div class="pt-4 border-t border-slate-800/60">
+              <button onclick="applySuggestedRefinementsAndRun()" class="w-full bg-amber-500 text-slate-950 hover:bg-amber-400 px-4 py-2.5 rounded-lg text-xs font-extrabold transition shadow-lg shadow-amber-500/10 flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                Use Suggestions in Refinement Setup
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</main>
+
+<script>
+const SESSION_ID = "{{ session_id }}";
+const SELECTED_CANDIDATE_IDS = new Set();
+let FINAL_SOURCE_STAGE_ID = "";
+let STRATEGY_DETAIL = null;
+let PARAMS = [];
+let RECIPE_POLL_TIMER = null;
+let AUTO_ADVANCING = false;
+let SAVED_RECIPE = false;
+let IS_SAFETY_CAP_EXCEEDED = false;
+let RECIPE_BODY = null;
+let LATEST_RECIPE_STATUS = null;
+let UI_RESTORED_RECIPE_ID = "";
+let SESSION_SETUP = {};
+let SAVED_SEED_PATH = "";
+
+const NT_OPTIMIZATION_TARGETS = [
+  ["MaxAvgProfit", "Max. avg. profit"],
+  ["MaxAvgProfitLong", "Max. avg. profit (long)"],
+  ["MaxAvgProfitShort", "Max. avg. profit (short)"],
+  ["MaxNetProfit", "Max. net profit"],
+  ["MaxNetProfitLong", "Max. net profit (long)"],
+  ["MaxNetProfitShort", "Max. net profit (short)"],
+  ["MaxProbability", "Max. probability"],
+  ["MaxProbabilityLong", "Max. probability (long)"],
+  ["MaxProbabilityShort", "Max. probability (short)"],
+  ["MaxProfitFactor", "Max. profit factor"],
+  ["MaxProfitFactorLong", "Max. profit factor (long)"],
+  ["MaxProfitFactorShort", "Max. profit factor (short)"],
+  ["MaxR2", "Max. R^2"],
+  ["MaxR2Long", "Max. R^2 (long)"],
+  ["MaxR2Short", "Max. R^2 (short)"],
+  ["MaxSharpeRatio", "Max. Sharpe ratio"],
+  ["MaxSharpeRatioLong", "Max. Sharpe ratio (long)"],
+  ["MaxSharpeRatioShort", "Max. Sharpe ratio (short)"],
+  ["MaxSortinoRatio", "Max. Sortino ratio"],
+  ["MaxSortinoRatioLong", "Max. Sortino ratio (long)"],
+  ["MaxSortinoRatioShort", "Max. Sortino ratio (short)"],
+  ["MaxStrength", "Max. strength"],
+  ["MaxStrengthLong", "Max. strength (long)"],
+  ["MaxStrengthShort", "Max. strength (short)"],
+  ["MaxUlcerRatio", "Max. Ulcer ratio"],
+  ["MaxUlcerRatioLong", "Max. Ulcer ratio (long)"],
+  ["MaxUlcerRatioShort", "Max. Ulcer ratio (short)"],
+  ["MaxWinLossRatio", "Max. win/loss ratio"],
+  ["MaxWinLossRatioLong", "Max. win/loss ratio (long)"],
+  ["MaxWinLossRatioShort", "Max. win/loss ratio (short)"],
+  ["MinAvgMae", "Min. avg. adverse excursion"],
+  ["MinAvgMaeLong", "Min. avg. adverse excursion (long)"],
+  ["MinAvgMaeShort", "Min. avg. adverse excursion (short)"],
+  ["MinDrawDown", "Min. draw down"],
+  ["MinDrawDownLong", "Min. draw down (long)"],
+  ["MinDrawDownShort", "Min. draw down (short)"],
+];
+
+const NT_TARGET_ALIASES = {
+  profit_factor: "MaxProfitFactor",
+  total_net_profit: "MaxNetProfit",
+  drawdown_abs: "MinDrawDown",
+  drawdown: "MinDrawDown",
+  max_drawdown: "MinDrawDown",
+  portfolio_score: "MaxProfitFactor",
+};
+
+// Dynamic Multi-stage roles and selection rules model
+let UI_STAGES = [
+  {
+    id: "stage_1",
+    label: "First run",
+    roles: {}, // paramName -> { role: "fixed"|"optimize", fixed_value, min, max, step }
+    selection: {
+      group_by_param: "",
+      fitness_metrics: ["profit_factor", "total_net_profit"],
+      min_trades: 20,
+      min_pf: 1.2,
+      max_dd: 2500,
+      min_net: 0,
+      keep_per_group: 1
+    }
+  }
+];
+let ACTIVE_STAGE_IDX = 0;
+
+// Client-side results viewer state
+let LOADED_RESULTS_RAW = [];
+let FILTERED_RESULTS = [];
+let CURRENT_SORT_COL = "rank";
+let CURRENT_SORT_ASC = true;
+let CURRENT_RESULTS_STAGE_ID = "";
+let RESULT_DIMENSIONS = [];
+let RESULT_DIMENSION_FILTERS = {};
+
+const $ = (id) => document.getElementById(id);
+
+function setStatus(msg) { $("page-status").textContent = msg || ""; }
+
+function populateOptimizationTargetDropdowns() {
+  [1, 2, 3].forEach((num) => {
+    const select = $(`target-${num}-dropdown`);
+    if (!select) return;
+    select.innerHTML = "";
+    NT_OPTIMIZATION_TARGETS.forEach(([value, label]) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+  });
+  if ($("target-1-dropdown")) $("target-1-dropdown").value = "MaxProfitFactor";
+  if ($("target-2-dropdown")) $("target-2-dropdown").value = "MaxNetProfit";
+  if ($("target-3-dropdown")) $("target-3-dropdown").value = "MinDrawDown";
+}
+
+function normalizeOptimizationTarget(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "MaxProfitFactor";
+  const shortName = raw.includes(".") ? raw.split(".").pop() : raw;
+  return NT_TARGET_ALIASES[shortName] || NT_TARGET_ALIASES[shortName.toLowerCase()] || shortName;
+}
+
+// Main Workbench tab navigator
+function switchTab(tabId) {
+  const tabs = ["setup", "roles", "plan", "run", "results"];
+  tabs.forEach((t) => {
+    $(`tab-${t}`).className = t === tabId 
+      ? "py-3 tab-active" 
+      : "py-3 text-slate-400 hover:text-amber-400";
+    $(`panel-${t}`).classList.toggle("hidden", t !== tabId);
+  });
+  
+  if (tabId === "results") {
+    populateResultsStageSelect();
+  }
+}
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    let body = "";
+    try { body = await res.text(); } catch (_) {}
+    throw new Error(`${res.status} ${res.statusText}${body ? ": " + body : ""}`);
+  }
+  return res.json();
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function numberValue(id) {
+  const raw = $(id).value;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) throw new Error(`${id} must be a number`);
+  return value;
+}
+
+function initDatePickers() {
+  $("start-date").value = "";
+  $("end-date").value = "";
+}
+
+function dateInputValue(raw) {
+  const text = String(raw || "").trim();
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
+}
+
+async function loadSessionSetup() {
+  const body = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`);
+  const session = body.session || {};
+  SESSION_SETUP = session;
+  SAVED_SEED_PATH = session.seed_template_path || "";
+  $("session-label").value = session.label || $("session-label").value;
+  $("instrument").value = session.instrument || $("instrument").value;
+  $("market-suffix").value = session.market_suffix || $("market-suffix").value;
+  $("start-date").value = dateInputValue(session.oos_from_date);
+  $("end-date").value = dateInputValue(session.oos_to_date);
+}
+
+async function loadStrategies() {
+  const data = await fetchJSON("/api/optimizer/strategies");
+  const sel = $("strategy-select");
+  for (const s of (data.strategies || [])) {
+    const opt = document.createElement("option");
+    opt.value = s.strategy_id;
+    opt.textContent = `${s.strategy_id} (${s.parameter_count} params, ${s.seed_template_count} templates)`;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadStrategyDetail(strategyId) {
+  STRATEGY_DETAIL = null;
+  PARAMS = [];
+  UI_STAGES = [
+    {
+      id: "stage_1",
+      label: "First run",
+      roles: {},
+      selection: {
+        group_by_param: "",
+        fitness_metrics: ["profit_factor", "total_net_profit"],
+        min_trades: 20,
+        min_pf: 1.2,
+        max_dd: 2500,
+        min_net: 0,
+        keep_per_group: 1
+      }
+    }
+  ];
+  ACTIVE_STAGE_IDX = 0;
+  
+  const seedSel = $("seed-select");
+  seedSel.innerHTML = '<option value="">- pick a seed -</option>';
+  seedSel.disabled = true;
+  $("strategy-info").textContent = "";
+  $("seed-info").textContent = "";
+  $("recipe-param-table").innerHTML = '<tr><td colspan="7" class="text-slate-500 py-4 text-center">Please pick a strategy.</td></tr>';
+  const regenBtn = $("regenerate-seed-btn");
+  if (regenBtn) regenBtn.disabled = !strategyId;
+  const clearBtn = $("clear-seeds-btn");
+  if (clearBtn) clearBtn.disabled = !strategyId;
+
+  if (!strategyId) return;
+  setStatus("Loading strategy details...");
+  STRATEGY_DETAIL = await fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}`);
+  $("strategy-info").textContent = STRATEGY_DETAIL.cs_path || "";
+  
+  let usable = 0;
+  let firstUsablePath = "";
+  for (const t of (STRATEGY_DETAIL.seed_templates || [])) {
+    const opt = document.createElement("option");
+    // The recipe code transforms its seed (Category→Optimize, inserts
+    // OptimizerType/OptimizationFitness, synthesizes OptimizationParameters
+    // when missing). So we accept any recipe-compatible seed here, falling
+    // back to the strict is_optimizer_seed flag for older catalog payloads.
+    const valid = ("is_recipe_seed_compatible" in t)
+      ? Boolean(t.is_recipe_seed_compatible)
+      : Boolean(t.is_optimizer_seed);
+    if (valid) {
+      usable += 1;
+      if (!firstUsablePath) firstUsablePath = t.path;
+    }
+    opt.value = t.path;
+    opt.disabled = !valid;
+    opt.dataset.template = JSON.stringify(t);
+    const contract = t.instrument_or_instrument_list || "no contract";
+    const seedKind = t.is_optimizer_seed
+      ? (t.backtest_type || t.category || "Optimize")
+      : ((t.backtest_type || t.category || "Backtest") + ", will convert");
+    opt.textContent = valid
+      ? `${t.name} (${seedKind}, ${contract}, ${t.estimated_combinations} combos)`
+      : `${t.name} (not usable: ${(t.seed_issues || []).join(", ") || "invalid seed"})`;
+    seedSel.appendChild(opt);
+  }
+  seedSel.disabled = usable === 0;
+  if (usable > 0 && firstUsablePath) {
+    seedSel.value = firstUsablePath;
+    onSeedSelected();
+  }
+  $("seed-info").textContent = usable
+    ? `${usable} usable seed templates found.`
+    : "No usable seeds found for this strategy.";
+
+  // Populate PARAMS
+  PARAMS = (STRATEGY_DETAIL.parameters || []).map((p) => {
+    let role = "fixed";
+    let valuesString = "";
+    if (p.name === "StartTimeH") {
+      role = "matrix_axis";
+      valuesString = "0,4,8,12,16,20";
+    } else if (p.name === "Reverse") {
+      role = "matrix_axis";
+      valuesString = "false,true";
+    } else if (["averageSlow", "averageFast", "MaxStop", "MaxTPRatio", "SlowMa", "FastMa"].includes(p.name)) {
+      role = "optimize";
+    }
+
+    const suggested = defaultOptimizeRange(p.name, p.type_name);
+    const fixedValue = defaultFixedValue(p.name, p.type_name, p.default);
+    const minValue = suggested
+      ? suggested.min
+      : (isDateTimeType(p.type_name) ? normalizeTimeValue(p.range_min) : (p.range_min ?? ""));
+    const maxValue = suggested
+      ? suggested.max
+      : (isDateTimeType(p.type_name) ? normalizeTimeValue(p.range_max) : (p.range_max ?? ""));
+    return {
+      name: p.name,
+      type_name: p.type_name,
+      role: role, // global default role
+      fixed_value: fixedValue,
+      values_string: valuesString,
+      min: minValue,
+      max: maxValue,
+      step: suggested ? suggested.step : defaultIncrement(p.type_name),
+      radius: defaultRadius(p.name),
+      _group: p.group_name || "(ungrouped)",
+      _display: p.display_name || p.name,
+    };
+  });
+
+  // Initialize roles for First Run tab
+  PARAMS.forEach(p => {
+    UI_STAGES[0].roles[p.name] = {
+      role: p.role === "matrix_axis" ? "matrix_axis" : p.role,
+      fixed_value: p.fixed_value,
+      min: p.min,
+      max: p.max,
+      step: p.step
+    };
+  });
+
+  renderStageTabs();
+  renderParameterTable();
+  setStatus("");
+}
+
+function defaultIncrement(typeName) {
+  const t = (typeName || "").toLowerCase();
+  if (isBoolType(typeName)) return 1;
+  if (t === "datetime" || t === "system.datetime") return 30;
+  if (t === "double" || t === "float") return 0.1;
+  return 1;
+}
+
+function defaultOptimizeRange(name, typeName) {
+  const t = (typeName || "").toLowerCase();
+  if (isBoolType(typeName)) return { min: false, max: true, step: 1 };
+  const key = String(name || "");
+  const ranges = {
+    averageSlow: { min: 50, max: 400, step: 50 },
+    averageFast: { min: 2, max: 50, step: 2 },
+    MaxStop: { min: 50, max: 350, step: 50 },
+    MaxTPRatio: { min: 0.5, max: 2.0, step: 0.5 },
+    SlowMa: { min: 50, max: 400, step: 50 },
+    FastMa: { min: 2, max: 50, step: 2 },
+  };
+  const range = ranges[key];
+  if (!range) return null;
+  if (t === "int" || t === "system.int32") {
+    return {
+      min: Math.round(range.min),
+      max: Math.round(range.max),
+      step: Math.max(1, Math.round(range.step)),
+    };
+  }
+  return range;
+}
+
+function defaultFixedValue(name, typeName, value) {
+  if (name === "UseTrend" || name === "UseTrendReverse") {
+    return false;
+  }
+  return isDateTimeType(typeName) ? normalizeTimeValue(value) : (value ?? "");
+}
+
+function isDateTimeType(typeName) {
+  const t = (typeName || "").toLowerCase();
+  return t === "datetime" || t === "system.datetime";
+}
+
+function isBoolType(typeName) {
+  const t = (typeName || "").toLowerCase();
+  return t === "bool" || t === "boolean" || t === "system.boolean";
+}
+
+function isIntegerType(typeName) {
+  const t = (typeName || "").toLowerCase();
+  return t === "int" || t === "int32" || t === "system.int32";
+}
+
+function isNumericType(typeName) {
+  const t = (typeName || "").toLowerCase();
+  return isIntegerType(typeName) || ["double", "float", "single", "decimal", "system.double", "system.single", "system.decimal"].includes(t);
+}
+
+function isClockLikeParam(name) {
+  return /(?:start|duration).*time.*(?:h|m)$/i.test(String(name || "")) || /time[hm]$/i.test(String(name || ""));
+}
+
+function normalizeTimeValue(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const parseMatch = raw.match(/DateTime\.Parse\s*\(\s*"([^"]+)"/i);
+  const text = parseMatch ? parseMatch[1] : raw;
+  const timeMatch = text.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if (timeMatch) {
+    let hourNumber = Math.min(23, Math.max(0, Number(timeMatch[1])));
+    const meridiem = String(timeMatch[3] || "").toUpperCase();
+    if (meridiem === "PM" && hourNumber < 12) hourNumber += 12;
+    if (meridiem === "AM" && hourNumber === 12) hourNumber = 0;
+    const hour = String(hourNumber).padStart(2, "0");
+    const minute = String(Math.min(59, Math.max(0, Number(timeMatch[2])))).padStart(2, "0");
+    return `${hour}:${minute}`;
+  }
+  return text;
+}
+
+function defaultRadius(name) {
+  if (name.includes("Fast")) return 1;
+  if (name.includes("Slow")) return 50;
+  if (name.includes("Stop")) return 25;
+  if (name.includes("TPRatio")) return 0.5;
+  return 1;
+}
+
+function onSeedSelected() {
+  const seedSel = $("seed-select");
+  const opt = seedSel.options[seedSel.selectedIndex];
+  if (!opt) return;
+  const t = opt.dataset.template ? JSON.parse(opt.dataset.template) : {
+    category: "Optimize",
+    instrument_or_instrument_list: $("instrument").value,
+    from_date: "",
+    to_date: "",
+  };
+  const instrument = String(t.instrument_or_instrument_list || "").trim();
+  if (instrument && instrument !== "NQ") $("instrument").value = instrument;
+  $("seed-info").innerHTML =
+    `seed: <span class="pill pill-opt">${escapeHtml(t.category || "Optimize")}</span>` +
+    ` &nbsp;contract: <span class="text-slate-300">${escapeHtml(instrument || "(none)")}</span>` +
+    ` &nbsp;dates: <span class="text-slate-300">${escapeHtml(t.from_date || "?")} to ${escapeHtml(t.to_date || "?")}</span>`;
+}
+
+function selectedSeedPath() {
+  return $("seed-select").value || SAVED_SEED_PATH || SESSION_SETUP.seed_template_path || "";
+}
+
+async function regenerateRecipeSeed() {
+  const strategyId = $("strategy-select").value;
+  if (!strategyId) {
+    setStatus("Pick a strategy first.");
+    return;
+  }
+  const btn = $("regenerate-seed-btn");
+  const previousLabel = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Regenerating...";
+  }
+  setStatus("Regenerating recipe seed template...");
+  try {
+    const body = {
+      instrument: ($("instrument").value || "").trim(),
+      from_date: ($("start-date").value || "").trim(),
+      to_date: ($("end-date").value || "").trim(),
+    };
+    const data = await fetchJSON(
+      `/api/optimizer/strategies/${encodeURIComponent(strategyId)}/regenerate-seed`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+    const newPath = data && data.seed && data.seed.path;
+    // Re-fetch the catalog so the new seed shows up, then auto-select it.
+    await loadStrategyDetail(strategyId);
+    if (newPath) {
+      const seedSelect = $("seed-select");
+      const match = Array.from(seedSelect.options).find((opt) => opt.value === newPath);
+      if (match) {
+        seedSelect.value = newPath;
+        onSeedSelected();
+      }
+    }
+    setStatus(`Regenerated seed at ${newPath || "(unknown path)"}.`);
+  } catch (e) {
+    console.error("regenerateRecipeSeed failed:", e);
+    setStatus(`Regenerate seed failed: ${e.message}`);
+    try { alert(`Regenerate seed failed:\n\n${e.message}`); } catch (_) {}
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = previousLabel || "Regenerate seed";
+    }
+  }
+}
+
+async function clearRecipeSeeds() {
+  const strategyId = $("strategy-select").value;
+  if (!strategyId) {
+    setStatus("Pick a strategy first.");
+    return;
+  }
+  // We only ever remove our own *_recipe_seed.xml files; NinjaTrader's saved
+  // templates are left alone. Still ask once so accidental clicks are safe.
+  if (!window.confirm(
+        "Delete recipe-generated seeds (*_recipe_seed.xml) for " +
+        strategyId + "?\n\nNinjaTrader's own saved templates will not be touched."
+      )) {
+    setStatus("Clear seeds cancelled.");
+    return;
+  }
+  const btn = $("clear-seeds-btn");
+  const previousLabel = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Clearing...";
+  }
+  setStatus("Clearing recipe-generated seeds...");
+  try {
+    const data = await fetchJSON(
+      `/api/optimizer/strategies/${encodeURIComponent(strategyId)}/seeds`,
+      { method: "DELETE" },
+    );
+    const deleted = Array.isArray(data.deleted) ? data.deleted : [];
+    const kept = Array.isArray(data.kept) ? data.kept : [];
+    setStatus(
+      `Deleted ${deleted.length} recipe seed${deleted.length === 1 ? "" : "s"}` +
+      ` (kept ${kept.length} NinjaTrader template${kept.length === 1 ? "" : "s"})` +
+      ` in ${data.folder || "(folder)"}.`
+    );
+    // Reload the strategy detail so the dropdown reflects the cleared state.
+    await loadStrategyDetail(strategyId);
+  } catch (e) {
+    console.error("clearRecipeSeeds failed:", e);
+    setStatus(`Clear seeds failed: ${e.message}`);
+    try { alert(`Clear seeds failed:\n\n${e.message}`); } catch (_) {}
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = previousLabel || "Clear seeds";
+    }
+  }
+}
+
+function ensureSavedSeedOption(seedPath, label = "saved session seed") {
+  const path = String(seedPath || "").trim();
+  if (!path) return;
+  const seedSelect = $("seed-select");
+  const existing = Array.from(seedSelect.options).find((opt) => opt.value === path);
+  if (!existing) {
+    const opt = document.createElement("option");
+    opt.value = path;
+    opt.textContent = `${label}: ${path}`;
+    opt.dataset.template = JSON.stringify({
+      name: label,
+      path,
+      category: "Optimize",
+      instrument_or_instrument_list: $("instrument").value,
+      from_date: "",
+      to_date: "",
+    });
+    seedSelect.appendChild(opt);
+  }
+  seedSelect.disabled = false;
+  seedSelect.value = path;
+  SAVED_SEED_PATH = path;
+  onSeedSelected();
+}
+
+// Stage sub-tabs builder
+function renderStageTabs() {
+  const container = $("stage-tabs-container");
+  if (!container) return;
+  
+  container.innerHTML = "";
+  UI_STAGES.forEach((stage, idx) => {
+    const btn = document.createElement("div");
+    btn.className = `flex items-center gap-1.5 px-3 py-1.5 border border-slate-800 rounded-lg text-xs font-semibold cursor-pointer transition ${idx === ACTIVE_STAGE_IDX ? 'stage-tab-active bg-slate-900' : 'bg-slate-950/40 text-slate-400 hover:bg-slate-900'}`;
+    btn.onclick = () => selectStageTab(idx);
+    btn.innerHTML = `
+      <span>${escapeHtml(stage.label)}</span>
+      ${idx > 0 ? `<button onclick="deleteRefineStage(event, ${idx})" class="text-slate-500 hover:text-red-400 font-extrabold text-[13px] ml-1 select-none" title="Delete refinement stage">&times;</button>` : ''}
+    `;
+    container.appendChild(btn);
+  });
+
+  // Always show the manual "Add Refine Stage" button so the operator can
+  // append a refinement stage at any time, even from a fresh Stage 1.
+  const addRefineBtn = $("add-refine-stage-btn");
+  if (addRefineBtn) {
+    addRefineBtn.classList.remove("hidden");
+  }
+}
+
+function selectStageTab(idx) {
+  ACTIVE_STAGE_IDX = idx;
+  renderStageTabs();
+  renderParameterTable();
+}
+
+function addRefineStage() {
+  const nextIdx = UI_STAGES.length;
+  const prevStage = UI_STAGES[nextIdx - 1];
+  
+  const newStage = {
+    id: `stage_${nextIdx + 1}`,
+    label: `Refinement ${nextIdx}`,
+    roles: {},
+    selection: {
+      group_by_param: "",
+      fitness_metrics: ["profit_factor", "total_net_profit"],
+      min_trades: 20,
+      min_pf: 1.2,
+      max_dd: 2500,
+      min_net: 0,
+      keep_per_group: 1
+    }
+  };
+  
+  // Inherit roles: optimized/refined in previous stage default to 'refine'
+  PARAMS.forEach(p => {
+    const prevParam = prevStage.roles[p.name] || { role: "fixed" };
+    const boolParam = isBoolType(p.type_name);
+    if (p.role === "matrix_axis") {
+      // Matrix axes are locked fixed from first run
+      newStage.roles[p.name] = {
+        role: "fixed_from_parent",
+        fixed_value: ""
+      };
+    } else if (boolParam && (prevParam.role === "optimize" || prevParam.role === "refine")) {
+      newStage.roles[p.name] = {
+        role: "optimize",
+        fixed_value: prevParam.fixed_value ?? p.fixed_value ?? false,
+        min: false,
+        max: true,
+        step: 1
+      };
+    } else if (prevParam.role === "optimize" || prevParam.role === "refine") {
+      newStage.roles[p.name] = {
+        role: "refine",
+        radius: defaultRadius(p.name),
+        step: p.step || defaultIncrement(p.type_name),
+        min: p.min || "",
+        max: p.max || ""
+      };
+    } else {
+      newStage.roles[p.name] = {
+        role: "fixed",
+        fixed_value: prevParam.fixed_value ?? p.fixed_value ?? ""
+      };
+    }
+  });
+  
+  UI_STAGES.push(newStage);
+  selectStageTab(nextIdx);
+}
+
+function ensureRefinementStageFor(stageId) {
+  const sourceIdx = UI_STAGES.findIndex((stage) => stage.id === stageId);
+  const expectedIdx = sourceIdx >= 0 ? sourceIdx + 1 : UI_STAGES.length;
+  const existing = UI_STAGES[expectedIdx];
+  if (existing && existing.id !== "final_backtest") {
+    return expectedIdx;
+  }
+  addRefineStage();
+  return UI_STAGES.length - 1;
+}
+
+function maybeFocusStageFromQuery() {
+  // ``/optimizer/recipe?focus_stage=stage_2`` jumps directly to that stage
+  // in the Stages/Roles editor after the saved recipe has been restored.
+  // Used by the Decision Dashboard refine path and any future
+  // deep-link-to-stage entry point. Reads the param once and clears it from
+  // the URL so a later refresh does not keep re-focusing the same tab.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const focusStageId = params.get("focus_stage");
+    if (!focusStageId) return;
+    const idx = UI_STAGES.findIndex((stage) => stage.id === focusStageId);
+    if (idx >= 0) {
+      selectStageTab(idx);
+      switchTab("roles");
+      setStatus(
+        `Stage ${focusStageId} is ready. Tune sweep ranges then click ` +
+        `Advance on the Run dashboard to launch only this stage — earlier ` +
+        `stages stay intact.`,
+      );
+    } else {
+      setStatus(`Stage ${focusStageId} not found in the saved recipe.`);
+    }
+    params.delete("focus_stage");
+    const remaining = params.toString();
+    const next = window.location.pathname + (remaining ? `?${remaining}` : "");
+    window.history.replaceState({}, document.title, next);
+  } catch (err) {
+    console.warn("focus_stage handling failed:", err);
+  }
+}
+
+function deleteRefineStage(event, idx) {
+  event.stopPropagation();
+  if (idx === 0) return;
+  if (!confirm(`Are you sure you want to delete '${UI_STAGES[idx].label}'?`)) return;
+  
+  UI_STAGES.splice(idx, 1);
+  // Re-index stage ids & labels
+  for (let i = 0; i < UI_STAGES.length; i++) {
+    UI_STAGES[i].id = `stage_${i + 1}`;
+    if (i > 0) {
+      UI_STAGES[i].label = `Refinement ${i}`;
+    }
+  }
+  
+  ACTIVE_STAGE_IDX = Math.min(ACTIVE_STAGE_IDX, UI_STAGES.length - 1);
+  renderStageTabs();
+  renderParameterTable();
+}
+
+// Render dynamic parameter role table matching the active tab
+function renderParameterTable() {
+  const tbody = $("recipe-param-table");
+  tbody.innerHTML = "";
+  if (!PARAMS.length) {
+    renderMatrixAxesCards();
+    updateAddMatrixSelect();
+    return;
+  }
+  
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  const groups = new Map();
+  PARAMS.forEach((p, index) => {
+    const g = p._group;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(index);
+  });
+
+  for (const [groupName, idxs] of groups) {
+    const groupRow = document.createElement("tr");
+    groupRow.className = "group-row";
+    groupRow.innerHTML = `<td colspan="7" class="px-3 py-1.5 font-bold text-slate-300">${groupName}</td>`;
+    tbody.appendChild(groupRow);
+    
+    idxs.forEach((idx) => {
+      tbody.appendChild(makeParamRow(idx, activeStage));
+    });
+  }
+  
+  // Render Selection rules card values contextual to the tab
+  renderSelectionRulesInputs(activeStage);
+  
+  renderMatrixAxesCards();
+  updateAddMatrixSelect();
+  updateParameterTableHeaders();
+  updateRecipeScope();
+}
+
+function updateParameterTableHeaders() {
+  const firstRun = ACTIVE_STAGE_IDX === 0;
+  const fixed = $("col-header-fixed");
+  const min = $("col-header-min");
+  const max = $("col-header-max");
+  const inc = $("col-header-inc");
+  if (fixed) fixed.textContent = firstRun ? "Fixed Value / Axis Values" : "Fixed / Pin Value";
+  if (min) min.textContent = firstRun ? "Min Bound" : "Min Bound / Clamp";
+  if (max) max.textContent = firstRun ? "Max Bound" : "Max Bound / Clamp";
+  if (inc) inc.textContent = firstRun ? "Increment" : "Increment / Radius";
+}
+
+function makeParamRow(idx, activeStage) {
+  const p = PARAMS[idx];
+  const pState = activeStage.roles[p.name] || { role: "fixed" };
+  const tr = document.createElement("tr");
+  tr.className = "table-row hover:bg-slate-900/30";
+  
+  const isBool = isBoolType(p.type_name);
+  const isDateTime = isDateTimeType(p.type_name);
+  const isNumeric = isNumericType(p.type_name);
+  const isClockLike = isClockLikeParam(p.name);
+  const isGlobalMatrixAxis = p.role === "matrix_axis";
+  if (isBool && pState.role === "refine") {
+    pState.role = "optimize";
+    pState.min = false;
+    pState.max = true;
+    pState.step = 1;
+  }
+  
+  let roleSelect = "";
+  if (activeStage.id === "stage_1") {
+    // First run options
+    if (isGlobalMatrixAxis) {
+      roleSelect = `<span class="pill pill-warn">Matrix Axis (Stage 1)</span>`;
+    } else {
+      roleSelect = `
+        <select class="w-32" onchange="updateStageParamRole(${idx}, this.value)">
+          <option value="fixed" ${pState.role === "fixed" ? "selected" : ""}>Fixed</option>
+          ${isDateTime ? "" : `<option value="optimize" ${pState.role === "optimize" ? "selected" : ""}>${isBool ? "Optimize both" : "Optimize"}</option>`}
+        </select>
+      `;
+    }
+  } else {
+    // Refinement options
+    if (isGlobalMatrixAxis) {
+      roleSelect = `<span class="pill pill-fixed">Fixed from parent (locked)</span>`;
+    } else {
+      roleSelect = `
+        <select class="w-36" onchange="updateStageParamRole(${idx}, this.value)">
+          <option value="fixed" ${pState.role === "fixed" ? "selected" : ""}>Fixed</option>
+          ${isDateTime ? "" : `<option value="optimize" ${pState.role === "optimize" ? "selected" : ""}>${isBool ? "Test both states" : "Optimize"}</option>`}
+          ${isBool || isDateTime ? "" : `<option value="refine" ${pState.role === "refine" ? "selected" : ""}>Refine (Stage ${ACTIVE_STAGE_IDX + 1})</option>`}
+          <option value="fixed_from_parent" ${pState.role === "fixed_from_parent" ? "selected" : ""}>Fixed from parent</option>
+        </select>
+      `;
+    }
+  }
+
+  let fixedValCell = "";
+  let minCell = "&mdash;";
+  let maxCell = "&mdash;";
+  let incCell = "&mdash;";
+
+  if (pState.role === "fixed") {
+    if (isBool) {
+      fixedValCell = `<select onchange="updateStageParamField(${idx}, 'fixed_value', this.value)">
+           <option value="false" ${String(pState.fixed_value) !== 'true' ? 'selected' : ''}>false</option>
+           <option value="true" ${String(pState.fixed_value) === 'true' ? 'selected' : ''}>true</option>
+         </select>`;
+    } else if (isDateTime) {
+      fixedValCell = `<input type="time" class="w-28" value="${normalizeTimeValue(pState.fixed_value)}" onchange="updateStageParamField(${idx}, 'fixed_value', this.value)" />`;
+    } else {
+      fixedValCell = `<input type="text" class="w-24" value="${pState.fixed_value ?? ''}" onchange="updateStageParamField(${idx}, 'fixed_value', this.value)" />`;
+    }
+  } else if (pState.role === "matrix_axis") {
+    const axisPlaceholder = isDateTime ? "e.g. 08:30,09:30" : "e.g. 0,4,8";
+    fixedValCell = `<input type="text" class="w-36" placeholder="${axisPlaceholder}" value="${p.values_string ?? ''}" oninput="updateGlobalMatrixAxisField(${idx}, this.value)" />`;
+  } else if (pState.role === "optimize") {
+    fixedValCell = '<span class="text-slate-500 font-medium">&mdash;</span>';
+    if (isBool) {
+      fixedValCell = '<span class="text-sky-300 font-semibold text-[11px] bg-sky-950/20 border border-sky-500/20 px-1.5 py-0.5 rounded">false + true</span>';
+      minCell = '<span class="font-mono text-slate-400">false</span>';
+      maxCell = '<span class="font-mono text-slate-400">true</span>';
+      incCell = '<span class="font-mono text-slate-500">2 states</span>';
+    } else if (isDateTime) {
+      minCell = `<input type="time" class="w-28" value="${normalizeTimeValue(pState.min)}" oninput="updateStageParamField(${idx}, 'min', this.value)" />`;
+      maxCell = `<input type="time" class="w-28" value="${normalizeTimeValue(pState.max)}" oninput="updateStageParamField(${idx}, 'max', this.value)" />`;
+      incCell = `<input type="number" class="w-20" min="1" step="1" value="${pState.step ?? 30}" title="Step in minutes" oninput="updateStageParamField(${idx}, 'step', this.value)" />`;
+    } else {
+      const inputType = isNumeric ? "number" : "text";
+      const stepAttr = isIntegerType(p.type_name) || isClockLike ? 'step="1"' : 'step="any"';
+      minCell = `<input type="${inputType}" class="w-16" ${stepAttr} value="${pState.min ?? ''}" oninput="updateStageParamField(${idx}, 'min', this.value)" />`;
+      maxCell = `<input type="${inputType}" class="w-16" ${stepAttr} value="${pState.max ?? ''}" oninput="updateStageParamField(${idx}, 'max', this.value)" />`;
+      incCell = `<input type="${inputType}" class="w-16" ${stepAttr} value="${pState.step ?? ''}" oninput="updateStageParamField(${idx}, 'step', this.value)" />`;
+    }
+  } else if (pState.role === "refine") {
+    fixedValCell = '<span class="text-emerald-400 font-semibold text-[11px] bg-emerald-950/20 border border-emerald-500/20 px-1.5 py-0.5 rounded">Sweeps winner</span>';
+    const inputType = isNumeric ? "number" : "text";
+    const stepAttr = isIntegerType(p.type_name) || isClockLike ? 'step="1"' : 'step="any"';
+    minCell = `<input type="${inputType}" class="w-16" ${stepAttr} placeholder="clamp min" value="${pState.min ?? ''}" onchange="updateStageParamField(${idx}, 'min', this.value)" />`;
+    maxCell = `<input type="${inputType}" class="w-16" ${stepAttr} placeholder="clamp max" value="${pState.max ?? ''}" onchange="updateStageParamField(${idx}, 'max', this.value)" />`;
+    incCell = `
+      <div class="flex gap-1 items-center">
+        <input type="${inputType}" class="w-12" ${stepAttr} placeholder="radius" value="${pState.radius ?? ''}" onchange="updateStageParamField(${idx}, 'radius', this.value)" />
+        <input type="${inputType}" class="w-12" ${stepAttr} placeholder="step" value="${pState.step ?? ''}" onchange="updateStageParamField(${idx}, 'step', this.value)" />
+      </div>
+    `;
+  } else if (pState.role === "fixed_from_parent") {
+    fixedValCell = '<span class="text-slate-400 italic">Locked to parent row value</span>';
+  }
+
+  tr.innerHTML = `
+    <td class="py-2 pr-2 font-mono text-slate-200 font-medium">${p.name}</td>
+    <td class="py-2 pr-2 text-slate-500">${p.type_name}</td>
+    <td class="py-2 pr-2">${roleSelect}</td>
+    <td class="py-2 pr-2">${fixedValCell}</td>
+    <td class="py-2 pr-2 text-slate-400">${minCell}</td>
+    <td class="py-2 pr-2 text-slate-400">${maxCell}</td>
+    <td class="py-2 pr-2 text-slate-400">${incCell}</td>
+  `;
+  return tr;
+}
+
+function updateStageParamRole(idx, value) {
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  const p = PARAMS[idx];
+  activeStage.roles[p.name].role = value;
+  if (isBoolType(p.type_name) && value === "optimize") {
+    activeStage.roles[p.name].min = false;
+    activeStage.roles[p.name].max = true;
+    activeStage.roles[p.name].step = 1;
+  }
+  if (isDateTimeType(p.type_name) && (value === "optimize" || value === "refine")) {
+    activeStage.roles[p.name].role = "fixed";
+  }
+  renderParameterTable();
+}
+
+function updateStageParamField(idx, field, value) {
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  const p = PARAMS[idx];
+  activeStage.roles[p.name][field] = value;
+  updateRecipeScope();
+}
+
+function updateGlobalMatrixAxisField(idx, value) {
+  PARAMS[idx].values_string = value;
+  renderMatrixAxesCards();
+  updateRecipeScope();
+}
+
+// Renders the contextual Selection Rules card inputs at the bottom of active tab
+function renderSelectionRulesInputs(stage) {
+  $("stage-keep-per-group").value = stage.selection.keep_per_group || 1;
+  $("stage-min-trades").value = stage.selection.min_trades ?? 20;
+  $("stage-min-pf").value = stage.selection.min_pf ?? 1.2;
+  $("stage-max-dd").value = stage.selection.max_dd ?? 2500;
+  $("stage-min-net").value = stage.selection.min_net ?? 0;
+  
+  // Populate Candidate Group-by dropdown from currently optimized params in active tab
+  const groupDropdown = $("stage-group-by-dropdown");
+  groupDropdown.innerHTML = '<option value="">- none (global group) -</option>';
+  
+  const optParams = Object.keys(stage.roles).filter(paramName => {
+    const role = stage.roles[paramName].role;
+    return role === "optimize" || role === "refine";
+  });
+  
+  optParams.forEach(pName => {
+    const opt = document.createElement("option");
+    opt.value = pName;
+    opt.textContent = pName;
+    if (stage.selection.group_by_param === pName) {
+      opt.selected = true;
+    }
+    groupDropdown.appendChild(opt);
+  });
+  
+  // Toggle Stage 1 Optimizer Targets Card vs Refinement rules
+  const stage1SettingsCard = $("stage-1-optimizer-settings");
+  const refineFitness = $("stage-refine-fitness-metrics");
+  
+  if (ACTIVE_STAGE_IDX === 0) {
+    if (stage1SettingsCard) stage1SettingsCard.classList.remove("hidden");
+    if (refineFitness) refineFitness.classList.add("hidden");
+    
+    // Load recipe top level fields
+    const recipe = (RECIPE_BODY && RECIPE_BODY.recipe) || {};
+    $("optimizer-type").value = recipe.optimizer_type || "Default";
+    $("keep-best-results").value = recipe.keep_best_results || 1000;
+    
+    const activeTargets = (recipe.active_targets || ["MaxProfitFactor"]).map(normalizeOptimizationTarget);
+    
+    // Sync Target 1
+    $("target-1-dropdown").value = activeTargets[0] || "MaxProfitFactor";
+    
+    // Sync Target 2
+    if (activeTargets.length > 1) {
+      $("target-2-checkbox").checked = true;
+      $("target-2-dropdown").disabled = false;
+      $("target-2-dropdown").classList.remove("opacity-45");
+      $("target-2-dropdown").value = activeTargets[1];
+    } else {
+      $("target-2-checkbox").checked = false;
+      $("target-2-dropdown").disabled = true;
+      $("target-2-dropdown").classList.add("opacity-45");
+    }
+    
+    // Sync Target 3
+    if (activeTargets.length > 2) {
+      $("target-3-checkbox").checked = true;
+      $("target-3-dropdown").disabled = false;
+      $("target-3-dropdown").classList.remove("opacity-45");
+      $("target-3-dropdown").value = activeTargets[2];
+    } else {
+      $("target-3-checkbox").checked = false;
+      $("target-3-dropdown").disabled = true;
+      $("target-3-dropdown").classList.add("opacity-45");
+    }
+  } else {
+    if (stage1SettingsCard) stage1SettingsCard.classList.add("hidden");
+    if (refineFitness) refineFitness.classList.remove("hidden");
+    
+    // Synchronize ranked fitness checkboxes
+    const boxes = document.querySelectorAll(".fitness-checkbox");
+    boxes.forEach(box => {
+      box.checked = (stage.selection.fitness_metrics || []).includes(box.value);
+    });
+  }
+}
+
+function updateRecipeTopField(field, value) {
+  if (!RECIPE_BODY) RECIPE_BODY = {};
+  if (!RECIPE_BODY.recipe) RECIPE_BODY.recipe = {};
+  if (field === 'keep_best_results') value = Number(value);
+  RECIPE_BODY.recipe[field] = value;
+}
+
+function toggleTargetDropdown(num) {
+  const checkbox = $(`target-${num}-checkbox`);
+  const dropdown = $(`target-${num}-dropdown`);
+  if (checkbox.checked) {
+    dropdown.disabled = false;
+    dropdown.classList.remove("opacity-45");
+  } else {
+    dropdown.disabled = true;
+    dropdown.classList.add("opacity-45");
+  }
+  syncActiveTargetsFromUI();
+}
+
+function syncActiveTargetsFromUI() {
+  const targets = [];
+  targets.push(normalizeOptimizationTarget($("target-1-dropdown").value));
+  
+  if ($("target-2-checkbox").checked) {
+    targets.push(normalizeOptimizationTarget($("target-2-dropdown").value));
+  }
+  if ($("target-3-checkbox").checked) {
+    targets.push(normalizeOptimizationTarget($("target-3-dropdown").value));
+  }
+  
+  if (!RECIPE_BODY) RECIPE_BODY = {};
+  if (!RECIPE_BODY.recipe) RECIPE_BODY.recipe = {};
+  RECIPE_BODY.recipe.active_targets = Array.from(new Set(targets));
+}
+
+function updateStageSelectionField(field, value) {
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  activeStage.selection[field] = value;
+}
+
+function handleFitnessCheckboxChange(el) {
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  if (!activeStage.selection.fitness_metrics) activeStage.selection.fitness_metrics = [];
+  
+  const metrics = activeStage.selection.fitness_metrics;
+  if (el.checked) {
+    if (!metrics.includes(el.value)) metrics.push(el.value);
+  } else {
+    const idx = metrics.indexOf(el.value);
+    if (idx !== -1) metrics.splice(idx, 1);
+  }
+}
+
+function getStepsCount(pState, typeName) {
+  if (pState.role !== "optimize") return 1;
+  if (isBoolType(typeName)) return 2;
+  if (isDateTimeType(typeName)) return 1;
+  const min = parseFloat(pState.min);
+  const max = parseFloat(pState.max);
+  const inc = parseFloat(pState.step);
+  if (!isFinite(min) || !isFinite(max) || !isFinite(inc) || inc <= 0) return 1;
+  if (max < min) return 0;
+  return Math.floor((max - min) / inc) + 1;
+}
+
+function updateRecipeScope() {
+  const activeStage = UI_STAGES[ACTIVE_STAGE_IDX];
+  
+  let stage1CombosPerTemplate = 1;
+  PARAMS.forEach(p => {
+    const pState = activeStage.roles[p.name];
+    if (pState && pState.role === "optimize") {
+      stage1CombosPerTemplate *= getStepsCount(pState, p.type_name);
+    }
+  });
+
+  const matrixAxes = PARAMS.filter(p => p.role === "matrix_axis");
+  let matrixTemplateCount = 1;
+  const axesTerms = [];
+  matrixAxes.forEach(p => {
+    const vals = parseCSVValues(p.values_string, p.type_name);
+    const count = Math.max(1, vals.length);
+    matrixTemplateCount *= count;
+    axesTerms.push(`${count} ${p.name}`);
+  });
+
+  const totalCombosStage1 = matrixTemplateCount * stage1CombosPerTemplate;
+  $("matrix-count-display").textContent = matrixTemplateCount;
+  
+  const stage1CombosDisplay = $("stage1-combos-display");
+  const isExceeded = totalCombosStage1 > 250000;
+  IS_SAFETY_CAP_EXCEEDED = isExceeded;
+  
+  if (stage1CombosDisplay) {
+    stage1CombosDisplay.textContent = totalCombosStage1.toLocaleString();
+    stage1CombosDisplay.className = isExceeded ? "font-bold text-red-500 animate-pulse font-mono" : "font-bold text-slate-100 font-mono";
+  }
+
+  const optCount = Object.values(activeStage.roles).filter(r => r.role === "optimize" || r.role === "refine").length;
+  const summaryEl = $("params-count-summary");
+  if (summaryEl) {
+    summaryEl.textContent = `${optCount} optimized/refined &bull; ${matrixAxes.length} matrix axes &bull; ${PARAMS.length - optCount - matrixAxes.length} other roles`;
+  }
+
+  const mathBox = $("matrix-math-box");
+  if (matrixAxes.length > 0) {
+    mathBox.innerHTML = axesTerms.join(" &times; ") + ` = <span class="text-amber-400 font-extrabold">${matrixTemplateCount} Stage 1 base templates</span>`;
+  } else {
+    mathBox.innerHTML = "No matrix axes defined yet. Pick role 'Matrix axis' in the table below or use the dropdown.";
+  }
+
+  const alertEl = $("safety-cap-alert");
+  if (alertEl) {
+    alertEl.classList.toggle("hidden", !isExceeded);
+    const countEl = $("safety-combo-count");
+    if (countEl) countEl.textContent = totalCombosStage1.toLocaleString();
+  }
+
+  if (typeof loadRecipeStatus === "function") {
+    loadRecipeStatus().catch(() => {});
+  }
+}
+
+// Card Axes editor helpers
+function renderMatrixAxesCards() {
+  const container = $("matrix-axes-container");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  const axes = PARAMS.filter(p => p.role === "matrix_axis");
+  if (axes.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full border border-dashed border-slate-800 rounded-xl p-6 text-center text-slate-500 text-xs">
+        No active matrix axes. Pick role "Matrix axis" in the parameter table below or select one from the dropdown above.
+      </div>
+    `;
+    return;
+  }
+  
+  PARAMS.forEach((p, idx) => {
+    if (p.role !== "matrix_axis") return;
+    
+    const vals = parseCSVValues(p.values_string, p.type_name);
+    const pillsHtml = vals.map((val, tagIdx) => `
+      <span class="inline-flex items-center gap-1 bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700 hover:bg-slate-700 transition">
+        <span>${escapeHtml(val)}</span>
+        <button onclick="removeMatrixTag(${idx}, ${tagIdx})" class="text-slate-400 hover:text-red-400 font-bold text-xs" title="Delete value">&times;</button>
+      </span>
+    `).join("");
+    
+    const card = document.createElement("div");
+    card.className = "bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between space-y-3 relative hover:border-amber-500/50 transition";
+    card.innerHTML = `
+      <button onclick="removeMatrixAxisCard(${idx})" class="absolute top-2.5 right-2.5 text-slate-500 hover:text-red-400 font-bold text-xs" title="Remove Matrix Axis">&times;</button>
+      <div>
+        <div class="text-amber-400 font-mono text-xs font-bold tracking-wider">${escapeHtml(p.name)}</div>
+        <div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(p._group)} &bull; <span class="font-mono">${escapeHtml(p.type_name)}</span></div>
+      </div>
+      
+      <div class="flex flex-wrap gap-1.5 py-1">
+        ${pillsHtml}
+        ${vals.length === 0 ? '<span class="text-[11px] text-slate-600 italic">No values defined. Type and hit Enter below.</span>' : ''}
+      </div>
+      
+      <div class="flex items-center gap-1.5">
+        <input id="axis-input-${idx}" type="text" placeholder="+ add value (press Enter)" class="w-full bg-slate-900 border border-slate-800 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 outline-none" onkeydown="handleAxisAddTag(event, ${idx})" />
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function handleAxisAddTag(event, idx) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  const input = event.target;
+  const raw = input.value.trim();
+  if (!raw) return;
+  
+  const p = PARAMS[idx];
+  let currentVals = parseCSVValues(p.values_string, p.type_name);
+  let newVal = castValue(raw, p.type_name);
+  
+  if (newVal !== null && !currentVals.includes(newVal)) {
+    currentVals.push(newVal);
+  }
+  p.values_string = currentVals.join(",");
+  
+  renderParameterTable();
+  const nextInput = $(`axis-input-${idx}`);
+  if (nextInput) nextInput.focus();
+}
+
+function removeMatrixTag(idx, tagIdx) {
+  const p = PARAMS[idx];
+  let currentVals = parseCSVValues(p.values_string, p.type_name);
+  currentVals.splice(tagIdx, 1);
+  p.values_string = currentVals.join(",");
+  renderParameterTable();
+}
+
+function removeMatrixAxisCard(idx) {
+  const p = PARAMS[idx];
+  p.role = "fixed";
+  
+  // Re-sync first stage state roles
+  UI_STAGES.forEach(stage => {
+    if (stage.roles[p.name]) {
+      stage.roles[p.name].role = "fixed";
+    }
+  });
+  
+  renderParameterTable();
+}
+
+function updateAddMatrixSelect() {
+  const sel = $("add-matrix-select");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">- choose parameter -</option>';
+  
+  PARAMS.forEach((p, idx) => {
+    if (p.role !== "matrix_axis") {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = `${p.name} (${p._group})`;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+function addMatrixAxisFromDropdown(idx) {
+  const p = PARAMS[idx];
+  if (!p) return;
+  p.role = "matrix_axis";
+  if (!p.values_string) {
+    const tName = (p.type_name || "").toLowerCase();
+    if (isBoolType(p.type_name)) {
+      p.values_string = "false,true";
+    } else if (isDateTimeType(p.type_name)) {
+      p.values_string = normalizeTimeValue(p.fixed_value) || "08:30";
+    } else {
+      p.values_string = String(p.fixed_value || "0");
+    }
+  }
+  
+  // Set in first run roles as well
+  if (!UI_STAGES[0]) {
+    UI_STAGES[0] = { id: "stage_1", label: "First run", roles: {}, selection: {} };
+  }
+  if (!UI_STAGES[0].roles) {
+    UI_STAGES[0].roles = {};
+  }
+  if (!UI_STAGES[0].roles[p.name]) {
+    UI_STAGES[0].roles[p.name] = {
+      fixed_value: p.fixed_value,
+      min: p.min || "",
+      max: p.max || "",
+      step: p.step || 1
+    };
+  }
+  UI_STAGES[0].roles[p.name].role = "matrix_axis";
+  renderParameterTable();
+}
+
+function parseCSVValues(raw, typeName) {
+  if (!raw) return [];
+  const parts = String(raw).split(",").map(p => p.trim()).filter(Boolean);
+  const t = (typeName || "").toLowerCase();
+  if (isBoolType(typeName)) {
+    return parts.map(p => p.toLowerCase() === "true" || p === "1" || p === "yes");
+  }
+  if (isNumericType(typeName)) {
+    return parts.map(p => Number(p)).filter(Number.isFinite);
+  }
+  if (isDateTimeType(typeName)) {
+    return parts.map(normalizeTimeValue).filter(Boolean);
+  }
+  return parts;
+}
+
+function castValue(raw, typeName) {
+  if (raw === "" || raw == null) return null;
+  const t = (typeName || "").toLowerCase();
+  if (isBoolType(typeName)) {
+    if (raw === true || raw === false) return raw;
+    return String(raw).toLowerCase() === "true";
+  }
+  if (isDateTimeType(typeName)) {
+    return normalizeTimeValue(raw);
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : raw;
+}
+
+async function saveAndPreviewRecipe() {
+  try {
+    const recipe = buildRecipe();
+    setStatus("Saving recipe config...");
+    
+    // Save standard session attributes including date pickers
+    await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        label: $("session-label").value.trim() || recipe.recipe_name,
+        strategy_id: recipe.strategy_id,
+        seed_template_path: selectedSeedPath(),
+        instrument: $("instrument").value.trim() || "NQ 06-26",
+        market_suffix: $("market-suffix").value.trim() || "NQ",
+        chunking: { max_combinations_per_chunk: 5000, keep_best_results: 500 },
+        oos_from_date: $("start-date").value,
+        oos_to_date: $("end-date").value,
+      }),
+    });
+    
+    // Put full recipe sequence
+    const recipeBody = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe`, {
+      method: "PUT",
+      body: JSON.stringify({ recipe }),
+    });
+    
+    // Generate plan
+    const planBody = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/plan`, { method: "POST" });
+    SAVED_RECIPE = true;
+    renderPlan(planBody.plan);
+    renderRecipeStatus(recipeBody, { state: null, run: null, events: [] });
+    
+    $("recipe-status").textContent = "Recipe compiled and Stage Plan successfully built. Go to Run tab.";
+    switchTab("plan");
+    setStatus("");
+    return recipeBody.recipe;
+  } catch (e) {
+    $("recipe-status").textContent = `Save/Compile failed: ${e.message}`;
+    setStatus(`Error: ${e.message}`);
+    console.error("saveAndPreviewRecipe failed:", e);
+    try { alert(`Save & Preview Plan failed:\n\n${e.message}`); } catch (_) {}
+    throw e;
+  }
+}
+
+function renderPlan(plan) {
+  if (!plan) {
+    $("plan-summary").innerHTML = "";
+    return;
+  }
+  const warnings = (plan.warnings || []).map((w) => `<span class="pill pill-warn">${escapeHtml(w)}</span>`).join(" ");
+  const stages = (plan.stages || []).map((s) => {
+    let templates = String(s.template_count);
+    let combos = String(s.combination_count);
+    if (s.deferred) {
+      templates = '<span class="text-slate-500 font-semibold uppercase italic tracking-wider text-[10px]">Deferred until parent selections</span>';
+      combos = '<span class="text-slate-500 font-semibold uppercase italic tracking-wider text-[10px]">Pending run</span>';
+    }
+    return `
+      <tr class="border-t border-slate-800">
+        <td class="py-2.5 pr-4 font-mono text-slate-300 font-medium">${escapeHtml(s.stage_id)}</td>
+        <td class="py-2.5 pr-4 text-slate-400 capitalize">${escapeHtml(s.stage_type.replace('_', ' '))}</td>
+        <td class="py-2.5 pr-4 text-right">${templates}</td>
+        <td class="py-2.5 text-right font-mono">${combos}</td>
+      </tr>
+    `;
+  }).join("");
+  
+  $("plan-summary").innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 p-4 bg-slate-950/60 rounded-xl border border-slate-800/80">
+      <div><span class="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Templates Count</span> <span class="font-bold text-slate-100 text-sm mt-0.5 block font-mono">${plan.template_count}</span></div>
+      <div><span class="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Estimated Backtests</span> <span class="font-bold text-slate-100 text-sm mt-0.5 block font-mono">${plan.combination_estimate.toLocaleString()}</span></div>
+      <div><span class="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Configuration Hash</span> <span class="font-mono text-slate-300 text-xs mt-1 block">${escapeHtml(plan.plan_hash || "")}</span></div>
+      <div><span class="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Compilation Warnings</span> <span class="mt-1 block">${warnings || '<span class="text-emerald-400 font-bold">none</span>'}</span></div>
+    </div>
+    <table class="w-full text-xs text-slate-400">
+      <thead>
+        <tr class="text-slate-500 text-[10px] uppercase font-bold tracking-wider text-left border-b border-slate-850">
+          <th class="pb-2">Stage</th>
+          <th class="pb-2">Type</th>
+          <th class="pb-2 text-right">Base Templates</th>
+          <th class="pb-2 text-right">Backtest Combinations</th>
+        </tr>
+      </thead>
+      <tbody>${stages}</tbody>
+    </table>
+  `;
+}
+
+async function loadRecipeStatus() {
+  try {
+    const [sessionRes, recipeRes, statusRes] = await Promise.all([
+      fetchJSON(`/api/optimizer/sessions/${SESSION_ID}`),
+      fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe`),
+      fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/status`),
+    ]);
+    if (sessionRes && sessionRes.session) {
+      SESSION_SETUP = sessionRes.session;
+      SAVED_SEED_PATH = sessionRes.session.seed_template_path || SAVED_SEED_PATH;
+    }
+    SAVED_RECIPE = !!(recipeRes && recipeRes.recipe);
+    RECIPE_BODY = recipeRes; // Store globally
+    if (recipeRes && recipeRes.recipe && recipeRes.recipe.seed_template_path) {
+      SAVED_SEED_PATH = recipeRes.recipe.seed_template_path;
+    }
+    renderPlan(recipeRes.plan);
+    renderRecipeStatus(recipeRes, statusRes);
+    
+    // If a saved recipe exists, automatically pre-select strategy and load details
+    if (SAVED_RECIPE && recipeRes.recipe.strategy_id && UI_RESTORED_RECIPE_ID !== recipeRes.recipe.recipe_id) {
+      const recipe = recipeRes.recipe;
+      if (typeof loadStrategiesPromise !== "undefined") {
+        await loadStrategiesPromise;
+      }
+      const stratSelect = $("strategy-select");
+      if (stratSelect) {
+        stratSelect.value = recipe.strategy_id;
+      }
+
+      // Load strategy details
+      await loadStrategyDetail(recipe.strategy_id);
+
+      // Select seed template if saved
+      ensureSavedSeedOption(recipe.seed_template_path || SAVED_SEED_PATH, "saved recipe seed");
+
+      restoreSavedRecipeUi(recipe);
+
+      // Re-render UI components to show the saved state
+      renderStageTabs();
+      renderParameterTable();
+      UI_RESTORED_RECIPE_ID = recipe.recipe_id;
+      maybeFocusStageFromQuery();
+    } else if (!SAVED_RECIPE && SESSION_SETUP && SESSION_SETUP.strategy_id && UI_RESTORED_RECIPE_ID !== `session:${SESSION_ID}`) {
+      // Resumed session without a saved recipe yet: half the rows on the
+      // Sessions list page have a strategy_id stored on the session
+      // document but never finished a recipe configuration. Pre-select
+      // that strategy from the session document and pre-select the saved
+      // seed so the operator can pick up where they left off instead of
+      // starting from "- pick a strategy -".
+      if (typeof loadStrategiesPromise !== "undefined") {
+        await loadStrategiesPromise;
+      }
+      const stratSelect = $("strategy-select");
+      if (stratSelect) {
+        stratSelect.value = SESSION_SETUP.strategy_id;
+      }
+      try {
+        await loadStrategyDetail(SESSION_SETUP.strategy_id);
+        if (SAVED_SEED_PATH) {
+          ensureSavedSeedOption(SAVED_SEED_PATH, "saved session seed");
+          const seedSelect = $("seed-select");
+          if (seedSelect) {
+            const match = Array.from(seedSelect.options).find((opt) => opt.value === SAVED_SEED_PATH);
+            if (match) {
+              seedSelect.value = SAVED_SEED_PATH;
+              onSeedSelected();
+            }
+          }
+        }
+      } catch (sessionRestoreErr) {
+        console.warn("Session strategy auto-restore failed:", sessionRestoreErr);
+      }
+      // Sentinel so we don't keep re-triggering this branch on every poll.
+      UI_RESTORED_RECIPE_ID = `session:${SESSION_ID}`;
+    }
+  } catch (e) {
+    $("recipe-status").textContent = `Recipe status unavailable: ${e.message}`;
+  }
+}
+
+function restoreSavedRecipeUi(recipe) {
+  const matrixEntries = Array.isArray(recipe.base_matrix) ? recipe.base_matrix : [];
+  const matrixByParam = new Map(matrixEntries.map(entry => [entry.param, entry]));
+  const savedStages = Array.isArray(recipe.stages) ? recipe.stages : [];
+  const optimizerStages = savedStages.filter(stage => stage.stage_type === "optimizer");
+  if (!optimizerStages.length || !PARAMS.length) return;
+  const finalStage = savedStages.find(stage => stage.stage_id === "final_backtest");
+  if (finalStage && finalStage.from) {
+    FINAL_SOURCE_STAGE_ID = String(finalStage.from).replace(/\.selected_rows$/, "");
+  }
+  const firstSavedStage = optimizerStages[0] || {};
+  PARAMS.forEach(p => {
+    const baseEntry = matrixByParam.get(p.name);
+    const optimized = firstSavedStage.optimize_inside_template && firstSavedStage.optimize_inside_template[p.name];
+    if (baseEntry && baseEntry.role === "matrix_axis") {
+      p.role = "matrix_axis";
+      p.values_string = (baseEntry.values || []).join(",");
+    } else if (optimized) {
+      p.role = "optimize";
+      p.min = optimized.min;
+      p.max = optimized.max;
+      p.step = optimized.step;
+    } else {
+      p.role = "fixed";
+      if (baseEntry && baseEntry.role === "fixed") {
+        p.fixed_value = baseEntry.value;
+      }
+    }
+  });
+
+  UI_STAGES = optimizerStages.map((savedStage, idx) => {
+    const stage = {
+      id: savedStage.stage_id || `stage_${idx + 1}`,
+      label: idx === 0 ? "First run" : `Refinement ${idx}`,
+      roles: {},
+      selection: {
+        group_by_param: (savedStage.selection && Array.isArray(savedStage.selection.group_by))
+          ? (savedStage.selection.group_by.find(name => {
+              if (name === "parent_candidate_id") return false;
+              if (idx === 0 && matrixEntries.some(entry => entry.param === name && entry.role === "matrix_axis")) return false;
+              return true;
+            }) || "")
+          : "",
+        fitness_metrics: (savedStage.selection && savedStage.selection.fitness_metrics) || ["profit_factor", "total_net_profit"],
+        min_trades: savedStage.selection ? savedStage.selection.min_trades : 20,
+        min_pf: savedStage.selection ? savedStage.selection.min_profit_factor : 1.2,
+        max_dd: savedStage.selection ? savedStage.selection.max_drawdown : 2500,
+        min_net: savedStage.selection ? savedStage.selection.min_net_profit : 0,
+        keep_per_group: savedStage.selection ? savedStage.selection.keep_per_group : 1,
+      }
+    };
+
+    PARAMS.forEach(p => {
+      const baseEntry = matrixByParam.get(p.name);
+      const optimized = savedStage.optimize_inside_template && savedStage.optimize_inside_template[p.name];
+      const refined = savedStage.refine_around_parent_result && savedStage.refine_around_parent_result[p.name];
+      const pinned = Array.isArray(savedStage.pin) && savedStage.pin.includes(p.name);
+      const boolParam = isBoolType(p.type_name);
+      if (idx === 0 && baseEntry && baseEntry.role === "matrix_axis") {
+        p.role = "matrix_axis";
+        p.values_string = (baseEntry.values || []).join(",");
+        stage.roles[p.name] = {
+          role: "matrix_axis",
+          fixed_value: p.fixed_value,
+          min: p.min,
+          max: p.max,
+          step: p.step
+        };
+      } else if (idx === 0 && optimized) {
+        p.role = "optimize";
+        stage.roles[p.name] = {
+          role: "optimize",
+          fixed_value: p.fixed_value,
+          min: optimized.min,
+          max: optimized.max,
+          step: optimized.step,
+        };
+      } else if (idx === 0 && baseEntry && baseEntry.role === "fixed") {
+        p.role = "fixed";
+        stage.roles[p.name] = {
+          role: "fixed",
+          fixed_value: baseEntry.value,
+          min: p.min,
+          max: p.max,
+          step: p.step,
+        };
+      } else if (idx > 0 && refined) {
+        if (boolParam) {
+          stage.roles[p.name] = {
+            role: "optimize",
+            fixed_value: p.fixed_value,
+            min: false,
+            max: true,
+            step: 1,
+          };
+        } else {
+          stage.roles[p.name] = {
+            role: "refine",
+            radius: refined.radius,
+            step: refined.step,
+            min: refined.min,
+            max: refined.max,
+          };
+        }
+      } else if (idx > 0 && pinned) {
+        stage.roles[p.name] = {
+          role: "fixed_from_parent",
+          fixed_value: "",
+        };
+      } else if (optimized) {
+        stage.roles[p.name] = {
+          role: "optimize",
+          fixed_value: p.fixed_value,
+          min: optimized.min,
+          max: optimized.max,
+          step: optimized.step,
+        };
+      } else {
+        stage.roles[p.name] = {
+          role: "fixed",
+          fixed_value: p.fixed_value,
+          min: p.min,
+          max: p.max,
+          step: p.step,
+        };
+      }
+    });
+    return stage;
+  });
+  ACTIVE_STAGE_IDX = 0;
+}
+
+function renderRecipeStatus(recipeBody, statusBody) {
+  const hasRecipe = !!(recipeBody && recipeBody.recipe);
+  $("recipe-empty").classList.toggle("hidden", hasRecipe);
+  $("recipe-panel").classList.toggle("hidden", !hasRecipe);
+  updateRecipeButtons(statusBody && statusBody.state, hasRecipe);
+  LATEST_RECIPE_STATUS = statusBody || null;
+  if (!hasRecipe) {
+    updateRecipePolling(false, {});
+    return;
+  }
+  const state = statusBody.state || {};
+  const run = statusBody.run || {};
+  const events = statusBody.events || [];
+  const progress = statusBody.progress || {};
+  const stageResults = statusBody.stage_results || {};
+  const timeline = statusBody.timeline || [];
+  const artifacts = statusBody.artifacts || {};
+  const finalReview = statusBody.final_review || {};
+  $("recipe-state").textContent = state.state || state.status || "not_started";
+  $("recipe-stage").textContent = state.current_stage_id || "";
+  $("recipe-run").textContent = run.run_id || "";
+  $("recipe-run-state").textContent = progress.run_state || run.state || "";
+  $("recipe-progress").textContent = formatRecipeProgress(progress, run);
+  
+  if (stageResults.row_count) {
+    $("recipe-stage-results").innerHTML = `
+      <div class="flex items-center justify-between flex-wrap gap-3 p-1">
+        <span>Parsed <span class="font-bold text-slate-200">${stageResults.row_count}</span> rows: <span class="font-bold text-emerald-450">${stageResults.selected_count || 0}</span> auto-selected winners / <span class="text-slate-500">${stageResults.rejected_count || 0}</span> rejected.</span>
+        <button onclick="viewActiveStageResults('${state.current_stage_id || 'stage_1'}')" class="bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-1 rounded text-[11px] font-bold transition shadow-lg shadow-amber-500/10 flex items-center gap-1 cursor-pointer select-none">
+          Review Candidates &amp; Refine &rarr;
+        </button>
+      </div>
+    `;
+  } else {
+    $("recipe-stage-results").textContent = "";
+  }
+  
+  $("recipe-stage-timeline").innerHTML = renderRecipeTimeline(timeline);
+  $("recipe-final-review").textContent = finalReview.status ? `Final review: ${finalReview.status}` : "";
+  $("recipe-artifact-links").innerHTML = renderRecipeArtifactLinks(artifacts, finalReview);
+  
+  renderConsoleEvents(events);
+  updateStepperCards(state.current_stage_id, state.state || state.status, progress);
+
+  $("recipe-last-event").textContent = events.length ? `Last event: ${events[events.length - 1].event_type || ""}` : "";
+  maybeAutoAdvanceRecipe(state, progress);
+  updateRecipePolling(hasRecipe, state);
+}
+
+function viewActiveStageResults(stageId) {
+  if (!stageId) return;
+  switchTab("results");
+  const select = $("results-stage-select");
+  if (select) {
+    select.value = stageId;
+  }
+  loadStageResults(stageId);
+}
+
+function updateRecipeButtons(state, hasRecipe) {
+  const value = (state && (state.state || state.status)) || "";
+  const pauseRequested = !!(state && state.pause_requested);
+  const active = ["generating_stage_templates", "ready_to_run_stage", "running_stage", "waiting_for_results", "ingesting_results", "selecting_candidates", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest", "reviewing_final_backtest"].includes(value);
+  const canAdvance = ["running_stage", "waiting_for_results", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest"].includes(value);
+  const canPause = ["running_stage", "waiting_for_results", "running_final_backtest"].includes(value);
+  const complete = value === "complete";
+  const paused = value === "paused" || pauseRequested;
+  
+  $("recipe-create-btn").disabled = IS_SAFETY_CAP_EXCEEDED;
+  $("recipe-start-btn").disabled = !hasRecipe || active || complete || paused || IS_SAFETY_CAP_EXCEEDED;
+  $("recipe-advance-btn").disabled = !hasRecipe || !canAdvance || complete || paused || value === "stopped";
+  $("recipe-pause-btn").disabled = !hasRecipe || !canPause || paused || complete || value === "stopped";
+  $("recipe-resume-btn").disabled = !hasRecipe || (!paused && value !== "stopped");
+  $("recipe-stop-btn").disabled = !hasRecipe || complete || value === "stopped" || !(active || paused);
+  
+  const previewBtn = $("preview-btn-panel");
+  if (previewBtn) previewBtn.disabled = IS_SAFETY_CAP_EXCEEDED;
+
+  const overrideRerun = $("override-rerun-stage");
+  if (overrideRerun) overrideRerun.disabled = !hasRecipe || !value;
+  const overrideSkip = $("override-skip-stage");
+  if (overrideSkip) overrideSkip.disabled = !hasRecipe || !value || complete || value === "stopped";
+}
+
+function updateStepperCards(currentStageId, stateValue, progress) {
+  const stages = ['run-stage-1', 'run-stage-2', 'run-stage-3', 'run-stage-4'];
+  stages.forEach(id => {
+    const card = $(id);
+    if (!card) return;
+    card.style.border = '1px solid rgba(51, 65, 85, 0.4)';
+    card.style.transform = 'scale(1)';
+    card.style.boxShadow = 'none';
+    const badge = card.querySelector('.stage-badge');
+    if (badge) {
+      badge.textContent = 'Pending';
+      badge.className = 'stage-badge absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] bg-slate-900 text-slate-500 font-semibold uppercase';
+    }
+  });
+
+  if (!currentStageId) return;
+
+  let activeIndex = -1;
+  if (currentStageId === 'stage_1') {
+    activeIndex = 0;
+  } else if (currentStageId.startsWith('stage_')) {
+    // Stage 2 or any refinement falls into card 2 or 3
+    const num = parseInt(currentStageId.replace('stage_', ''));
+    if (num === 2) activeIndex = 1;
+    else activeIndex = 2; // Any higher refinement represents Stage 3 daily risk/other refinements
+  } else if (currentStageId === 'final_backtest') {
+    activeIndex = 3;
+  }
+
+  for (let i = 0; i < activeIndex; i++) {
+    const card = $(stages[i]);
+    if (!card) continue;
+    const badge = card.querySelector('.stage-badge');
+    if (badge) {
+      badge.textContent = 'Completed';
+      badge.className = 'stage-badge absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 font-semibold uppercase';
+    }
+  }
+
+  if (activeIndex !== -1) {
+    const activeCard = $(stages[activeIndex]);
+    if (activeCard) {
+      const isComplete = progress && progress.complete;
+      const running = ['generating_stage_templates', 'ready_to_run_stage', 'running_stage', 'waiting_for_results', 'running_final_backtest'].includes(stateValue);
+      
+      activeCard.style.transform = 'scale(1.02)';
+      const badge = activeCard.querySelector('.stage-badge');
+      if (badge) {
+        if (isComplete) {
+          activeCard.style.border = '1px solid #10b981';
+          activeCard.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.25)';
+          badge.textContent = 'Completed';
+          badge.className = 'stage-badge absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 font-semibold uppercase';
+        } else {
+          activeCard.style.border = '1px solid #f59e0b';
+          activeCard.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.25)';
+          badge.textContent = running ? 'Running' : 'Active';
+          badge.className = 'stage-badge absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] bg-amber-950/40 text-amber-400 border border-amber-500/30 font-semibold uppercase animate-pulse';
+        }
+      }
+    }
+  }
+
+  if (stateValue === 'complete') {
+    stages.forEach(id => {
+      const card = $(id);
+      if (!card) return;
+      const badge = card.querySelector('.stage-badge');
+      if (badge) {
+        badge.textContent = 'Completed';
+        badge.className = 'stage-badge absolute top-2 right-2 px-1.5 py-0.5 rounded-full text-[9px] bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 font-semibold uppercase';
+      }
+    });
+  }
+}
+
+function renderConsoleEvents(events) {
+  const container = $("recipe-events");
+  if (!container) return;
+
+  const sortedEvents = [...events].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  container.innerHTML = sortedEvents.map(e => {
+    const rawTime = e.timestamp || "";
+    let timeStr = "";
+    if (rawTime.includes("T")) {
+      timeStr = rawTime.split("T")[1].substring(0, 8);
+    } else if (rawTime.length >= 19) {
+      timeStr = rawTime.substring(11, 19);
+    } else {
+      timeStr = rawTime;
+    }
+
+    let badgeText = "INFO";
+    let badgeClass = "bg-blue-950/40 text-blue-400 border border-blue-500/30";
+    const type = (e.event_type || "").toLowerCase();
+    const msg = (e.message || "").toLowerCase();
+
+    if (type.includes("fail") || type.includes("error") || msg.includes("failed") || msg.includes("error")) {
+      badgeText = "FAILURE";
+      badgeClass = "bg-red-950/40 text-red-400 border border-red-500/30";
+    } else if (type.includes("warn") || msg.includes("warn")) {
+      badgeText = "WARNING";
+      badgeClass = "bg-yellow-950/40 text-yellow-400 border border-yellow-500/30";
+    } else if (type.includes("complete") || type.includes("success") || msg.includes("complete") || msg.includes("success")) {
+      badgeText = "SUCCESS";
+      badgeClass = "bg-emerald-950/40 text-emerald-400 border border-emerald-500/30";
+    }
+
+    return `
+      <div class="flex items-start gap-2 font-mono text-[11px] leading-relaxed py-0.5 hover:bg-slate-900/40 rounded px-1">
+        <span class="text-slate-600 select-none">${escapeHtml(timeStr)}</span>
+        <span class="px-1 py-0.1 rounded text-[9px] font-bold ${badgeClass} uppercase tracking-wider">${badgeText}</span>
+        <span class="text-slate-300 font-medium">${escapeHtml(e.message || "")}</span>
+      </div>
+    `;
+  }).join("");
+
+  container.scrollTop = container.scrollHeight;
+}
+
+async function triggerOverride(action) {
+  if (!confirm(`Are you sure you want to perform override: '${action}'?`)) return;
+  try {
+    $("recipe-status").textContent = `Triggering override '${action}'...`;
+    await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/override`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    $("recipe-status").textContent = `Override executed successfully.`;
+    loadRecipeStatus();
+  } catch (e) {
+    $("recipe-status").textContent = `Override failed: ${e.message}`;
+  }
+}
+
+function formatRecipeProgress(progress, run) {
+  const done = progress.completed_templates || 0;
+  const total = progress.total_templates || run.total_templates || 0;
+  if (!total) return "";
+  const current = progress.current_template ? ` / ${progress.current_template}` : "";
+  const source = progress.source === "heartbeat" ? " live" : "";
+  return `${done}/${total} (${progress.percent || 0}%)${source}${current}`;
+}
+
+function renderRecipeTimeline(timeline) {
+  return (timeline || []).map((item) => {
+    const state = item.state || item.status || "pending";
+    const total = item.total_templates || 0;
+    const progress = total ? ` ${item.completed_templates || 0}/${total}` : "";
+    return `<span class="pill ${state === "complete" ? "pill-opt" : state === "failed" ? "pill-warn" : "pill-fixed"}">${escapeHtml(item.stage_id || "")}: ${escapeHtml(state)}${progress}</span>`;
+  }).join("");
+}
+
+function renderRecipeArtifactLinks(artifacts, review) {
+  const links = [];
+  for (const [label, name] of Object.entries(artifacts || {})) {
+    if (!name) continue;
+    const value = String(name);
+    const isLocalPath = /^[A-Za-z]:[\\/]/.test(value) || value.includes("\\");
+    if (isLocalPath) {
+      links.push(`<span class="text-slate-500 pathish">${escapeHtml(label)}: ${escapeHtml(value)}</span>`);
+      continue;
+    }
+    const href = value.startsWith("/")
+      ? value
+      : `/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/recipe/artifacts/${encodeURIComponent(value)}`;
+    links.push(`<a class="text-amber-300 hover:underline" target="_blank" rel="noopener" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`);
+  }
+  if (review && review.summary_url) {
+    links.push(`<a class="text-amber-300 hover:underline" target="_blank" rel="noopener" href="${escapeHtml(review.summary_url)}">final review</a>`);
+  }
+  if (review && review.decision_url) {
+    links.push(`<a class="text-amber-300 hover:underline" href="${escapeHtml(review.decision_url)}">decision dashboard</a>`);
+  }
+  return links.join("");
+}
+
+function shouldPollRecipe(state) {
+  const value = (state && (state.state || state.status)) || "";
+  return ["generating_stage_templates", "ready_to_run_stage", "running_stage", "waiting_for_results", "ingesting_results", "selecting_candidates", "generating_child_stage", "ready_for_final_backtest", "running_final_backtest", "reviewing_final_backtest"].includes(value);
+}
+
+function updateRecipePolling(hasRecipe, state) {
+  if (hasRecipe && shouldPollRecipe(state)) {
+    if (!RECIPE_POLL_TIMER) RECIPE_POLL_TIMER = setInterval(() => loadRecipeStatus().catch(() => {}), 4000);
+    return;
+  }
+  if (RECIPE_POLL_TIMER) {
+    clearInterval(RECIPE_POLL_TIMER);
+    RECIPE_POLL_TIMER = null;
+  }
+}
+
+function maybeAutoAdvanceRecipe(state, progress) {
+  const autoAdvanceEl = $("recipe-auto-advance");
+  if (!autoAdvanceEl || !autoAdvanceEl.checked || AUTO_ADVANCING) return;
+  const value = (state && (state.state || state.status)) || "";
+
+  // States that need NT to finish (progress.complete) before we advance
+  const waitingForNT = ["running_stage", "waiting_for_results", "running_final_backtest"];
+  // States that are instant hand-off transitions — advance immediately, no wait needed
+  const instantTransition = ["generating_child_stage", "ready_for_final_backtest"];
+
+  if (waitingForNT.includes(value)) {
+    if (!progress || !progress.complete) return;
+  } else if (!instantTransition.includes(value)) {
+    return; // Not an auto-advanceable state
+  }
+
+  AUTO_ADVANCING = true;
+  recipeAction("advance").finally(() => { AUTO_ADVANCING = false; });
+}
+
+async function recipeAction(action) {
+  try {
+    if ((action === "start" || action === "advance") && !SAVED_RECIPE) {
+      await saveAndPreviewRecipe();
+    }
+    $("recipe-status").textContent = `Recipe ${action} starting...`;
+    const status = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/${action}`, { method: "POST" });
+    renderRecipeStatus({ recipe: true }, status);
+    $("recipe-status").textContent = `Recipe ${action} completed.`;
+  } catch (e) {
+    $("recipe-status").textContent = `Recipe ${action} failed: ${e.message}`;
+    loadRecipeStatus();
+  }
+}
+
+// ----------------------------------------------------
+// Results Tab Interactive Controller
+// ----------------------------------------------------
+async function populateResultsStageSelect() {
+  const select = $("results-stage-select");
+  const previousValue = select.value;
+  select.innerHTML = '<option value="">- select stage -</option>';
+  let currentStageId = "";
+  let currentState = "";
+  try {
+    const status = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/status?ts=${Date.now()}`);
+    currentStageId = status && status.state ? (status.state.current_stage_id || "") : "";
+    currentState = status && status.state ? (status.state.state || status.state.status || "") : "";
+  } catch (_) {
+    currentStageId = "";
+    currentState = "";
+  }
+  
+  // Populate dropdown with all created stages dynamically
+  UI_STAGES.forEach(stage => {
+    const opt = document.createElement("option");
+    opt.value = stage.id;
+    const markers = [];
+    if (stage.id === currentStageId) markers.push(currentState === "waiting_for_results" ? "ready to review" : "current");
+    opt.textContent = `${stage.label} (${stage.id})${markers.length ? " - " + markers.join(", ") : ""}`;
+    select.appendChild(opt);
+  });
+  
+  // Add Final Backtests options
+  const optFinal = document.createElement("option");
+  optFinal.value = "final_backtest";
+  optFinal.textContent = `Final Fixed Backtests (final_backtest)${currentStageId === "final_backtest" ? " - current" : ""}`;
+  select.appendChild(optFinal);
+
+  if (previousValue && Array.from(select.options).some((opt) => opt.value === previousValue)) {
+    select.value = previousValue;
+  } else if (currentStageId && Array.from(select.options).some((opt) => opt.value === currentStageId)) {
+    select.value = currentStageId;
+  }
+}
+
+async function loadStageResults(stageId) {
+  CURRENT_RESULTS_STAGE_ID = stageId || "";
+  updateFinalWorkflowActions(stageId);
+  if (!stageId) {
+    LOADED_RESULTS_RAW = [];
+    FILTERED_RESULTS = [];
+    RESULT_DIMENSIONS = [];
+    RESULT_DIMENSION_FILTERS = {};
+    $("results-table-body").innerHTML = '<tr><td colspan="10" class="text-slate-500 py-10 text-center">Select an execution stage in the dropdown above to load data.</td></tr>';
+    $("results-count-status").textContent = "No results loaded. Pick a stage above.";
+    SELECTED_CANDIDATE_IDS.clear();
+    updateSelectedCountDisplay();
+    $("winner-showcase-container").classList.add("hidden");
+    $("ai-refinement-card").classList.add("hidden");
+    $("selection-actions-container").classList.add("hidden");
+    $("final-workflow-actions").classList.add("hidden");
+    $("results-drilldown-container").classList.add("hidden");
+    return;
+  }
+  
+  $("results-table-body").innerHTML = '<tr><td colspan="10" class="text-slate-400 py-10 text-center animate-pulse font-mono">Fetching backtest candidate CSVs...</td></tr>';
+  $("results-count-status").textContent = `Loading results for ${stageId}...`;
+  
+  SELECTED_CANDIDATE_IDS.clear(); // Clear selections on stage load
+  updateSelectedCountDisplay();
+  
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/stages/${stageId}/results`);
+    const selectedRows = Array.isArray(data.selected_rows) ? data.selected_rows : [];
+    const rejectedRows = Array.isArray(data.rejected_rows) ? data.rejected_rows : [];
+    LOADED_RESULTS_RAW = (selectedRows.length || rejectedRows.length)
+      ? selectedRows.concat(rejectedRows)
+      : (Array.isArray(data.all_rows) ? data.all_rows : (Array.isArray(data.rows) ? data.rows : []));
+    
+    // Sort initially by portfolio score descending
+    LOADED_RESULTS_RAW.sort((a, b) => (b.portfolio_score ?? 0) - (a.portfolio_score ?? 0));
+    
+    LOADED_RESULTS_RAW.forEach((row, index) => {
+      row.rank = index + 1; // Inject ranking
+      if (row.selection_status === "selected") {
+        SELECTED_CANDIDATE_IDS.add(row.candidate_id);
+      }
+    });
+    
+    updateSelectedCountDisplay();
+    $("selection-actions-container").classList.remove("hidden");
+    updateFinalWorkflowActions(stageId);
+    
+    populateBucketFilterDropdown();
+    buildResultsDrilldown(stageId);
+    applyResultsClientFilters();
+  } catch (e) {
+    $("results-table-body").innerHTML = `<tr><td colspan="10" class="text-red-400 font-mono py-10 text-center border border-red-900 bg-red-950/20 rounded-lg">Failed to retrieve results: ${escapeHtml(e.message)}. Stage output may not yet be completed.</td></tr>`;
+    $("results-count-status").textContent = stageId === "final_backtest"
+      ? "Final results are not loaded yet; final workflow links are still available."
+      : "Failed to load.";
+    $("winner-showcase-container").classList.add("hidden");
+    $("ai-refinement-card").classList.add("hidden");
+    $("selection-actions-container").classList.add("hidden");
+    updateFinalWorkflowActions(stageId, {error: e.message});
+    $("results-drilldown-container").classList.add("hidden");
+  }
+}
+
+function updateFinalWorkflowActions(stageId, meta = {}) {
+  const panel = $("final-workflow-actions");
+  if (!panel) return;
+  // Show the final-workflow links whenever the recipe has reached or
+  // produced final-backtest artifacts — not just while the operator is
+  // viewing the final_backtest stage. Otherwise after a recipe completes,
+  // bouncing back to a stage_1 view hides every link to the reports the
+  // pipeline just generated.
+  const recipeState = (LATEST_RECIPE_STATUS && LATEST_RECIPE_STATUS.state && (LATEST_RECIPE_STATUS.state.state || LATEST_RECIPE_STATUS.state.status)) || "";
+  const currentStageId = (LATEST_RECIPE_STATUS && LATEST_RECIPE_STATUS.state && LATEST_RECIPE_STATUS.state.current_stage_id) || "";
+  const finalReached = (
+    stageId === "final_backtest"
+    || currentStageId === "final_backtest"
+    || ["ready_for_final_backtest", "running_final_backtest", "reviewing_final_backtest", "complete"].includes(recipeState)
+  );
+  if (!finalReached) {
+    panel.classList.add("hidden");
+    return;
+  }
+  $("final-decision-dashboard-link").href = `/optimizer/sessions/${SESSION_ID}/decision`;
+  $("final-session-detail-link").href = `/optimizer/sessions/${SESSION_ID}`;
+  $("final-session-report-link").href = `/optimizer/sessions/${SESSION_ID}/candidate-report`;
+  $("final-template-list-link").href = `/optimizer/sessions/${SESSION_ID}/templates/final`;
+  $("final-template-download-link").href = `/optimizer/sessions/${SESSION_ID}/templates/final.zip`;
+  const note = $("final-workflow-note");
+  if (note) {
+    if (meta.error) {
+      note.textContent = `Final results are not loaded yet (${meta.error}). The dashboard, existing reports, and template folder/list links still work for previously-built artifacts in this session.`;
+    } else if (stageId !== "final_backtest") {
+      note.textContent = "Viewing an intermediate stage — these links open the final-backtest artifacts already built for this session.";
+    } else {
+      note.textContent = "Use the decision dashboard to rename final templates for NinjaTrader, build Python reports, compare winners, and decide whether to deploy or refine.";
+    }
+  }
+  panel.classList.remove("hidden");
+}
+
+async function buildFinalSessionReport() {
+  const btn = $("final-build-session-report-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Building...";
+  }
+  setStatus("Building final all-template report...");
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/candidate-session-report`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: "{}",
+    });
+    const result = data.result || {};
+    if (!result.html_path || Number(result.package_count || 0) <= 0) {
+      const notes = Array.isArray(result.notes) && result.notes.length
+        ? ` ${result.notes.join(" ")}`
+        : "";
+      setStatus(`No final report was generated because there are no final Backtest candidate packages.${notes}`);
+      return;
+    }
+    const link = $("final-session-report-link");
+    if (link) {
+      link.href = `/optimizer/sessions/${SESSION_ID}/candidate-report`;
+      link.classList.remove("hidden");
+    }
+    setStatus(`Built final report from ${result.package_count || 0} candidate package(s).`);
+  } catch (e) {
+    setStatus(`Final report build failed: ${e.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Build final report";
+    }
+  }
+}
+
+function buildResultsDrilldown(stageId) {
+  RESULT_DIMENSION_FILTERS = {};
+  const container = $("results-drilldown-container");
+  const grid = $("results-drilldown-grid");
+  if (!container || !grid) return;
+
+  RESULT_DIMENSIONS = inferResultDimensions(stageId);
+  if (!RESULT_DIMENSIONS.length) {
+    container.classList.add("hidden");
+    grid.innerHTML = "";
+    return;
+  }
+
+  container.classList.remove("hidden");
+  renderResultsDrilldownControls();
+}
+
+function inferResultDimensions(stageId) {
+  const activeStage = UI_STAGES.find(s => s.id === stageId) || UI_STAGES[0] || {};
+  const recipeStage = recipeStageFromBody(stageId);
+  const configured = [];
+  const recipeMatrix = RECIPE_BODY && RECIPE_BODY.recipe && Array.isArray(RECIPE_BODY.recipe.base_matrix)
+    ? RECIPE_BODY.recipe.base_matrix
+    : [];
+  recipeMatrix
+    .filter((item) => item && item.role === "matrix_axis" && item.param)
+    .forEach((item) => configured.push(String(item.param)));
+  PARAMS.filter(p => p.role === "matrix_axis").forEach((p) => configured.push(p.name));
+  const recipeGroupBy = recipeStage && recipeStage.selection && Array.isArray(recipeStage.selection.group_by)
+    ? recipeStage.selection.group_by
+    : [];
+  recipeGroupBy.forEach((name) => configured.push(String(name)));
+  if (activeStage.selection && activeStage.selection.group_by_param) configured.push(activeStage.selection.group_by_param);
+  PARAMS.filter((p) => {
+    const state = activeStage.roles ? activeStage.roles[p.name] : null;
+    return state && (state.role === "optimize" || state.role === "refine");
+  })
+    .sort((a, b) => optimizedResultDimensionPriority(a.name) - optimizedResultDimensionPriority(b.name))
+    .forEach((p) => configured.push(p.name));
+
+  const presentNames = resultPresentDimensionNames();
+  const preferred = presentNames
+    .filter((name) => /time|start|session|slice/i.test(name))
+    .concat(presentNames.filter((name) => /^reverse$/i.test(name) || /reverse/i.test(name)))
+    .concat(presentNames.filter((name) => /slow|averageslow|slowma/i.test(name)));
+  const raw = configured.concat(preferred);
+  const dimensions = [];
+  raw.forEach((name) => {
+    const resolved = resolveResultDimensionName(name);
+    if (!resolved) return;
+    if (dimensions.some((dim) => dim.key === resolved.key)) return;
+    if (dimensions.some((dim) => dim.label === resolved.label && resolved.label === "Time Slice")) return;
+    dimensions.push(resolved);
+  });
+
+  if (dimensions.length < 3) {
+    presentNames.forEach((name) => {
+      if (dimensions.length >= 3) return;
+      const resolved = resolveResultDimensionName(name);
+      if (resolved && !dimensions.some((dim) => dim.key === resolved.key) && !dimensions.some((dim) => dim.label === resolved.label && resolved.label === "Time Slice")) dimensions.push(resolved);
+    });
+  }
+  return dimensions.slice(0, 3);
+}
+
+function resultPresentDimensionNames() {
+  const names = new Set();
+  LOADED_RESULTS_RAW.forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      if (key.startsWith("param_")) names.add(key.replace(/^param_/, ""));
+      else if (PARAMS.some((p) => canonicalResultName(p.name) === canonicalResultName(key))) names.add(key);
+    });
+  });
+  return Array.from(names);
+}
+
+function optimizedResultDimensionPriority(name) {
+  const text = String(name || "");
+  if (/slow|averageslow|slowma/i.test(text)) return 0;
+  if (/fast|averagefast|fastma/i.test(text)) return 1;
+  if (/stop|target|tp|drawdown|risk/i.test(text)) return 2;
+  return 3;
+}
+
+function recipeStageFromBody(stageId) {
+  const stages = RECIPE_BODY && RECIPE_BODY.recipe && Array.isArray(RECIPE_BODY.recipe.stages)
+    ? RECIPE_BODY.recipe.stages
+    : [];
+  return stages.find((stage) => stage && stage.stage_id === stageId) || null;
+}
+
+function resolveResultDimensionName(name) {
+  const canonical = canonicalResultName(name);
+  for (const row of LOADED_RESULTS_RAW) {
+    const direct = Object.keys(row || {}).find((key) => canonicalResultName(key) === canonical);
+    if (direct) return { key: direct, label: resultDimensionLabel(name, direct) };
+    const param = Object.keys(row || {}).find((key) => key.startsWith("param_") && canonicalResultName(key.replace(/^param_/, "")) === canonical);
+    if (param) return { key: param, label: resultDimensionLabel(name, param) };
+  }
+  return null;
+}
+
+function canonicalResultName(value) {
+  const normalized = String(value || "")
+    .replace(/^param_/, "")
+    .replace(/[_\s()]+/g, "")
+    .toLowerCase();
+  const aliases = {
+    starttimehh: "starttimeh",
+    starttimemm: "starttimem",
+    durationtimehh: "durationtimeh",
+    durationtimemm: "durationtimem",
+    usemaxstop: "usemaxstop",
+    usemaxtp: "usemaxtp",
+    usekill: "usekill",
+    killprofitstop: "killprofitstop",
+    killlossstop: "killlossstop",
+    showcurrentpnl: "showcurrentpnl",
+    showstatsbox: "showstatsbox",
+    imageopacity: "iopacity",
+    cornerimage: "filename",
+    backgroundimage: "filename2",
+    botname: "botname",
+  };
+  return aliases[normalized] || normalized;
+}
+
+function resultDimensionLabel(configuredName, resolvedKey) {
+  const raw = String(configuredName || resolvedKey || "").replace(/^param_/, "");
+  if (/starttimeh|starttime|time/i.test(raw)) return "Time Slice";
+  if (/reverse/i.test(raw)) return "Reverse";
+  if (/averageslow|slowma|slow/i.test(raw)) return "Slow MA";
+  return raw;
+}
+
+function renderResultsDrilldownControls() {
+  const grid = $("results-drilldown-grid");
+  if (!grid) return;
+
+  grid.innerHTML = RESULT_DIMENSIONS.map((dim, idx) => {
+    const options = resultDimensionOptions(dim, idx);
+    const selected = RESULT_DIMENSION_FILTERS[dim.key] ?? "";
+    const disabled = idx > 0 && RESULT_DIMENSIONS.slice(0, idx).some((prev) => !RESULT_DIMENSION_FILTERS[prev.key]);
+    const optionHtml = options.map((value) => {
+      const label = formatResultCellValue(dim.key, value);
+      return `<option value="${escapeHtml(value)}" ${String(selected) === String(value) ? "selected" : ""}>${label}</option>`;
+    }).join("");
+    return `
+      <div>
+        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">${idx + 1}. ${escapeHtml(dim.label)}</label>
+        <select class="w-full bg-slate-900 text-slate-200" ${disabled ? "disabled" : ""} onchange="setResultsDrilldownFilter('${escapeHtml(dim.key)}', this.value)">
+          <option value="">All ${escapeHtml(dim.label)}</option>
+          ${optionHtml}
+        </select>
+      </div>
+    `;
+  }).join("");
+}
+
+function resultDimensionOptions(dim, idx) {
+  const prior = RESULT_DIMENSIONS.slice(0, idx);
+  const rows = LOADED_RESULTS_RAW.filter((row) => prior.every((prev) => {
+    const selected = RESULT_DIMENSION_FILTERS[prev.key];
+    return !selected || String(resultDimensionValue(row, prev.key)) === String(selected);
+  }));
+  const values = Array.from(new Set(rows.map((row) => resultDimensionValue(row, dim.key)).filter((value) => value !== null && value !== undefined && value !== "")));
+  return values.sort(compareResultDimensionValues);
+}
+
+function compareResultDimensionValues(a, b) {
+  const numA = Number(a);
+  const numB = Number(b);
+  if (Number.isFinite(numA) && Number.isFinite(numB)) return numA - numB;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function resultDimensionValue(row, key) {
+  if (!row) return "";
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  const canonical = canonicalResultName(key);
+  const match = Object.keys(row).find((rowKey) => canonicalResultName(rowKey) === canonical || (rowKey.startsWith("param_") && canonicalResultName(rowKey.replace(/^param_/, "")) === canonical));
+  return match ? row[match] : "";
+}
+
+function setResultsDrilldownFilter(key, value) {
+  if (value === "") delete RESULT_DIMENSION_FILTERS[key];
+  else RESULT_DIMENSION_FILTERS[key] = value;
+  const idx = RESULT_DIMENSIONS.findIndex((dim) => dim.key === key);
+  RESULT_DIMENSIONS.slice(idx + 1).forEach((dim) => delete RESULT_DIMENSION_FILTERS[dim.key]);
+  renderResultsDrilldownControls();
+  applyResultsClientFilters();
+}
+
+function clearResultsDrilldown() {
+  RESULT_DIMENSION_FILTERS = {};
+  renderResultsDrilldownControls();
+  applyResultsClientFilters();
+}
+
+function renderResultsSliceSummary() {
+  const el = $("results-slice-summary");
+  if (!el) return;
+  const parts = RESULT_DIMENSIONS
+    .filter((dim) => RESULT_DIMENSION_FILTERS[dim.key] !== undefined)
+    .map((dim) => `${dim.label}=${formatResultCellValue(dim.key, RESULT_DIMENSION_FILTERS[dim.key])}`);
+  const selectedText = parts.length ? parts.join(" / ") : "all slices";
+  const selectedInSlice = FILTERED_RESULTS.filter((row) => SELECTED_CANDIDATE_IDS.has(row.candidate_id)).length;
+  el.innerHTML = `Viewing ${FILTERED_RESULTS.length} of ${LOADED_RESULTS_RAW.length} rows for ${selectedText}. ${selectedInSlice} selected in this slice.`;
+}
+
+function renderWinnerShowcase() {
+  const container = $("winner-showcase-container");
+  const grid = $("winner-showcase-grid");
+  if (!container || !grid) return;
+  
+  // Keep the showcase aligned with the actual promoted/pass rows.
+  const sourceRows = FILTERED_RESULTS.filter((row) => SELECTED_CANDIDATE_IDS.has(row.candidate_id));
+  const topWinners = sourceRows.slice(0, 3);
+  if (topWinners.length === 0) {
+    container.classList.add("hidden");
+    return;
+  }
+  
+  container.classList.remove("hidden");
+  grid.innerHTML = "";
+  
+  topWinners.forEach((row, idx) => {
+    const pf = row.profit_factor != null ? Number(row.profit_factor).toFixed(2) : "0.00";
+    const net = row.total_net_profit != null ? "$" + Number(row.total_net_profit).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "$0";
+    const dd = row.drawdown_abs != null ? "$" + Number(row.drawdown_abs).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "$0";
+    const trades = row.total_trades ?? 0;
+    const score = row.portfolio_score != null ? Number(row.portfolio_score).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0";
+    
+    let borderClass = "border-slate-800 bg-slate-950/40";
+    let badgeClass = "bg-slate-900 text-slate-400 border border-slate-700";
+    let badgeText = `Rank ${idx + 1}`;
+    
+    if (idx === 0) {
+      borderClass = "border-amber-500/40 bg-amber-500/5 shadow-lg shadow-amber-500/5";
+      badgeClass = "bg-amber-950/40 text-amber-400 border border-amber-500/30";
+      badgeText = "🏆 Best Candidate";
+    } else if (idx === 1) {
+      borderClass = "border-slate-400/30 bg-slate-800/10";
+      badgeClass = "bg-slate-900 text-slate-300 border border-slate-700";
+      badgeText = "🥈 Runner Up";
+    } else if (idx === 2) {
+      borderClass = "border-orange-600/20 bg-orange-950/5";
+      badgeClass = "bg-orange-950/30 text-orange-400 border border-orange-700/30";
+      badgeText = "🥉 Rank 3";
+    }
+    
+    // Find dynamic parameter attributes (prefixed with param_)
+    const paramDetails = [];
+    Object.entries(row).forEach(([key, val]) => {
+      if (key.startsWith("param_")) {
+        const pName = key.replace("param_", "");
+        paramDetails.push(`
+          <div class="flex justify-between items-center text-[10px] border-b border-slate-900 py-1">
+            <span class="text-slate-500 font-mono">${pName}</span>
+            <span class="text-slate-300 font-mono font-semibold">${formatResultCellValue(key, val)}</span>
+          </div>
+        `);
+      }
+    });
+    
+    const card = document.createElement("div");
+    card.className = `rounded-xl p-4 flex flex-col justify-between border ${borderClass} transition-all duration-300 hover:scale-[1.02] relative`;
+    card.innerHTML = `
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="pill py-0.5 px-2 text-[9px] font-bold uppercase tracking-wider ${badgeClass}">${badgeText}</span>
+          <span class="text-[10px] font-mono text-slate-500 font-semibold">${escapeHtml(row.optimizer_target || "MaxProfitFactor")}</span>
+        </div>
+        <div class="font-mono text-xs font-bold text-slate-200 mb-3 truncate" title="${row.candidate_id}">${escapeHtml(row.candidate_id)}</div>
+        
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-slate-950/80 rounded border border-slate-900/60 p-2 text-center">
+            <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Profit Factor</div>
+            <div class="text-sm font-bold text-amber-400 font-mono mt-0.5">${pf}</div>
+          </div>
+          <div class="bg-slate-950/80 rounded border border-slate-900/60 p-2 text-center">
+            <div class="text-[9px] uppercase tracking-wider text-slate-500 font-bold">Net Profit</div>
+            <div class="text-sm font-bold text-emerald-400 font-mono mt-0.5">${net}</div>
+          </div>
+        </div>
+        
+        <div class="text-[9px] uppercase font-bold text-slate-500 tracking-wider mb-1.5 select-none">Parameter Config</div>
+        <div class="bg-slate-950/60 rounded border border-slate-900 p-2.5 max-h-36 overflow-y-auto">
+          ${paramDetails.length > 0 ? paramDetails.join("") : '<div class="text-slate-600 text-center py-2 italic">No parameter config.</div>'}
+        </div>
+      </div>
+      
+      <label class="flex items-center gap-2 mt-4 pt-3 border-t border-slate-900/60 cursor-pointer select-none">
+        <input type="checkbox" class="candidate-select-checkbox accent-amber-500 cursor-pointer" data-candidate-id="${row.candidate_id}" ${SELECTED_CANDIDATE_IDS.has(row.candidate_id) ? 'checked' : ''} onchange="toggleCandidateSelection('${row.candidate_id}', this.checked); syncCheckboxStates('${row.candidate_id}', this.checked)" />
+        <span class="text-[11px] font-bold text-slate-300">Keep Candidate</span>
+      </label>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function syncCheckboxStates(candidateId, isChecked) {
+  // Sync checkbox in table
+  const tableCb = document.querySelector(`.table-candidate-checkbox[data-candidate-id="${candidateId}"]`);
+  if (tableCb) tableCb.checked = isChecked;
+}
+
+let SUGGESTED_REFINEMENT_PARAMS = {}; // Global suggestions store
+
+function renderSuggestedRefinements(stageId) {
+  const card = $("ai-refinement-card");
+  const body = $("ai-suggestion-body");
+  if (!card || !body) return;
+  
+  SUGGESTED_REFINEMENT_PARAMS = {};
+  
+  if (stageId === "final_backtest") {
+    card.classList.add("hidden");
+    return;
+  }
+  
+  const activeStage = UI_STAGES.find(s => s.id === stageId) || UI_STAGES[0];
+  const sourceRows = FILTERED_RESULTS;
+  const topWinners = sourceRows.slice(0, 3);
+  if (topWinners.length === 0) {
+    card.classList.add("hidden");
+    return;
+  }
+  
+  // Find parameters optimized/refined in current stage
+  const optParams = [];
+  Object.entries(activeStage.roles).forEach(([pName, pState]) => {
+    if (pState.role === "optimize" || pState.role === "refine") {
+      optParams.push({ name: pName, state: pState });
+    }
+  });
+  
+  if (optParams.length === 0) {
+    card.classList.add("hidden");
+    return;
+  }
+  
+  card.classList.remove("hidden");
+  body.innerHTML = "";
+  
+  optParams.forEach(({ name, state }) => {
+    const matchingParam = PARAMS.find(p => p.name === name);
+    if (!matchingParam) return;
+    
+    const typeName = matchingParam.type_name;
+    if (isBoolType(typeName) || isDateTimeType(typeName)) return;
+    const isDateTime = isDateTimeType(typeName);
+    const bestWinner = topWinners[0];
+    const bestVal = castValue(bestWinner[`param_${name}`], typeName);
+    
+    // Check for boundary winner
+    let isBoundary = false;
+    let boundaryDir = "";
+    if (state.role === "optimize") {
+      const minBound = castValue(state.min, typeName);
+      const maxBound = castValue(state.max, typeName);
+      if (Number(bestVal) === Number(minBound)) {
+        isBoundary = true;
+        boundaryDir = "lower";
+      } else if (Number(bestVal) === Number(maxBound)) {
+        isBoundary = true;
+        boundaryDir = "upper";
+      }
+    }
+    
+    // Calculate recommendation radius & step
+    let radius = defaultRadius(name);
+    let step = defaultIncrement(typeName);
+    
+    // Widen radius if boundary was hit, to sweep further
+    let recMin = isBoundary && boundaryDir === "lower"
+      ? (isDateTime ? shiftTimeValue(bestVal, -2 * radius) : Number(bestVal) - 2 * radius)
+      : (isDateTime ? shiftTimeValue(bestVal, -radius) : Number(bestVal) - radius);
+      
+    let recMax = isBoundary && boundaryDir === "upper"
+      ? (isDateTime ? shiftTimeValue(bestVal, 2 * radius) : Number(bestVal) + 2 * radius)
+      : (isDateTime ? shiftTimeValue(bestVal, radius) : Number(bestVal) + radius);
+      
+    let recStep = isDateTime ? step : step / 2;
+    if (!isDateTime && matchingParam.type_name.toLowerCase() === "int") {
+      recStep = Math.max(1, Math.round(recStep));
+      recMin = Math.round(recMin);
+      recMax = Math.round(recMax);
+    }
+    
+    // Clamp to absolute catalog bounds if present
+    if (matchingParam.min !== "" && !isDateTime) {
+      recMin = Math.max(Number(matchingParam.min), recMin);
+    }
+    if (matchingParam.max !== "" && !isDateTime) {
+      recMax = Math.min(Number(matchingParam.max), recMax);
+    }
+    
+    SUGGESTED_REFINEMENT_PARAMS[name] = {
+      role: "refine",
+      radius: radius,
+      step: recStep,
+      min: recMin,
+      max: recMax
+    };
+    
+    let badgeHtml = "";
+    if (isBoundary) {
+      badgeHtml = `
+        <span class="inline-flex items-center gap-0.5 bg-red-950/40 text-red-400 border border-red-500/20 px-1 py-0.2 rounded text-[9px] font-bold select-none animate-pulse">
+          ⚠️ BOUNDARY HIT (${boundaryDir.toUpperCase()})
+        </span>
+      `;
+    } else {
+      badgeHtml = `<span class="bg-indigo-950/40 text-indigo-300 border border-indigo-500/20 px-1 py-0.2 rounded text-[9px] font-semibold select-none">Clustered winner</span>`;
+    }
+    
+    const formattedRec = isDateTime 
+      ? `${recMin} to ${recMax} (step ${recStep}m)` 
+      : `${Number(recMin).toFixed(1)} to ${Number(recMax).toFixed(1)} (step ${Number(recStep).toFixed(2)})`;
+      
+    const pDiv = document.createElement("div");
+    pDiv.className = "bg-slate-950/80 border border-slate-900 rounded-lg p-3 text-xs space-y-2";
+    pDiv.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="font-mono text-slate-300 font-bold text-[11px]">${name}</span>
+        ${badgeHtml}
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-[10px]">
+        <div>
+          <span class="text-slate-500 block">Winner value</span>
+          <span class="font-mono font-bold text-slate-200 block mt-0.5">${formatResultCellValue(`param_${name}`, bestVal)}</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">AI Recommended Refine</span>
+          <span class="font-mono text-amber-400 font-semibold block mt-0.5">${formattedRec}</span>
+        </div>
+      </div>
+    `;
+    body.appendChild(pDiv);
+  });
+}
+
+function shiftTimeValue(timeStr, minutes) {
+  const parts = String(timeStr).split(":");
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0]);
+  let mins = parseInt(parts[1]) + minutes;
+  
+  while (mins < 0) {
+    mins += 60;
+    hours = (hours - 1 + 24) % 24;
+  }
+  while (mins >= 60) {
+    mins -= 60;
+    hours = (hours + 1) % 24;
+  }
+  
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+async function applySuggestedRefinementsAndRun() {
+  const stageSelect = $("results-stage-select");
+  const stageId = stageSelect.value;
+  if (!stageId) {
+    alert("Please select a results stage first.");
+    return;
+  }
+  
+  const ids = Array.from(SELECTED_CANDIDATE_IDS);
+  if (ids.length === 0) {
+    alert("Please select at least one candidate checkbox.");
+    return;
+  }
+  
+  setStatus("Saving selected candidates and opening refinement setup...");
+  
+  try {
+    await saveStageSelection(stageId, ids, "refine");
+    
+    const nextIdx = ensureRefinementStageFor(stageId);
+    const prevStage = UI_STAGES[nextIdx - 1];
+    const newStage = UI_STAGES[nextIdx];
+    
+    PARAMS.forEach(p => {
+      const prevParam = prevStage.roles[p.name] || { role: "fixed" };
+      if (p.role === "matrix_axis") {
+        newStage.roles[p.name] = { role: "fixed_from_parent", fixed_value: "" };
+      } else if (isBoolType(p.type_name) && (prevParam.role === "optimize" || prevParam.role === "refine")) {
+        newStage.roles[p.name] = {
+          role: "optimize",
+          fixed_value: prevParam.fixed_value ?? p.fixed_value ?? false,
+          min: false,
+          max: true,
+          step: 1
+        };
+      } else if (SUGGESTED_REFINEMENT_PARAMS[p.name]) {
+        // Apply AI Recommended ranges
+        newStage.roles[p.name] = {
+          role: "refine",
+          radius: SUGGESTED_REFINEMENT_PARAMS[p.name].radius,
+          step: SUGGESTED_REFINEMENT_PARAMS[p.name].step,
+          min: SUGGESTED_REFINEMENT_PARAMS[p.name].min,
+          max: SUGGESTED_REFINEMENT_PARAMS[p.name].max
+        };
+      } else {
+        newStage.roles[p.name] = {
+          role: "fixed",
+          fixed_value: prevParam.fixed_value ?? p.fixed_value ?? ""
+        };
+      }
+    });
+    
+    ACTIVE_STAGE_IDX = nextIdx;
+    selectStageTab(nextIdx);
+    await saveAndPreviewRecipe();
+    switchTab("roles");
+    alert("Refinement setup is ready. Review the suggested bounds, adjust anything you want, then save and run from the Run Dashboard.");
+  } catch (e) {
+    alert(`Failed to configure suggested refinement: ${e.message}`);
+    setStatus(`Failed: ${e.message}`);
+  }
+}
+
+function populateBucketFilterDropdown() {
+  const select = $("results-bucket-filter");
+  if (!select) return;
+  
+  select.innerHTML = '<option value="">Show All Buckets</option>';
+  
+  const buckets = new Set();
+  LOADED_RESULTS_RAW.forEach(row => {
+    if (row.bucket_id) {
+      buckets.add(row.bucket_id);
+    }
+  });
+  
+  const sortedBuckets = Array.from(buckets).sort();
+  sortedBuckets.forEach(b => {
+    const opt = document.createElement("option");
+    opt.value = b;
+    let label = b;
+    if (b.includes("stage_")) {
+      label = b.replace(/^stage_\d+__/, "").replace(/_/g, " ");
+    }
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+}
+
+function applyResultsClientFilters() {
+  const minTrades = parseFloat($("filter-min-trades").value);
+  const minPf = parseFloat($("filter-min-pf").value);
+  const maxDd = parseFloat($("filter-max-dd").value);
+  const minNet = parseFloat($("filter-min-net").value);
+  
+  const selectedBucket = $("results-bucket-filter").value;
+  const selectedTarget = $("results-target-filter").value;
+  
+  FILTERED_RESULTS = LOADED_RESULTS_RAW.filter(row => {
+    const trades = parseFloat(row.total_trades ?? 0);
+    const pf = parseFloat(row.profit_factor ?? 0);
+    const dd = parseFloat(row.drawdown_abs ?? 0);
+    const net = parseFloat(row.total_net_profit ?? 0);
+    
+    if (Number.isFinite(minTrades) && trades < minTrades) return false;
+    if (Number.isFinite(minPf) && pf < minPf) return false;
+    if (Number.isFinite(maxDd) && dd > maxDd) return false;
+    if (Number.isFinite(minNet) && net < minNet) return false;
+    
+    if (selectedBucket && row.bucket_id !== selectedBucket) return false;
+    if (selectedTarget && row.optimizer_target !== selectedTarget) return false;
+    for (const [dimKey, selectedValue] of Object.entries(RESULT_DIMENSION_FILTERS)) {
+      if (selectedValue !== "" && String(resultDimensionValue(row, dimKey)) !== String(selectedValue)) return false;
+    }
+    
+    return true;
+  });
+  
+  sortResults(CURRENT_SORT_COL, CURRENT_SORT_ASC);
+  FILTERED_RESULTS.forEach((row, index) => {
+    row.display_rank = index + 1;
+  });
+  renderResultsTable();
+  renderResultsSliceSummary();
+  renderWinnerShowcase();
+  renderSuggestedRefinements(CURRENT_RESULTS_STAGE_ID);
+}
+
+function sortResultsBy(colName) {
+  if (CURRENT_SORT_COL === colName) {
+    CURRENT_SORT_ASC = !CURRENT_SORT_ASC;
+  } else {
+    CURRENT_SORT_COL = colName;
+    CURRENT_SORT_ASC = true;
+  }
+  sortResults(CURRENT_SORT_COL, CURRENT_SORT_ASC);
+  renderResultsTable();
+}
+
+function sortResults(colName, ascending) {
+  FILTERED_RESULTS.sort((a, b) => {
+    let valA = a[colName];
+    let valB = b[colName];
+    
+    // Check if numeric
+    const numA = Number(valA);
+    const numB = Number(valB);
+    if (Number.isFinite(numA) && Number.isFinite(numB)) {
+      valA = numA;
+      valB = numB;
+    } else {
+      valA = String(valA ?? "").toLowerCase();
+      valB = String(valB ?? "").toLowerCase();
+    }
+    
+    if (valA < valB) return ascending ? -1 : 1;
+    if (valA > valB) return ascending ? 1 : -1;
+    return 0;
+  });
+}
+
+function toggleCandidateSelection(candidateId, isChecked) {
+  if (isChecked) {
+    SELECTED_CANDIDATE_IDS.add(candidateId);
+  } else {
+    SELECTED_CANDIDATE_IDS.delete(candidateId);
+  }
+  updateSelectedCountDisplay();
+}
+
+function updateSelectedCountDisplay() {
+  const count = SELECTED_CANDIDATE_IDS.size;
+  $("results-selected-count-display").textContent = `Selected: ${count} candidates`;
+  
+  const btn = $("promote-selected-btn");
+  if (btn) {
+    btn.disabled = (count === 0);
+  }
+  const finalBtn = $("send-final-btn");
+  if (finalBtn) {
+    finalBtn.disabled = (count === 0);
+  }
+}
+
+function formatResultCellValue(key, value) {
+  if (value === null || value === undefined || value === "") return "&mdash;";
+  const name = String(key || "").toLowerCase();
+  if (name.includes("time")) {
+    return escapeHtml(normalizeTimeValue(value));
+  }
+  return escapeHtml(value);
+}
+
+function selectAllResults(isChecked) {
+  if (isChecked) {
+    FILTERED_RESULTS.forEach(row => {
+      if (row.candidate_id) SELECTED_CANDIDATE_IDS.add(row.candidate_id);
+    });
+  } else {
+    SELECTED_CANDIDATE_IDS.clear();
+  }
+  updateSelectedCountDisplay();
+  
+  const checkboxes = document.querySelectorAll(".candidate-select-checkbox");
+  checkboxes.forEach(cb => {
+    const cid = cb.getAttribute("data-candidate-id");
+    cb.checked = SELECTED_CANDIDATE_IDS.has(cid);
+  });
+}
+
+function syncShowcaseCheckboxStates(candidateId, isChecked) {
+  const showcaseCb = document.querySelector(`.candidate-select-checkbox[data-candidate-id="${candidateId}"]:not(.table-candidate-checkbox)`);
+  if (showcaseCb) showcaseCb.checked = isChecked;
+}
+
+async function saveStageSelection(stageId, ids, intent) {
+  return fetchJSON(`/api/optimizer/sessions/${SESSION_ID}/recipe/stages/${stageId}/select`, {
+    method: "POST",
+    body: JSON.stringify({ candidate_ids: ids, intent })
+  });
+}
+
+async function configureSelectedForRefinement() {
+  const stageSelect = $("results-stage-select");
+  const stageId = stageSelect.value;
+  if (!stageId) {
+    alert("Please select a stage in the results tab first.");
+    return;
+  }
+  const ids = Array.from(SELECTED_CANDIDATE_IDS);
+  if (ids.length === 0) {
+    alert("Please select at least one candidate checkbox.");
+    return;
+  }
+  try {
+    const res = await saveStageSelection(stageId, ids, "refine");
+    const nextIdx = ensureRefinementStageFor(stageId);
+    selectStageTab(nextIdx);
+    const newStage = UI_STAGES[nextIdx] || {};
+    const newStageId = newStage.id || "";
+    await saveAndPreviewRecipe();
+    // Reset the orchestrator to start at the *new* refinement stage so the
+    // operator can click Advance on the Run dashboard without nuking the
+    // already-completed earlier stages. Without this, the only way to run
+    // the new stage is Start Recipe → which always restarts from stage_1
+    // and wipes the results that motivated the refinement in the first
+    // place.
+    if (newStageId) {
+      try {
+        await fetchJSON(
+          `/api/optimizer/sessions/${SESSION_ID}/recipe/rearm-stage`,
+          { method: "POST", body: JSON.stringify({ stage_id: newStageId }) },
+        );
+      } catch (rearmErr) {
+        console.warn("Recipe rearm failed:", rearmErr);
+      }
+    }
+    switchTab("roles");
+    setStatus(
+      `Saved ${res.selected_count} candidates as the seed for ${newStageId || "refinement"}. ` +
+      `Tune the new stage's sweep ranges in the Roles tab, then click Advance on the Run dashboard ` +
+      `to launch it — earlier stages stay intact.`,
+    );
+  } catch (e) {
+    alert(`Failed to configure refinement: ${e.message}`);
+    setStatus(`Failed: ${e.message}`);
+  }
+}
+
+async function sendSelectedToFinalOutput() {
+  const stageSelect = $("results-stage-select");
+  const stageId = stageSelect.value;
+  if (!stageId) {
+    alert("Please select a stage in the results tab first.");
+    return;
+  }
+  const ids = Array.from(SELECTED_CANDIDATE_IDS);
+  if (ids.length === 0) {
+    alert("Please select at least one candidate checkbox.");
+    return;
+  }
+  try {
+    const res = await saveStageSelection(stageId, ids, "final");
+    FINAL_SOURCE_STAGE_ID = stageId;
+    await saveAndPreviewRecipe();
+    switchTab("run");
+    setStatus(`Saved ${res.selected_count} candidates for final output. Dispatching final backtest to NinjaTrader...`);
+    // The select API re-arms the orchestrator at ready_for_final_backtest
+    // when the recipe had already finished, so advance() actually
+    // regenerates the final_backtest templates and ships them to NT
+    // instead of leaving the Run dashboard with every button disabled.
+    try {
+      await recipeAction("advance");
+      setStatus(`Final backtest dispatched for ${res.selected_count} candidates. Watch the Run dashboard for progress.`);
+    } catch (advanceErr) {
+      setStatus(
+        `Selection saved (${res.selected_count} candidates) but advance failed: ${advanceErr.message}. ` +
+        `Click "Advance" on the Run dashboard once NinjaTrader is up.`
+      );
+    }
+  } catch (e) {
+    alert(`Failed to send candidates to final output: ${e.message}`);
+    setStatus(`Failed: ${e.message}`);
+  }
+}
+
+async function promoteSelectedToRefinement() {
+  return configureSelectedForRefinement();
+}
+
+function renderResultsTable() {
+  const tbody = $("results-table-body");
+  if (FILTERED_RESULTS.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" class="text-slate-500 py-10 text-center font-mono">No candidates matching the current filters were found.</td></tr>';
+    $("results-count-status").textContent = `Showing 0 / ${LOADED_RESULTS_RAW.length} candidates.`;
+    return;
+  }
+  
+  // Dynamically extract parameter columns present in the results (prefixed with param_)
+  const paramKeys = new Set();
+  FILTERED_RESULTS.forEach(row => {
+    Object.keys(row).forEach(key => {
+      if (key.startsWith("param_")) paramKeys.add(key);
+    });
+  });
+  const paramList = Array.from(paramKeys).sort();
+  
+  // Re-build Table Header to include dynamic parameters columns
+  const headerTr = $("results-table-header");
+  let headerHtml = `<th class="p-3 font-semibold text-center select-none w-10">Keep</th>`;
+  
+  const baseHeaders = [
+    { label: "Rank", col: "rank", align: "left" },
+    { label: "Candidate ID", col: "candidate_id", align: "left" },
+    { label: "Target", col: "optimizer_target", align: "left" },
+    { label: "PF", col: "profit_factor", align: "right" },
+    { label: "Net Profit", col: "total_net_profit", align: "right" },
+    { label: "Max DD", col: "drawdown_abs", align: "right" },
+    { label: "Trades", col: "total_trades", align: "right" },
+    { label: "Score", col: "portfolio_score", align: "right" }
+  ];
+  
+  baseHeaders.forEach(h => {
+    const isSorted = CURRENT_SORT_COL === h.col;
+    const arrow = isSorted ? (CURRENT_SORT_ASC ? " &uarr;" : " &darr;") : "";
+    const activeClass = isSorted ? "text-amber-400 font-bold" : "";
+    const alignClass = h.align === "right" ? "text-right" : "text-left";
+    headerHtml += `<th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition ${alignClass} ${activeClass}" onclick="sortResultsBy('${h.col}')">${h.label}${arrow}</th>`;
+  });
+  
+  // Append dynamic parameters headers
+  paramList.forEach(pKey => {
+    const pName = pKey.replace("param_", "");
+    const isSorted = CURRENT_SORT_COL === pKey;
+    const arrow = isSorted ? (CURRENT_SORT_ASC ? " &uarr;" : " &darr;") : "";
+    const activeClass = isSorted ? "text-amber-400 font-bold font-mono" : "font-mono";
+    headerHtml += `<th class="p-3 font-semibold select-none cursor-pointer hover:text-amber-400 transition text-right ${activeClass}" onclick="sortResultsBy('${pKey}')">${pName}${arrow}</th>`;
+  });
+  headerHtml += `<th class="p-3 font-semibold select-none">Reason</th>`;
+  headerTr.innerHTML = headerHtml;
+  
+  // Render a bounded preview so large optimizer exports stay responsive.
+  const renderLimit = 250;
+  const visibleRows = FILTERED_RESULTS.slice(0, renderLimit);
+  tbody.innerHTML = visibleRows.map(row => {
+    const pf = row.profit_factor != null ? Number(row.profit_factor).toFixed(2) : "0.00";
+    const net = row.total_net_profit != null ? "$" + Number(row.total_net_profit).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "$0";
+    const dd = row.drawdown_abs != null ? "$" + Number(row.drawdown_abs).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "$0";
+    const trades = row.total_trades ?? 0;
+    const score = row.portfolio_score != null ? Number(row.portfolio_score).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "0";
+    const statusClass = row.selection_status === "selected" ? "text-emerald-400 font-semibold" : "text-slate-400";
+    const labelBadge = row.selection_status === "selected" ? '<span class="pill pill-opt text-[9px] py-0.5 px-1.5 ml-2 uppercase font-extrabold tracking-widest bg-emerald-950/40 text-emerald-400 border border-emerald-500/20">Winner</span>' : '';
+    
+    let rowHtml = `
+      <td class="p-3 text-center">
+        <input type="checkbox" class="candidate-select-checkbox table-candidate-checkbox accent-amber-500 cursor-pointer" data-candidate-id="${row.candidate_id}" ${SELECTED_CANDIDATE_IDS.has(row.candidate_id) ? 'checked' : ''} onchange="toggleCandidateSelection('${row.candidate_id}', this.checked); syncShowcaseCheckboxStates('${row.candidate_id}', this.checked)" />
+      </td>
+      <td class="p-3 text-slate-400 font-mono">${row.display_rank || row.rank}</td>
+      <td class="p-3 font-mono font-medium ${statusClass}">${escapeHtml(row.candidate_id || "")}${labelBadge}</td>
+      <td class="p-3 font-mono text-slate-400">${escapeHtml(row.optimizer_target || "")}</td>
+      <td class="p-3 text-right font-mono text-slate-200">${pf}</td>
+      <td class="p-3 text-right font-mono text-emerald-400 font-semibold">${net}</td>
+      <td class="p-3 text-right font-mono text-red-400">${dd}</td>
+      <td class="p-3 text-right font-mono text-slate-300">${trades}</td>
+      <td class="p-3 text-right font-mono text-amber-400 font-semibold">${score}</td>
+    `;
+    
+    // Add dynamic parameters values
+    paramList.forEach(pKey => {
+      const val = row[pKey];
+      rowHtml += `<td class="p-3 text-right font-mono text-slate-400">${formatResultCellValue(pKey, val)}</td>`;
+    });
+    
+    rowHtml += `<td class="p-3 text-slate-500 italic max-w-xs truncate" title="${escapeHtml(row.selection_reason || row.rejection_reason || '')}">${escapeHtml(row.selection_reason || row.rejection_reason || 'Filtered')}</td>`;
+    return `<tr class="table-row hover:bg-slate-900/30 border-b border-slate-900">${rowHtml}</tr>`;
+  }).join("");
+  
+  const renderedNote = FILTERED_RESULTS.length > renderLimit ? ` Rendering first ${renderLimit}.` : "";
+  $("results-count-status").textContent = `Showing ${FILTERED_RESULTS.length} / ${LOADED_RESULTS_RAW.length} candidates.${renderedNote}`;
+}
+
+function _nextStageId(plan, stageId) {
+  const stages = Array.isArray(plan && plan.stages) ? plan.stages : [];
+  const idx = stages.findIndex((stage) => stage && stage.stage_id === stageId);
+  if (idx < 0 || idx + 1 >= stages.length) return "";
+  const next = stages[idx + 1] || {};
+  return next.stage_id || "";
+}
+
+// ----------------------------------------------------
+// Plan dynamic compilation assembler
+// ----------------------------------------------------
+function buildRecipe() {
+  const strategyId = $("strategy-select").value;
+  if (!strategyId) throw new Error("Pick a strategy first.");
+  if (!selectedSeedPath()) throw new Error("Pick a saved Optimize seed template first.");
+
+  const baseMatrix = [];
+  const pinParams = [];
+
+  // Determine base matrix from global matrix axes and fixed params from Stage 1
+  const stage1 = UI_STAGES[0];
+  for (const p of PARAMS) {
+    const pState = stage1.roles[p.name] || { role: "fixed" };
+    if (p.role === "matrix_axis") {
+      const values = parseCSVValues(p.values_string, p.type_name);
+      baseMatrix.push({ param: p.name, role: "matrix_axis", values: values });
+      pinParams.push(p.name);
+    } else if (pState.role === "fixed") {
+      const casted = castValue(pState.fixed_value, p.type_name);
+      baseMatrix.push({ param: p.name, role: "fixed", value: casted });
+      pinParams.push(p.name);
+    }
+  }
+
+  const recipeName = $("recipe-name").value.trim() || "Recipe Optimizer";
+  const recipeId = `rec_${recipeName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "recipe"}`;
+
+  // Compile stages dynamically from the UI model UI_STAGES
+  const compiledStages = [];
+  
+  for (let i = 0; i < UI_STAGES.length; i++) {
+    const uiStage = UI_STAGES[i];
+    const stageId = `stage_${i + 1}`;
+    
+    const stageObj = {
+      stage_id: stageId,
+      stage_type: "optimizer",
+      description: i === 0 ? "First run - broad search" : `Refinement stage ${i}`,
+    };
+    
+    if (i > 0) {
+      stageObj.from = `stage_${i}.selected_rows`;
+      
+      const pins = [];
+      const refineAround = {};
+      const optimizeInside = {};
+      
+      for (const p of PARAMS) {
+        const pState = uiStage.roles[p.name] || { role: "fixed" };
+        if (pState.role === "fixed_from_parent") {
+          pins.push(p.name);
+        } else if (pState.role === "refine" && !isBoolType(p.type_name) && !isDateTimeType(p.type_name)) {
+          refineAround[p.name] = {
+            source: "parent",
+            radius: Number(pState.radius || 0),
+            step: Number(pState.step || 1),
+            min: (pState.min !== undefined && pState.min !== "") ? castValue(pState.min, p.type_name) : null,
+            max: (pState.max !== undefined && pState.max !== "") ? castValue(pState.max, p.type_name) : null
+          };
+        } else if (pState.role === "optimize" && !isDateTimeType(p.type_name)) {
+          optimizeInside[p.name] = optimizeConfigForParam(p, pState);
+        }
+      }
+      
+      stageObj.pin = pins;
+      stageObj.refine_around_parent_result = refineAround;
+      if (Object.keys(optimizeInside).length > 0) {
+        stageObj.optimize_inside_template = optimizeInside;
+      }
+    } else {
+      // First run optimized parameters
+      const optimizeInside = {};
+      for (const p of PARAMS) {
+        const pState = uiStage.roles[p.name] || { role: "fixed" };
+        if (pState.role === "optimize" && !isDateTimeType(p.type_name)) {
+          optimizeInside[p.name] = optimizeConfigForParam(p, pState);
+        }
+      }
+      stageObj.optimize_inside_template = optimizeInside;
+    }
+    
+    // Add Selection Rules
+    const sel = uiStage.selection;
+    const group_by_list = [];
+    
+    if (i === 0) {
+      const matrixAxes = PARAMS.filter(p => p.role === "matrix_axis").map(p => p.name);
+      matrixAxes.forEach(name => {
+        if (!group_by_list.includes(name)) group_by_list.push(name);
+      });
+      if (sel.group_by_param && !group_by_list.includes(sel.group_by_param)) {
+        group_by_list.push(sel.group_by_param);
+      }
+    } else {
+      if (sel.group_by_param) {
+        group_by_list.push(sel.group_by_param);
+      }
+      if (!group_by_list.includes("parent_candidate_id")) {
+        group_by_list.push("parent_candidate_id");
+      }
+    }
+    
+    stageObj.selection = {
+      group_by: group_by_list,
+      keep_per_group: Math.max(1, Math.floor(sel.keep_per_group || 1)),
+      fitness_metrics: sel.fitness_metrics || ["profit_factor", "total_net_profit"],
+      min_trades: Number(sel.min_trades ?? 0),
+      min_profit_factor: Number(sel.min_pf ?? 0.0),
+      max_drawdown: Number(sel.max_dd ?? 999999),
+      min_net_profit: Number(sel.min_net ?? -999999),
+    };
+    
+    compiledStages.push(stageObj);
+  }
+
+  // Final fixed backtest validation
+  const finalSourceStageId = FINAL_SOURCE_STAGE_ID || `stage_${UI_STAGES.length}`;
+  compiledStages.push({
+    stage_id: "final_backtest",
+    stage_type: "fixed_backtest",
+    from: `${finalSourceStageId}.selected_rows`,
+    finalists_per_bucket: Math.max(1, Math.floor(numberValue("target-final"))),
+    description: "Final fixed Backtest validation."
+  });
+
+  return {
+    recipe_version: 1,
+    mode: "matrix_sequence",
+    recipe_id: recipeId,
+    recipe_name: recipeName,
+    strategy_id: strategyId,
+    entries_per_direction: Math.max(1, Math.floor(numberValue("entries-per-direction"))),
+    target_final_candidates: Math.max(1, Math.floor(numberValue("target-final"))),
+    safety_caps: {
+      max_total_combinations: 250000,
+      max_templates_per_stage: 250,
+    },
+    base_matrix: baseMatrix,
+    stages: compiledStages,
+    optimizer_type: $("optimizer-type") ? $("optimizer-type").value : "Default",
+    keep_best_results: $("keep-best-results") ? Number($("keep-best-results").value) : 1000,
+    active_targets: (RECIPE_BODY && RECIPE_BODY.recipe && RECIPE_BODY.recipe.active_targets)
+      ? Array.from(new Set(RECIPE_BODY.recipe.active_targets.map(normalizeOptimizationTarget)))
+      : [normalizeOptimizationTarget($("target-1-dropdown") ? $("target-1-dropdown").value : "MaxProfitFactor")],
+  };
+}
+
+function optimizeConfigForParam(param, state) {
+  if (isBoolType(param.type_name)) {
+    return { min: false, max: true, step: 1 };
+  }
+  return {
+    min: castValue(state.min, param.type_name),
+    max: castValue(state.max, param.type_name),
+    step: castValue(state.step, param.type_name)
+  };
+}
+
+// ----------------------------------------------------
+// Global Event Listeners
+// ----------------------------------------------------
+$("strategy-select").addEventListener("change", (e) => loadStrategyDetail(e.target.value).catch((err) => setStatus(err.message)));
+$("seed-select").addEventListener("change", onSeedSelected);
+$("recipe-create-btn").addEventListener("click", () => saveAndPreviewRecipe().catch((e) => { $("recipe-status").textContent = e.message; setStatus(e.message); }));
+$("recipe-start-btn").addEventListener("click", () => recipeAction("start"));
+$("recipe-advance-btn").addEventListener("click", () => recipeAction("advance"));
+$("recipe-pause-btn").addEventListener("click", () => recipeAction("pause"));
+$("recipe-resume-btn").addEventListener("click", () => recipeAction("resume"));
+$("recipe-stop-btn").addEventListener("click", () => recipeAction("stop"));
+$("add-matrix-select").addEventListener("change", (e) => {
+  const idx = e.target.value;
+  if (idx === "") return;
+  addMatrixAxisFromDropdown(Number(idx));
+  e.target.value = "";
+});
+
+// Initialization
+populateOptimizationTargetDropdowns();
+initDatePickers();
+loadSessionSetup().catch((e) => setStatus(e.message));
+const loadStrategiesPromise = loadStrategies().catch((e) => setStatus(e.message));
+loadRecipeStatus();
+</script>
+</body>
+</html>

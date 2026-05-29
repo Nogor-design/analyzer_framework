@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Result ingestion helpers for /optimizer sessions."""
 
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ class OptimizerResultsSummary:
     top_rows: list[dict[str, Any]]
     guardrail_rows: list[dict[str, Any]]
     notes: list[str]
+    batch_run_statuses: list[dict[str, Any]]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +44,7 @@ class OptimizerResultsSummary:
             "top_rows": self.top_rows,
             "guardrail_rows": self.guardrail_rows,
             "notes": self.notes,
+            "batch_run_statuses": self.batch_run_statuses,
         }
 
 
@@ -64,10 +67,23 @@ def load_optimizer_results(session: OptimizerSession, *, top_n: int = 25) -> Opt
 
     combined = _add_helper_columns(combined)
     batches = _batch_summaries(store)
+    batch_run_statuses = _batch_run_statuses(output_dir)
     notes = [
         "Optimization exports are retained rows from NinjaTrader, controlled by KeepBestResults.",
         "Percent days traded requires a follow-up fixed-template backtest/trade-level pass.",
     ]
+    incomplete = [
+        row for row in batch_run_statuses
+        if str(row.get("status") or "").strip().lower() not in {"", "completed"}
+    ]
+    if incomplete:
+        labels = ", ".join(
+            f"{row.get('template') or 'unknown'}={row.get('status') or 'unknown'}"
+            for row in incomplete[:5]
+        )
+        notes.insert(0, f"NinjaTrader batch summary reported non-completed template(s): {labels}.")
+    if combined.empty and batch_run_statuses:
+        notes.insert(0, "No optimizer rows were parsed from the NinjaTrader export.")
 
     filtered = _apply_available_guardrails(combined, doc.guardrails)
     return OptimizerResultsSummary(
@@ -81,6 +97,7 @@ def load_optimizer_results(session: OptimizerSession, *, top_n: int = 25) -> Opt
         top_rows=_top_rows(combined, top_n=top_n),
         guardrail_rows=_top_rows(filtered, top_n=top_n),
         notes=notes,
+        batch_run_statuses=batch_run_statuses,
     )
 
 
@@ -119,6 +136,32 @@ def _batch_summaries(store: Any) -> list[dict[str, Any]]:
         summaries.append(item)
     summaries.sort(key=lambda b: b["batch_id"])
     return summaries
+
+
+def _batch_run_statuses(output_dir: Path) -> list[dict[str, Any]]:
+    path = output_dir / "BatchRunSummary.csv"
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as fh:
+            for raw in csv.DictReader(fh):
+                rows.append({
+                    "template": (raw.get("Template") or "").strip(),
+                    "status": (raw.get("Status") or "").strip(),
+                    "strategy": (raw.get("Strategy") or "").strip(),
+                    "instrument": (raw.get("Instrument") or "").strip(),
+                    "backtest_start": (raw.get("Backtest start") or "").strip(),
+                    "backtest_end": (raw.get("Backtest end") or "").strip(),
+                    "total_net_profit": (raw.get("Total net profit") or "").strip(),
+                    "trades": (raw.get("Trades") or "").strip(),
+                    "profit_factor": (raw.get("Profit factor") or "").strip(),
+                    "max_drawdown": (raw.get("Max drawdown") or "").strip(),
+                    "error": (raw.get("Error") or "").strip(),
+                })
+    except OSError:
+        return []
+    return rows
 
 
 def _apply_available_guardrails(df: pd.DataFrame, guardrails: Any) -> pd.DataFrame:
@@ -194,4 +237,3 @@ def _safe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-

@@ -29,6 +29,7 @@ SEED_XML = """<?xml version="1.0" encoding="utf-8"?>
     <FakeStrategy>
       <averageSlow>100</averageSlow>
       <MaxStop>50</MaxStop>
+      <Category>NinjaScript</Category>
       <InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>
     </FakeStrategy>
   </Strategy>
@@ -104,6 +105,64 @@ def test_generate_patches_optimization_parameter_ranges(session_with_plan):
     assert first_xml.count("<Max xsi:type=\"xsd:int\">100</Max>") >= 1
 
 
+def test_generate_builds_optimizer_blocks_for_backtest_seed_without_sweeps(tmp_path):
+    seed_xml = SEED_XML
+    seed_xml = seed_xml.replace(
+        "\n  <OptimizerType>NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer</OptimizerType>",
+        "",
+    ).replace(
+        """\n  <OptimizerParameters>
+    <ArrayOfParameterWrapper xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <ParameterWrapper>
+        <Name>KeepBestResults</Name>
+        <Value xsi:type="xsd:int">500</Value>
+      </ParameterWrapper>
+    </ArrayOfParameterWrapper>
+  </OptimizerParameters>""",
+        "",
+    ).replace(
+        "\n  <OptimizationFitness>NinjaTrader.NinjaScript.OptimizationFitnesses.MaxProfitFactor</OptimizationFitness>",
+        "",
+    ).replace(
+        "\n  <OptimizationParameters>\n    <ArrayOfParameter xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n      <Parameter>\n        <Increment>1</Increment>\n        <Max xsi:type=\"xsd:int\">100</Max>\n        <Min xsi:type=\"xsd:int\">100</Min>\n        <Name>averageSlow</Name>\n        <ValueSerializable>100</ValueSerializable>\n      </Parameter>\n      <Parameter>\n        <Increment>1</Increment>\n        <Max xsi:type=\"xsd:int\">50</Max>\n        <Min xsi:type=\"xsd:int\">50</Min>\n        <Name>MaxStop</Name>\n        <ValueSerializable>50</ValueSerializable>\n      </Parameter>\n    </ArrayOfParameter>\n  </OptimizationParameters>",
+        "",
+    ).replace("<Category>NinjaScript</Category>", "<Category>Backtest</Category>")
+    seed_path = tmp_path / "backtest_seed.xml"
+    seed_path.write_text(seed_xml, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ 06-26",
+    )
+    session.update(
+        parameters=[
+            {"name": "averageSlow", "type_name": "int", "mode": "optimize",
+             "minimum": 50, "maximum": 200, "increment": 50},
+            {"name": "MaxStop", "type_name": "int", "mode": "fixed", "fixed_value": 100},
+        ],
+        chunking={"max_combinations_per_chunk": 4, "keep_best_results": 750},
+    )
+    plan = build_plan_preview(session.load_document())
+    session.save_plan(plan.to_dict())
+
+    written = generate_session_templates(
+        session,
+        optimizer_type="NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer",
+        optimization_fitness="NinjaTrader.NinjaScript.OptimizationFitnesses.MaxProfitFactor",
+    )
+
+    xml = Path(written[0].path).read_text(encoding="utf-8")
+    assert "<OptimizerType>NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer</OptimizerType>" in xml
+    assert "<Name>KeepBestResults</Name>" in xml
+    assert "<OptimizationFitness>NinjaTrader.NinjaScript.OptimizationFitnesses.MaxProfitFactor</OptimizationFitness>" in xml
+    assert "<Category>Optimize</Category>" in xml
+    assert "<OptimizationParameters>" in xml
+    assert "<Name>averageSlow</Name>" in xml
+    assert "<Min xsi:type=\"xsd:int\">50</Min>" in xml
+    assert "<Max xsi:type=\"xsd:int\">200</Max>" in xml
+    assert xml.count("<Parameter>") >= 1
+
+
 def test_generate_patches_strategy_value_for_fixed_parameter(session_with_plan):
     session, _ = session_with_plan
     written = generate_session_templates(session)
@@ -132,6 +191,16 @@ def test_generate_patches_keep_best_results(session_with_plan):
     assert "<Value xsi:type=\"xsd:int\">750</Value>" in xml
 
 
+def test_generate_forces_optimizer_analyzer_type(session_with_plan):
+    session, _ = session_with_plan
+    written = generate_session_templates(session)
+    xml = Path(written[0].path).read_text(encoding="utf-8")
+
+    assert "<BacktestType>" not in xml
+    assert "<Category>Optimize</Category>" in xml
+    assert "<Category>NinjaScript</Category>" not in xml
+
+
 def test_generate_preserves_full_seed_contract_when_session_has_generic_root(session_with_plan):
     session, _ = session_with_plan
     written = generate_session_templates(session)
@@ -139,6 +208,7 @@ def test_generate_preserves_full_seed_contract_when_session_has_generic_root(ses
     for item in written:
         xml = Path(item.path).read_text(encoding="utf-8")
         assert "<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>" in xml
+        assert xml.count("<InstrumentOrInstrumentList>") == 1
         assert "<InstrumentOrInstrumentList>NQ</InstrumentOrInstrumentList>" not in xml
 
 
@@ -161,6 +231,55 @@ def test_generate_patches_generic_seed_contract_from_full_session_instrument(ses
         xml = Path(item.path).read_text(encoding="utf-8")
         assert "<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>" in xml
         assert "<InstrumentOrInstrumentList>NQ</InstrumentOrInstrumentList>" not in xml
+
+
+def test_generate_inserts_missing_instrument_tag_from_session(session_with_plan):
+    session, _ = session_with_plan
+    doc = session.load_document()
+    seed_path = Path(doc.seed_template_path)
+    seed_path.write_text(
+        SEED_XML.replace(
+            "\n      <InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    session.update(instrument="NQ 06-26")
+
+    written = generate_session_templates(session)
+
+    xml = Path(written[0].path).read_text(encoding="utf-8")
+    assert "<Category>Optimize</Category>" in xml
+    assert "<InstrumentOrInstrumentList>NQ 06-26</InstrumentOrInstrumentList>" in xml
+
+
+def test_generate_serializes_enum_values_like_nt_templates(tmp_path):
+    seed_xml = SEED_XML.replace(
+        "<MaxStop>50</MaxStop>",
+        "<MaxStop>50</MaxStop>\n      <RequiredTrendRegimeFilter>Up</RequiredTrendRegimeFilter>",
+    ).replace(
+        "<Parameter>\n        <Increment>1</Increment>\n        <Max xsi:type=\"xsd:int\">50</Max>\n        <Min xsi:type=\"xsd:int\">50</Min>\n        <Name>MaxStop</Name>\n        <ValueSerializable>50</ValueSerializable>\n      </Parameter>",
+        "<Parameter>\n        <Increment>1</Increment>\n        <Max xsi:type=\"xsd:int\">50</Max>\n        <Min xsi:type=\"xsd:int\">50</Min>\n        <Name>MaxStop</Name>\n        <ValueSerializable>50</ValueSerializable>\n      </Parameter>\n      <Parameter>\n        <EnumValuesSerializable><string>Up</string><string>Down</string></EnumValuesSerializable>\n        <Increment>1</Increment>\n        <Max xsi:type=\"xsd:int\">0</Max>\n        <Min xsi:type=\"xsd:int\">0</Min>\n        <Name>RequiredTrendRegimeFilter</Name>\n        <ParameterTypeSerializable>NinjaTrader.NinjaScript.Strategies.TrendRegimeFilter, NinjaTrader.Custom, Version=8.1.7.0, Culture=neutral, PublicKeyToken=null</ParameterTypeSerializable>\n        <ValueSerializable>Up</ValueSerializable>\n      </Parameter>",
+    )
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(seed_xml, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy", seed_template_path=str(seed_path), instrument="NQ 06-26"
+    )
+    session.update(parameters=[
+        {"name": "RequiredTrendRegimeFilter", "type_name": "TrendRegimeFilter", "mode": "fixed",
+         "fixed_value": "TrendRegimeFilter.Down"},
+    ])
+    session.save_plan({"chunks": [{"chunk_id": "chunk_001", "optimized": [], "fixed": [
+        {"name": "RequiredTrendRegimeFilter", "type_name": "TrendRegimeFilter", "value": "TrendRegimeFilter.Down"},
+    ], "combination_count": 1}]})
+
+    written = generate_session_templates(session)
+
+    xml = Path(written[0].path).read_text(encoding="utf-8")
+    assert "<RequiredTrendRegimeFilter>Down</RequiredTrendRegimeFilter>" in xml
+    assert "<ValueSerializable>Down</ValueSerializable>" in xml
+    assert "TrendRegimeFilter.Down" not in xml
 
 
 def test_generate_errors_when_no_plan(tmp_path):

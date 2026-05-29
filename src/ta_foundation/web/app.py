@@ -780,6 +780,63 @@ def create_app() -> "Flask":
         job = _job_manager.start(kind="prediction", command=command)
         return jsonify({"job": job.as_dict(), "validation": validation})
 
+    @app.route("/strategy-lab")
+    def strategy_lab_page():
+        from ta_foundation.web.strategy_lab import list_strategy_lab_sessions
+
+        sessions = list_strategy_lab_sessions()
+        return render_template("strategy_lab.html", sessions=sessions)
+
+    @app.route("/strategy-lab/sessions/<session_id>")
+    def strategy_lab_session_page(session_id: str):
+        from flask import abort
+        from ta_foundation.web.strategy_lab import get_strategy_lab_session
+
+        session = get_strategy_lab_session(session_id)
+        if session is None:
+            return abort(404)
+        return render_template("strategy_lab_session.html", session=session)
+
+    @app.route("/api/strategy-lab/spec-info", methods=["POST"])
+    def api_strategy_lab_spec_info():
+        from ta_foundation.web.strategy_lab import summarize_strategy_spec
+
+        body = request.get_json(force=True) or {}
+        spec_path = body.get("spec_path")
+        summary = summarize_strategy_spec(spec_path)
+        return jsonify({"spec": summary})
+
+    @app.route("/api/strategy-lab/full-loop", methods=["POST"])
+    def api_strategy_lab_full_loop():
+        from ta_foundation.web.strategy_lab import build_full_loop_command
+
+        body = request.get_json(force=True) or {}
+        command, validation = build_full_loop_command(body)
+        if not validation.get("ok"):
+            return jsonify({"validation": validation}), 400
+        job = _job_manager.start(kind="strategy_lab.full_loop", command=command)
+        return jsonify({"job": job.as_dict(), "validation": validation})
+
+    @app.route("/api/strategy-lab/repair-loop", methods=["POST"])
+    def api_strategy_lab_repair_loop():
+        from ta_foundation.web.strategy_lab import build_repair_loop_command
+
+        body = request.get_json(force=True) or {}
+        command, validation = build_repair_loop_command(body)
+        if not validation.get("ok"):
+            return jsonify({"validation": validation}), 400
+        job = _job_manager.start(kind="strategy_lab.repair_loop", command=command)
+        return jsonify({"job": job.as_dict(), "validation": validation})
+
+    @app.route("/api/strategy-lab/ensure-nt-ready", methods=["POST"])
+    def api_strategy_lab_ensure_nt_ready():
+        from ta_foundation.web.strategy_lab import build_ensure_nt_ready_command
+
+        body = request.get_json(force=True) or {}
+        command = build_ensure_nt_ready_command(body)
+        job = _job_manager.start(kind="strategy_lab.ensure_nt_ready", command=command)
+        return jsonify({"job": job.as_dict()})
+
     @app.route("/api/jobs")
     def jobs_list():
         """List recent local web jobs."""
@@ -1019,19 +1076,9 @@ def create_app() -> "Flask":
 
     @app.route("/optimizer")
     def optimizer_page():
-        session, set_cookie = _resolve_optimizer_session()
-        response = app.make_response(
-            render_template("optimizer.html", session_id=session.id)
-        )
-        if set_cookie:
-            response.set_cookie(
-                _OPTIMIZER_COOKIE,
-                session.id,
-                max_age=60 * 60 * 24 * 30,
-                httponly=True,
-                samesite="Lax",
-            )
-        return response
+        # Standard /optimizer page has been retired; recipe is the only flow.
+        from flask import redirect
+        return redirect("/optimizer/recipe", code=302)
 
     @app.route("/optimizer/sessions")
     def optimizer_sessions_page():
@@ -1069,6 +1116,12 @@ def create_app() -> "Flask":
         # Include the deployment package dir if it exists.
         pkg_dir = session.directory / "deployment_package"
         summary["package_dir"] = str(pkg_dir) if pkg_dir.exists() else None
+        session_report = pkg_dir / "session_candidate_report.html"
+        summary["session_candidate_report_url"] = (
+            f"/optimizer/sessions/{session.id}/candidate-report"
+            if session_report.exists()
+            else None
+        )
         return render_template(
             "optimizer_session_detail.html",
             session=doc.to_dict(),
@@ -1106,7 +1159,7 @@ def create_app() -> "Flask":
                      PER_CANDIDATE_REPORTS_DIRNAME / f"{run_id}.html")
         if not html_path.exists():
             return abort(404)
-        return send_file(html_path, mimetype="text/html")
+        return send_file(html_path.resolve(), mimetype="text/html")
 
     @app.route("/optimizer/sessions/<session_id>/candidates/<run_id>/report-builder")
     def optimizer_candidate_report_builder_page(session_id: str, run_id: str):
@@ -1203,6 +1256,264 @@ def create_app() -> "Flask":
             return jsonify({"error": f"unexpected report build error: {exc}"}), 500
         return jsonify({"batch": batch.to_dict()})
 
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/candidate-session-report",
+        methods=["POST"],
+    )
+    def api_optimizer_build_session_candidate_report(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            build_session_candidate_report,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            result = build_session_candidate_report(session)
+        except Exception as exc:
+            return jsonify({"error": f"unexpected report build error: {exc}"}), 500
+        return jsonify({"result": result.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/decision/refine",
+        methods=["POST"],
+    )
+    def api_optimizer_decision_refine(session_id: str):
+        """Send hand-picked Decision-Dashboard finalists into a brand-new
+        refinement stage *in the same session*.
+
+        Replaces the Clone & Refine path for the common case. Resolves the
+        picked ``F_NNN`` finalists back to their parent optimizer rows via
+        ``generated_templates/final_backtest/recipe_template_manifest.json``,
+        overwrites the parent stage ``selected.json`` so the new stage
+        seeds from those rows only, splices a refinement stage into
+        ``recipe.json`` just before the final fixed-backtest, rebuilds the
+        plan, and re-arms the orchestrator at the new stage so a single
+        Advance click launches it.
+        """
+        import json as _json
+        from ta_foundation.web.optimizer_decision_dashboard import (
+            DecisionRefineError,
+            build_refine_from_decision_proposal,
+        )
+        from ta_foundation.web.optimizer_recipe import load_recipe, save_recipe
+        from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan
+        from ta_foundation.web.optimizer_recipe_results import PARSED_RESULTS_DIRNAME
+        from ta_foundation.web.optimizer_recipe_state import (
+            RecipeRunState,
+            append_recipe_event,
+            load_recipe_state,
+            save_recipe_state,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        payload = request.get_json(silent=True) or {}
+        candidate_ids = payload.get("candidate_ids")
+        if not isinstance(candidate_ids, list) or not candidate_ids:
+            return jsonify({
+                "error": "candidate_ids must be a non-empty list of finalist ids (e.g. ['F_001'])",
+            }), 400
+
+        try:
+            proposal = build_refine_from_decision_proposal(
+                session,
+                candidate_ids=[str(c) for c in candidate_ids],
+            )
+        except DecisionRefineError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected refine error: {exc}"}), 500
+
+        parent_dir = session.directory / PARSED_RESULTS_DIRNAME / proposal.parent_stage_id
+        parent_dir.mkdir(parents=True, exist_ok=True)
+        (parent_dir / "selected.json").write_text(
+            _json.dumps(proposal.selected_rows, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        try:
+            recipe = load_recipe(session)
+        except Exception as exc:
+            return jsonify({"error": f"could not reload recipe after selection write: {exc}"}), 500
+        recipe_dict = recipe.to_dict()
+        stages_list = list(recipe_dict.get("stages") or [])
+
+        final_idx = next(
+            (
+                idx
+                for idx, stage in enumerate(stages_list)
+                if str(stage.get("stage_type") or "") == "fixed_backtest"
+            ),
+            len(stages_list),
+        )
+        stages_list.insert(final_idx, proposal.new_stage_dict)
+
+        # Re-anchor the final fixed-backtest stage so it now consumes the new
+        # refinement stage's selected_rows instead of the parent's.
+        if final_idx + 1 < len(stages_list):
+            final_stage = stages_list[final_idx + 1]
+            if str(final_stage.get("stage_type") or "") == "fixed_backtest":
+                final_stage["from"] = f"{proposal.new_stage_id}.selected_rows"
+
+        recipe_dict["stages"] = stages_list
+        try:
+            save_recipe(session, recipe_dict)
+        except Exception as exc:
+            return jsonify({"error": f"could not save updated recipe: {exc}"}), 500
+
+        try:
+            plan = build_and_save_recipe_plan(session)
+        except Exception as exc:
+            return jsonify({"error": f"could not rebuild recipe plan: {exc}"}), 500
+
+        state = load_recipe_state(session) or RecipeRunState(
+            recipe_id=recipe.recipe_id,
+            state="generating_child_stage",
+        )
+        previous_state = state.state
+        state.state = "generating_child_stage"
+        state.current_stage_id = proposal.new_stage_id
+        state.pause_requested = False
+        state.stop_requested = False
+        state.last_error = None
+        save_recipe_state(session, state)
+        append_recipe_event(
+            session,
+            event_type="decision_refine_staged",
+            recipe_id=recipe.recipe_id,
+            stage_id=proposal.new_stage_id,
+            message=(
+                f"Spawned refinement stage {proposal.new_stage_id} from "
+                f"{len(proposal.selected_rows)} Decision-Dashboard finalists "
+                f"({proposal.parent_stage_id} rows). Previous state: {previous_state!r}."
+            ),
+        )
+
+        # Route the redirect through ``/optimizer/sessions/<sid>/resume`` so
+        # the ``_optimizer_session`` cookie gets pinned to *this* session
+        # before the recipe editor reads it. Going directly to
+        # ``/optimizer/recipe`` would load whatever session the cookie last
+        # pointed at — usually a different one — and the operator would end
+        # up on a stranger's Stage 1 setup with no clue why.
+        from urllib.parse import urlencode
+
+        focus_url = (
+            f"/optimizer/sessions/{session.id}/resume?"
+            + urlencode({"focus_stage": proposal.new_stage_id})
+        )
+        return jsonify({
+            "new_stage_id": proposal.new_stage_id,
+            "parent_stage_id": proposal.parent_stage_id,
+            "selected_count": len(proposal.selected_rows),
+            "stage_count": len(stages_list),
+            "previous_state": previous_state,
+            "focus_url": focus_url,
+            "plan_template_count": plan.template_count,
+            "plan_combination_estimate": plan.combination_estimate,
+        })
+
+    @app.route("/optimizer/sessions/<session_id>/candidate-report")
+    def optimizer_session_candidate_report_page(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            session_candidate_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = session_candidate_report_path(session)
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/final-templates/rename",
+        methods=["POST"],
+    )
+    def api_optimizer_rename_final_templates(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_final_templates import (
+            rename_final_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        market = payload.get("market") or None
+        try:
+            result = rename_final_templates(session, market=market)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+        return jsonify({"result": result.to_dict()})
+
+    @app.route("/optimizer/sessions/<session_id>/templates/final")
+    def optimizer_final_templates_list(session_id: str):
+        from flask import abort
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_final_templates import (
+            active_final_templates_dir,
+            list_active_final_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        active_files = list_active_final_templates(session)
+        active_dir = active_final_templates_dir(session)
+        lines = [
+            f"Session: {session.id}",
+            f"Active template folder: {active_dir.resolve()}",
+            f"Template count: {len(active_files)}",
+            "",
+        ]
+        if active_files:
+            lines.extend(str(p.resolve()) for p in active_files)
+        else:
+            lines.append("No final template XML files found yet for this session.")
+        return "\n".join(lines), 200, {"Content-Type": "text/plain"}
+
+    @app.route("/optimizer/sessions/<session_id>/templates/final.zip")
+    def optimizer_final_templates_zip(session_id: str):
+        import io
+        import zipfile
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_final_templates import (
+            active_final_templates_dir,
+            final_template_export_name,
+            list_active_final_templates,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        active_dir = active_final_templates_dir(session)
+        if not active_dir.exists():
+            return abort(404)
+        active_files = list_active_final_templates(session)
+        if not active_files:
+            return abort(404)
+
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in active_files:
+                zf.write(path, arcname=final_template_export_name(path))
+        memory_file.seek(0)
+        return send_file(
+            memory_file,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"{session.id}_final_templates.zip",
+        )
+
     @app.route("/optimizer/sessions/<session_id>/resume")
     def optimizer_session_resume(session_id: str):
         from flask import redirect
@@ -1211,7 +1522,17 @@ def create_app() -> "Flask":
         session = get_session(session_id)
         if session is None:
             return redirect("/optimizer/sessions")
-        response = app.make_response(redirect("/optimizer"))
+        # Preserve a focus_stage query param so deep links from the Decision
+        # Dashboard ("Refine selected" sends ``?focus_stage=stage_3``) survive
+        # the cookie-setting redirect. Without this, the cookie gets fixed
+        # but the focus_stage param is dropped and the recipe editor opens
+        # on the default Recipe Setup tab.
+        focus_stage = (request.args.get("focus_stage") or "").strip()
+        target = "/optimizer/recipe"
+        if focus_stage:
+            from urllib.parse import urlencode
+            target = f"{target}?{urlencode({'focus_stage': focus_stage})}"
+        response = app.make_response(redirect(target))
         response.set_cookie(
             _OPTIMIZER_COOKIE,
             session.id,
@@ -1242,6 +1563,49 @@ def create_app() -> "Flask":
         if detail is None:
             return jsonify({"error": f"unknown strategy: {strategy_id}"}), 404
         return jsonify(detail.to_dict())
+
+    @app.route(
+        "/api/optimizer/strategies/<strategy_id>/seeds",
+        methods=["DELETE"],
+    )
+    def api_optimizer_clear_strategy_seeds(strategy_id: str):
+        from ta_foundation.web.optimizer_strategy_catalog import (
+            clear_strategy_seeds,
+        )
+
+        template_dir = (request.args.get("template_dir") or "").strip() or None
+        try:
+            result = clear_strategy_seeds(
+                strategy_id, template_dir=template_dir,
+            )
+        except Exception as exc:
+            return jsonify({"error": f"unexpected error: {exc}"}), 500
+        return jsonify(result)
+
+    @app.route(
+        "/api/optimizer/strategies/<strategy_id>/regenerate-seed",
+        methods=["POST"],
+    )
+    def api_optimizer_regenerate_seed(strategy_id: str):
+        from ta_foundation.web.optimizer_strategy_catalog import (
+            RecipeSeedRegenerationError,
+            regenerate_recipe_seed,
+        )
+
+        payload = request.get_json(silent=True) or {}
+        try:
+            summary = regenerate_recipe_seed(
+                strategy_id,
+                instrument=(payload.get("instrument") or "").strip() or None,
+                from_date=(payload.get("from_date") or "").strip() or None,
+                to_date=(payload.get("to_date") or "").strip() or None,
+                template_dir=(payload.get("template_dir") or "").strip() or None,
+            )
+        except RecipeSeedRegenerationError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected error: {exc}"}), 500
+        return jsonify({"seed": summary.to_dict()})
 
     @app.route("/api/optimizer/sessions", methods=["GET"])
     def api_optimizer_sessions_list():
@@ -1906,6 +2270,816 @@ def create_app() -> "Flask":
             return jsonify({"error": str(exc)}), 400
         return jsonify({"package": package.to_dict()})
 
+    # ---------------------------------------------------------------------------
+    # Recipe / Matrix Optimizer Routes
+    # ---------------------------------------------------------------------------
+
+    @app.route("/optimizer/recipe")
+    def optimizer_recipe_page():
+        session, set_cookie = _resolve_optimizer_session()
+        response = app.make_response(
+            render_template("optimizer_recipe.html", session_id=session.id)
+        )
+        if set_cookie:
+            response.set_cookie(
+                _OPTIMIZER_COOKIE,
+                session.id,
+                max_age=60 * 60 * 24 * 30,
+                httponly=True,
+                samesite="Lax",
+            )
+        return response
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe",
+        methods=["GET", "PUT"],
+    )
+    def api_optimizer_recipe(session_id: str):
+        from ta_foundation.web.optimizer_recipe import (
+            OptimizerRecipeNotFoundError,
+            load_recipe,
+            save_recipe,
+        )
+        from ta_foundation.web.optimizer_recipe_plan import load_recipe_plan
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        if request.method == "GET":
+            try:
+                recipe = load_recipe(session).to_dict()
+            except OptimizerRecipeNotFoundError:
+                return jsonify({"recipe": None, "plan": None})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 400
+            return jsonify({"recipe": recipe, "plan": load_recipe_plan(session)})
+        
+        payload = request.get_json(silent=True) or {}
+        recipe = payload.get("recipe")
+        if not recipe:
+            return jsonify({"error": "recipe parameter is required"}), 400
+        
+        try:
+            save_recipe(session, recipe)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify({"recipe": load_recipe(session).to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/plan",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_plan(session_id: str):
+        from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            plan = build_and_save_recipe_plan(session)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify({"plan": plan.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/start",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_start(session_id: str):
+        from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            status = RecipeRunOrchestrator(session).start()
+        except OptimizerRecipeError as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify(status)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/advance",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_advance(session_id: str):
+        from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            status = RecipeRunOrchestrator(session).advance_once()
+        except OptimizerRecipeError as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify(status)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/stages/<stage_id>/results",
+        methods=["GET"],
+    )
+    def api_optimizer_recipe_stage_results(session_id: str, stage_id: str):
+        from ta_foundation.web.optimizer_recipe_results import load_recipe_stage_results
+        from ta_foundation.web.optimizer_recipe_selection import select_recipe_stage_candidates
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            if stage_id == "final_backtest":
+                review_dir = (
+                    session.directory
+                    / "deployment_package"
+                    / "final_backtest_handoff"
+                    / "final_backtest_review"
+                )
+                summary_path = review_dir / "review_summary.json"
+                if summary_path.exists():
+                    import json
+                    review_data = json.loads(summary_path.read_text(encoding="utf-8"))
+                    final_manifest = {}
+                    final_manifest_path = session.directory / "generated_templates" / "final_backtest" / "recipe_template_manifest.json"
+                    if final_manifest_path.exists():
+                        final_manifest = json.loads(final_manifest_path.read_text(encoding="utf-8"))
+                    evaluated_path = review_dir / "evaluated_candidates.json"
+                    evaluated_rows = []
+                    if evaluated_path.exists():
+                        evaluated_payload = json.loads(evaluated_path.read_text(encoding="utf-8"))
+                        if isinstance(evaluated_payload, dict):
+                            evaluated_rows = list(evaluated_payload.get("rows") or [])
+                    source_rows = evaluated_rows or list(review_data.get("recommendations") or [])
+                    rows = []
+                    for idx, r in enumerate(source_rows):
+                        status = str(r.get("status") or "").strip().lower()
+                        rows.append({
+                            "candidate_id": r.get("run_id") or f"final_row_{idx+1}",
+                            "run_id": r.get("run_id"),
+                            "profit_factor": r.get("profit_factor"),
+                            "total_net_profit": r.get("total_net_profit"),
+                            "drawdown_abs": abs(float(r.get("max_drawdown") or 0)),
+                            "max_drawdown": r.get("max_drawdown"),
+                            "total_trades": r.get("trades"),
+                            "percent_days_traded": r.get("percent_days_traded"),
+                            "portfolio_score": r.get("score"),
+                            "mode": r.get("mode"),
+                            "session_bucket": r.get("session_bucket"),
+                            "param_StartTimeH": r.get("start_hour"),
+                            "param_DurationTimeH": r.get("duration_hours"),
+                            "param_averageFast": r.get("average_fast"),
+                            "param_averageSlow": r.get("average_slow"),
+                            "param_MaxStop": r.get("max_stop"),
+                            "param_MaxTPRatio": r.get("max_tp_ratio"),
+                            "param_ProfitStop": r.get("profit_stop"),
+                            "param_LossStop": r.get("loss_stop"),
+                            "param_MaxTrades": r.get("max_trades"),
+                            "selection_status": "selected" if status in {"pass", "passed", "recommend", "recommended"} else "rejected",
+                            "selection_reason": f"Ranked {r.get('rank')}" if status in {"pass", "passed", "recommend", "recommended"} else "",
+                            "rejection_reason": r.get("reasons") if status not in {"pass", "passed", "recommend", "recommended"} else "",
+                        })
+                    selected_rows = [row for row in rows if row.get("selection_status") == "selected"]
+                    rejected_rows = [row for row in rows if row.get("selection_status") != "selected"]
+                    return jsonify({
+                        "recipe_id": f"rec_{session_id.removeprefix('opt_')}",
+                        "stage_id": "final_backtest",
+                        "row_count": len(rows),
+                        "selected_count": len(selected_rows),
+                        "rejected_count": len(rejected_rows),
+                        "rows": rows,
+                        "selected_rows": selected_rows,
+                        "rejected_rows": rejected_rows,
+                        "template_count": final_manifest.get("template_count"),
+                        "target_buckets": final_manifest.get("target_buckets"),
+                        "finalists_per_bucket": final_manifest.get("finalists_per_bucket"),
+                        "bucket_report": final_manifest.get("bucket_report") or [],
+                        "notes": ["Loaded from final backtest review summary."]
+                    })
+                try:
+                    results = load_recipe_stage_results(session, stage_id=stage_id)
+                except Exception as exc:
+                    final_manifest = {}
+                    final_manifest_path = session.directory / "generated_templates" / "final_backtest" / "recipe_template_manifest.json"
+                    if final_manifest_path.exists():
+                        import json
+                        final_manifest = json.loads(final_manifest_path.read_text(encoding="utf-8"))
+                    return jsonify({
+                        "recipe_id": f"rec_{session_id.removeprefix('opt_')}",
+                        "stage_id": "final_backtest",
+                        "row_count": 0,
+                        "passing_count": 0,
+                        "selected_count": 0,
+                        "rejected_count": 0,
+                        "rows": [],
+                        "all_rows": [],
+                        "selected_rows": [],
+                        "rejected_rows": [],
+                        "template_count": final_manifest.get("template_count"),
+                        "target_buckets": final_manifest.get("target_buckets"),
+                        "finalists_per_bucket": final_manifest.get("finalists_per_bucket"),
+                        "bucket_report": final_manifest.get("bucket_report") or [],
+                        "notes": [
+                            f"Final Backtest results are not available yet: {exc}",
+                            "Open templates and reports links remain available so the session artifacts can be inspected.",
+                        ],
+                        "artifact_links": {
+                            "decision_dashboard": f"/optimizer/sessions/{session.id}/decision",
+                            "template_list": f"/optimizer/sessions/{session.id}/templates/final",
+                            "template_zip": f"/optimizer/sessions/{session.id}/templates/final.zip",
+                            "session_report": f"/optimizer/sessions/{session.id}/candidate-report",
+                        },
+                    })
+                out = results.to_dict()
+                final_manifest_path = session.directory / "generated_templates" / "final_backtest" / "recipe_template_manifest.json"
+                if final_manifest_path.exists():
+                    import json
+                    final_manifest = json.loads(final_manifest_path.read_text(encoding="utf-8"))
+                    out["template_count"] = final_manifest.get("template_count")
+                    out["target_buckets"] = final_manifest.get("target_buckets")
+                    out["finalists_per_bucket"] = final_manifest.get("finalists_per_bucket")
+                    out["bucket_report"] = final_manifest.get("bucket_report") or []
+                rows = out.get("rows") or []
+                out.update({
+                    "passing_count": len(rows),
+                    "selected_count": len(rows),
+                    "rejected_count": 0,
+                    "all_rows": rows,
+                    "rows": rows,
+                    "selected_rows": rows,
+                    "rejected_rows": [],
+                    "notes": [
+                        *list(out.get("notes") or []),
+                        "Loaded parsed final Backtest output; final review summary has not been generated yet.",
+                    ],
+                })
+                return jsonify(out)
+
+            results = load_recipe_stage_results(session, stage_id=stage_id)
+            selection = select_recipe_stage_candidates(session, stage_id=stage_id, results=results)
+            out = results.to_dict()
+            raw_rows = out.get("rows") or []
+            out.update({
+                "passing_count": selection.passing_count,
+                "selected_count": selection.selected_count,
+                "rejected_count": selection.rejected_count,
+                "all_rows": raw_rows,
+                "rows": selection.selected_rows,
+                "selected_rows": selection.selected_rows,
+                "rejected_rows": selection.rejected_rows,
+            })
+            return jsonify(out)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 404
+
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/stages/<stage_id>/select",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_stage_select(session_id: str, stage_id: str):
+        from ta_foundation.web.optimizer_recipe_results import load_recipe_stage_results, PARSED_RESULTS_DIRNAME
+        from ta_foundation.web.optimizer_session import get_session
+        import json
+        import pandas as pd
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        payload = request.get_json(silent=True) or {}
+        selected_ids = payload.get("candidate_ids")
+        if not isinstance(selected_ids, list):
+            return jsonify({"error": "candidate_ids must be a list of strings"}), 400
+        intent = str(payload.get("intent") or "refine").strip().lower()
+        if intent not in {"refine", "final"}:
+            return jsonify({"error": "intent must be 'refine' or 'final'"}), 400
+
+        try:
+            results = load_recipe_stage_results(session, stage_id=stage_id)
+            all_rows = results.rows
+            
+            selected_rows = []
+            rejected_rows = []
+            
+            for row in all_rows:
+                row_copy = dict(row)
+                if row_copy.get("candidate_id") in selected_ids:
+                    row_copy["selection_status"] = "selected"
+                    row_copy["selection_reason"] = "Manual Operator Selection"
+                    selected_rows.append(row_copy)
+                else:
+                    row_copy["selection_status"] = "rejected"
+                    row_copy["rejection_reason"] = "Not manually selected by operator"
+                    rejected_rows.append(row_copy)
+            
+            # Write selection files
+            stage_dir = session.directory / PARSED_RESULTS_DIRNAME / stage_id
+            stage_dir.mkdir(parents=True, exist_ok=True)
+            
+            prefix = "final_selected" if intent == "final" else "selected"
+            selected_json = stage_dir / f"{prefix}.json"
+            rejected_json = stage_dir / (f"{prefix}_rejected.json" if intent == "final" else "rejected.json")
+            selected_csv = stage_dir / f"{prefix}.csv"
+            rejected_csv = stage_dir / (f"{prefix}_rejected.csv" if intent == "final" else "rejected.csv")
+            
+            selected_json.write_text(json.dumps(selected_rows, indent=2, ensure_ascii=False), encoding="utf-8")
+            rejected_json.write_text(json.dumps(rejected_rows, indent=2, ensure_ascii=False), encoding="utf-8")
+            
+            if selected_rows:
+                pd.DataFrame(selected_rows).to_csv(selected_csv, index=False)
+            else:
+                if selected_csv.exists():
+                    selected_csv.unlink()
+            if rejected_rows:
+                pd.DataFrame(rejected_rows).to_csv(rejected_csv, index=False)
+            else:
+                if rejected_csv.exists():
+                    rejected_csv.unlink()
+                
+            # Write root selection files
+            root_prefix = "recipe_final_selection" if intent == "final" else "recipe_selection"
+            root_selected = session.directory / f"{root_prefix}.csv"
+            root_selected_json = session.directory / f"{root_prefix}.json"
+            
+            root_selected_json.write_text(json.dumps(selected_rows, indent=2, ensure_ascii=False), encoding="utf-8")
+            if selected_rows:
+                pd.DataFrame(selected_rows).to_csv(root_selected, index=False)
+            else:
+                if root_selected.exists():
+                    root_selected.unlink()
+
+            # When the operator sends a fresh selection to final after the
+            # recipe already completed (or stopped/failed), re-arm the
+            # orchestrator at the final stage. Without this the Run dashboard
+            # leaves every action button disabled (recipe is "complete") and
+            # the new final_selected.json sits unused on disk. The next
+            # advance call will re-generate final_backtest templates from the
+            # new selection and dispatch them to NinjaTrader.
+            rearmed = False
+            if intent == "final":
+                from ta_foundation.web.optimizer_recipe_state import (
+                    append_recipe_event,
+                    load_recipe_state,
+                    save_recipe_state,
+                )
+
+                state_obj = load_recipe_state(session)
+                if state_obj is not None and state_obj.state in {
+                    "complete",
+                    "stopped",
+                    "failed",
+                    "reviewing_final_backtest",
+                }:
+                    state_obj.state = "ready_for_final_backtest"
+                    state_obj.current_stage_id = "final_backtest"
+                    state_obj.last_error = None
+                    state_obj.pause_requested = False
+                    state_obj.stop_requested = False
+                    save_recipe_state(session, state_obj)
+                    append_recipe_event(
+                        session,
+                        event_type="final_backtest_rearmed",
+                        recipe_id=state_obj.recipe_id,
+                        stage_id="final_backtest",
+                        message=(
+                            f"Recipe re-armed for final backtest from operator selection "
+                            f"in {stage_id} ({len(selected_rows)} candidates)."
+                        ),
+                    )
+                    rearmed = True
+
+            return jsonify({
+                "status": "success",
+                "intent": intent,
+                "selected_count": len(selected_rows),
+                "rejected_count": len(rejected_rows),
+                "rearmed_final_backtest": rearmed,
+            })
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/status",
+        methods=["GET"],
+    )
+    def api_optimizer_recipe_status(session_id: str):
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        return jsonify(RecipeRunOrchestrator(session).status())
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/rearm-stage",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_rearm_stage(session_id: str):
+        """Reset orchestrator state to run a *specific* stage next.
+
+        Used by the Candidate Results page when the operator adds a new
+        refinement stage to a recipe that has already finished. Without
+        this, the only way to launch the new stage is ``Start Recipe``,
+        which always restarts from the first stage in the plan and wipes
+        every prior stage's artifacts. This endpoint moves the state
+        machine straight to the requested stage, preserving everything
+        that came before.
+        """
+        from ta_foundation.web.optimizer_recipe_plan import load_recipe_plan
+        from ta_foundation.web.optimizer_recipe_state import (
+            RecipeRunState,
+            append_recipe_event,
+            load_recipe_state,
+            save_recipe_state,
+        )
+        from ta_foundation.web.optimizer_recipe import load_recipe
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        payload = request.get_json(silent=True) or {}
+        target_stage_id = str(payload.get("stage_id") or "").strip()
+        if not target_stage_id:
+            return jsonify({"error": "stage_id is required"}), 400
+
+        plan = load_recipe_plan(session)
+        if not plan:
+            return jsonify({"error": "recipe has no saved plan"}), 400
+        target_stage = next(
+            (
+                stage for stage in (plan.get("stages") or [])
+                if str(stage.get("stage_id") or "") == target_stage_id
+            ),
+            None,
+        )
+        if target_stage is None:
+            return jsonify({"error": f"stage {target_stage_id!r} not in recipe plan"}), 404
+
+        stage_type = str(target_stage.get("stage_type") or "").strip()
+        has_parent = bool(target_stage.get("from"))
+        if stage_type == "fixed_backtest":
+            next_state = "ready_for_final_backtest"
+        elif stage_type == "optimizer" and has_parent:
+            # Refinement / child stage — orchestrator.advance_once will call
+            # _generate_and_start_child_stage which reads selected.json from
+            # the parent stage to seed the sweep.
+            next_state = "generating_child_stage"
+        elif stage_type == "optimizer":
+            # Root optimizer stage with no parent — we don't have a generic
+            # advance handler for re-running a root stage in isolation, so
+            # the operator should use Start Recipe for this case.
+            return jsonify({
+                "error": (
+                    f"stage {target_stage_id!r} is a root optimizer stage; "
+                    "use Start Recipe to launch it (this will re-run earlier stages)."
+                ),
+            }), 400
+        else:
+            return jsonify({"error": f"unknown stage_type for {target_stage_id!r}: {stage_type!r}"}), 400
+
+        try:
+            recipe = load_recipe(session)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        state = load_recipe_state(session) or RecipeRunState(
+            recipe_id=recipe.recipe_id,
+            state=next_state,
+        )
+        previous_state = state.state
+        state.state = next_state
+        state.current_stage_id = target_stage_id
+        state.last_error = None
+        state.pause_requested = False
+        state.stop_requested = False
+        save_recipe_state(session, state)
+        append_recipe_event(
+            session,
+            event_type="recipe_rearmed_at_stage",
+            recipe_id=state.recipe_id,
+            stage_id=target_stage_id,
+            message=(
+                f"Recipe rearmed at {target_stage_id} (was {previous_state!r}); "
+                f"next advance will run that stage without resetting earlier results."
+            ),
+        )
+        return jsonify({
+            "stage_id": target_stage_id,
+            "stage_type": stage_type,
+            "new_state": next_state,
+            "previous_state": previous_state,
+        })
+
+    @app.route(
+        "/optimizer/sessions/<session_id>/recipe/artifacts/<artifact_name>",
+        methods=["GET"],
+    )
+    def api_optimizer_recipe_artifact(session_id: str, artifact_name: str):
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        if artifact_name == "recipe_selection_json":
+            path = session.directory / "recipe_selection.json"
+            if not path.exists():
+                return jsonify({"error": "artifact not found"}), 404
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return jsonify(data)
+            except Exception as e:
+                return jsonify({"error": f"Failed to load JSON: {str(e)}"}), 500
+        
+        elif artifact_name == "recipe_selection_csv":
+            path = session.directory / "recipe_selection.csv"
+            if not path.exists():
+                return "artifact not found", 404
+            return send_file(path, mimetype="text/csv")
+        
+        elif artifact_name == "final_review_summary":
+            path = (
+                session.directory
+                / "deployment_package"
+                / "final_backtest_handoff"
+                / "final_backtest_review"
+                / "review_summary.json"
+            )
+            if not path.exists():
+                return jsonify({"error": "artifact not found"}), 404
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return jsonify(data)
+            except Exception as e:
+                return jsonify({"error": f"Failed to load JSON: {str(e)}"}), 500
+        
+        elif artifact_name == "final_recommendations":
+            path = (
+                session.directory
+                / "deployment_package"
+                / "final_backtest_handoff"
+                / "final_backtest_review"
+                / "recommendations.json"
+            )
+            if not path.exists():
+                return jsonify({"error": "artifact not found"}), 404
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return jsonify(data)
+            except Exception as e:
+                return jsonify({"error": f"Failed to load JSON: {str(e)}"}), 500
+            
+        else:
+            return jsonify({"error": "unknown artifact"}), 404
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/pause",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_pause(session_id: str):
+        from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            status = RecipeRunOrchestrator(session).pause()
+        except OptimizerRecipeError as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify(status)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/resume",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_resume(session_id: str):
+        from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            status = RecipeRunOrchestrator(session).resume()
+        except OptimizerRecipeError as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify(status)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/stop",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_stop(session_id: str):
+        from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            status = RecipeRunOrchestrator(session).stop()
+        except OptimizerRecipeError as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify(status)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/from-session",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_from_session(session_id: str):
+        from ta_foundation.web.optimizer_recipe import save_recipe
+        from ta_foundation.web.optimizer_recipe_defaults import build_recipe_from_session
+        from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        
+        try:
+            recipe = build_recipe_from_session(session)
+            save_recipe(session, recipe)
+            plan = build_and_save_recipe_plan(session)
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+        
+        return jsonify({"recipe": recipe, "plan": plan.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/recipe/override",
+        methods=["POST"],
+    )
+    def api_optimizer_recipe_override(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_recipe_state import (
+            load_recipe_state,
+            save_recipe_state,
+            append_recipe_event,
+        )
+        from ta_foundation.web.optimizer_recipe_plan import load_recipe_plan
+        from ta_foundation.web.optimizer_recipe_orchestrator import (
+            _first_runnable_stage_id,
+            _next_stage_id,
+            _stage_by_id,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+
+        payload = request.get_json(silent=True) or {}
+        action = payload.get("action")
+        if not action:
+            return jsonify({"error": "action parameter is required"}), 400
+
+        state = load_recipe_state(session)
+        
+        if action == "clear":
+            state_file = session.directory / "recipe_state.json"
+            if state_file.exists():
+                state_file.unlink()
+            plan_file = session.directory / "recipe_plan.json"
+            if plan_file.exists():
+                plan_file.unlink()
+            
+            append_recipe_event(
+                session,
+                event_type="override_clear",
+                message="Recipe run state cleared by operator.",
+            )
+            return jsonify({"status": "cleared"})
+
+        if state is None:
+            return jsonify({"error": "No active recipe state found"}), 400
+
+        plan = load_recipe_plan(session) or {}
+
+        if action == "reset":
+            first_stage = _first_runnable_stage_id(plan)
+            state.state = "planned"
+            state.current_stage_id = first_stage
+            state.current_template_id = None
+            state.pause_requested = False
+            state.stop_requested = False
+            state.last_error = None
+            save_recipe_state(session, state)
+            
+            append_recipe_event(
+                session,
+                event_type="override_reset",
+                recipe_id=state.recipe_id,
+                stage_id=first_stage,
+                message="Recipe state reset to planned by operator.",
+            )
+            return jsonify({"status": "reset", "state": state.to_dict()})
+
+        elif action == "rerun":
+            stage_id = state.current_stage_id
+            stage = _stage_by_id(plan, stage_id) if stage_id else None
+            if stage and stage.get("stage_type") == "fixed_backtest":
+                state.state = "ready_for_final_backtest"
+            else:
+                state.state = "ready_to_generate_stage"
+            state.current_template_id = None
+            state.pause_requested = False
+            state.stop_requested = False
+            state.last_error = None
+            save_recipe_state(session, state)
+            
+            append_recipe_event(
+                session,
+                event_type="override_rerun",
+                recipe_id=state.recipe_id,
+                stage_id=stage_id,
+                message=f"Operator manually requested rerun of stage {stage_id}.",
+            )
+            return jsonify({"status": "rerun", "state": state.to_dict()})
+
+        elif action == "skip":
+            current_stage = state.current_stage_id
+            next_stage_id = _next_stage_id(plan, current_stage) if current_stage else None
+            
+            if next_stage_id:
+                state.current_stage_id = next_stage_id
+                next_stage = _stage_by_id(plan, next_stage_id)
+                if next_stage and next_stage.get("stage_type") == "optimizer":
+                    state.state = "generating_child_stage"
+                else:
+                    state.state = "ready_for_final_backtest"
+                msg = f"Operator manually skipped stage {current_stage}; advanced to {next_stage_id}."
+            else:
+                state.state = "complete"
+                msg = f"Operator manually skipped stage {current_stage}; recipe run completed."
+
+            save_recipe_state(session, state)
+            append_recipe_event(
+                session,
+                event_type="override_skip",
+                recipe_id=state.recipe_id,
+                stage_id=state.current_stage_id,
+                message=msg,
+            )
+            return jsonify({"status": "skipped", "state": state.to_dict()})
+
+        elif action == "continue_refinement":
+            requested_stage = str(payload.get("stage_id") or "").strip()
+            current_stage = requested_stage or state.current_stage_id
+            next_stage_id = _next_stage_id(plan, current_stage) if current_stage else None
+            
+            if next_stage_id:
+                state.current_stage_id = next_stage_id
+                next_stage = _stage_by_id(plan, next_stage_id)
+                if next_stage and next_stage.get("stage_type") == "optimizer":
+                    state.state = "generating_child_stage"
+                else:
+                    state.state = "ready_for_final_backtest"
+                state.current_template_id = None
+                state.pause_requested = False
+                state.stop_requested = False
+                state.last_error = None
+                save_recipe_state(session, state)
+                
+                append_recipe_event(
+                    session,
+                    event_type="override_continue",
+                    recipe_id=state.recipe_id,
+                    stage_id=next_stage_id,
+                    message=f"Operator manually promoted candidates and continued to refinement stage {next_stage_id}.",
+                )
+                return jsonify({"status": "continued", "state": state.to_dict()})
+            else:
+                return jsonify({"error": "No next stage found in plan to continue to."}), 400
+
+        else:
+            return jsonify({"error": f"Unknown override action: {action}"}), 400
+
     return app
 
 
@@ -2023,6 +3197,14 @@ def main() -> None:
                     help="Port to listen on (default: 7734).")
     ap.add_argument("--host", default="127.0.0.1",
                     help="Host to bind (default: 127.0.0.1).")
+    ap.add_argument("--debug", action="store_true",
+                    help=(
+                        "Enable Flask debug mode: auto-reload templates and "
+                        "Python source on save, show interactive tracebacks. "
+                        "Use this when iterating on the UI or routes — "
+                        "without it, code edits don't take effect until the "
+                        "process is restarted."
+                    ))
     args = ap.parse_args()
 
     if not _FLASK_OK:
@@ -2036,9 +3218,24 @@ def main() -> None:
     print(f"[Composer] Market data: {_market_data_dir or '(none)'}")
     print(f"[Composer] DB path:     {_db_path or '(none)'}")
     print(f"[Composer] UI:          http://{args.host}:{args.port}")
+    if args.debug:
+        print(f"[Composer] Debug:       on (auto-reload enabled)")
 
     app = create_app()
-    app.run(host=args.host, port=args.port, debug=False, threaded=True)
+    if args.debug:
+        # Force Jinja to re-read templates from disk on every request so HTML
+        # edits land without a restart. Default (TEMPLATES_AUTO_RELOAD=None)
+        # only does this when ``debug=True``, but we want it explicit so a
+        # future config tweak can't silently disable it.
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.jinja_env.auto_reload = True
+    app.run(
+        host=args.host,
+        port=args.port,
+        debug=args.debug,
+        threaded=True,
+        use_reloader=args.debug,
+    )
 
 
 if __name__ == "__main__":

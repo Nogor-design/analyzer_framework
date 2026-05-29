@@ -195,8 +195,8 @@ def test_timing_rule_that_is_already_fixed_is_not_promoted():
 def test_unconvertible_rule_returns_none():
     rule = {
         "rank": 1,
-        "rule_str": "regime == trend",
-        "conditions": [{"column": "regime", "op": "eq", "value": "trend"}],
+        "rule_str": "unsupported_column == 42",
+        "conditions": [{"column": "unsupported_column", "op": "eq", "value": 42}],
     }
 
     assert promote_rule_to_config(
@@ -219,8 +219,8 @@ def test_write_conditional_probe_yamls_writes_convertible_nested_rules(tmp_path)
         },
         {
             "rank": 2,
-            "rule_str": "regime == trend",
-            "conditions": [{"column": "regime", "op": "eq", "value": "trend"}],
+            "rule_str": "unsupported_column == 42",
+            "conditions": [{"column": "unsupported_column", "op": "eq", "value": 42}],
             "n_trades": 25,
             "profit_factor": 1.2,
         },

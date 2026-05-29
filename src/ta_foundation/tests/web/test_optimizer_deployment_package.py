@@ -18,7 +18,7 @@ from ta_foundation.web.optimizer_session import create_session
 RICH_SEED_XML = """<?xml version="1.0" encoding="utf-8"?>
 <StrategyTemplate xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <StrategyType>NinjaTrader.NinjaScript.Strategies.FakeStrategy</StrategyType>
-  <Category>Optimization</Category>
+  <Category>Optimize</Category>
   <OptimizerType>NinjaTrader.NinjaScript.Optimizers.DefaultOptimizer</OptimizerType>
   <OptimizerParameters>
     <ArrayOfParameterWrapper>
