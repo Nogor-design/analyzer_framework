@@ -12,6 +12,8 @@ from typing import Sequence
 ERROR_PATTERNS = (
     "must be",
     "programming errors",
+    "must be resolved before compiling",
+    "warnings have been detected",
     "error",
     "failed",
     "invalid",
@@ -56,6 +58,22 @@ def scan_ninjatrader_error_text(patterns: Sequence[str] = ERROR_PATTERNS) -> lis
     return findings
 
 
+def dismiss_ninjatrader_error_dialogs() -> bool:
+    """Best-effort click on standard NinjaTrader error/warning dialogs.
+
+    This intentionally avoids main tool windows such as Strategy Analyzer,
+    Control Center, and NinjaScript Editor. It is for modal-style popups that
+    expose OK/Close buttons.
+    """
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _dismiss_script()],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0 and "clicked=True" in completed.stdout
+
+
 def abort_strategy_analyzer_run() -> bool:
     completed = subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _abort_script()],
@@ -75,28 +93,35 @@ def _scan_script(patterns: Sequence[str]) -> str:
         $patterns = {pattern_array}
         $nt = Get-Process NinjaTrader -ErrorAction SilentlyContinue | Select-Object -First 1
         $rows = New-Object System.Collections.ArrayList
+        $seen = New-Object 'System.Collections.Generic.HashSet[string]'
         if ($nt) {{
             $desktop = [System.Windows.Automation.AutomationElement]::RootElement
             $wins = $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-            $textCond = New-Object System.Windows.Automation.PropertyCondition(
-                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                [System.Windows.Automation.ControlType]::Text)
             for ($i = 0; $i -lt $wins.Count; $i++) {{
                 $w = $wins.Item($i)
                 try {{
                     if ($w.Current.ProcessId -ne $nt.Id) {{ continue }}
-                    $texts = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, $textCond)
-                    for ($j = 0; $j -lt $texts.Count; $j++) {{
-                        $txt = [string]$texts.Item($j).Current.Name
+                    $candidates = New-Object System.Collections.ArrayList
+                    [void]$candidates.Add($w)
+                    $desc = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+                    for ($j = 0; $j -lt $desc.Count; $j++) {{
+                        [void]$candidates.Add($desc.Item($j))
+                    }}
+                    for ($j = 0; $j -lt $candidates.Count; $j++) {{
+                        $el = $candidates.Item($j)
+                        $txt = [string]$el.Current.Name
                         if ([string]::IsNullOrWhiteSpace($txt)) {{ continue }}
                         foreach ($p in $patterns) {{
                             if ($txt.IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {{
-                                [void]$rows.Add([pscustomobject]@{{
-                                    window_name = [string]$w.Current.Name
-                                    automation_id = [string]$w.Current.AutomationId
-                                    class_name = [string]$w.Current.ClassName
-                                    text = $txt
-                                }})
+                                $key = ([string]$w.Current.Name) + '|' + $txt
+                                if ($seen.Add($key)) {{
+                                    [void]$rows.Add([pscustomobject]@{{
+                                        window_name = [string]$w.Current.Name
+                                        automation_id = [string]$el.Current.AutomationId
+                                        class_name = [string]$el.Current.ClassName
+                                        text = $txt
+                                    }})
+                                }}
                                 break
                             }}
                         }}
@@ -105,6 +130,45 @@ def _scan_script(patterns: Sequence[str]) -> str:
             }}
         }}
         $rows | ConvertTo-Json -Depth 4
+        """
+    )
+
+
+def _dismiss_script() -> str:
+    return textwrap.dedent(
+        """
+        $ErrorActionPreference = 'SilentlyContinue'
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+        $nt = Get-Process NinjaTrader -ErrorAction SilentlyContinue | Select-Object -First 1
+        $clicked = $false
+        if ($nt) {
+            $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+            $wins = $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+            for ($i = 0; $i -lt $wins.Count -and -not $clicked; $i++) {
+                $w = $wins.Item($i)
+                try {
+                    if ($w.Current.ProcessId -ne $nt.Id) { continue }
+                    $name = [string]$w.Current.Name
+                    $class = [string]$w.Current.ClassName
+                    if ($class -eq 'ControlCenter' -or $name -match 'Strategy Analyzer|NinjaScript Editor') { continue }
+                    $buttonCond = New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                        [System.Windows.Automation.ControlType]::Button)
+                    $buttons = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, $buttonCond)
+                    for ($j = 0; $j -lt $buttons.Count -and -not $clicked; $j++) {
+                        $button = $buttons.Item($j)
+                        $buttonName = [string]$button.Current.Name
+                        if (-not $button.Current.IsEnabled) { continue }
+                        if ($buttonName -match '^(OK|Ok|Close|Dismiss|Yes)$') {
+                            $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                            $clicked = $true
+                        }
+                    }
+                } catch { }
+            }
+        }
+        Write-Output "clicked=$clicked"
+        exit 0
         """
     )
 
@@ -138,4 +202,3 @@ def _abort_script() -> str:
         exit 0
         """
     )
-

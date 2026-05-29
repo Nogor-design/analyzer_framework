@@ -235,7 +235,18 @@ def render_seed_template(
         f"      <{escape(parameter.name)}>{escape(_strategy_value(parameter.default))}</{escape(parameter.name)}>"
         for parameter in parameters
     )
-    optimization_parameters = "\n".join(_parameter_xml(parameter) for parameter in parameters)
+    # NinjaTrader's Strategy Analyzer optimizer can only enumerate numeric and
+    # boolean parameters. Emitting <Parameter> blocks for System.String,
+    # System.DateTime, Brush, enum, or other reference types crashes the
+    # optimizer at WaitForIterationsCompleted with a NullReferenceException
+    # the moment it tries to call .GetType() on the enumerated value. The
+    # strategy still receives the default for those properties via the
+    # <Strategy> block above; they just don't get an OptimizationParameter.
+    optimization_parameters = "\n".join(
+        _parameter_xml(parameter)
+        for parameter in parameters
+        if _is_optimizable_type(parameter.type_name)
+    )
     boilerplate = _STRATEGY_BOILERPLATE.format(
         name=name,
         instrument=escape(instrument),
@@ -289,6 +300,34 @@ def render_seed_template(
   </Strategy>
 </StrategyTemplate>
 """
+
+
+_OPTIMIZABLE_DOTNET_TYPES = frozenset({
+    "System.Boolean",
+    "System.Int16",
+    "System.Int32",
+    "System.Int64",
+    "System.Double",
+    "System.Decimal",
+})
+
+
+def _is_optimizable_type(dotnet_type: str) -> bool:
+    """Whether NinjaTrader's optimizer can enumerate values of this type.
+
+    Matched against the empirical behavior of NinjaTrader's own
+    ``Save as Template`` action: int (16/32/64), double, decimal, and bool
+    appear in ``<OptimizationParameters>`` blocks; **System.Single (float),
+    System.String, System.DateTime, enums, and Brush types do not**. Emitting
+    a ``<Parameter>`` block for one of those crashes NinjaTrader's Strategy
+    Analyzer at ``Optimizer.WaitForIterationsCompleted`` with a
+    ``NullReferenceException`` the moment the optimizer calls ``.GetType()``
+    on the deserialized parameter value (which is null because NT's XML
+    deserializer rejects the type/xsi:type pairing). The strategy itself
+    still receives the property value via the ``<Strategy>`` block — only
+    the optimizer entry goes away.
+    """
+    return str(dotnet_type or "").strip() in _OPTIMIZABLE_DOTNET_TYPES
 
 
 def _parameter_xml(parameter: StrategyParameter) -> str:
@@ -349,8 +388,71 @@ def _state_setdefaults(source_text: str) -> dict[str, str]:
         r"\b(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>[^;]+);",
         match.group("body"),
     ):
-        defaults[assignment.group("name")] = assignment.group("value").strip().strip('"')
+        defaults[assignment.group("name")] = _normalize_csharp_default(assignment.group("value"))
     return defaults
+
+
+_CSHARP_PRIMITIVE_CAST_RE = re.compile(
+    r"^\(\s*(float|double|decimal|int|long|short|byte|sbyte|uint|ulong|ushort)\s*\)\s*",
+    re.IGNORECASE,
+)
+_CSHARP_NUMERIC_SUFFIX_RE = re.compile(r"[fFdDmMlLuU]+$")
+
+
+def _normalize_csharp_default(raw: str) -> str:
+    """Convert a C# right-hand-side default expression to a plain XML-safe
+    string. Returns ``""`` when the value can't be normalized, so callers
+    can fall back to a type default.
+
+    Handles the patterns NinjaTrader source files commonly use that NT's
+    Strategy Analyzer XML loader rejects when emitted verbatim:
+
+    * Primitive casts: ``(float).3`` → ``0.3``, ``(int)5`` → ``5``
+    * Leading-dot floats: ``.3`` → ``0.3``, ``-.5`` → ``-0.5``
+    * Numeric suffixes: ``0.3f`` / ``100L`` / ``1.5m`` → digits only
+    * Digit separators: ``1_000`` → ``1000``
+    * Wrapping parens: ``(0.5)`` → ``0.5``
+    * Trailing line comments: ``0.5 // note`` → ``0.5``
+    * Quoted strings: returns the contents (drops the quotes)
+    * Booleans: lowercased ``true`` / ``false``
+    * Anything unparseable (``null``, ``int.MaxValue``, ``Brushes.Yellow``,
+      ``Calculate.OnBarClose``, arithmetic expressions): returns ``""``
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    comment_idx = s.find("//")
+    if comment_idx >= 0:
+        s = s[:comment_idx].rstrip()
+    if not s:
+        return ""
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+        return s[1:-1]
+    lowered = s.lower()
+    if lowered == "true":
+        return "true"
+    if lowered == "false":
+        return "false"
+    s = _CSHARP_PRIMITIVE_CAST_RE.sub("", s).strip()
+    while s.startswith("(") and s.endswith(")"):
+        inner = s[1:-1].strip()
+        if not inner:
+            break
+        s = inner
+    cleaned = s.replace("_", "")
+    cleaned = _CSHARP_NUMERIC_SUFFIX_RE.sub("", cleaned)
+    if cleaned.startswith("."):
+        cleaned = "0" + cleaned
+    elif cleaned.startswith(("-.", "+.")):
+        cleaned = cleaned[0] + "0" + cleaned[1:]
+    try:
+        if any(ch in cleaned for ch in (".", "e", "E")):
+            float(cleaned)
+        else:
+            int(cleaned)
+        return cleaned
+    except ValueError:
+        return ""
 
 
 def _range_values(attrs: str) -> tuple[str, str] | None:
@@ -361,27 +463,10 @@ def _range_values(attrs: str) -> tuple[str, str] | None:
 
 
 def _bounded_sweep(default: str, type_name: str, range_values: tuple[str, str] | None) -> tuple[str, str]:
-    lowered = type_name.lower()
-    if lowered in {"bool", "boolean", "system.boolean"}:
-        return "false", "true"
-    if range_values is None:
-        return default, default
-    if lowered in {"int", "long", "short", "system.int32", "system.int64", "system.int16"}:
-        try:
-            value = int(float(default))
-            low = int(float(range_values[0]))
-            high = int(float(range_values[1]))
-        except ValueError:
-            return default, default
-        return str(max(low, value - 1)), str(min(high, value + 1))
-    if lowered in {"double", "float", "decimal", "system.double", "system.single", "system.decimal"}:
-        try:
-            value = float(default)
-            low = float(range_values[0])
-            high = float(range_values[1])
-        except ValueError:
-            return default, default
-        return format(max(low, value - 1.0), "g"), format(min(high, value + 1.0), "g")
+    # Pin every parameter to its default. The recipe stage planner is the
+    # sole source of sweep ranges; auto-generated ±1 sweeps (or full bool
+    # ranges) on 30+ parameters multiply into hundreds of millions of
+    # combinations once NT receives the template.
     return default, default
 
 

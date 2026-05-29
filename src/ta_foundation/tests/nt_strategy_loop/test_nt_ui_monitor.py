@@ -8,5 +8,6 @@ def test_scan_script_contains_error_patterns() -> None:
 
     assert "UIAutomationClient" in script
     assert "programming errors" in script
+    assert "TrueCondition" in script
+    assert "Current.Name" in script
     assert "ConvertTo-Json" in script
-

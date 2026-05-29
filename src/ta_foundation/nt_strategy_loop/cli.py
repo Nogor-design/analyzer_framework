@@ -106,7 +106,7 @@ def _repair_callback_from_args(args: argparse.Namespace) -> RepairCallback | Non
 
 def _cmd_repair_loop(args: argparse.Namespace) -> int:
     spec_path = Path(args.spec)
-    spec = StrategySpec.from_dict(json.loads(spec_path.read_text(encoding="utf-8")))
+    spec = StrategySpec.from_dict(json.loads(spec_path.read_text(encoding="utf-8-sig")))
     policy = RepairPolicy(max_repair_attempts=args.max_repair_attempts)
     result = run_repair_loop(
         spec,
@@ -126,7 +126,7 @@ def _cmd_repair_loop(args: argparse.Namespace) -> int:
 
 def _cmd_full_loop(args: argparse.Namespace) -> int:
     spec_path = Path(args.spec)
-    spec = StrategySpec.from_dict(json.loads(spec_path.read_text(encoding="utf-8")))
+    spec = StrategySpec.from_dict(json.loads(spec_path.read_text(encoding="utf-8-sig")))
     policy = RepairPolicy(max_repair_attempts=args.max_repair_attempts)
     guardrails = Guardrails(
         max_drawdown=args.max_drawdown,

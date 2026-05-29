@@ -87,9 +87,9 @@ def test_orb_failure_reclaim_parameters_are_extractable_for_seed_template() -> N
     # Every exposed NinjaScriptProperty must be discoverable by the seed-template
     # writer so the optimizer template carries them.
     assert {"OrbMinutes", "TargetTicks", "StopTicks", "TradeDirection"} <= by_name.keys()
-    # Only TargetTicks / StopTicks carry [Range] -> they are the swept params;
-    # everything else stays fixed (min == max).
-    assert by_name["TargetTicks"].minimum != by_name["TargetTicks"].maximum
-    assert by_name["StopTicks"].minimum != by_name["StopTicks"].maximum
-    assert by_name["OrbMinutes"].minimum == by_name["OrbMinutes"].maximum
-    assert by_name["TradeDirection"].minimum == by_name["TradeDirection"].maximum
+    # Every parameter is pinned (min == max == default). The recipe planner
+    # is the only thing that should introduce sweeps; auto-generated wide
+    # ranges multiplied into hundreds of millions of combinations when NT
+    # received the seed-derived template.
+    for parameter in parameters:
+        assert parameter.minimum == parameter.maximum == parameter.default
