@@ -1232,12 +1232,35 @@ function maybeFocusStageFromQuery() {
   // Used by the Decision Dashboard refine path and any future
   // deep-link-to-stage entry point. Reads the param once and clears it from
   // the URL so a later refresh does not keep re-focusing the same tab.
+  //
+  // ``focus_tab=results`` (used by the Lineage page's "Stage results" link)
+  // overrides the default Matrix & Roles landing and opens the Results tab
+  // with the stage pre-selected in the results dropdown.
   try {
     const params = new URLSearchParams(window.location.search);
     const focusStageId = params.get("focus_stage");
+    const focusTab = (params.get("focus_tab") || "").toLowerCase();
     if (!focusStageId) return;
     const idx = UI_STAGES.findIndex((stage) => stage.id === focusStageId);
-    if (idx >= 0) {
+    if (idx < 0) {
+      setStatus(`Stage ${focusStageId} not found in the saved recipe.`);
+    } else if (focusTab === "results") {
+      switchTab("results");
+      // populateResultsStageSelect is async; wait for it so the dropdown
+      // has options before we set the value, then fire loadStageResults.
+      const select = $("results-stage-select");
+      Promise.resolve(populateResultsStageSelect()).then(() => {
+        if (select) {
+          select.value = focusStageId;
+          if (typeof loadStageResults === "function") {
+            loadStageResults(focusStageId);
+          }
+        }
+        setStatus(`Showing results for ${focusStageId}.`);
+      }).catch((err) => {
+        console.warn("focus_tab=results handling failed:", err);
+      });
+    } else {
       selectStageTab(idx);
       switchTab("roles");
       setStatus(
@@ -1245,10 +1268,9 @@ function maybeFocusStageFromQuery() {
         `Advance on the Run dashboard to launch only this stage — earlier ` +
         `stages stay intact.`,
       );
-    } else {
-      setStatus(`Stage ${focusStageId} not found in the saved recipe.`);
     }
     params.delete("focus_stage");
+    params.delete("focus_tab");
     const remaining = params.toString();
     const next = window.location.pathname + (remaining ? `?${remaining}` : "");
     window.history.replaceState({}, document.title, next);
@@ -2401,6 +2423,8 @@ function renderRecipeArtifactLinks(artifacts, review) {
   }
   if (review && review.decision_url) {
     links.push(`<a class="text-amber-300 hover:underline" href="${escapeHtml(review.decision_url)}">decision dashboard</a>`);
+    const lineageUrl = `/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/lineage`;
+    links.push(`<a class="text-amber-300 hover:underline" href="${escapeHtml(lineageUrl)}" title="See how a finalist traces back to its Stage 1 origin">inspect lineage</a>`);
   }
   return links.join("");
 }

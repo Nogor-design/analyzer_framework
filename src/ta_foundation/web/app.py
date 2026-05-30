@@ -1144,6 +1144,69 @@ def create_app() -> "Flask":
             dashboard=dashboard.to_dict(),
         )
 
+    @app.route("/optimizer/sessions/<session_id>/lineage")
+    def optimizer_lineage_index_page(session_id: str):
+        """No-candidate landing: pick the first finalist and redirect, or
+        render a friendly "no finalists yet" page if the manifest isn't there.
+        """
+        from flask import abort, redirect
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_lineage import list_finalist_ids
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        finalists = list_finalist_ids(session)
+        if not finalists:
+            doc = session.load_document()
+            return render_template(
+                "optimizer_lineage.html",
+                report=None,
+                session_id=session.id,
+                session_label=doc.label,
+                error_reason=(
+                    "No final-backtest manifest on disk yet. Run the recipe "
+                    "through final_backtest before inspecting lineage."
+                ),
+            )
+        return redirect(f"/optimizer/sessions/{session.id}/lineage/{finalists[0]}")
+
+    @app.route("/optimizer/sessions/<session_id>/lineage/<candidate_id>")
+    def optimizer_lineage_page(session_id: str, candidate_id: str):
+        from flask import abort
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_lineage import (
+            LineageError,
+            build_lineage,
+            list_finalist_ids,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        try:
+            report = build_lineage(session, candidate_id)
+        except LineageError as exc:
+            doc = session.load_document()
+            return render_template(
+                "optimizer_lineage.html",
+                report=None,
+                session_id=session.id,
+                session_label=doc.label,
+                error_reason=str(exc),
+                siblings=list_finalist_ids(session),
+                candidate_id=candidate_id,
+            )
+        return render_template(
+            "optimizer_lineage.html",
+            report=report.to_dict(),
+            session_id=session.id,
+            session_label=report.session_label,
+            error_reason=None,
+            siblings=report.siblings,
+            candidate_id=report.candidate_id,
+        )
+
     @app.route("/optimizer/sessions/<session_id>/candidates/<run_id>/report")
     def optimizer_candidate_report_page(session_id: str, run_id: str):
         from flask import abort, send_file
@@ -1568,16 +1631,23 @@ def create_app() -> "Flask":
         session = get_session(session_id)
         if session is None:
             return redirect("/optimizer/sessions")
-        # Preserve a focus_stage query param so deep links from the Decision
-        # Dashboard ("Refine selected" sends ``?focus_stage=stage_3``) survive
-        # the cookie-setting redirect. Without this, the cookie gets fixed
-        # but the focus_stage param is dropped and the recipe editor opens
-        # on the default Recipe Setup tab.
+        # Preserve focus_stage and (optionally) focus_tab query params so deep
+        # links survive the cookie-setting redirect. Without this, the cookie
+        # gets fixed but the focus params are dropped and the recipe editor
+        # opens on the default Recipe Setup tab. focus_tab=results is used by
+        # the Lineage page's per-stage "Stage results" link to land directly
+        # on the Results tab with the right stage selected.
         focus_stage = (request.args.get("focus_stage") or "").strip()
+        focus_tab = (request.args.get("focus_tab") or "").strip()
         target = "/optimizer/recipe"
+        forwarded: dict[str, str] = {}
         if focus_stage:
+            forwarded["focus_stage"] = focus_stage
+        if focus_tab:
+            forwarded["focus_tab"] = focus_tab
+        if forwarded:
             from urllib.parse import urlencode
-            target = f"{target}?{urlencode({'focus_stage': focus_stage})}"
+            target = f"{target}?{urlencode(forwarded)}"
         response = app.make_response(redirect(target))
         response.set_cookie(
             _OPTIMIZER_COOKIE,

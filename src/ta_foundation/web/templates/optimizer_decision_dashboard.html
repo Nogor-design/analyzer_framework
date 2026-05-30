@@ -232,6 +232,11 @@
                          title="Open this candidate's generated HTML report">
                         View report
                       </a>
+                      <a href="/optimizer/sessions/{{ dashboard.session_id }}/lineage/{{ row.run_id }}"
+                         class="text-gray-400 hover:text-amber-300 no-underline font-sans"
+                         title="See how this finalist traces back to its Stage 1 origin">
+                        Inspect lineage
+                      </a>
                       <a href="/optimizer/sessions/{{ dashboard.session_id }}/candidates/{{ row.run_id }}/report-builder"
                          class="text-gray-400 hover:text-amber-300 no-underline font-sans"
                          title="Choose report sections and rebuild this candidate">
@@ -241,6 +246,11 @@
                   {% else %}
                     <div class="flex items-center gap-2 flex-wrap">
                       <span>{{ row.run_id }}</span>
+                      <a href="/optimizer/sessions/{{ dashboard.session_id }}/lineage/{{ row.run_id }}"
+                         class="text-gray-400 hover:text-amber-300 no-underline font-sans"
+                         title="See how this finalist traces back to its Stage 1 origin">
+                        Inspect lineage
+                      </a>
                       <a href="/optimizer/sessions/{{ dashboard.session_id }}/candidates/{{ row.run_id }}/report-builder"
                          class="text-gray-400 hover:text-amber-300 no-underline font-sans"
                          title="Choose report sections and rebuild this candidate">
