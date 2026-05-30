@@ -238,7 +238,7 @@ def poll_until_terminal(
 
 def verify_artifacts(session_dir: Path, base: str, session_id: str) -> None:
     _step("5-6", "VERIFY REPORTS + DASHBOARD")
-    reports_dir = session_dir / "per_candidate_reports"
+    reports_dir = session_dir / "deployment_package" / "per_candidate_reports"
     p_reports = sorted(reports_dir.glob("P_*.html")) if reports_dir.exists() else []
     if not p_reports:
         raise SmokeError(f"no P_NNN.html reports under {reports_dir}")
