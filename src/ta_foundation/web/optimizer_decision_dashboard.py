@@ -78,10 +78,17 @@ class CandidateRow:
     decision_reason: str
     report_url: str | None = None  # /optimizer/.../candidates/<run_id>/report when HTML exists
     checks: list[CheckSummary] = field(default_factory=list)
+    # "finalist" for F_NNN rows from the final-backtest review (default);
+    # "promoted" for P_NNN rows that came from the shortlist-promotion path.
+    kind: str = "finalist"
+    # When kind == "promoted", points back to the shortlist row that
+    # produced this candidate; otherwise None.
+    source: dict[str, str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["checks"] = [c.to_dict() for c in self.checks]
+        d["source"] = dict(self.source) if self.source else None
         return d
 
 
@@ -140,7 +147,14 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
     evaluated = _load_json(review_dir / "evaluated_candidates.json") or {}
     recommendations = _load_json(review_dir / "recommendations.json") or {}
 
-    if not evaluated.get("rows"):
+    # Promoted rows (P_NNN) come from a parallel review written by
+    # :mod:`ta_foundation.web.optimizer_promotion_results`. They render
+    # alongside the finalist (F_NNN) rows but carry kind="promoted" and a
+    # source pointer back to the originating shortlist stage row.
+    promoted_review = pkg / "promoted_handoff" / "promoted_review"
+    promoted_evaluated = _load_json(promoted_review / "evaluated_candidates.json") or {}
+
+    if not evaluated.get("rows") and not promoted_evaluated.get("rows"):
         return _empty_dashboard(
             session=session, doc=doc, manifest=manifest,
             reason="No final-Backtest review on disk yet — run the final fixed Backtest phase and rebuild the deployment package.",
@@ -226,6 +240,60 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
             ),
             checks=checks,
         ))
+    # Append promoted (P_NNN) rows so they participate in the same
+    # ranking pass. They never carry per-check robustness data — those
+    # checks run only for finalists — and their decision_reason is
+    # synthesized from the evaluator row's pass/reject status.
+    for promo_row in promoted_evaluated.get("rows") or []:
+        if not isinstance(promo_row, dict):
+            continue
+        run_id = str(promo_row.get("run_id") or "")
+        if not run_id:
+            continue
+        promo_status = "recommended" if str(promo_row.get("status") or "").lower() == "pass" else "evaluated"
+        promo_reason = str(promo_row.get("reasons") or "")
+        checks = [
+            _summarize_bootstrap(None),
+            _summarize_walkforward(None),
+            _summarize_neighborhood(None),
+            _summarize_shadow(None),
+        ]
+        promo_score = _safe_float(promo_row.get("score"))
+        promo_adjusted = _compute_adjusted_score(promo_score, checks)
+        source_payload: dict[str, str] | None = None
+        src_stage = promo_row.get("source_stage_id")
+        src_cid = promo_row.get("source_candidate_id")
+        if src_stage or src_cid:
+            source_payload = {
+                "stage_id": str(src_stage or ""),
+                "candidate_id": str(src_cid or ""),
+            }
+        unranked_rows.append(CandidateRow(
+            run_id=run_id,
+            status=promo_status,
+            rank=None,
+            score=promo_score,
+            adjusted_score=promo_adjusted,
+            adjusted_rank=0,
+            mode=str(promo_row.get("mode") or ""),
+            session_bucket=str(promo_row.get("session_bucket") or ""),
+            total_net_profit=_safe_float(promo_row.get("total_net_profit")),
+            profit_factor=_safe_float(promo_row.get("profit_factor")),
+            max_drawdown=_safe_float(promo_row.get("max_drawdown")),
+            trades=int(promo_row.get("trades") or 0),
+            percent_days_traded=_safe_float(promo_row.get("percent_days_traded")),
+            direction=str(promo_row.get("direction") or ""),
+            risk_shape=str(promo_row.get("risk_shape") or ""),
+            decision_reason=promo_reason,
+            report_url=(
+                f"/optimizer/sessions/{session.id}/candidates/{run_id}/report"
+                if run_id in existing_reports else None
+            ),
+            checks=checks,
+            kind="promoted",
+            source=source_payload,
+        ))
+
     rows = [
         replace(row, adjusted_rank=idx)
         for idx, row in enumerate(sorted(unranked_rows, key=_by_adjusted_rank), start=1)

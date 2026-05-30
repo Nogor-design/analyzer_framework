@@ -17,6 +17,10 @@
     .pill-recommended { background: #064e3b; color: #34d399; }
     .pill-rejected { background: #7f1d1d; color: #fecaca; }
     .pill-evaluated { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+    .pill-promoted { background: #4c1d95; color: #ddd6fe; font-weight: 600; }
+    .promoted-source { font-size: 10px; color: #a78bfa; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .promoted-source a { color: #c4b5fd; text-decoration: none; }
+    .promoted-source a:hover { color: #ddd6fe; text-decoration: underline; }
     .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .badge-ok { background: #064e3b; color: #34d399; }
     .badge-warn { background: #78350f; color: #fcd34d; }
@@ -34,7 +38,7 @@
     details.flagbox > summary::-webkit-details-marker { display: none; }
   </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen has-shortlist-sidebar">
 
 <header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
   <div class="flex items-center gap-3">
@@ -80,6 +84,11 @@
           View final report
         </a>
       {% endif %}
+      <a href="/optimizer/sessions/{{ dashboard.session_id }}/leaderboard"
+         class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+         title="Rank every backtest the recipe ever scored — including rows the optimizer didn't pick.">
+        Leaderboard
+      </a>
     {% endif %}
     <span class="text-gray-500">Generated {{ dashboard.generated_at }}</span>
   </div>
@@ -158,6 +167,11 @@
               Download selected
             </button>
           {% endif %}
+          <button id="decision-add-shortlist-btn" type="button" disabled
+                  class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Add the checked finalists to your session shortlist (right sidebar).">
+            ＋ Add to shortlist
+          </button>
           <button id="decision-refine-btn" type="button" disabled
                   class="px-3 py-1.5 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
             Refine selected &rarr;
@@ -210,8 +224,11 @@
                   {% endif %}
                 </td>
                 <td>
+                  {% if row.kind == "promoted" %}
+                    <span class="pill pill-promoted" title="Promoted from a shortlist stage row (P_NNN)">promoted</span>
+                  {% endif %}
                   {% if row.status == "recommended" %}
-                    <span class="pill pill-rank">#{{ row.rank }}</span>
+                    {% if row.rank is not none %}<span class="pill pill-rank">#{{ row.rank }}</span>{% endif %}
                     <span class="pill pill-recommended">recommended</span>
                   {% elif row.status == "rejected" %}
                     <span class="pill pill-rejected">rejected</span>
@@ -256,6 +273,16 @@
                          title="Choose report sections and rebuild this candidate">
                         Customize
                       </a>
+                    </div>
+                  {% endif %}
+                  {% if row.kind == "promoted" and row.source %}
+                    <div class="promoted-source mt-1">
+                      from
+                      <a href="/optimizer/sessions/{{ dashboard.session_id }}/resume?focus_stage={{ row.source.stage_id }}&focus_tab=results"
+                         title="Jump back to the stage results that produced this promoted candidate">
+                        {{ row.source.stage_id }}
+                      </a>
+                      &middot; {{ row.source.candidate_id }}
                     </div>
                   {% endif %}
                 </td>
@@ -512,6 +539,106 @@
     }
   });
 })();
+</script>
+
+<div id="shortlist-banner"
+     class="hidden max-w-6xl mx-auto px-6 mt-3 text-xs">
+  <div class="card" style="background:rgba(252,211,77,0.08); border-color:rgba(252,211,77,0.3); color:#fcd34d;">
+    <span id="shortlist-banner-text"></span>
+  </div>
+</div>
+
+{% include "_shortlist_sidebar.html" %}
+<script src="/static/optimizer_shortlist.js"></script>
+<script>
+  (function () {
+    const sessionId = "{{ dashboard.session_id }}";
+    OptimizerShortlist.init({
+      sessionId,
+      onChange: function (state) {
+        applyShortlistPreCheck(state);
+      },
+    });
+
+    // "Add selected to shortlist" — uses the same checkboxes the refine
+    // flow already manages, so the operator can hand-pick finalists from
+    // either the Dashboard or the Leaderboard and end up in the same place.
+    const addBtn = document.getElementById("decision-add-shortlist-btn");
+    const checkboxes = Array.from(document.querySelectorAll(".decision-refine-checkbox"));
+
+    function selectedIds() {
+      return checkboxes.filter((c) => c.checked).map((c) => c.value);
+    }
+    function syncAddButton() {
+      if (addBtn) addBtn.disabled = selectedIds().length === 0;
+    }
+    checkboxes.forEach((c) => c.addEventListener("change", syncAddButton));
+    syncAddButton();
+
+    if (addBtn) {
+      addBtn.addEventListener("click", async () => {
+        const ids = selectedIds();
+        if (ids.length === 0) return;
+        const items = ids.map((cid) => ({
+          stage_id: "final_backtest",
+          candidate_id: cid,
+        }));
+        addBtn.disabled = true;
+        try {
+          await OptimizerShortlist.add(items, "decision_dashboard");
+        } catch (e) {
+          alert("Failed to add to shortlist: " + e.message);
+        } finally {
+          syncAddButton();
+        }
+      });
+    }
+
+    // "?from=shortlist" — when the operator clicked "Open Decision →"
+    // from the sidebar, pre-check any finalists they shortlisted so the
+    // refine flow is one click away.
+    const params = new URLSearchParams(window.location.search);
+    const fromShortlist = params.get("from") === "shortlist";
+    let didPreCheck = false;
+
+    function applyShortlistPreCheck(state) {
+      const banner = document.getElementById("shortlist-banner");
+      const text = document.getElementById("shortlist-banner-text");
+      if (!fromShortlist || !banner || !text) return;
+      const finalistIds = new Set(state.finalist_candidate_ids || []);
+      let preChecked = 0;
+      if (!didPreCheck) {
+        checkboxes.forEach((c) => {
+          if (finalistIds.has(c.value)) {
+            c.checked = true;
+            preChecked += 1;
+          }
+        });
+        if (preChecked > 0) {
+          // Trigger the existing change listeners so refine count + add
+          // button stay in sync with the pre-check.
+          checkboxes.forEach((c) => c.dispatchEvent(new Event("change", { bubbles: true })));
+        }
+        didPreCheck = true;
+      }
+      const parts = [];
+      if (finalistIds.size > 0) {
+        parts.push(finalistIds.size + " finalist(s) from your shortlist are pre-selected for Refine.");
+      }
+      if ((state.pending_count || 0) > 0) {
+        parts.push(state.pending_count + " stage-row item(s) need promotion before they can become templates (coming in a follow-up).");
+      }
+      if ((state.stale_count || 0) > 0) {
+        parts.push(state.stale_count + " item(s) are stale — re-ingest changed their candidate ids; remove them from the sidebar.");
+      }
+      if (parts.length === 0) {
+        banner.classList.add("hidden");
+        return;
+      }
+      text.textContent = parts.join("  ");
+      banner.classList.remove("hidden");
+    }
+  })();
 </script>
 
 </body>

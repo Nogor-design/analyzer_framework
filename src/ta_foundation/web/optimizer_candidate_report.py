@@ -220,10 +220,10 @@ def build_candidate_report(
         ``<session>/deployment_package/per_candidate_reports/``.
     """
     pkg_dir = session.directory / "deployment_package"
-    candidate_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results" / run_id
-    if not candidate_dir.exists():
+    candidate_dir = _resolve_candidate_results_dir(pkg_dir, run_id)
+    if candidate_dir is None:
         raise CandidateReportError(
-            f"No backtest results for {run_id} at {candidate_dir}"
+            f"No backtest results for {run_id} under {pkg_dir}"
         )
 
     out_dir = output_dir or (pkg_dir / PER_CANDIDATE_REPORTS_DIRNAME)
@@ -323,23 +323,38 @@ def build_all_candidate_reports(
     images_dir: Path | str | None = None,
     purge_existing: bool = True,
 ) -> CandidateReportBatchResult:
-    """Build a report for every candidate in the final-Backtest results dir.
+    """Build a report for every candidate in the final + promoted result dirs.
+
+    Walks both ``final_backtest_handoff/nt8_backtest_results/`` (F_NNN
+    finalists) and ``promoted_handoff/nt8_backtest_results/`` (P_NNN
+    rows from the shortlist-promotion path). Reports for both kinds land
+    in the same ``per_candidate_reports/`` folder keyed by ``run_id``.
 
     ``purge_existing=True`` (default) removes any previous per-candidate
     HTML so stale reports don't survive a rebuild. The output directory
     itself is preserved.
     """
     pkg_dir = session.directory / "deployment_package"
-    results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
+    final_results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
+    promoted_results_dir = pkg_dir / "promoted_handoff" / "nt8_backtest_results"
     out_dir = pkg_dir / PER_CANDIDATE_REPORTS_DIRNAME
 
     notes: list[str] = []
-    if not results_dir.exists():
+    candidate_dirs: list[Path] = []
+    if final_results_dir.exists():
+        candidate_dirs.extend(sorted(p for p in final_results_dir.iterdir() if p.is_dir()))
+    if promoted_results_dir.exists():
+        candidate_dirs.extend(sorted(p for p in promoted_results_dir.iterdir() if p.is_dir()))
+
+    if not candidate_dirs:
         return CandidateReportBatchResult(
             session_id=session.id,
             output_dir=str(out_dir),
             per_candidate=[],
-            notes=[f"No final-Backtest results at {results_dir}; nothing to render."],
+            notes=[
+                f"No backtest results under {final_results_dir} or "
+                f"{promoted_results_dir}; nothing to render."
+            ],
         )
 
     if purge_existing and out_dir.exists():
@@ -349,7 +364,6 @@ def build_all_candidate_reports(
             except OSError:
                 pass
 
-    candidate_dirs = sorted(p for p in results_dir.iterdir() if p.is_dir())
     per: list[CandidateReportResult] = []
     for cand in candidate_dirs:
         run_id = cand.name
@@ -486,6 +500,23 @@ def _build_registry() -> ParserRegistry:
     ])
 
 
+def _resolve_candidate_results_dir(pkg_dir: Path, run_id: str) -> Path | None:
+    """Look up ``run_id``'s NT result folder, trying final then promoted.
+
+    Both handoff layouts use ``<root>/nt8_backtest_results/<run_id>/`` so a
+    single search across both works for F_NNN finalists and P_NNN promoted
+    rows. Returns ``None`` when neither layout has a matching folder.
+    """
+    candidates = [
+        pkg_dir / "final_backtest_handoff" / "nt8_backtest_results" / run_id,
+        pkg_dir / "promoted_handoff" / "nt8_backtest_results" / run_id,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
 def _resolve_images_dir(images_dir: Path | str | None) -> str | None:
     if images_dir:
         return str(images_dir)
@@ -496,13 +527,21 @@ def _resolve_images_dir(images_dir: Path | str | None) -> str | None:
 def _find_template_path_for_run_id(
     session: OptimizerSession, run_id: str,
 ) -> Path | None:
-    """Find the final template XML that produced this run.
+    """Find the template XML that produced this run.
 
-    Templates are named like ``01_Breakout_PantheonMasterBotV01TesterV2.xml``
-    where the leading number maps to ``F_<num:03d>``. The first match
-    by leading-number is returned. If the operator has run the Decision page
-    final-template renamer, prefer its indexed ``F_xxx__semantic.xml`` output.
+    For F_NNN finalists: templates are named like
+    ``01_Breakout_PantheonMasterBotV01TesterV2.xml`` where the leading
+    number maps to ``F_<num:03d>``. If the operator has run the Decision
+    page final-template renamer, prefer its indexed
+    ``F_xxx__semantic.xml`` output.
+
+    For P_NNN promoted rows: templates are stamped under
+    ``generated_templates/promoted/<P_NNN>.xml`` and mirrored to
+    ``deployment_package/promoted_handoff/named_backtest_templates/recipe/<P_NNN>.xml``.
     """
+    if run_id.startswith("P_"):
+        return _find_promoted_template_path(session, run_id)
+
     from ta_foundation.web.optimizer_final_templates import find_renamed_template_for_run_id
 
     renamed = find_renamed_template_for_run_id(session, run_id)
@@ -527,6 +566,22 @@ def _find_template_path_for_run_id(
             continue
         if n == suffix_num:
             return xml
+    return None
+
+
+def _find_promoted_template_path(
+    session: OptimizerSession, run_id: str,
+) -> Path | None:
+    """Return the on-disk XML for a P_NNN promoted run, preferring the
+    handoff mirror so the banner shows the same file the operator runs."""
+    candidates = [
+        session.directory / "deployment_package" / "promoted_handoff"
+        / "named_backtest_templates" / "recipe" / f"{run_id}.xml",
+        session.directory / "generated_templates" / "promoted" / f"{run_id}.xml",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
     return None
 
 

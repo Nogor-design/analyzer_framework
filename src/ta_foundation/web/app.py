@@ -1207,6 +1207,218 @@ def create_app() -> "Flask":
             candidate_id=report.candidate_id,
         )
 
+    @app.route("/optimizer/sessions/<session_id>/leaderboard")
+    def optimizer_leaderboard_page(session_id: str):
+        """Session-scoped leaderboard across every backtest the recipe scored.
+
+        Read-only complement to the Decision Dashboard. Surfaces rows the
+        recipe may have optimized away from — including rows that beat any
+        finalist on the chosen metric but were never selected.
+        """
+        from flask import abort, request
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_leaderboard import (
+            DEFAULT_METRIC,
+            DEFAULT_TOP_N,
+            LeaderboardError,
+            SUPPORTED_METRICS,
+            build_leaderboard,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+
+        metric = request.args.get("metric", DEFAULT_METRIC).strip() or DEFAULT_METRIC
+        if metric not in SUPPORTED_METRICS:
+            metric = DEFAULT_METRIC
+
+        raw_min = request.args.get("min_trades")
+        try:
+            min_trades = int(raw_min) if raw_min is not None and raw_min != "" else None
+            if min_trades is not None and min_trades < 0:
+                min_trades = None
+        except (TypeError, ValueError):
+            min_trades = None
+
+        try:
+            top_n = int(request.args.get("top_n", DEFAULT_TOP_N))
+            if top_n <= 0:
+                top_n = DEFAULT_TOP_N
+        except (TypeError, ValueError):
+            top_n = DEFAULT_TOP_N
+
+        try:
+            report = build_leaderboard(
+                session, metric=metric, min_trades=min_trades, top_n=top_n,
+            )
+        except LeaderboardError as exc:
+            doc = session.load_document()
+            return render_template(
+                "optimizer_leaderboard.html",
+                report=None,
+                session_id=session.id,
+                session_label=doc.label,
+                error_reason=str(exc),
+                metric=metric,
+                min_trades=min_trades,
+                top_n=top_n,
+                supported_metrics=list(SUPPORTED_METRICS),
+            )
+        return render_template(
+            "optimizer_leaderboard.html",
+            report=report.to_dict(),
+            session_id=session.id,
+            session_label=report.session_label,
+            error_reason=None,
+            metric=report.metric,
+            min_trades=report.applied_min_trades,
+            top_n=report.top_n,
+            supported_metrics=list(SUPPORTED_METRICS),
+        )
+
+    @app.route("/api/optimizer/sessions/<session_id>/shortlist", methods=["GET"])
+    def api_optimizer_shortlist_get(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shortlist import resolve_shortlist
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        return jsonify(resolve_shortlist(session).to_dict())
+
+    @app.route("/api/optimizer/sessions/<session_id>/shortlist", methods=["POST"])
+    def api_optimizer_shortlist_add(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shortlist import (
+            ShortlistError, add_items, resolve_shortlist,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            return jsonify({"error": "items must be a non-empty list"}), 400
+        source = str(payload.get("source") or "api")
+        try:
+            add_items(session, items, source=source)
+        except ShortlistError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(resolve_shortlist(session).to_dict())
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shortlist/<stage_id>/<path:candidate_id>",
+        methods=["DELETE"],
+    )
+    def api_optimizer_shortlist_remove(
+        session_id: str, stage_id: str, candidate_id: str,
+    ):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shortlist import (
+            ShortlistError, remove_item, resolve_shortlist,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            remove_item(session, stage_id=stage_id, candidate_id=candidate_id)
+        except ShortlistError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(resolve_shortlist(session).to_dict())
+
+    @app.route("/api/optimizer/sessions/<session_id>/shortlist", methods=["DELETE"])
+    def api_optimizer_shortlist_clear(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_shortlist import clear, resolve_shortlist
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        clear(session)
+        return jsonify(resolve_shortlist(session).to_dict())
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shortlist/promote",
+        methods=["POST"],
+    )
+    def api_optimizer_shortlist_promote(session_id: str):
+        """Stamp templates for pending rows AND dispatch NinjaTrader to run them.
+
+        Body (optional): ``{"dispatch": false}`` skips the NT RunBatch
+        for testing / dry-runs. Default is one-click: stamp + run.
+        """
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_promotion import (
+            PromotionError, promote_pending,
+        )
+        from ta_foundation.web.optimizer_promotion_run import (
+            PromotionRunError, start_promoted_run,
+        )
+        from ta_foundation.web.optimizer_shortlist import resolve_shortlist
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        body = request.get_json(silent=True) or {}
+        dispatch = body.get("dispatch", True)
+
+        try:
+            result = promote_pending(session)
+        except PromotionError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        run_payload: dict[str, Any] | None = None
+        if dispatch:
+            try:
+                run_record = start_promoted_run(session)
+                run_payload = run_record.to_dict()
+            except PromotionRunError as exc:
+                run_payload = {"error": str(exc)}
+
+        return jsonify({
+            "result": result.to_dict(),
+            "shortlist": resolve_shortlist(session).to_dict(),
+            "run": run_payload,
+        })
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shortlist/promote/status",
+        methods=["GET"],
+    )
+    def api_optimizer_shortlist_promote_status(session_id: str):
+        """Poll the active promoted run. On completion this is what
+        actually runs the mirror + review + per-candidate-report pipeline
+        in-line so the returned record always reflects final state."""
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_promotion_run import (
+            advance_promoted_run, load_promoted_run,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        record = advance_promoted_run(session) or load_promoted_run(session)
+        if record is None:
+            return jsonify({"run": None})
+        return jsonify({"run": record.to_dict()})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/shortlist/promote/cancel",
+        methods=["POST"],
+    )
+    def api_optimizer_shortlist_promote_cancel(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_promotion_run import cancel_promoted_run
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        record = cancel_promoted_run(session)
+        return jsonify({"run": record.to_dict() if record else None})
+
     @app.route("/optimizer/sessions/<session_id>/candidates/<run_id>/report")
     def optimizer_candidate_report_page(session_id: str, run_id: str):
         from flask import abort, send_file

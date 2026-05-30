@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Leaderboard {{ session_id }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-stage { background: #1e3a8a; color: #bfdbfe; font-weight: 600; }
+    .pill-selected { background: #064e3b; color: #34d399; }
+    .pill-evaluated { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+    .pill-finalist_recommended { background: #064e3b; color: #34d399; }
+    .pill-finalist_rejected { background: #7f1d1d; color: #fecaca; }
+    .pill-finalist_evaluated { background: #78350f; color: #fcd34d; }
+    .pill-beats { background: rgba(252,211,77,0.15); color: #fcd34d; border: 1px solid rgba(252,211,77,0.4); font-weight: 600; }
+    .banner { background: rgba(252,211,77,0.06); border: 1px solid rgba(252,211,77,0.25); color: #fcd34d; padding: 8px 12px; border-radius: 6px; font-size: 11px; line-height: 1.5; }
+    .banner-row { display: list-item; list-style: disc; margin-left: 18px; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    select.leaderboard-select, input.leaderboard-input {
+      background: #1f2937; border: 1px solid #374151; color: #f3f4f6;
+      padding: 4px 8px; border-radius: 4px; font-size: 12px;
+    }
+    select.leaderboard-select:focus, input.leaderboard-input:focus { outline: none; border-color: #f59e0b; }
+    table.leaderboard { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.leaderboard th { color: #6b7280; text-align: left; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #374151; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
+    table.leaderboard td { padding: 6px 8px; border-bottom: 1px solid #1f2937; vertical-align: top; }
+    table.leaderboard td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.leaderboard td.metric { font-variant-numeric: tabular-nums; color: #f3f4f6; font-weight: 600; text-align: right; }
+    table.leaderboard tr.beats-finalist td.metric { color: #fcd34d; }
+    table.leaderboard tr:hover td { background: #1a2233; }
+    .row-rank { color: #6b7280; font-variant-numeric: tabular-nums; }
+    .params-list { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; color: #9ca3af; white-space: pre-wrap; }
+    .params-toggle { color: #60a5fa; cursor: pointer; font-size: 10px; }
+    .params-toggle:hover { color: #93c5fd; }
+    .link-stage { color: #93c5fd; text-decoration: none; }
+    .link-stage:hover { color: #bfdbfe; text-decoration: underline; }
+    .link-finalist { color: #fcd34d; text-decoration: none; }
+    .link-finalist:hover { color: #fde68a; text-decoration: underline; }
+  </style>
+</head>
+<body class="min-h-screen has-shortlist-sidebar">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <a href="/optimizer/sessions/{{ session_id }}" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Detail</a>
+    <a href="/optimizer/sessions/{{ session_id }}/decision" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Decision</a>
+    <span class="text-amber-400 font-bold text-lg">Leaderboard</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session_id }}</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/sessions/{{ session_id }}/decision"
+       class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline">
+      Back to Decision
+    </a>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-6 space-y-5">
+
+{% if error_reason %}
+  <section class="card">
+    <h1 class="text-xl font-bold mb-2">Leaderboard unavailable</h1>
+    <div class="text-amber-300 text-sm">{{ error_reason }}</div>
+  </section>
+{% elif report is none %}
+  <section class="card">
+    <h1 class="text-xl font-bold mb-2">Leaderboard unavailable</h1>
+    <div class="text-amber-300 text-sm">No report data.</div>
+  </section>
+{% else %}
+
+  <section class="card">
+    <div class="flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-xl font-bold mb-1">Best across all runs</h1>
+        <div class="text-xs text-gray-400">
+          {{ session_label or "(unlabeled)" }}
+          &middot; scanned {{ report.total_scanned }} row(s),
+          {{ report.total_after_min_trades }} pass min_trades,
+          showing top {{ report.rows|length }}
+        </div>
+      </div>
+      <form method="GET" class="flex items-center gap-2 flex-wrap">
+        <label class="text-xs text-gray-500">Metric</label>
+        <select name="metric" class="leaderboard-select" onchange="this.form.submit()">
+          {% for m in supported_metrics %}
+            <option value="{{ m }}" {% if m == report.metric %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+        <label class="text-xs text-gray-500">Min trades</label>
+        <input type="number" name="min_trades" min="0" step="1" value="{{ report.applied_min_trades }}"
+               class="leaderboard-input w-20"
+               title="Default = strictest stage's selection.min_trades ({{ report.default_min_trades }})." />
+        <label class="text-xs text-gray-500">Top N</label>
+        <input type="number" name="top_n" min="1" max="500" step="1" value="{{ report.top_n }}"
+               class="leaderboard-input w-20" />
+        <button type="submit" class="btn-ghost px-3 py-1 rounded text-xs font-semibold">Apply</button>
+      </form>
+    </div>
+  </section>
+
+  {% if report.banner_notes %}
+    <section>
+      <ul class="banner">
+        {% for note in report.banner_notes %}
+          <li class="banner-row">{{ note }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="card overflow-x-auto">
+    {% if report.rows %}
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div class="flex items-center gap-2 text-xs">
+          <button type="button" id="leaderboard-select-all"
+                  class="btn-ghost px-2 py-1 rounded text-xs">Select all</button>
+          <button type="button" id="leaderboard-select-none"
+                  class="btn-ghost px-2 py-1 rounded text-xs">Clear sel</button>
+          <span id="leaderboard-selected-count" class="text-gray-500">0 selected</span>
+        </div>
+        <button type="button" id="leaderboard-add-shortlist"
+                class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
+                title="Add the checked rows to your session shortlist (right sidebar).">
+          ＋ Add selected to shortlist
+        </button>
+      </div>
+      <table class="leaderboard">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="leaderboard-check-all" title="Select all visible rows" /></th>
+            <th>#</th>
+            <th>Stage</th>
+            <th>Candidate</th>
+            <th>Status</th>
+            <th class="text-right">{{ report.metric }}</th>
+            <th class="text-right">PF</th>
+            <th class="text-right">Net</th>
+            <th class="text-right">|DD|</th>
+            <th class="text-right">Trades</th>
+            <th>Params</th>
+            <th>Links</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.rows %}
+            <tr class="{% if row.beats_best_finalist %}beats-finalist{% endif %}"
+                data-stage-id="{{ row.stage_id }}"
+                data-candidate-id="{{ row.candidate_id }}">
+              <td><input type="checkbox" class="leaderboard-row-check" /></td>
+              <td class="num row-rank">{{ loop.index }}</td>
+              <td>
+                <span class="pill pill-stage">{{ row.stage_id }}</span>
+                <div class="text-[10px] text-gray-500 mt-1">{{ row.stage_label }}</div>
+              </td>
+              <td>
+                <span class="pathish text-[11px]">{{ row.candidate_id }}</span>
+                {% if row.optimizer_target %}
+                  <div class="text-[10px] text-gray-500 mt-1">→ {{ row.optimizer_target }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="pill pill-{{ row.status }}">{{ row.status }}</span>
+                {% if row.beats_best_finalist %}
+                  <div class="mt-1"><span class="pill pill-beats">▲ beats finalist IS</span></div>
+                {% endif %}
+              </td>
+              <td class="metric">
+                {% if row.metric_value is none %}—{% else %}{{ "%.3f"|format(row.metric_value) }}{% endif %}
+              </td>
+              <td class="num">{% if row.kpis.profit_factor is none %}—{% else %}{{ "%.2f"|format(row.kpis.profit_factor) }}{% endif %}</td>
+              <td class="num">{% if row.kpis.total_net_profit is none %}—{% else %}{{ "%.0f"|format(row.kpis.total_net_profit) }}{% endif %}</td>
+              <td class="num">{% if row.kpis.max_drawdown_abs is none %}—{% else %}{{ "%.0f"|format(row.kpis.max_drawdown_abs) }}{% endif %}</td>
+              <td class="num">{% if row.kpis.trades is none %}—{% else %}{{ row.kpis.trades }}{% endif %}</td>
+              <td>
+                {% if row.params %}
+                  <details>
+                    <summary class="params-toggle">{{ row.params|length }} params</summary>
+                    <div class="params-list mt-1">
+                      {%- for k, v in row.params.items() -%}
+                        {{ k }}={{ v }}{% if not loop.last %}  {% endif %}
+                      {%- endfor -%}
+                    </div>
+                  </details>
+                {% else %}
+                  <span class="text-gray-600 text-[10px]">—</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if row.links.stage_results_url %}
+                  <a href="{{ row.links.stage_results_url }}" class="link-stage text-[11px]">stage results</a>
+                {% endif %}
+                {% if row.links.report_url %}
+                  <a href="{{ row.links.report_url }}" target="_blank" rel="noopener"
+                     class="link-finalist text-[11px]">report</a>
+                {% endif %}
+                {% if row.links.lineage_url %}
+                  <a href="{{ row.links.lineage_url }}" class="link-finalist text-[11px]">lineage</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-amber-300 text-sm">
+        No rows match the current filters. Try lowering <code>min_trades</code> or pick a different metric.
+      </div>
+    {% endif %}
+  </section>
+
+  {% if report.best_finalist_metric is not none %}
+    <section class="card">
+      <div class="text-xs text-gray-400">
+        Best finalist {{ report.metric }}:
+        <span class="text-amber-300 font-mono">{{ "%.3f"|format(report.best_finalist_metric) }}</span>
+        — rows above this on the same metric, in the same source stage,
+        are tagged <span class="pill pill-beats">▲ beats finalist IS</span>.
+      </div>
+    </section>
+  {% endif %}
+
+{% endif %}
+
+</main>
+
+{% include "_shortlist_sidebar.html" %}
+<script src="/static/optimizer_shortlist.js"></script>
+<script>
+  (function () {
+    OptimizerShortlist.init({ sessionId: "{{ session_id }}" });
+
+    const rows = Array.from(document.querySelectorAll("tr[data-candidate-id]"));
+    const checks = Array.from(document.querySelectorAll(".leaderboard-row-check"));
+    const countEl = document.getElementById("leaderboard-selected-count");
+    const checkAll = document.getElementById("leaderboard-check-all");
+    const selectAllBtn = document.getElementById("leaderboard-select-all");
+    const selectNoneBtn = document.getElementById("leaderboard-select-none");
+    const addBtn = document.getElementById("leaderboard-add-shortlist");
+
+    function updateCount() {
+      const n = checks.filter((c) => c.checked).length;
+      if (countEl) countEl.textContent = n + " selected";
+      if (addBtn) addBtn.disabled = n === 0;
+    }
+
+    checks.forEach((c) => c.addEventListener("change", updateCount));
+    if (checkAll) {
+      checkAll.addEventListener("change", () => {
+        checks.forEach((c) => { c.checked = checkAll.checked; });
+        updateCount();
+      });
+    }
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        checks.forEach((c) => { c.checked = true; });
+        if (checkAll) checkAll.checked = true;
+        updateCount();
+      });
+    }
+    if (selectNoneBtn) {
+      selectNoneBtn.addEventListener("click", () => {
+        checks.forEach((c) => { c.checked = false; });
+        if (checkAll) checkAll.checked = false;
+        updateCount();
+      });
+    }
+
+    if (addBtn) {
+      addBtn.addEventListener("click", async () => {
+        const items = rows
+          .filter((tr) => tr.querySelector(".leaderboard-row-check")?.checked)
+          .map((tr) => ({
+            stage_id: tr.dataset.stageId,
+            candidate_id: tr.dataset.candidateId,
+          }));
+        if (items.length === 0) return;
+        addBtn.disabled = true;
+        try {
+          await OptimizerShortlist.add(items, "leaderboard");
+          checks.forEach((c) => { c.checked = false; });
+          if (checkAll) checkAll.checked = false;
+          updateCount();
+        } catch (e) {
+          alert("Failed to add to shortlist: " + e.message);
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+    }
+    updateCount();
+  })();
+</script>
+
+</body>
+</html>

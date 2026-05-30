@@ -37,3 +37,24 @@ $null
 # Local-only databases — runtime state, not source.
 *.duckdb
 agent_state.db
+
+# Board-report scratch — ad-hoc Node tooling + generated Word docs.
+node_modules/
+package.json
+package-lock.json
+*.docx
+build_report.js
+create_board_report.js
+generate_board_report.js
+
+# Synthetic market data + generators — transient test fixtures, not source.
+*_synthetic.csv
+synthetic_data/
+synthetic_exports/
+synthetic_test_data/
+gen_synthetic.py
+generate_synthetic_data.py
+
+# Ad-hoc scratch dir + editor backups.
+scratch/
+*.bak

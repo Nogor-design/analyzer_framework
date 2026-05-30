@@ -36,7 +36,7 @@
     .table-row:hover td { background: rgba(30, 41, 59, 0.25); }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col has-shortlist-sidebar">
 
 <header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
   <div class="flex items-center gap-3">
@@ -418,6 +418,18 @@
           <p class="text-xs text-slate-400 mt-1">Review NinjaTrader rows after ingestion and guardrail filtering. Review auto-selected winners, override selections, or trigger suggested refinements.</p>
         </div>
         <div class="flex items-center gap-3">
+          <button id="results-add-shortlist-btn" type="button" disabled
+                  onclick="addCurrentSelectionToShortlist()"
+                  class="text-xs font-semibold text-slate-200 hover:text-amber-300 border border-slate-700 hover:border-amber-500 rounded px-2.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Add the checked candidates to your session shortlist (right sidebar).">
+            ＋ Shortlist
+          </button>
+          <a id="results-leaderboard-link"
+             href="/optimizer/sessions/{{ session_id }}/leaderboard"
+             class="text-xs font-semibold text-amber-400 hover:text-amber-300 border border-slate-700 hover:border-amber-500 rounded px-2.5 py-1.5 no-underline"
+             title="Open the session leaderboard across every backtest the recipe scored.">
+            Leaderboard ▸
+          </a>
           <label class="text-xs font-semibold text-slate-400">Execution Stage:</label>
           <select id="results-stage-select" class="w-64" onchange="loadStageResults(this.value)">
             <option value="">- select stage -</option>
@@ -3297,7 +3309,7 @@ function toggleCandidateSelection(candidateId, isChecked) {
 function updateSelectedCountDisplay() {
   const count = SELECTED_CANDIDATE_IDS.size;
   $("results-selected-count-display").textContent = `Selected: ${count} candidates`;
-  
+
   const btn = $("promote-selected-btn");
   if (btn) {
     btn.disabled = (count === 0);
@@ -3305,6 +3317,30 @@ function updateSelectedCountDisplay() {
   const finalBtn = $("send-final-btn");
   if (finalBtn) {
     finalBtn.disabled = (count === 0);
+  }
+  const shortlistBtn = $("results-add-shortlist-btn");
+  if (shortlistBtn) {
+    shortlistBtn.disabled = (count === 0);
+  }
+}
+
+async function addCurrentSelectionToShortlist() {
+  const stageId = ($("results-stage-select") || {}).value || "";
+  if (!stageId) {
+    alert("Pick an execution stage first.");
+    return;
+  }
+  const ids = Array.from(SELECTED_CANDIDATE_IDS);
+  if (ids.length === 0) return;
+  const items = ids.map((cid) => ({ stage_id: stageId, candidate_id: cid }));
+  const btn = $("results-add-shortlist-btn");
+  if (btn) btn.disabled = true;
+  try {
+    await window.OptimizerShortlist.add(items, "candidate_results");
+  } catch (e) {
+    alert("Failed to add to shortlist: " + e.message);
+  } finally {
+    updateSelectedCountDisplay();
   }
 }
 
@@ -3718,5 +3754,9 @@ loadSessionSetup().catch((e) => setStatus(e.message));
 const loadStrategiesPromise = loadStrategies().catch((e) => setStatus(e.message));
 loadRecipeStatus();
 </script>
+
+{% include "_shortlist_sidebar.html" %}
+<script src="/static/optimizer_shortlist.js"></script>
+<script>OptimizerShortlist.init({ sessionId: "{{ session_id }}" });</script>
 </body>
 </html>

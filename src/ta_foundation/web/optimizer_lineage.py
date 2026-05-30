@@ -525,18 +525,19 @@ def _selected_candidate_ids(selected_path: Path) -> set[str]:
     }
 
 
-def _extract_params(row: dict[str, Any]) -> dict[str, Any]:
+def extract_params_from_row(row: dict[str, Any]) -> dict[str, Any]:
     """Pull ``param_*`` columns out of a scored row and normalize the names
     to the strategy's canonical key namespace.
 
     NinjaTrader's optimizer CSV exposes each parameter under its DISPLAY
     name (e.g. ``Start_Time_(HH)``), but the manifest's strategy_values dict
     and the operator's mental model both use the CODE name (``StartTimeH``).
-    Without normalization, the lineage diff treats them as different params
-    and lights up every matrix axis as a spurious ``added`` badge on the
-    finalist. We translate display→code here via the existing Pantheon
-    mapping; non-Pantheon strategies fall back to identity, which is no
-    worse than the pre-fix behavior.
+    Without normalization, downstream consumers (lineage diff, promotion
+    template stamping) treat them as different params and either light up
+    every matrix axis as spurious ``added`` badges or fail to override the
+    seed's defaults. We translate display→code here via the existing
+    Pantheon mapping; non-Pantheon strategies fall back to identity, which
+    is no worse than the pre-fix behavior.
     """
     out: dict[str, Any] = {}
     for key, value in row.items():
@@ -547,6 +548,10 @@ def _extract_params(row: dict[str, Any]) -> dict[str, Any]:
         if canonical not in out:
             out[canonical] = value
     return out
+
+
+# Back-compat alias: existing callers use the underscored name.
+_extract_params = extract_params_from_row
 
 
 def _merge_finalist_params(

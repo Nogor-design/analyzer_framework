@@ -1110,6 +1110,33 @@ def test_start_recipe_stage_run_requires_stage_templates(tmp_path: Path):
         start_recipe_stage_run(session, stage_id="stage_1", command_file=tmp_path / "cmd.json")
 
 
+def test_start_recipe_stage_run_refuses_while_promoted_run_active(tmp_path: Path):
+    # The promotion feature is optional/in-flight; skip if it isn't present.
+    promo = pytest.importorskip("ta_foundation.web.optimizer_promotion_run")
+
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(SEED_XML, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ",
+    )
+    save_recipe(session, _recipe_payload())
+    build_and_save_recipe_plan(session)
+    generate_recipe_stage_templates(session, stage_id="stage_1")
+
+    promo.save_promoted_run(session, promo.PromotedRunRecord(
+        run_id="promoted_20260530_000000",
+        state="running",
+        started_at="2026-05-30T00:00:00",
+    ))
+
+    command_file = tmp_path / "cmd.json"
+    with pytest.raises(RecipeRunnerError, match="promoted run is active"):
+        start_recipe_stage_run(session, stage_id="stage_1", command_file=command_file)
+    assert not command_file.exists()
+
+
 def test_recipe_orchestrator_start_generates_stage_and_requests_run(tmp_path: Path):
     seed_path = tmp_path / "seed.xml"
     seed_path.write_text(SEED_XML, encoding="utf-8")

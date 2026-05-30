@@ -396,3 +396,92 @@ def test_headline_and_notes_parsed_from_decision_md(tmp_path: Path):
         "First note about the candidate.",
         "Second concern to look at.",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Promoted-row merge (P_NNN from shortlist promotion)
+# ---------------------------------------------------------------------------
+
+def _write_promoted_review(session, rows: list[dict]) -> None:
+    review_dir = (
+        session.directory / "deployment_package"
+        / "promoted_handoff" / "promoted_review"
+    )
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "evaluated_candidates.json").write_text(
+        json.dumps({
+            "schema_version": 1, "config": {},
+            "candidate_count": len(rows), "rows": rows,
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_promoted_rows_merge_into_candidate_rows_with_kind_and_source(tmp_path: Path):
+    session = _make_session(tmp_path)
+    _write_review(session,
+        rows=[
+            {"run_id": "F_001", "status": "pass", "score": 80.0, "trades": 20},
+        ],
+        recommendations=[{"run_id": "F_001", "rank": 1, "reason": "ok"}],
+        rejected=[],
+    )
+    _write_promoted_review(session, [
+        {
+            "run_id": "P_001", "status": "pass", "score": 95.0,
+            "mode": "breakout", "session_bucket": "Open",
+            "total_net_profit": 22000.0, "profit_factor": 4.2,
+            "max_drawdown": -900.0, "trades": 18,
+            "percent_days_traded": 60.0, "direction": "long",
+            "risk_shape": "wide_stop_high_rr",
+            "kind": "promoted",
+            "source_stage_id": "stage_2",
+            "source_candidate_id": "stage_2__T_X__row42",
+        },
+    ])
+
+    dash = build_decision_dashboard(session)
+
+    # P_001 outranks F_001 because its raw score is higher and no
+    # robustness penalties apply to either.
+    assert [r.run_id for r in dash.candidate_rows] == ["P_001", "F_001"]
+    promo = dash.candidate_rows[0]
+    assert promo.kind == "promoted"
+    assert promo.source == {
+        "stage_id": "stage_2",
+        "candidate_id": "stage_2__T_X__row42",
+    }
+    assert dash.candidate_rows[1].kind == "finalist"
+    assert dash.candidate_rows[1].source is None
+    # Serialization preserves the promoted decoration
+    d = promo.to_dict()
+    assert d["kind"] == "promoted"
+    assert d["source"]["stage_id"] == "stage_2"
+
+
+def test_dashboard_renders_when_only_promoted_rows_exist(tmp_path: Path):
+    """A session with no final-backtest review but a promoted review still
+    builds a non-empty dashboard."""
+    session = _make_session(tmp_path)
+    _write_promoted_review(session, [
+        {"run_id": "P_001", "status": "pass", "score": 50.0, "trades": 15,
+         "source_stage_id": "stage_1", "source_candidate_id": "stage_1__row1"},
+    ])
+    dash = build_decision_dashboard(session)
+    assert dash.status == "ok"
+    assert [r.run_id for r in dash.candidate_rows] == ["P_001"]
+    assert dash.candidate_rows[0].kind == "promoted"
+
+
+def test_missing_promoted_review_does_not_break_dashboard(tmp_path: Path):
+    """The classic finalist-only path keeps working unchanged."""
+    session = _make_session(tmp_path)
+    _write_review(session,
+        rows=[{"run_id": "F_001", "status": "pass", "score": 50.0, "trades": 10}],
+        recommendations=[{"run_id": "F_001", "rank": 1, "reason": "ok"}],
+        rejected=[],
+    )
+    dash = build_decision_dashboard(session)
+    assert [r.run_id for r in dash.candidate_rows] == ["F_001"]
+    assert dash.candidate_rows[0].kind == "finalist"
+    assert dash.candidate_rows[0].source is None

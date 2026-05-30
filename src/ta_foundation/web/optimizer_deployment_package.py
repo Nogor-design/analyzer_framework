@@ -162,6 +162,41 @@ def build_deployment_package(
             to_date=resolved_to,
         )
 
+    # Promoted handoff (shortlist→template path). Runs unconditionally so a
+    # second build after the operator finishes NT against P_NNN templates
+    # surfaces them in the dashboard. No-op when no promoted templates have
+    # been stamped or no NT output exists yet.
+    promoted_review_dir: Path | None = None
+    promoted_template_count = 0
+    promoted_row_count = 0
+    promoted_notes: list[str] = []
+    try:
+        from ta_foundation.web.optimizer_promotion_results import (
+            PROMOTED_REVIEW_DIRNAME, load_promoted_results,
+        )
+        from ta_foundation.web.optimizer_promotion import (
+            PROMOTED_DIRNAME, PROMOTED_HANDOFF_DIRNAME, PROMOTED_MANIFEST_FILENAME,
+        )
+        promoted_manifest_path = (
+            session.directory / "generated_templates" / PROMOTED_DIRNAME / PROMOTED_MANIFEST_FILENAME
+        )
+        if promoted_manifest_path.exists():
+            try:
+                pm = json.loads(promoted_manifest_path.read_text(encoding="utf-8"))
+                promoted_template_count = int(pm.get("template_count") or 0)
+            except (OSError, ValueError, TypeError):
+                promoted_template_count = 0
+            promoted_results = load_promoted_results(session, eval_config=eval_config)
+            promoted_row_count = promoted_results.row_count
+            promoted_notes = list(promoted_results.notes)
+            candidate_review_dir = (
+                package_dir / PROMOTED_HANDOFF_DIRNAME / PROMOTED_REVIEW_DIRNAME
+            )
+            if candidate_review_dir.exists():
+                promoted_review_dir = candidate_review_dir
+    except Exception as exc:  # noqa: BLE001 — never block the package build
+        promoted_notes.append(f"promoted handoff build failed: {exc}")
+
     final_review_dir: Path | None = None
     final_validation_status: str | None = None
     final_recommendation_count = 0
@@ -202,6 +237,9 @@ def build_deployment_package(
     end_user_path = package_dir / "END_USER_DECISION.md"
     manifest_path = package_dir / "manifest.json"
 
+    if promoted_notes:
+        notes.extend(promoted_notes)
+
     manifest = {
         "schema_version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -218,6 +256,9 @@ def build_deployment_package(
         "final_validation_status": final_validation_status,
         "final_recommendation_count": final_recommendation_count,
         "final_review_dir": str(final_review_dir) if final_review_dir else None,
+        "promoted_template_count": promoted_template_count,
+        "promoted_row_count": promoted_row_count,
+        "promoted_review_dir": str(promoted_review_dir) if promoted_review_dir else None,
         "resolved_oos_from_date": resolved_from,
         "resolved_oos_to_date": resolved_to,
         "resolved_backtest_seed_template_path": resolved_backtest_seed,
@@ -230,6 +271,7 @@ def build_deployment_package(
             "phase3_risk_handoff": str(package_dir / PHASE3_DIRNAME),
             "final_backtest_handoff": str(package_dir / FINAL_DIRNAME),
             "final_backtest_review": str(final_review_dir) if final_review_dir else None,
+            "promoted_review": str(promoted_review_dir) if promoted_review_dir else None,
             "batch_summary_csv": str(analysis_dir / "batch_summary.csv"),
             "top_optimizer_rows_csv": str(analysis_dir / "top_optimizer_rows.csv"),
             "guardrail_candidates_csv": str(analysis_dir / "guardrail_candidates.csv"),

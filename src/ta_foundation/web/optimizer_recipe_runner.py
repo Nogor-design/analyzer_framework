@@ -74,6 +74,8 @@ def start_recipe_stage_run(
     status_file: Path | None = None,
     now: datetime | None = None,
 ) -> RecipeStageRunRecord:
+    _ensure_no_conflicting_promoted_run(session)
+
     source = (session.directory / GENERATED_DIRNAME / stage_id).resolve()
     xmls = sorted(source.glob("*.xml"))
     if not xmls:
@@ -125,6 +127,32 @@ def start_recipe_stage_run(
     )
     save_recipe_run(session, record)
     return record
+
+
+def _ensure_no_conflicting_promoted_run(session: OptimizerSession) -> None:
+    """Refuse to dispatch a recipe stage while a promoted run is still live.
+
+    Mirror of the guard in ``optimizer_promotion_run``: both pipelines share
+    the NinjaTrader command file, so the two must not be in flight at once.
+    The promotion module is optional (in-flight feature) — import lazily and
+    skip the check if it isn't present on this checkout.
+    """
+    try:
+        from ta_foundation.web.optimizer_promotion_run import (
+            TERMINAL_STATES,
+            load_promoted_run,
+        )
+    except ImportError:
+        return
+    record = load_promoted_run(session)
+    if record is None:
+        return
+    if record.state not in TERMINAL_STATES:
+        raise RecipeRunnerError(
+            f"A promoted run is active (state={record.state!r}). Wait for it to "
+            "finish or cancel it before starting a recipe stage — both share the "
+            "NinjaTrader command file."
+        )
 
 
 def load_recipe_run(session: OptimizerSession) -> RecipeStageRunRecord | None:
