@@ -14,8 +14,10 @@ from typing import Any
 from ta_foundation.web.optimizer_runner import (
     DEFAULT_COMMAND_FILE,
     DEFAULT_STATUS_FILE,
+    BridgeBusyError,
     _command_instrument_for,
     _timeout_seconds_for,
+    ensure_bridge_available,
 )
 from ta_foundation.web.optimizer_session import OptimizerSession
 
@@ -76,6 +78,15 @@ def start_recipe_stage_run(
 ) -> RecipeStageRunRecord:
     _ensure_no_conflicting_promoted_run(session)
 
+    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
+    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
+    # Cross-session/cross-process guard: refuse before clearing artifacts if a
+    # different live run still owns the shared NT command file.
+    try:
+        ensure_bridge_available(cmd_path, status_path)
+    except BridgeBusyError as exc:
+        raise RecipeRunnerError(str(exc)) from exc
+
     source = (session.directory / GENERATED_DIRNAME / stage_id).resolve()
     xmls = sorted(source.glob("*.xml"))
     if not xmls:
@@ -84,8 +95,6 @@ def start_recipe_stage_run(
     _clear_previous_stage_artifacts(session, stage_id=stage_id, dest=dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
-    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
     moment = now or datetime.now(timezone.utc)
     run_id = f"recipe_{stage_id}_" + moment.strftime("%Y%m%d_%H%M%S")
 

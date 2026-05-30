@@ -170,6 +170,45 @@ def test_start_promoted_run_proceeds_when_recipe_run_terminal(tmp_path: Path):
     assert cmd.exists()
 
 
+def _write_foreign_command(cmd: Path, run_id: str) -> None:
+    cmd.write_text(json.dumps({"action": "RunBatch", "runId": run_id}), encoding="utf-8")
+
+
+def test_start_promoted_run_refuses_when_bridge_owned_by_foreign_run(tmp_path: Path):
+    session = _make_session()
+    _stamp_promoted_templates(session, ["P_001"])
+    cmd = tmp_path / "nt8_command.json"
+    status = tmp_path / "nt8_status.json"
+    # A different session's run currently owns the bridge, still running.
+    _write_foreign_command(cmd, "recipe_stage_1_other_session")
+    status.write_text(
+        json.dumps({"runId": "recipe_stage_1_other_session", "state": "running"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PromotionRunError, match="bridge is busy"):
+        start_promoted_run(session, command_file=cmd, status_file=status)
+    # The foreign command is left untouched.
+    assert json.loads(cmd.read_text())["runId"] == "recipe_stage_1_other_session"
+
+
+def test_start_promoted_run_reclaims_bridge_when_foreign_run_terminal(tmp_path: Path):
+    session = _make_session()
+    _stamp_promoted_templates(session, ["P_001"])
+    cmd = tmp_path / "nt8_command.json"
+    status = tmp_path / "nt8_status.json"
+    _write_foreign_command(cmd, "recipe_stage_1_other_session")
+    status.write_text(
+        json.dumps({"runId": "recipe_stage_1_other_session", "state": "finished"}),
+        encoding="utf-8",
+    )
+
+    record = start_promoted_run(session, command_file=cmd, status_file=status)
+    assert record.state == "requested"
+    # Our command replaced the (terminal) foreign one.
+    assert json.loads(cmd.read_text())["runId"] == record.run_id
+
+
 def test_start_promoted_run_clears_stale_status(tmp_path: Path):
     session = _make_session()
     _stamp_promoted_templates(session, ["P_001"])

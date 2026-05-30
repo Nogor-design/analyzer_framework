@@ -42,8 +42,10 @@ from ta_foundation.web.optimizer_promotion import (
 from ta_foundation.web.optimizer_runner import (
     DEFAULT_COMMAND_FILE,
     DEFAULT_STATUS_FILE,
+    BridgeBusyError,
     _command_instrument_for,
     _timeout_seconds_for,
+    ensure_bridge_available,
 )
 from ta_foundation.web.optimizer_session import OptimizerSession
 
@@ -115,6 +117,15 @@ def start_promoted_run(
     """
     _ensure_no_conflicting_run(session)
 
+    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
+    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
+    # Cross-session/cross-process guard: refuse before wiping anything if a
+    # different live run still owns the shared NT command file.
+    try:
+        ensure_bridge_available(cmd_path, status_path)
+    except BridgeBusyError as exc:
+        raise PromotionRunError(str(exc)) from exc
+
     source = (session.directory / "generated_templates" / PROMOTED_DIRNAME).resolve()
     xmls = sorted(source.glob("*.xml"))
     if not xmls:
@@ -127,8 +138,6 @@ def start_promoted_run(
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
-    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
     moment = now or datetime.now(timezone.utc)
     run_id = "promoted_" + moment.strftime("%Y%m%d_%H%M%S")
 

@@ -59,6 +59,108 @@ class OptimizerRunnerError(Exception):
     pass
 
 
+class BridgeBusyError(OptimizerRunnerError):
+    """Raised when another run still owns the shared NT command file.
+
+    All dispatch paths (plain optimizer runs, recipe stages, promoted runs)
+    write the single ``C:\\temp\\nt8_command.json`` bridge. Only one run may
+    own it at a time; this is the cross-session/cross-process guard that the
+    per-session run-record checks cannot provide.
+    """
+
+    def __init__(self, *, owner_run_id: str, state: str | None, command_file: str):
+        self.owner_run_id = owner_run_id
+        self.state = state
+        self.command_file = command_file
+        super().__init__(
+            f"NinjaTrader command bridge is busy: run {owner_run_id!r} "
+            f"({state or 'submitted, awaiting AddOn'}) still owns "
+            f"{command_file}. Wait for it to finish or cancel it before "
+            "starting another run."
+        )
+
+
+# A run is no longer holding the bridge once its status reaches any of these.
+_BRIDGE_TERMINAL_STATES = frozenset({
+    "complete", "completed", "success", "finished", "done",
+    "failed", "error", "cancelled", "canceled", "timed_out", "stale",
+})
+# A command with no terminal status and no heartbeat this old is treated as
+# abandoned (e.g. the web app died mid-run) and may be reclaimed. Generous so
+# a legitimately long batch is never stolen out from under a live run.
+BRIDGE_STALE_AFTER_SECONDS = 6 * 3600
+
+
+def read_bridge_command(command_file: Path) -> dict[str, Any] | None:
+    """Return the parsed command file, or ``None`` if absent/unreadable."""
+    if not command_file.exists():
+        return None
+    try:
+        payload = json.loads(command_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _bridge_owner(
+    command_file: Path, status_file: Path, *, now: datetime
+) -> tuple[str, str | None] | None:
+    """Return ``(owner_run_id, state)`` if a live run owns the bridge, else None.
+
+    A command file whose owning run has reached a terminal state — or that has
+    no heartbeat at all and is older than ``BRIDGE_STALE_AFTER_SECONDS`` — does
+    not count as owning the bridge (it's a leftover or abandoned command).
+    """
+    cmd = read_bridge_command(command_file)
+    if not cmd:
+        return None
+    owner = str(cmd.get("runId") or "")
+
+    state: str | None = None
+    if status_file.exists():
+        try:
+            payload = json.loads(status_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict) and str(payload.get("runId") or "") == owner:
+            state = str(payload.get("state") or "").strip().lower() or None
+
+    if state in _BRIDGE_TERMINAL_STATES:
+        return None
+    if state is None:
+        try:
+            age = now.timestamp() - command_file.stat().st_mtime
+        except OSError:
+            age = 0.0
+        if age > BRIDGE_STALE_AFTER_SECONDS:
+            return None
+    return owner, state
+
+
+def ensure_bridge_available(
+    command_file: Path | str,
+    status_file: Path | str,
+    *,
+    requesting_run_id: str | None = None,
+    now: datetime | None = None,
+) -> None:
+    """Raise :class:`BridgeBusyError` if a different live run owns the bridge.
+
+    ``requesting_run_id`` lets a run re-acquire the bridge it already owns
+    (idempotent re-dispatch) without tripping the guard.
+    """
+    moment = now or datetime.now(timezone.utc)
+    owner = _bridge_owner(Path(command_file), Path(status_file), now=moment)
+    if owner is None:
+        return
+    owner_run_id, state = owner
+    if requesting_run_id and owner_run_id == requesting_run_id:
+        return
+    raise BridgeBusyError(
+        owner_run_id=owner_run_id, state=state, command_file=str(command_file)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -153,11 +255,16 @@ def start_run(
         details = "; ".join(preflight.blocking_errors)
         raise OptimizerRunnerError(f"Optimizer preflight failed: {details}")
 
+    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
+    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
+    # Cross-session/cross-process guard: refuse before touching nt_output if a
+    # different live run still owns the shared NT command file. Raised as
+    # OptimizerRunnerError so existing callers' error handling is unchanged.
+    ensure_bridge_available(cmd_path, status_path)
+
     dest = (session.directory / NT_OUTPUT_DIRNAME).resolve()
     dest.mkdir(parents=True, exist_ok=True)
 
-    cmd_path = Path(command_file) if command_file else DEFAULT_COMMAND_FILE
-    status_path = Path(status_file) if status_file else DEFAULT_STATUS_FILE
     moment = now or datetime.now(timezone.utc)
     run_id = _make_run_id(moment)
 

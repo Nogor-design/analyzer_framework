@@ -226,6 +226,7 @@ def promote_pending(session: OptimizerSession) -> PromotionResult:
                 values,
                 from_date=from_date,
                 to_date=to_date,
+                strict_params=True,
             )
         except Exception as exc:  # noqa: BLE001 — surface as a per-row error
             result_errors.append({

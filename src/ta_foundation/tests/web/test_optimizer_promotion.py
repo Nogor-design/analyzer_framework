@@ -231,6 +231,30 @@ def test_promote_pending_stamps_p001_and_marks_shortlist(tmp_path: Path):
     assert resolved.promoted_count == 1
 
 
+def test_promote_pending_records_error_when_row_param_absent_from_seed(tmp_path: Path):
+    # A param the seed doesn't define must surface as a per-row error, not a
+    # silently stamped template that would backtest with seed defaults.
+    session = _seed_session(tmp_path)
+    _write_stage_rows(session, "stage_1", [
+        {
+            "candidate_id": "stage_1__T_A__row1",
+            "param_averageSlow": 150,
+            "param_GhostParam": 999,   # not present in SEED_XML
+        },
+    ])
+    add_items(session, [{"stage_id": "stage_1", "candidate_id": "stage_1__T_A__row1"}])
+
+    result = promote_pending(session)
+
+    assert result.promoted == []
+    assert len(result.errors) == 1
+    err = result.errors[0]
+    assert err["candidate_id"] == "stage_1__T_A__row1"
+    assert "GhostParam" in err["reason"]
+    # No template stamped, shortlist not marked promoted.
+    assert not (session.directory / "generated_templates" / PROMOTED_DIRNAME / "P_001.xml").exists()
+
+
 def test_promote_pending_is_idempotent_on_reclick(tmp_path: Path):
     session = _seed_session(tmp_path)
     _write_stage_rows(session, "stage_1", [

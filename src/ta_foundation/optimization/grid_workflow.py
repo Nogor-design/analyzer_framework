@@ -22,6 +22,10 @@ from ta_foundation.optimization.template_generator import (
 from ta_foundation.parsers.ninjatrader.optimization_csv import NinjaTraderOptimizationCsvParser
 
 
+class MissingSeedParamError(ValueError):
+    """A requested parameter has no matching element in the seed template."""
+
+
 @dataclass(frozen=True)
 class OptimizationGridConfig:
     max_drawdown: float = 2500.0
@@ -317,7 +321,17 @@ def generate_fixed_backtest_template(
     *,
     from_date: str | None = None,
     to_date: str | None = None,
+    strict_params: bool = False,
 ) -> Path:
+    """Stamp a fixed Backtest-mode template from a seed, pinning each value.
+
+    With ``strict_params=True`` the function raises :class:`MissingSeedParamError`
+    if any requested parameter has no matching element in the seed. Without this
+    guard a name the seed doesn't define is silently dropped and the template
+    runs with the seed's default for that parameter — a wrong-but-runnable
+    template. Promotion uses strict mode so a non-Pantheon (or mis-mapped) row
+    can never quietly backtest the wrong point in parameter space.
+    """
     text = Path(seed_backtest_template).read_text(encoding="utf-8")
     text = _remove_optimizer_sections(text)
     text = _patch_strategy_value_text(text, "Category", "Backtest")
@@ -325,15 +339,40 @@ def generate_fixed_backtest_template(
         text = _patch_strategy_value_text(text, "From", _format_nt_date(from_date))
     if to_date:
         text = _patch_strategy_value_text(text, "To", _format_nt_date(to_date))
+    missing: list[str] = []
     for raw_name, raw_value in strategy_values.items():
         name = _PARAM_ALIASES.get(raw_name, raw_name)
+        if strict_params and not _strategy_tag_present(text, name):
+            display = raw_name if raw_name == name else f"{raw_name} -> {name}"
+            missing.append(display)
+            continue
         value = _format_strategy_value(raw_value)
         text = _patch_strategy_value_text(text, name, value)
         text = _patch_parameter_text(text, name, ParameterRange(value.lower() if _is_bool_like(raw_value) else value, value.lower() if _is_bool_like(raw_value) else value, "1", _format_parameter_value(raw_value)))
+    if missing:
+        raise MissingSeedParamError(
+            f"Seed template {Path(seed_backtest_template)} has no element for "
+            f"parameter(s) {missing}; refusing to stamp a template that would "
+            "silently run with seed defaults."
+        )
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
     return target
+
+
+def _strategy_tag_present(text: str, tag: str) -> bool:
+    """True if ``<tag>...</tag>`` exists in the (optimizer-stripped) template.
+
+    After :func:`_remove_optimizer_sections` the only place a parameter name
+    appears is as a strategy-element child, so a hit here means the seed really
+    carries that parameter.
+    """
+    pattern = re.compile(
+        r"<" + re.escape(tag) + r"(?:\s+[^>]*)?>.*?</" + re.escape(tag) + r">",
+        re.DOTALL,
+    )
+    return pattern.search(text) is not None
 
 
 def _normalize_parameter_columns(df: pd.DataFrame) -> pd.DataFrame:

@@ -1,11 +1,15 @@
 from pathlib import Path
 import json
 
+import pytest
+
 from ta_foundation.optimization.grid_workflow import (
+    MissingSeedParamError,
     OptimizationGridConfig,
     create_final_backtest_templates_from_phase3_csv,
     create_next_phase_from_optimization_csv,
     evaluate_optimization_grid,
+    generate_fixed_backtest_template,
     load_optimization_grid,
 )
 from ta_foundation.optimization.nt_template import parse_strategy_optimization_template
@@ -235,3 +239,45 @@ def test_final_backtest_templates_are_fixed_after_phase3(tmp_path: Path):
     assert command["sourceFolder"].endswith("named_backtest_templates")
     assert command["destFolder"].endswith("nt8_backtest_results")
     assert (tmp_path / "final" / "RUN_FINAL_BACKTESTS.md").exists()
+
+
+def test_generate_fixed_backtest_strict_raises_on_param_missing_from_seed(tmp_path: Path):
+    seed = tmp_path / "backtest_seed.xml"
+    _write_backtest_seed(seed)
+    out = tmp_path / "out.xml"
+
+    with pytest.raises(MissingSeedParamError, match="GhostParam"):
+        generate_fixed_backtest_template(
+            seed,
+            out,
+            {"averageFast": 7, "GhostParam": 123},
+            strict_params=True,
+        )
+    # Strict failure must not leave a half-written template on disk.
+    assert not out.exists()
+
+
+def test_generate_fixed_backtest_non_strict_silently_skips_unknown_param(tmp_path: Path):
+    seed = tmp_path / "backtest_seed.xml"
+    _write_backtest_seed(seed)
+    out = tmp_path / "out.xml"
+
+    generated = generate_fixed_backtest_template(
+        seed, out, {"averageFast": 7, "GhostParam": 123}
+    )
+    text = generated.read_text(encoding="utf-8")
+    assert "<averageFast>7</averageFast>" in text
+    assert "GhostParam" not in text  # quietly dropped — the behaviour strict mode guards against
+
+
+def test_generate_fixed_backtest_strict_passes_when_all_params_present(tmp_path: Path):
+    seed = tmp_path / "backtest_seed.xml"
+    _write_backtest_seed(seed)
+    out = tmp_path / "out.xml"
+
+    generated = generate_fixed_backtest_template(
+        seed, out, {"averageFast": 7, "MaxStop": 123}, strict_params=True
+    )
+    text = generated.read_text(encoding="utf-8")
+    assert "<averageFast>7</averageFast>" in text
+    assert "<MaxStop>123</MaxStop>" in text
