@@ -151,6 +151,13 @@
         </div>
         <div class="flex items-center gap-2 flex-wrap shrink-0">
           <span id="decision-refine-count" class="text-xs text-gray-400">0 selected</span>
+          {% if dashboard.template_links and dashboard.template_links["count"] %}
+            <button id="decision-download-selected-btn" type="button" disabled
+                    class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    title="Download only the checked finalists' NinjaTrader templates as a ZIP.">
+              Download selected
+            </button>
+          {% endif %}
           <button id="decision-refine-btn" type="button" disabled
                   class="px-3 py-1.5 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
             Refine selected &rarr;
@@ -427,10 +434,13 @@
     return checkboxes.filter((c) => c.checked).map((c) => c.value);
   }
 
+  const downloadSelectedBtn = document.getElementById("decision-download-selected-btn");
+
   function updateCount() {
     const ids = selectedIds();
     refineCount.textContent = ids.length + " selected";
     refineBtn.disabled = ids.length === 0;
+    if (downloadSelectedBtn) downloadSelectedBtn.disabled = ids.length === 0;
   }
 
   checkboxes.forEach((c) => c.addEventListener("change", updateCount));
@@ -439,6 +449,20 @@
     checkboxes.forEach((c) => { c.checked = toggleAll.checked; });
     updateCount();
   });
+
+  if (downloadSelectedBtn) {
+    downloadSelectedBtn.addEventListener("click", () => {
+      const ids = selectedIds();
+      if (!ids.length) return;
+      const sid = {{ dashboard.session_id | tojson }};
+      if (!sid) return;
+      const url =
+        "/optimizer/sessions/" + encodeURIComponent(sid) +
+        "/templates/final-selected.zip?run_ids=" +
+        encodeURIComponent(ids.join(","));
+      window.location.href = url;
+    });
+  }
 
   refineBtn.addEventListener("click", async () => {
     const ids = selectedIds();

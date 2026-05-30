@@ -96,6 +96,26 @@ def list_active_final_templates(session: OptimizerSession) -> list[Path]:
     return sorted(active.rglob("*.xml"))
 
 
+def list_active_final_templates_filtered(
+    session: OptimizerSession,
+    run_ids: set[str],
+) -> list[Path]:
+    """Return only the active XMLs whose decoded run_id is in ``run_ids``.
+
+    Used by the Decision Dashboard's "Download selected" button to ship just
+    the operator-picked finalists without re-zipping the full set.
+    """
+    wanted = {r.strip() for r in run_ids if r and r.strip()}
+    if not wanted:
+        return []
+    matched: list[Path] = []
+    for path in list_active_final_templates(session):
+        rid = _run_id_from_any_template_path(path) or _run_id_from_template_path(path)
+        if rid in wanted:
+            matched.append(path)
+    return matched
+
+
 def final_template_links(session: OptimizerSession) -> dict[str, Any]:
     active = active_final_templates_dir(session)
     renamed = active == final_renamed_templates_dir(session)

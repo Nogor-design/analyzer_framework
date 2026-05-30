@@ -1514,6 +1514,52 @@ def create_app() -> "Flask":
             download_name=f"{session.id}_final_templates.zip",
         )
 
+    @app.route("/optimizer/sessions/<session_id>/templates/final-selected.zip")
+    def optimizer_final_templates_selected_zip(session_id: str):
+        """Zip and serve only the finalist XMLs whose run_ids are passed via
+        ``?run_ids=F_001,F_005``. Backs the Decision Dashboard's "Download
+        selected" button so the operator can ship just the checked rows
+        instead of the full final-template bundle.
+        """
+        import io
+        import zipfile
+        from flask import abort, request, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_final_templates import (
+            active_final_templates_dir,
+            final_template_export_name,
+            list_active_final_templates_filtered,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        active_dir = active_final_templates_dir(session)
+        if not active_dir.exists():
+            return abort(404)
+
+        raw_ids = request.args.get("run_ids", "")
+        run_ids = {part.strip() for part in raw_ids.split(",") if part.strip()}
+        if not run_ids:
+            return abort(400)
+
+        active_files = list_active_final_templates_filtered(session, run_ids)
+        if not active_files:
+            return abort(404)
+
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path in active_files:
+                zf.write(path, arcname=final_template_export_name(path))
+        memory_file.seek(0)
+        suffix = "_".join(sorted(run_ids)) if len(run_ids) <= 4 else f"{len(run_ids)}_selected"
+        return send_file(
+            memory_file,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"{session.id}_final_templates_{suffix}.zip",
+        )
+
     @app.route("/optimizer/sessions/<session_id>/resume")
     def optimizer_session_resume(session_id: str):
         from flask import redirect
