@@ -135,6 +135,29 @@ def _enrich_results(
     enriched.insert(0, "recipe_id", recipe_id)
     enriched.insert(1, "stage_id", stage_id)
 
+    # NinjaTrader truncates long output-folder names (deep session path + long
+    # template names), so a result row's ``batch_id`` can diverge from the
+    # manifest ``template_id`` and an exact lookup misses — dropping
+    # ``parent_candidate_id`` and collapsing per-candidate grouping. Build a
+    # fallback index keyed by the manifest ``bucket_id`` token, which NT
+    # preserves as a substring of the truncated name. Longest tokens first so a
+    # shorter bucket id can't shadow a longer one that contains it.
+    bucket_index: dict[str, dict[str, Any]] = {}
+    for meta in manifest.values():
+        token = str(meta.get("bucket_id") or "")
+        if token:
+            bucket_index.setdefault(token, meta)
+    bucket_tokens = sorted(bucket_index, key=len, reverse=True)
+
+    def _meta_for(batch_id: str) -> dict[str, Any]:
+        meta = manifest.get(batch_id)
+        if meta:
+            return meta
+        for token in bucket_tokens:
+            if token in batch_id:
+                return bucket_index[token]
+        return {}
+
     template_ids: list[str] = []
     bucket_ids: list[str] = []
     parent_ids: list[str | None] = []
@@ -144,7 +167,7 @@ def _enrich_results(
 
     for _, row in enriched.iterrows():
         template_id = str(row.get("batch_id") or "")
-        meta = manifest.get(template_id, {})
+        meta = _meta_for(template_id)
         template_ids.append(template_id)
         bucket_ids.append(str(meta.get("bucket_id") or template_id))
         parent_ids.append(meta.get("parent_candidate_id"))

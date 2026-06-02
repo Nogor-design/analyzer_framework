@@ -245,7 +245,7 @@ def _generate_final_backtest_stage_templates(
     if not parent_stage_id:
         raise RecipeTemplateWriteError(f"Final stage {stage_id} does not identify a parent selected_rows source.")
 
-    selected_rows, bucket_report = _final_rows_by_initial_bucket(
+    selected_rows, bucket_report = _final_backtest_source_rows(
         session,
         recipe=recipe,
         parent_stage_id=parent_stage_id,
@@ -585,6 +585,62 @@ def _final_strategy_param_names(recipe: Any, parent_stage_id: str) -> set[str]:
         names.update(stage.refine_around_parent_result.keys())
         names.update(stage.add_optimize.keys())
     return names
+
+
+def _final_backtest_source_rows(
+    session: OptimizerSession,
+    *,
+    recipe: Any,
+    parent_stage_id: str,
+    finalists_per_bucket: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Resolve the rows a final fixed-backtest stage should validate.
+
+    A **risk-knob** refinement parent (``prepare_refinement``: pins every
+    structural param and sweeps only ProfitStop/LossStop/MaxTrades via
+    ``optimize_inside_template``, no ``refine_around_parent_result``) carries the
+    hand-picked winners we must validate verbatim — one final template per
+    refined row. Re-pooling it through ``_final_rows_by_initial_bucket`` would
+    mix in the original stage_1 coverage finalists (default risk knobs) and
+    bucket by the initial grid, so the swept winners get washed out.
+
+    A **structural** refinement parent (``refine_around_parent_result``, e.g. the
+    Decision-Dashboard "refine structure" flow) still wants full initial-bucket
+    coverage in the final — every lane represented, best across stages — so it
+    keeps the initial-bucket path. The initial coverage stage (``stage_1``, no
+    ``from_ref``) also uses initial bucketing.
+    """
+    parent_stage = _find_recipe_stage(recipe.stages, parent_stage_id)
+    parent_uses_refine_around = parent_stage is not None and bool(
+        getattr(parent_stage, "refine_around_parent_result", None)
+    )
+    parent_is_pick_refinement = (
+        parent_stage is not None
+        and bool(getattr(parent_stage, "from_ref", None))
+        and not parent_uses_refine_around
+    )
+    if not parent_is_pick_refinement:
+        return _final_rows_by_initial_bucket(
+            session,
+            recipe=recipe,
+            parent_stage_id=parent_stage_id,
+            finalists_per_bucket=finalists_per_bucket,
+        )
+
+    selected_rows = [row for row in _load_stage_selected_rows(session, parent_stage_id) if isinstance(row, dict)]
+    bucket_report = [
+        {
+            "bucket_key": str(row.get("parent_candidate_id") or row.get("candidate_id") or f"row_{idx}"),
+            "bucket_values": {},
+            "candidate_count": 1,
+            "selected_count": 1,
+            "target_count": 1,
+            "status": "selected",
+            "selected_candidate_ids": [str(row.get("candidate_id") or "")],
+        }
+        for idx, row in enumerate(selected_rows, start=1)
+    ]
+    return selected_rows, bucket_report
 
 
 def _final_rows_by_initial_bucket(
