@@ -6,21 +6,23 @@ The deployment package emits final templates under
 ``final_backtest_handoff/named_backtest_templates``. The Decision page needs
 two extra operator affordances:
 
-- give those XMLs a semantic template-namer name before report generation;
+- give those XMLs a semantic template-naming CLI name before report generation;
 - expose the active XML folder/zip so the operator can load them into NT.
 
-Renamed files keep the finalist id in the filename (``F_001__...xml``), and
-we also persist a JSON index. That lets report generation continue to map a
-candidate run id back to the right XML after the filename changes.
+The external namer writes semantic filenames without the finalist id, so we
+persist a JSON index. That lets report generation continue to map a candidate
+run id back to the right XML after the filename changes.
 """
 
 import json
 import re
 import shutil
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ta_foundation.web.optimizer_namer import NamerError, run_template_namer
 from ta_foundation.web.optimizer_session import OptimizerSession
 
 
@@ -108,6 +110,11 @@ def list_active_final_templates_filtered(
     wanted = {r.strip() for r in run_ids if r and r.strip()}
     if not wanted:
         return []
+
+    indexed = _renamed_templates_by_run_id(session)
+    if indexed:
+        return [indexed[rid] for rid in sorted(wanted) if rid in indexed and indexed[rid].exists()]
+
     matched: list[Path] = []
     for path in list_active_final_templates(session):
         rid = _run_id_from_any_template_path(path) or _run_id_from_template_path(path)
@@ -140,12 +147,27 @@ def final_template_export_name(path: Path) -> str:
     return "_".join(parts) + ".xml"
 
 
+def final_template_export_name_for_session(session: OptimizerSession, path: Path) -> str:
+    """Return the stable run-id export name for a possibly semantic XML path."""
+    resolved = path.resolve()
+    for run_id, indexed_path in _renamed_templates_by_run_id(session).items():
+        if indexed_path.resolve() == resolved:
+            parts = [_safe_filename(run_id)]
+            start_hour = _start_hour_from_template(path)
+            if start_hour is not None:
+                parts.append(f"StartTimeH_{start_hour:02d}")
+            return "_".join(parts) + ".xml"
+    return final_template_export_name(path)
+
+
 def rename_final_templates(
     session: OptimizerSession,
     *,
     market: str | None = None,
+    template_naming_dir: Path | str | None = None,
+    runner: Any | None = None,
 ) -> FinalTemplateRenameResult:
-    source_dir = final_named_templates_dir(session)
+    source_dir = final_named_templates_dir(session).resolve()
     if not source_dir.exists():
         raise FinalTemplateError(f"No final templates directory found: {source_dir}")
 
@@ -153,7 +175,7 @@ def rename_final_templates(
     if not source_files:
         raise FinalTemplateError(f"No final template XML files found under: {source_dir}")
 
-    output_dir = final_renamed_templates_dir(session)
+    output_dir = final_renamed_templates_dir(session).resolve()
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -168,29 +190,24 @@ def rename_final_templates(
             notes.append(f"Skipped template without leading candidate number: {source.name}")
             continue
 
-        decoded: dict[str, Any] = {}
         try:
-            from template_naming import analyze_template
-            decision = analyze_template(source)
-            decoded = _decision_to_dict(decision)
-            semantic_name = (
-                str(decoded.get("output_file_name") or "").strip()
-                or f"{decoded.get('compact_name') or source.stem}.xml"
+            dest = _rename_one_final_template_with_cli(
+                source=source,
+                output_dir=output_dir,
+                market=market_suffix,
+                template_naming_dir=template_naming_dir,
+                runner=runner,
             )
-        except Exception as exc:
-            semantic_name = final_template_export_name(source)
-            notes.append(f"template_naming failed for {source.name}; kept original stem: {exc}")
+        except (NamerError, OSError) as exc:
+            raise FinalTemplateError(f"template_naming CLI failed for {source.name}: {exc}") from exc
 
-        semantic_name = _with_market_suffix(semantic_name, market_suffix)
-        safe_name = _safe_filename(semantic_name)
-        dest = output_dir / f"{run_id}__{safe_name}"
-        shutil.copy2(source, dest)
+        safe_name = _safe_filename(dest.name)
         records.append(FinalTemplateRecord(
             run_id=run_id,
             source_path=str(source),
             renamed_path=str(dest),
             semantic_name=safe_name,
-            decoded=decoded,
+            decoded={"output_file_name": dest.name, "source_cli": "template_naming.cli rename"},
         ))
 
     if not records:
@@ -217,18 +234,50 @@ def rename_final_templates(
     )
 
 
+def _rename_one_final_template_with_cli(
+    *,
+    source: Path,
+    output_dir: Path,
+    market: str,
+    template_naming_dir: Path | str | None,
+    runner: Any | None,
+) -> Path:
+    """Run the external namer with explicit input/output dirs for one XML.
+
+    The CLI processes only top-level XMLs in ``--input-dir``. Final handoff
+    templates can live in nested strategy folders, so each source is copied
+    into a tiny staging input directory and renamed into the shared output dir.
+    Running one file at a time also gives us an exact source -> output mapping
+    even when the namer appends V2/V3 for duplicate semantic names.
+    """
+    before = {p.resolve() for p in output_dir.glob("*.xml")}
+    with tempfile.TemporaryDirectory(prefix="final-template-rename-") as tmp:
+        input_dir = Path(tmp) / "in"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, input_dir / source.name)
+        result = run_template_namer(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            market=market,
+            template_naming_dir=template_naming_dir,
+            runner=runner,
+        )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or f"exit code {result.returncode}").strip()
+        raise NamerError(detail)
+    after = {p.resolve() for p in output_dir.glob("*.xml")}
+    created = sorted(after - before)
+    if len(created) != 1:
+        raise NamerError(
+            f"expected one renamed output for {source.name}, found {len(created)}"
+        )
+    return created[0]
+
+
 def find_renamed_template_for_run_id(session: OptimizerSession, run_id: str) -> Path | None:
-    index_path = final_renamed_index_path(session)
-    if index_path.exists():
-        try:
-            payload = json.loads(index_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            payload = {}
-        record = (payload.get("templates") or {}).get(run_id) if isinstance(payload, dict) else None
-        if isinstance(record, dict) and record.get("renamed_path"):
-            path = Path(str(record["renamed_path"]))
-            if path.exists():
-                return path
+    indexed = _renamed_templates_by_run_id(session)
+    if run_id in indexed:
+        return indexed[run_id]
 
     renamed_dir = final_renamed_templates_dir(session)
     if not renamed_dir.exists():
@@ -239,7 +288,35 @@ def find_renamed_template_for_run_id(session: OptimizerSession, run_id: str) -> 
     return None
 
 
+def _renamed_templates_by_run_id(session: OptimizerSession) -> dict[str, Path]:
+    index_path = final_renamed_index_path(session)
+    if not index_path.exists():
+        return {}
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    templates = payload.get("templates") if isinstance(payload, dict) else None
+    if not isinstance(templates, dict):
+        return {}
+    out: dict[str, Path] = {}
+    for run_id, record in templates.items():
+        if not isinstance(run_id, str) or not isinstance(record, dict):
+            continue
+        renamed_path = record.get("renamed_path")
+        if not renamed_path:
+            continue
+        path = Path(str(renamed_path))
+        if path.exists():
+            out[run_id] = path
+    return out
+
+
 def _run_id_from_template_path(path: Path) -> str | None:
+    match = re.match(r"^(?P<prefix>[FP])_(?P<number>\d{3})(?:_|$)", path.stem, flags=re.IGNORECASE)
+    if match:
+        return f"{match.group('prefix').upper()}_{int(match.group('number')):03d}"
+
     head = path.stem.split("_", 1)[0]
     try:
         number = int(head)
@@ -275,28 +352,6 @@ def _market_from_session(session: OptimizerSession) -> str:
     if instrument:
         return instrument.split()[0]
     return (doc.market_suffix or "NQ").strip() or "NQ"
-
-
-def _decision_to_dict(decision: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for name in (
-        "phase", "ma_name", "descriptor", "direction", "compact_name",
-        "output_file_name", "long_name", "plain_english",
-    ):
-        value = getattr(decision, name, None)
-        if value is not None:
-            out[name] = value if isinstance(value, (str, int, float, bool)) else str(value)
-    return out
-
-
-def _with_market_suffix(name: str, market: str) -> str:
-    path_name = name if name.lower().endswith(".xml") else f"{name}.xml"
-    if not market:
-        return path_name
-    stem = path_name[:-4]
-    if stem.upper().endswith(f"-{market.upper()}"):
-        return path_name
-    return f"{stem}-{market}.xml"
 
 
 def _safe_filename(name: str) -> str:

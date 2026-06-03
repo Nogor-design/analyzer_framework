@@ -20,10 +20,11 @@ def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> Lis
 
     Strategy:
       - collect all dates present in pkg.metadata["derived"]["daily_outcomes"]["by_date"]
-      - sort
-      - take last N
+      - anchor the strip to the latest date present in the report data
+      - return the most recent N weekdays ending on that date
 
-    This avoids injecting weekends/holidays by default and matches "days with data".
+    Anchoring to the data, not the wall clock, keeps regenerated historical
+    reports from showing extra no-trade boxes for days after the backtest ended.
     """
     all_days: List[datetime.date] = []
     for pkg in packages.values():
@@ -31,14 +32,24 @@ def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> Lis
         outcomes = (derived.get("daily_outcomes") or {}).get("by_date", {}) or {}
         all_days.extend(d for d in (_parse_iso_day(key) for key in outcomes.keys()) if d is not None)
 
-    today = datetime.now(TZ_DENVER).date()
+    today = max(all_days) if all_days else datetime.now(TZ_DENVER).date()
     if days_back <= 0:
         start_day = min(all_days) if all_days else today
-    else:
-        start_day = today - timedelta(days=days_back - 1)
+        total_days = max(0, (today - start_day).days) + 1
+        return [
+            (start_day + timedelta(days=i)).isoformat()
+            for i in range(total_days)
+            if (start_day + timedelta(days=i)).weekday() < 5
+        ]
 
-    total_days = max(0, (today - start_day).days) + 1
-    return [(start_day + timedelta(days=i)).isoformat() for i in range(total_days)]
+    out: List[date] = []
+    cursor = today
+    while len(out) < days_back:
+        if cursor.weekday() < 5:
+            out.append(cursor)
+        cursor -= timedelta(days=1)
+    out.reverse()
+    return [day.isoformat() for day in out]
 
 
 def render_wlr_strip(

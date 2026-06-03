@@ -1,0 +1,23 @@
+# 05_daily_scoreboard_combos.yaml
+# Daily Scoreboard + Best Non-Co-Losing Combos
+# Renders the daily scorecard and finds combinations of bots that minimize simultaneous losing days (diversification).
+
+report:
+  title: "Daily Scoreboard"
+  output_filename: "Daily_Scoreboard2_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: daily_scoreboard
+    title: "Daily Scoreboard + Best Non-Co-Losing Combos"
+    options:
+      show_individual_equity: true
+      include_summary_table: true
+
+      include_top_combos: true
+      top_combo_n: 5
+      beam_width: 250   # bump if you have many bots
+      include_k2: true
+      include_k3: true
+      include_k4: true

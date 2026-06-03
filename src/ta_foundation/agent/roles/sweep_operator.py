@@ -422,13 +422,15 @@ def _find_sidecar(artifact_dir: Path, hypothesis_id: Optional[str] = None) -> Op
         )
         if found:
             return found[0]
-        return None
-    found = sorted(
-        artifact_dir.rglob("*_summary.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    return found[0] if found else None
+    for glob_pattern in ("*_summary.json", "probe_summary.json"):
+        found = sorted(
+            artifact_dir.rglob(glob_pattern),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if found:
+            return found[0]
+    return None
 
 
 def ingest_run_candidates(

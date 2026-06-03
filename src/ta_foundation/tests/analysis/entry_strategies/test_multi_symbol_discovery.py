@@ -111,7 +111,7 @@ class TestCrossSymbolValidator:
 
     def test_sharpe_calculation(self):
         """Test Sharpe ratio calculation."""
-        validator = CrossSymbolValidator()
+        validator = CrossSymbolValidator(min_trades_validation=5)
 
         trades = [
             {"profit_ticks": 100},
@@ -128,7 +128,7 @@ class TestCrossSymbolValidator:
 
     def test_win_rate_calculation(self):
         """Test win rate calculation."""
-        validator = CrossSymbolValidator()
+        validator = CrossSymbolValidator(min_trades_validation=5)
 
         trades = [
             {"profit_ticks": 100},   # Win

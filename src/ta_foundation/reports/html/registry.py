@@ -157,6 +157,9 @@ from ta_foundation.reports.html.sections.strategy_discovery_decision_ledger impo
 from ta_foundation.reports.html.sections.strategy_discovery_combo_basket import (
     render_strategy_discovery_combo_basket,
 )
+from ta_foundation.reports.html.sections.final_template_bundle_basket import (
+    render_final_template_bundle_basket,
+)
 from ta_foundation.reports.html.sections.candle_discovery_overview import (
     render_candle_discovery_overview,
 )
@@ -183,6 +186,9 @@ from ta_foundation.reports.html.sections.lcr_discovery_overview import (
 )
 from ta_foundation.reports.html.sections.optimization_overview import (
     render_optimization_overview,
+)
+from ta_foundation.reports.html.sections.recipe_parameter_trend import (
+    render_recipe_parameter_trend,
 )
 from ta_foundation.reports.html.sections.large_candle_excursion_summary import (
     render_large_candle_excursion_summary,
@@ -799,6 +805,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Strategy Discovery — Combo Basket",
         render_fn=render_strategy_discovery_combo_basket,
     ),
+    "final_template_bundle_basket": SectionDef(
+        id="final_template_bundle_basket",
+        default_title="Final Template Bundle Basket",
+        render_fn=render_final_template_bundle_basket,
+    ),
     "candle_discovery_overview": SectionDef(
         id="candle_discovery_overview",
         default_title="Candle Discovery — Pattern × TF × Regime Overview",
@@ -860,6 +871,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="optimization_overview",
         default_title="Optimization Results Overview",
         render_fn=render_optimization_overview,
+    ),
+    "recipe_parameter_trend": SectionDef(
+        id="recipe_parameter_trend",
+        default_title="Recipe Parameter Trend — Next Runs",
+        render_fn=render_recipe_parameter_trend,
     ),
 
     # --- Large Candle Forward Excursion ---

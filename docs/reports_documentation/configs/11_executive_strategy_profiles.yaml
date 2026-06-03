@@ -1,0 +1,29 @@
+# 11_executive_strategy_profiles.yaml
+# Executive Strategy Profiles
+# Renders a high-fidelity visual dashboard overlaying win-loss metrics, timeline heatmaps, and trading profile cards.
+
+report:
+  title: "Executive Strategy Profiles"
+  output_filename: "Executive_Strategy_Profiles_3_14.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: run_executive_profile_cards
+    title: "Executive Strategy Profiles"
+    options:
+      show_hint: true
+      show_run_image: true
+      background_style: image-dark-overlay   # solid | image-cover | image-soft-overlay | image-dark-overlay
+      card_width_px: 1180
+      card_padding_px: 24
+      image_width_px: 420
+      wlr_days_back: 30
+      wlr_gap_px: 2
+      show_detail_charts: true
+      detail_chart_layout: stack    # two-up | stack
+      detail_chart_width_px: 1080
+      timeline_render_bin_minutes: 15
+      timeline_cell_h_px: 10
+      timeline_show_hours: true
+      timeline_show_summary: true

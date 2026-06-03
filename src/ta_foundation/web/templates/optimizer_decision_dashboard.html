@@ -77,6 +77,16 @@
               title="Generate one report from all final candidate templates so comparison sections have every run.">
         Build final report
       </button>
+      <button id="build-weekly-coverage-package-btn"
+              class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
+              title="Build the weekly bucket x Reverse x slowMA package with operational diversity checks.">
+        Build weekly package
+      </button>
+      <a href="/optimizer/sessions/{{ dashboard.session_id }}/final-report-builder"
+         class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+         title="Choose and save the sections used by the final all-template report.">
+        Customize final report
+      </a>
       {% if dashboard.session_report_url %}
         <a href="{{ dashboard.session_report_url }}" target="_blank" rel="noopener"
            class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
@@ -166,6 +176,11 @@
                     title="Download only the checked finalists' NinjaTrader templates as a ZIP.">
               Download selected
             </button>
+            <button id="decision-build-selected-report-btn" type="button" disabled
+                    class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    title="Build an all-template finalist report from only the checked rows.">
+              Build selected report
+            </button>
           {% endif %}
           <button id="decision-add-shortlist-btn" type="button" disabled
                   class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
@@ -173,8 +188,9 @@
             ＋ Add to shortlist
           </button>
           <button id="decision-refine-btn" type="button" disabled
+                  title="Structural refinement: zooms the search in around each pick's averageFast / MaxStop / MaxTPRatio. For ProfitStop / LossStop / MaxTrades use 'Refine risk params' on the session detail page."
                   class="px-3 py-1.5 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
-            Refine selected &rarr;
+            Refine structure (MA/stop/target) &rarr;
           </button>
         </div>
       </div>
@@ -357,12 +373,14 @@
   const renameBtn = document.getElementById("rename-final-templates-btn");
   const btn = document.getElementById("build-reports-btn");
   const sessionBtn = document.getElementById("build-session-report-btn");
+  const weeklyBtn = document.getElementById("build-weekly-coverage-package-btn");
   const status = document.getElementById("build-status");
   if (renameBtn) renameBtn.addEventListener("click", async () => {
     const sid = {{ dashboard.session_id | tojson }};
     renameBtn.disabled = true;
     if (btn) btn.disabled = true;
     if (sessionBtn) sessionBtn.disabled = true;
+    if (weeklyBtn) weeklyBtn.disabled = true;
     renameBtn.textContent = "Renaming...";
     status.textContent = "Naming final NinjaTrader templates before report generation...";
     try {
@@ -376,6 +394,7 @@
         renameBtn.disabled = false;
         if (btn) btn.disabled = false;
         if (sessionBtn) sessionBtn.disabled = false;
+        if (weeklyBtn) weeklyBtn.disabled = false;
         return;
       }
       const result = body.result || {};
@@ -389,6 +408,7 @@
       renameBtn.disabled = false;
       if (btn) btn.disabled = false;
       if (sessionBtn) sessionBtn.disabled = false;
+      if (weeklyBtn) weeklyBtn.disabled = false;
     }
   });
   if (btn) btn.addEventListener("click", async () => {
@@ -447,6 +467,42 @@
       sessionBtn.disabled = false;
     }
   });
+  if (weeklyBtn) weeklyBtn.addEventListener("click", async () => {
+    const sid = {{ dashboard.session_id | tojson }};
+    weeklyBtn.disabled = true;
+    weeklyBtn.textContent = "Building...";
+    status.textContent = "Building weekly coverage package with operational diversity checks...";
+    try {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        status.textContent = "Weekly package failed: " + (body.error || r.status);
+        weeklyBtn.textContent = "Build weekly package";
+        weeklyBtn.disabled = false;
+        return;
+      }
+      const result = body.result || {};
+      const noteLines = (result.notes || []).slice(0, 4).join(" - ");
+      status.innerHTML =
+        "Built weekly package: " + (result.validated_template_count || 0) +
+        " deployable template(s), " + (result.duplicate_drop_count || 0) +
+        " duplicate shape(s) dropped. " +
+        (noteLines ? "Notes: " + noteLines + " " : "") +
+        "<a class='text-amber-300 underline' target='_blank' rel='noopener' href='" +
+        (result.report_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package/report")) +
+        "'>View package report</a> " +
+        "<a class='text-amber-300 underline ml-2' href='" +
+        (result.zip_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package.zip")) +
+        "'>Download ZIP</a>";
+    } catch (e) {
+      status.textContent = "Weekly package failed: " + e;
+    } finally {
+      weeklyBtn.textContent = "Build weekly package";
+      weeklyBtn.disabled = false;
+    }
+  });
 })();
 
 (function () {
@@ -472,12 +528,14 @@
   }
 
   const downloadSelectedBtn = document.getElementById("decision-download-selected-btn");
+  const buildSelectedReportBtn = document.getElementById("decision-build-selected-report-btn");
 
   function updateCount() {
     const ids = selectedIds();
     refineCount.textContent = ids.length + " selected";
     refineBtn.disabled = ids.length === 0;
     if (downloadSelectedBtn) downloadSelectedBtn.disabled = ids.length === 0;
+    if (buildSelectedReportBtn) buildSelectedReportBtn.disabled = ids.length === 0;
   }
 
   checkboxes.forEach((c) => c.addEventListener("change", updateCount));
@@ -498,6 +556,44 @@
         "/templates/final-selected.zip?run_ids=" +
         encodeURIComponent(ids.join(","));
       window.location.href = url;
+    });
+  }
+
+  if (buildSelectedReportBtn) {
+    buildSelectedReportBtn.addEventListener("click", async () => {
+      const ids = selectedIds();
+      if (!ids.length) return;
+      const sid = {{ dashboard.session_id | tojson }};
+      if (!sid) return;
+      buildSelectedReportBtn.disabled = true;
+      buildSelectedReportBtn.textContent = "Building...";
+      refineStatus.textContent = "Building selected report from " + ids.length + " finalist(s)...";
+      try {
+        const res = await fetch(
+          "/api/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-session-report",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ run_ids: ids }),
+          },
+        );
+        const body = await res.json();
+        if (!res.ok) {
+          refineStatus.textContent = "Selected report failed: " + (body.error || res.status);
+          return;
+        }
+        const result = body.result || {};
+        const url = body.report_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/candidate-report-selected");
+        refineStatus.innerHTML =
+          "Built selected report from " + (result.package_count || 0) +
+          " candidate package(s). <a class='text-amber-300 underline' target='_blank' rel='noopener' href='" +
+          url + "'>View selected report</a>";
+      } catch (e) {
+        refineStatus.textContent = "Selected report failed: " + (e.message || e);
+      } finally {
+        buildSelectedReportBtn.textContent = "Build selected report";
+        updateCount();
+      }
     });
   }
 

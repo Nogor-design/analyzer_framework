@@ -1,0 +1,14 @@
+# 02_comparison_overview.yaml
+# Comparison Overview Report
+# Renders a high-level comparison table ranking all backtested runs with key metrics.
+
+report:
+  title: "Comparison Overview"
+  output_filename: "Comparison_overview_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  # Renders the primary comparison grid ranking all ingested strategy runs
+  - id: comparison_overview
+    title: "Comparison Overview"

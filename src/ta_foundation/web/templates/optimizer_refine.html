@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Refine Risk Params</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    input { background:#0f172a; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:6px 9px; font-size:13px; }
+    .btn-primary { background:#f59e0b; color:#0f172a; } .btn-primary:hover { background:#fbbf24; }
+    .btn-ghost { border:1px solid #334155; color:#cbd5e1; } .btn-ghost:hover { border-color:#f59e0b; color:#fcd34d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    table { width:100%; font-size:12px; border-collapse:collapse; }
+    th,td { padding:5px 8px; border-bottom:1px solid rgba(51,65,85,.5); text-align:left; }
+    .mono { font-family:ui-monospace,Consolas,monospace; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/weekly-coverage" class="text-slate-400 hover:text-amber-400 text-xs">&larr; Weekly Coverage</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Refine Risk Params</span>
+    <span class="text-slate-500 text-sm">/ ProfitStop · LossStop · MaxTrades</span>
+  </div>
+  <div class="text-xs text-slate-500 mono" id="session-id"></div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-4">
+  <section class="panel p-5">
+    <h1 class="text-lg font-bold text-slate-100">Refine picked winners</h1>
+    <div class="text-xs text-slate-400 mt-1">
+      Pins each picked template's structure (MA / stop / target / direction / time) and sweeps only the
+      session risk knobs. Originals from the first run are kept untouched; refined results merge in the Category Bundle.
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+      <label class="block"><span class="block text-[11px] text-slate-400 mb-1">ProfitStop min / max / step</span>
+        <div class="grid grid-cols-3 gap-1"><input id="ps-min" value="1"><input id="ps-max" value="1001"><input id="ps-step" value="500"></div></label>
+      <label class="block"><span class="block text-[11px] text-slate-400 mb-1">LossStop min / max / step</span>
+        <div class="grid grid-cols-3 gap-1"><input id="ls-min" value="1"><input id="ls-max" value="1001"><input id="ls-step" value="500"></div></label>
+      <label class="block"><span class="block text-[11px] text-slate-400 mb-1">MaxTrades min / max / step</span>
+        <div class="grid grid-cols-3 gap-1"><input id="mt-min" value="1"><input id="mt-max" value="11"><input id="mt-step" value="2"></div></label>
+      <label class="block"><span class="block text-[11px] text-slate-400 mb-1">Keep per candidate</span>
+        <input id="keep-per" value="2" class="w-full"></label>
+    </div>
+  </section>
+
+  <section class="panel p-5">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+      <h2 class="text-sm font-bold text-amber-400 uppercase tracking-wider">Pick candidates to refine</h2>
+      <div class="flex gap-2">
+        <input id="filter" placeholder="filter…" class="w-40" oninput="renderCandidates()">
+        <button onclick="checkTopN(10)" class="btn-ghost px-3 py-1.5 rounded text-xs">Check top 10 by net</button>
+        <button onclick="checkTopN(15)" class="btn-ghost px-3 py-1.5 rounded text-xs">Check top 15 by net</button>
+        <button onclick="checkAll()" class="btn-ghost px-3 py-1.5 rounded text-xs">Check all</button>
+        <button onclick="clearChecks()" class="btn-ghost px-3 py-1.5 rounded text-xs">Clear</button>
+      </div>
+    </div>
+    <div id="scope" class="text-xs text-slate-400 mb-2"></div>
+    <div id="cand-host" class="max-h-[420px] overflow-auto"></div>
+  </section>
+
+  <section class="panel p-5 flex items-center justify-between gap-4 flex-wrap">
+    <div id="status" class="text-xs text-slate-400"></div>
+    <button id="launch-btn" onclick="launch()" class="btn-primary px-6 py-3 rounded-lg text-sm font-extrabold">Launch refinement</button>
+  </section>
+
+  <section id="run-panel" class="panel p-5 hidden">
+    <h2 class="text-sm font-bold text-emerald-300 uppercase tracking-wider mb-2">Refinement run</h2>
+    <div id="run-state" class="text-xs rounded px-3 py-2 bg-slate-800/60 text-slate-300">Starting…</div>
+    <div class="flex gap-2 mt-3">
+      <a id="bundle-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open Category Bundle when ready</a>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SESSION_ID = {{ session_id | tojson }};
+$("session-id").textContent = SESSION_ID;
+$("bundle-link").href = `/optimizer/sessions/${SESSION_ID}/category-bundle`;
+let CANDS = [], STATUS_TIMER = null;
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`);
+  return body;
+}
+const n = (v,d=0) => (v==null||v==="") ? "—" : Number(v).toLocaleString(undefined,{maximumFractionDigits:d});
+const num = (id) => { const v=Number($(id).value); return Number.isFinite(v)?v:0; };
+function stepCount(mn,mx,st){ return (st>0 && mx>=mn) ? Math.floor((mx-mn)/st)+1 : 1; }
+
+function combosPer() {
+  return stepCount(num("ps-min"),num("ps-max"),num("ps-step"))
+       * stepCount(num("ls-min"),num("ls-max"),num("ls-step"))
+       * stepCount(num("mt-min"),num("mt-max"),num("mt-step"));
+}
+function checkedIds(){ return Array.from(document.querySelectorAll(".cand-box:checked")).map(b=>b.dataset.run); }
+function updateScope(){
+  const c = checkedIds().length, per = combosPer();
+  $("scope").textContent = `${c} candidate(s) × ${per} risk combos = ${(c*per).toLocaleString()} backtests`;
+}
+
+async function load() {
+  try {
+    const d = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/refine/candidates`);
+    CANDS = d.candidates || [];
+  } catch (e) { $("cand-host").textContent = "Error: " + e.message; return; }
+  renderCandidates();
+  // Honor ?preselect=run_a,run_b (e.g. rows carried over from the Details page)
+  // by pre-checking those candidates on first load.
+  const pre = new URLSearchParams(window.location.search).get("preselect");
+  if (pre) {
+    const want = new Set(pre.split(",").map(s => s.trim()).filter(Boolean));
+    document.querySelectorAll(".cand-box").forEach(b => { if (want.has(b.dataset.run)) b.checked = true; });
+    updateScope();
+  }
+}
+
+function renderCandidates() {
+  const f = ($("filter").value||"").toLowerCase();
+  const checked = new Set(checkedIds());
+  let rows = "";
+  for (const c of CANDS) {
+    const sv = c.strategy_values || {};
+    const label = `${c.run_id} ${c.direction_shape||''} ${JSON.stringify(sv)}`.toLowerCase();
+    if (f && !label.includes(f)) continue;
+    const ck = checked.has(c.run_id) ? "checked" : "";
+    rows += `<tr>
+      <td><input type="checkbox" class="cand-box accent-amber-500" data-run="${c.run_id}" ${ck}></td>
+      <td class="mono">${c.run_id}</td>
+      <td>${c.direction_shape||"—"}</td>
+      <td>${sv.StartTimeH??"—"}</td><td>${sv.averageSlow??"—"}</td>
+      <td>${sv.MaxStop??"—"}</td><td>${sv.MaxTPRatio??"—"}</td>
+      <td>${n(c.net_profit)}</td><td>${n(c.profit_factor,2)}</td><td>${n(c.trades)}</td>
+    </tr>`;
+  }
+  $("cand-host").innerHTML =
+    `<table><thead><tr><th></th><th>Run</th><th>Dir</th><th>Start</th><th>SlowMA</th><th>Stop</th><th>TP</th><th>Net</th><th>PF</th><th>Trades</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $("cand-host").addEventListener("change", updateScope);
+  updateScope();
+}
+function checkTopN(count=10){
+  const top = new Set(CANDS.slice(0,count).map(c=>c.run_id));
+  document.querySelectorAll(".cand-box").forEach(b=>{ b.checked = top.has(b.dataset.run); });
+  updateScope();
+}
+function checkAll(){ document.querySelectorAll(".cand-box").forEach(b=>b.checked=true); updateScope(); }
+function clearChecks(){ document.querySelectorAll(".cand-box").forEach(b=>b.checked=false); updateScope(); }
+["ps-min","ps-max","ps-step","ls-min","ls-max","ls-step","mt-min","mt-max","mt-step"].forEach(id=>$(id).addEventListener("input",updateScope));
+
+async function launch() {
+  const ids = checkedIds();
+  if (!ids.length) { $("status").textContent = "Pick at least one candidate."; return; }
+  const btn = $("launch-btn"); btn.disabled = true;
+  $("status").textContent = "Launching refinement…";
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/refine`, {
+      method: "POST",
+      body: JSON.stringify({
+        candidate_run_ids: ids,
+        keep_per_candidate: num("keep-per"),
+        ranges: {
+          profit_stop: {min:num("ps-min"),max:num("ps-max"),step:num("ps-step")},
+          loss_stop:   {min:num("ls-min"),max:num("ls-max"),step:num("ls-step")},
+          max_trades:  {min:num("mt-min"),max:num("mt-max"),step:num("mt-step")},
+        },
+      }),
+    });
+    $("status").textContent = `Refinement launched: ${data.candidate_count} candidate(s), ${data.total_combinations} backtests. Watch NinjaTrader.`;
+    $("run-panel").classList.remove("hidden");
+    pollAdvance();
+  } catch (e) {
+    $("status").textContent = "Launch failed: " + e.message;
+  } finally { btn.disabled = false; }
+}
+
+async function pollAdvance() {
+  if (STATUS_TIMER) { clearTimeout(STATUS_TIMER); STATUS_TIMER = null; }
+  let d;
+  try {
+    d = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/recipe/advance`, {
+      method: "POST", body: JSON.stringify({}),
+    });
+  } catch (e) {
+    // Submit-to-NinjaTrader hiccups (e.g. the command bridge is still busy
+    // finishing the prior stage) are transient — keep polling so the run
+    // self-heals instead of stranding the page on an error.
+    $("run-state").textContent = "Advance retrying… " + e.message;
+    STATUS_TIMER = setTimeout(pollAdvance, 7000);
+    return;
+  }
+  const st = (d.state||{}).state || "unknown";
+  const stage = (d.state||{}).current_stage_id || "";
+  const prog = d.progress || {};
+  const el = $("run-state");
+  if (st === "complete") {
+    el.textContent = "✓ Refinement complete. Open the Category Bundle to merge originals + refined and prune.";
+    el.className = "text-xs rounded px-3 py-2 bg-emerald-900/40 text-emerald-200";
+    return;
+  }
+  if (st === "failed") { el.textContent = "Run failed: " + ((d.state||{}).last_error||""); el.className="text-xs rounded px-3 py-2 bg-rose-900/40 text-rose-200"; return; }
+  const pct = (prog.percent!=null) ? ` — ${prog.percent}%` : "";
+  el.textContent = `Running: ${st}${stage?` / ${stage}`:""}${pct}. Auto-advancing…`;
+  STATUS_TIMER = setTimeout(pollAdvance, 7000);
+}
+
+load();
+</script>
+</body>
+</html>

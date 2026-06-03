@@ -19,6 +19,7 @@ and returns the list of XML files written to the output directory.
 import shutil
 import subprocess
 import sys
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -126,6 +127,11 @@ def run_template_namer(
 
 
 def _default_runner(cmd: Sequence[str], cwd: Path, timeout_seconds: int) -> tuple[int, str, str]:
+    env = os.environ.copy()
+    src_dir = cwd / "src"
+    if src_dir.exists():
+        existing = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(src_dir) if not existing else f"{src_dir}{os.pathsep}{existing}"
     try:
         completed = subprocess.run(
             list(cmd),
@@ -133,6 +139,7 @@ def _default_runner(cmd: Sequence[str], cwd: Path, timeout_seconds: int) -> tupl
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise NamerError(f"template-namer timed out after {timeout_seconds}s") from exc

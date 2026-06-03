@@ -71,6 +71,12 @@ class SeedTemplateSummary:
     start_hour: int | None = None
     duration_hours: int | None = None
     mode: str = ""
+    backtest_type: str = ""
+    category: str = ""
+    from_date: str = ""
+    to_date: str = ""
+    is_optimizer_seed: bool = False
+    seed_issues: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -148,6 +154,10 @@ def _parse_literal(raw: str) -> Any:
         s = s[:comment_idx].rstrip()
         if not s:
             return ""
+    if "DateTime.Parse" in s:
+        m = re.search(r'"([^"]*)"', s)
+        if m:
+            return m.group(1)
     lowered = s.lower()
     if lowered == "true":
         return True
@@ -337,10 +347,28 @@ def _extract_parameters(cs_text: str) -> list[StrategyParameter]:
 # ---------------------------------------------------------------------------
 
 def _summarize_seed_template(path: Path) -> SeedTemplateSummary | None:
+    import xml.etree.ElementTree as ET
     try:
         tmpl = parse_strategy_optimization_template(path)
+        root = ET.parse(path).getroot()
     except Exception:
         return None
+
+    backtest_type_node = root.find("BacktestType")
+    backtest_type = backtest_type_node.text.strip() if (backtest_type_node is not None and backtest_type_node.text) else ""
+
+    category = tmpl.strategy_values.get("Category", "")
+    from_date = tmpl.strategy_values.get("From", "")
+    to_date = tmpl.strategy_values.get("To", "")
+
+    seed_issues = []
+    if category != "Optimize":
+        seed_issues.append(f"not_optimize_template:{category}")
+    if not tmpl.instrument_or_instrument_list:
+        seed_issues.append("missing_instrument")
+
+    is_optimizer_seed = len(seed_issues) == 0
+
     return SeedTemplateSummary(
         name=path.stem,
         path=str(path),
@@ -353,6 +381,12 @@ def _summarize_seed_template(path: Path) -> SeedTemplateSummary | None:
         start_hour=tmpl.start_hour,
         duration_hours=tmpl.duration_hours,
         mode=tmpl.mode,
+        backtest_type=backtest_type,
+        category=category,
+        from_date=from_date,
+        to_date=to_date,
+        is_optimizer_seed=is_optimizer_seed,
+        seed_issues=seed_issues,
     )
 
 

@@ -115,6 +115,8 @@ def ingest_sidecar(
 
     try:
         parsed = parse_summary_sidecar(sidecar_path)
+        if parsed.schema_version != 1:
+            raise ValueError(f"Unsupported schema version: {parsed.schema_version}")
         report.sidecars_parsed += 1
     except Exception as exc:  # noqa: BLE001
         report.sidecars_skipped += 1
@@ -128,10 +130,11 @@ def ingest_sidecar(
     dir_name = sidecar_path.parent.name
     bucket = f"{dir_name}/{sidecar_path.stem}"
     hypothesis_id = _backfill_hypothesis_id(bucket)
-    family = infer_family(parsed)
+    first_signal = parsed.candidates[0].get("notes", {}).get("signal") if parsed.candidates else None
+    family = infer_family(sidecar_path.name, first_signal)
     instrument = parsed.instrument_symbol
     timeframe = parsed.timeframe
-    mode = _infer_mode(sidecar_path.name)
+    mode = _infer_mode(str(sidecar_path))
 
     first_signal = parsed.candidates[0].get("params", {}).get("signal_id") if parsed.candidates else None
     mechanism = (

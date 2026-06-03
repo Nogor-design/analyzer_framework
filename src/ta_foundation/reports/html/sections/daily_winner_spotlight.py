@@ -32,6 +32,20 @@ def _status_badge(status: str) -> str:
     return f'<span class="tf-dw-status tf-dw-status--{safe}">{safe}</span>'
 
 
+def _strategy_display(row: Dict[str, Any]) -> str:
+    pkg = row.get("pkg")
+    derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg is not None else {}
+    name = (
+        derived.get("display_name")
+        or derived.get("display_name_spaced")
+        or row.get("strategy_name")
+        or row.get("bot_name")
+        or row.get("run_id")
+        or "-"
+    )
+    return str(name)
+
+
 def render_daily_winner_spotlight(ctx: Dict[str, Any]) -> str:
     packages: Dict[str, AnalysisPackage] = ctx.get("packages", {}) or {}
     options: Dict[str, Any] = ctx.get("options") or {}
@@ -274,7 +288,7 @@ def render_daily_winner_spotlight(ctx: Dict[str, Any]) -> str:
     out.append(
         '<div class="tf-dw-card tf-dw-card--winner">'
         '<div class="tf-dw-card-k">Winner</div>'
-        f'<div class="tf-dw-card-v">{escape(str(winner["run_id"]))}</div>'
+        f'<div class="tf-dw-card-v">{escape(_strategy_display(winner))}</div>'
         f'<div class="tf-dw-card-sub">Day {_fmt_money(winner.get("day_profit"), sign=True)} | {escape(str(winner["session_label"]))} | {escape(str(winner["active_window"]["label"]))}</div>'
         '</div>'
     )
@@ -283,7 +297,7 @@ def render_daily_winner_spotlight(ctx: Dict[str, Any]) -> str:
             '<div class="tf-dw-card tf-dw-card--lead">'
             '<div class="tf-dw-card-k">Lead Over #2</div>'
             f'<div class="tf-dw-card-v">{_fmt_money(summary.get("lead_amount"), sign=True)}</div>'
-            f'<div class="tf-dw-card-sub">Runner-up: {escape(str(runner_up["run_id"]))} at {_fmt_money(runner_up.get("day_profit"), sign=True)}</div>'
+            f'<div class="tf-dw-card-sub">Runner-up: {escape(_strategy_display(runner_up))} at {_fmt_money(runner_up.get("day_profit"), sign=True)}</div>'
             '</div>'
         )
     else:
@@ -294,7 +308,7 @@ def render_daily_winner_spotlight(ctx: Dict[str, Any]) -> str:
     out.append(
         '<div class="tf-dw-card tf-dw-card--support">'
         '<div class="tf-dw-card-k">Strongest Recent Support</div>'
-        f'<div class="tf-dw-card-v">{escape(str(strongest["run_id"])) if strongest else "-"}</div>'
+        f'<div class="tf-dw-card-v">{escape(_strategy_display(strongest)) if strongest else "-"}</div>'
         f'<div class="tf-dw-card-sub">5D {_fmt_money(strongest["recent5"].pnl, sign=True) if strongest else "-"} | 10D {_fmt_money(strongest["recent10"].pnl, sign=True) if strongest else "-"}</div>'
         '</div>'
     )
@@ -338,10 +352,13 @@ def render_daily_winner_spotlight(ctx: Dict[str, Any]) -> str:
             gap = float(row["day_profit"] - winner_day)
         out.append("<tr>")
         out.append(f'<td>#{int(row["daily_rank"])}</td>')
+        display_name = _strategy_display(row)
+        run_id = str(row["run_id"])
+        run_id_suffix = f" | {escape(run_id)}" if display_name != run_id else ""
         out.append(
             "<td>"
-            f'<div class="tf-dw-name">{escape(str(row["run_id"]))}</div>'
-            f'<div class="tf-dw-sub">10D win rate {_fmt_pct(row["recent10"].win_rate)} | 5D active {row["recent5"].active_days}/{len(row["recent5"].days)}</div>'
+            f'<div class="tf-dw-name">{escape(display_name)}</div>'
+            f'<div class="tf-dw-sub">10D win rate {_fmt_pct(row["recent10"].win_rate)} | 5D active {row["recent5"].active_days}/{len(row["recent5"].days)}{run_id_suffix}</div>'
             "</td>"
         )
         out.append(f'<td><div class="{_metric_cls(row.get("day_profit"))}">{escape(_fmt_money(row.get("day_profit"), sign=True))}</div></td>')

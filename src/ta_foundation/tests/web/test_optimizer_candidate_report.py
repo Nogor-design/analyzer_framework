@@ -10,8 +10,10 @@ skipped automatically if the session isn't present.
 
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import pandas as pd
 
 from ta_foundation.web import optimizer_session as opt_session
 from ta_foundation.web.optimizer_candidate_report import (
@@ -24,6 +26,7 @@ from ta_foundation.web.optimizer_candidate_report import (
     build_candidate_report,
     build_session_candidate_report,
     list_existing_candidate_reports,
+    _attach_potential_metrics,
     _resolve_images_dir,
 )
 
@@ -173,3 +176,48 @@ def test_resolve_images_dir_honors_explicit_path(tmp_path: Path, monkeypatch):
     )
 
     assert _resolve_images_dir(explicit) == str(explicit)
+
+
+def test_potential_metrics_respect_session_guardrails():
+    settings = pd.DataFrame([
+        {"item": "Instrument", "value": "NQ 06-26"},
+        {"item": "MaxStop", "value": "325"},
+        {"item": "MaxTPRatio", "value": "0.9"},
+        {"item": "Use_MaxTP", "value": "True"},
+        {"item": "Contracts", "value": "1"},
+        {"item": "ProfitStop", "value": "1000"},
+        {"item": "LossStop", "value": "1000"},
+        {"item": "MaxTrades", "value": "500"},
+    ])
+    pkg = SimpleNamespace(settings=settings, metadata={"derived": {"tick_value_usd": 5.0}})
+
+    _attach_potential_metrics(pkg)
+
+    derived = pkg.metadata["derived"]
+    assert derived["effective_max_trades_per_session"] == 1
+    assert derived["max_tp_ticks_per_trade"] == 292
+    assert derived["max_potential_profit_usd"] == 2459
+    assert derived["max_potential_loss_usd"] == 2624
+
+
+def test_potential_metrics_count_multiple_trades_until_guardrail():
+    settings = pd.DataFrame([
+        {"item": "Instrument", "value": "NQ 06-26"},
+        {"item": "MaxStop", "value": "100"},
+        {"item": "MaxTPRatio", "value": "0.5"},
+        {"item": "Use_MaxTP", "value": "True"},
+        {"item": "Contracts", "value": "1"},
+        {"item": "ProfitStop", "value": "1001"},
+        {"item": "LossStop", "value": "801"},
+        {"item": "MaxTrades", "value": "20"},
+    ])
+    pkg = SimpleNamespace(settings=settings, metadata={"derived": {"tick_value_usd": 5.0}})
+
+    _attach_potential_metrics(pkg)
+
+    derived = pkg.metadata["derived"]
+    assert derived["effective_max_trades_per_session"] == 2
+    assert derived["max_potential_profit_trades"] == 5
+    assert derived["max_potential_profit_usd"] == 1250
+    assert derived["max_potential_loss_trades"] == 2
+    assert derived["max_potential_loss_usd"] == 1300

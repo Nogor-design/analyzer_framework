@@ -522,6 +522,7 @@ def _category_for_section(section_id: str) -> str:
         ("lcr_discovery", "Entry Discovery"),
         ("regime_", "Regime Recommender"),
         ("optimization_", "Optimization"),
+        ("recipe_", "Optimization"),
         ("large_candle_excursion", "Large Candle Excursion"),
         ("deployment_board", "Deployment Boards"),
         ("daily_", "Leaderboards"),

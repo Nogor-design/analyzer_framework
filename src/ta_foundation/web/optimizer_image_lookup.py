@@ -138,7 +138,6 @@ def lookup_image_for_template(
         ("phase+ma+descriptor", f"{phase}{ma_name}{descriptor}"),
         ("ma+descriptor", f"{ma_name}{descriptor}"),
         ("ma", ma_name),
-        ("default", "Default"),
     ]
     chain = [(step, stem) for step, stem in chain if stem]
 
@@ -156,6 +155,17 @@ def lookup_image_for_template(
                     matched_step=step, matched_dir=str(img_dir), notes=notes,
                 )
 
+        semantic_needle = f"{ma_name}{descriptor}"
+        if semantic_needle:
+            match = _substring_search(img_dir, semantic_needle)
+            if match is not None:
+                notes.append(f"matched by semantic substring search: {semantic_needle}")
+                return ImageLookupResult(
+                    template_path=str(template), image_path=str(match),
+                    decoded=decoded, candidates_tried=candidates_tried + [f"~{semantic_needle}"],
+                    matched_step="substring", matched_dir=str(img_dir), notes=notes,
+                )
+
         if ma_name:
             pool_match = _pick_from_god_pool(img_dir, ma_name)
             if pool_match is not None:
@@ -166,7 +176,7 @@ def lookup_image_for_template(
                     matched_step="god_pool", matched_dir=str(img_dir), notes=notes,
                 )
 
-        for needle in (f"{ma_name}{descriptor}", ma_name):
+        for needle in (ma_name,):
             if not needle:
                 continue
             match = _substring_search(img_dir, needle)
@@ -177,6 +187,15 @@ def lookup_image_for_template(
                     decoded=decoded, candidates_tried=candidates_tried + [f"~{needle}"],
                     matched_step="substring", matched_dir=str(img_dir), notes=notes,
                 )
+
+        candidates_tried.append("Default")
+        default_match = _find_in_dir(img_dir, "Default")
+        if default_match is not None:
+            return ImageLookupResult(
+                template_path=str(template), image_path=str(default_match),
+                decoded=decoded, candidates_tried=candidates_tried,
+                matched_step="default", matched_dir=str(img_dir), notes=notes,
+            )
 
     notes.append("no image matched the fallback chain, per-god pool, or substring search")
     return ImageLookupResult(
@@ -293,7 +312,7 @@ def _find_in_dir(img_dir: Path, stem: str) -> Path | None:
     if not stem:
         return None
     stem_lower = stem.lower()
-    for entry in img_dir.iterdir():
+    for entry in _iter_portraits(img_dir):
         if not _is_portrait(entry):
             continue
         if entry.stem.lower() == stem_lower:
@@ -330,13 +349,18 @@ def _substring_search(img_dir: Path, needle: str) -> Path | None:
         return None
     needle_lower = needle.lower()
     best: Path | None = None
-    for entry in img_dir.iterdir():
-        if not _is_portrait(entry):
-            continue
+    for entry in _iter_portraits(img_dir):
         if needle_lower in entry.stem.lower():
             if best is None or len(entry.stem) < len(best.stem):
                 best = entry
     return best
+
+
+def _iter_portraits(img_dir: Path) -> list[Path]:
+    try:
+        return sorted((entry for entry in img_dir.rglob("*") if _is_portrait(entry)), key=lambda p: str(p).lower())
+    except OSError:
+        return []
 
 
 def _safe_float(value: Any) -> float | None:

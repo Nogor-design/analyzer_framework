@@ -1,0 +1,26 @@
+# 04_overview_scoreboard.yaml
+# Overview Scoreboard
+# Integrates comparison tables, equity curves, KPI cards, and a clean text clipboard snapshot for Slack/logs.
+
+report:
+  title: "Overview Scoreboard"
+  output_filename: "Overview_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  - id: run_kpi_cards
+    title: "Run KPI Cards"
+
+  # Renders a formatted text block for quick copying/pasting of results
+  - id: run_snapshot_clipboard
+    title: "Run Snapshot (Copy/Paste)"
+    options:
+      compact: false
+      show_hint: true

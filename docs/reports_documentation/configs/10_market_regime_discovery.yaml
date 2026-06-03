@@ -1,0 +1,62 @@
+# 10_market_regime_discovery.yaml
+# Market Regime Discovery Report
+# Sweeps and ranks performance indicators across multiple market regimes, hours of the day, and risk constraints.
+
+report:
+  title: "Market Regime Discovery 3-14"
+  output_filename: "Market_Regime_Discovery_3_14.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: market_regime_discovery
+    title: "Market Regime Discovery"
+    options:
+      bar_tf: "5m"
+      htf_tf: "15m"
+      ema_period: 50
+      atr_period: 14
+      include_micro: true
+
+      top_n_runs: 100
+      min_trades_run: 15
+      min_trades_bucket: 5
+      hour_min_trades_bucket: 1
+      mae_min_trades_bucket: 1
+      entry_hour_top_n: 24
+      max_rows_per_table: 12
+
+      trend_flat_threshold: 0.0
+      vwap_near_threshold_atr: 0.25
+
+      include_run_id_regex: null
+      exclude_run_id_regex: null
+
+      show_validation: true
+      show_entry_hour_discovery: true
+      show_session_window_optimizer: true
+
+      risk_min_trades_bucket: 1
+      danger_top_n: 5
+
+      risk_stop_ticks: 100
+      tick_value_usd: 5.0
+      severe_mae_frac: 0.50
+      tail_loss_frac: 0.50
+      prior_strength_mean: 30.0
+      prior_strength_rate: 20.0
+
+      optimizer_min_hours: 1
+      optimizer_max_hours: 8
+      optimizer_max_stop_breach_rate: 0.15
+      optimizer_max_tail_loss_rate: 0.20
+      optimizer_max_mae_p90_frac_of_stop: 0.75
+
+      show_recommendation_summary: true
+      show_strategy_card: true
+      strategy_card_position: top   # top | right | below_summary
+      hide_missing_strategy_card: false
+
+      style_preset: executive_dark    # classic_dark | executive_dark | compact_dark | clean_light
+      style_density: normal           # compact | normal | comfortable
+      style_accent: amber              # blue | green | amber | violet | red

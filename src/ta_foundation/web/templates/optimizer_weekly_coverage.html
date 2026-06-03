@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Weekly Coverage</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    input, select { background:#0f172a; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:7px 10px; font-size:13px; }
+    input:focus, select:focus { outline:none; border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,.18); }
+    .btn-primary { background:#f59e0b; color:#0f172a; transition:all .15s; }
+    .btn-primary:hover { background:#fbbf24; }
+    .btn-ghost { border:1px solid #334155; color:#cbd5e1; transition:all .15s; }
+    .btn-ghost:hover { border-color:#f59e0b; color:#fcd34d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .pathish { overflow-wrap:anywhere; word-break:break-word; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/sessions" class="text-slate-400 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Weekly Coverage</span>
+    <span class="text-slate-500 text-sm">/ Pantheon package run</span>
+  </div>
+  <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Advanced recipe editor</a>
+</header>
+
+<main class="max-w-5xl mx-auto p-6 space-y-5">
+  <section class="panel p-5">
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div>
+        <h1 class="text-xl font-bold text-slate-100">Run the weekly coverage recipe</h1>
+        <div class="text-xs text-slate-400 mt-1">
+          Fixed grid: 6 time buckets, God/Monster sides, slowMA 20/50/100/200/300/400, target 2 diverse winners per lane.
+        </div>
+      </div>
+      <div class="text-right text-xs text-slate-400">
+        <div class="font-mono text-slate-200">72 lanes</div>
+        <div>Max deployable target: 144 templates</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel p-5 space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Strategy</span>
+        <select id="strategy" class="w-full">
+          <option value="">Loading strategies...</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Seed template</span>
+        <select id="seed" class="w-full" disabled>
+          <option value="">Pick a strategy first</option>
+        </select>
+      </label>
+    </div>
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div id="seed-note" class="text-[11px] text-slate-500 pathish flex-1"></div>
+      <button id="regenerate-seed-btn" type="button" onclick="regenerateWeeklySeed()" class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold" disabled>
+        Generate weekly seed
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <label class="block md:col-span-2">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Run label</span>
+        <input id="label" class="w-full" value="Weekly Coverage" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Instrument</span>
+        <input id="instrument" class="w-full" value="NQ 06-26" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Market suffix</span>
+        <input id="market-suffix" class="w-full" value="NQ" />
+      </label>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Final backtest start</span>
+        <input id="start-date" type="date" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Final backtest end</span>
+        <input id="end-date" type="date" class="w-full" />
+      </label>
+    </div>
+  </section>
+
+  <section class="panel p-5">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+      <h2 class="text-sm font-bold text-amber-400 uppercase tracking-wider">Validation Guardrails</h2>
+      <button type="button" class="btn-ghost px-3 py-1.5 rounded text-xs" onclick="resetDefaults()">Reset defaults</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Min trades</span>
+        <input id="min-trades" type="number" value="20" min="0" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Min PF</span>
+        <input id="min-pf" type="number" value="1.2" step="0.1" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Max DD</span>
+        <input id="max-dd" type="number" value="2500" min="0" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Min net</span>
+        <input id="min-net" type="number" value="0" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5" title="Reject candidates that traded on fewer than this % of available days (final validation only).">Min % days traded</span>
+        <input id="min-days-traded" type="number" value="20" min="0" max="100" step="1" class="w-full" />
+      </label>
+    </div>
+  </section>
+
+  <section class="panel p-5">
+    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3">Lane coverage grid</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block md:col-span-2">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5" title="Session start hours (0-23). Each becomes a time bucket of length = Duration.">Session start hours (comma-separated)</span>
+        <input id="start-hours" class="w-full font-mono" value="0, 4, 8, 12, 16, 20" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5">Session duration (hours)</span>
+        <input id="duration-hours" type="number" value="4" min="1" max="24" class="w-full" />
+      </label>
+      <label class="block">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5" title="Numeric knobs within the same band (e.g. a 200 vs 210 max stop) are treated as the same shape; only direction and meaningfully different stops/targets are kept.">Templates per bucket</span>
+        <input id="final-per-lane" type="number" value="2" min="1" max="5" class="w-full" />
+      </label>
+      <label class="block md:col-span-2">
+        <span class="block text-xs font-semibold text-slate-400 mb-1.5" title="Slow MA values define the lanes (one per Start Hour x Reverse x slowMA). Lower values like 20/50 often score best.">Slow MA lane values (comma-separated)</span>
+        <input id="slow-ma-values" class="w-full font-mono" value="20, 50, 100, 200, 300, 400" />
+      </label>
+    </div>
+    <div id="lane-note" class="text-xs text-slate-500 mt-2.5"></div>
+  </section>
+
+  <details class="panel p-5">
+    <summary class="cursor-pointer text-sm font-bold text-slate-200">Stage 1 search ranges</summary>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">averageFast <span class="text-slate-500 font-normal">(min / max / step)</span></div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="fast-min" type="number" value="5" />
+          <input id="fast-max" type="number" value="5" />
+          <input id="fast-step" type="number" value="1" />
+        </div>
+        <div class="text-[10px] text-slate-500 mt-1">Fixed at 5 by default. Set min&lt;max to sweep it in a follow-up refinement run.</div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">MaxStop</div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="stop-min" type="number" value="50" />
+          <input id="stop-max" type="number" value="350" />
+          <input id="stop-step" type="number" value="50" />
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">MaxTPRatio</div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="tp-min" type="number" value="0.5" step="0.25" />
+          <input id="tp-max" type="number" value="2.0" step="0.25" />
+          <input id="tp-step" type="number" value="0.5" step="0.25" />
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <section class="panel p-5 flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <div id="scope" class="text-sm font-mono text-slate-200">72 templates x 112 combos = 8,064 backtests (72 lanes)</div>
+      <div id="status" class="text-xs text-slate-500 mt-1"></div>
+    </div>
+    <button id="run-btn" type="button" onclick="runWeekly()" class="btn-primary px-6 py-3 rounded-lg text-sm font-extrabold">
+      Run weekly coverage
+    </button>
+  </section>
+
+  <section id="recent-panel" class="panel p-5 hidden">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+      <h2 class="text-sm font-bold text-sky-300 uppercase tracking-wider">Resume a recent weekly run</h2>
+      <button type="button" onclick="loadRecentRuns()" class="btn-ghost px-2 py-1 rounded text-[11px]">Refresh</button>
+    </div>
+    <div class="flex gap-2 flex-wrap items-center">
+      <select id="recent-select" class="flex-1 min-w-[280px]"></select>
+      <button type="button" onclick="openRecentRun()" class="btn-ghost px-4 py-2 rounded text-xs font-semibold">Open</button>
+    </div>
+    <div class="text-xs text-slate-500 mt-1.5">Picks up a run started in any browser/session — status and the package build live below.</div>
+  </section>
+
+  <section id="result-panel" class="panel p-5 hidden">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+      <h2 class="text-sm font-bold text-emerald-300 uppercase tracking-wider">Last weekly run</h2>
+      <button id="forget-run-btn" type="button" onclick="forgetLastRun()" class="btn-ghost px-2 py-1 rounded text-[11px]">Forget</button>
+    </div>
+    <div id="result-summary" class="text-sm text-slate-300 mb-4"></div>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <a id="session-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Session status</a>
+      <a id="recipe-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Advanced view</a>
+      <a id="results-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Stage results</a>
+    </div>
+    <div id="run-state" class="text-xs rounded px-3 py-2 mb-4 bg-slate-800/60 text-slate-300">Checking run status…</div>
+
+    <div class="border-t border-slate-700 pt-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Weekly package &amp; reports</div>
+          <div class="text-xs text-slate-500 mt-1">Unlocks automatically once the NinjaTrader final backtests finish and are ingested.</div>
+        </div>
+        <button id="build-package-btn" type="button" onclick="buildWeeklyPackage()" class="btn-primary px-5 py-2.5 rounded-lg text-sm font-bold">
+          Build package &amp; reports
+        </button>
+      </div>
+      <div id="package-status" class="text-xs text-slate-500 mt-2"></div>
+      <div id="package-links" class="flex flex-wrap gap-2 mt-3 hidden">
+        <a id="standard-report-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open standard report</a>
+        <a id="report-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open coverage report</a>
+        <a id="refine-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Refine risk params (pick winners)</a>
+        <a id="bundle-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Prune near-identical (category bundle)</a>
+        <a id="zip-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Download package .zip</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const WEEKLY_SEED_DIR = ".ta_artifacts/web_optimizer/recipe_seeds";
+
+function numberValue(id) {
+  const value = Number($(id).value);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function intListFrom(id, lo, hi) {
+  return ($(id).value || "")
+    .split(/[\s,]+/)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n >= lo && n <= hi);
+}
+
+function slowMaValues() { return intListFrom("slow-ma-values", 0, 100000); }
+function startHours() { return intListFrom("start-hours", 0, 23); }
+
+function updateScope() {
+  const fast = stepCount(numberValue("fast-min"), numberValue("fast-max"), numberValue("fast-step"));
+  const stop = stepCount(numberValue("stop-min"), numberValue("stop-max"), numberValue("stop-step"));
+  const tp = stepCount(numberValue("tp-min"), numberValue("tp-max"), numberValue("tp-step"));
+  const directionEnableCombos = 4; // Long false/true x Short false/true
+  const slowCount = slowMaValues().length || 1;
+  const hours = startHours().length || 1;
+  const lanes = hours * 2 * slowCount;  // start hours x directions x slow-MA
+  const combosPerTemplate = fast * stop * tp * directionEnableCombos;
+  const combos = lanes * combosPerTemplate;
+  $("scope").textContent = `${lanes} templates x ${combosPerTemplate} combos = ${combos.toLocaleString()} backtests (${lanes} lanes)`;
+  const perBucket = numberValue("final-per-lane") || 1;
+  $("lane-note").textContent =
+    `Lanes = ${hours} start hours x 2 directions x ${slowCount} slow-MA = ${lanes}. ` +
+    `Stage 1 also sweeps Long/Short enables. Up to ${perBucket} template(s) kept per lane, skipping near-identical shapes.`;
+}
+
+function stepCount(min, max, step) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step) || step <= 0 || max < min) return 0;
+  return Math.floor((max - min) / step) + 1;
+}
+
+function resetDefaults() {
+  $("min-trades").value = "20";
+  $("min-pf").value = "1.2";
+  $("max-dd").value = "2500";
+  $("min-net").value = "0";
+  $("min-days-traded").value = "20";
+  $("start-hours").value = "0, 4, 8, 12, 16, 20";
+  $("duration-hours").value = "4";
+  $("slow-ma-values").value = "20, 50, 100, 200, 300, 400";
+  $("final-per-lane").value = "2";
+  $("fast-min").value = "5";
+  $("fast-max").value = "5";
+  $("fast-step").value = "1";
+  $("stop-min").value = "50";
+  $("stop-max").value = "350";
+  $("stop-step").value = "50";
+  $("tp-min").value = "0.5";
+  $("tp-max").value = "2.0";
+  $("tp-step").value = "0.5";
+  updateScope();
+}
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`);
+  return body;
+}
+
+async function loadStrategies() {
+  const data = await fetchJSON("/api/optimizer/strategies");
+  const select = $("strategy");
+  select.innerHTML = '<option value="">- pick a strategy -</option>';
+  (data.strategies || []).forEach((strategy) => {
+    const opt = document.createElement("option");
+    opt.value = strategy.strategy_id;
+    opt.textContent = `${strategy.strategy_id} (${strategy.seed_template_count || 0} seeds)`;
+    select.appendChild(opt);
+  });
+  const pantheon = Array.from(select.options).find((opt) => opt.value === "PantheonMasterBotV01TesterV2")
+    || Array.from(select.options).find((opt) => opt.value.includes("PantheonMasterBotV01TesterV2"))
+    || Array.from(select.options).find((opt) => opt.value.includes("Pantheon"));
+  if (pantheon) {
+    select.value = pantheon.value;
+    await loadSeeds(pantheon.value);
+  }
+}
+
+async function loadSeeds(strategyId) {
+  const seed = $("seed");
+  seed.disabled = true;
+  seed.innerHTML = '<option value="">Loading seeds...</option>';
+  $("seed-note").textContent = "";
+  $("regenerate-seed-btn").disabled = !strategyId;
+  if (!strategyId) {
+    seed.innerHTML = '<option value="">Pick a strategy first</option>';
+    return;
+  }
+  const [projectDetail, defaultDetail] = await Promise.all([
+    fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}?template_dir=${encodeURIComponent(WEEKLY_SEED_DIR)}`).catch(() => ({ seed_templates: [] })),
+    fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}`).catch(() => ({ seed_templates: [] })),
+  ]);
+  seed.innerHTML = '<option value="">- pick a seed -</option>';
+  let first = "";
+  const seen = new Set();
+  const allTemplates = [
+    ...(projectDetail.seed_templates || []).map((template) => ({ ...template, _source: "weekly seed store" })),
+    ...(defaultDetail.seed_templates || []).map((template) => ({ ...template, _source: "NinjaTrader templates" })),
+  ].filter((template) => {
+    const key = template.path || template.name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  allTemplates.forEach((template) => {
+    const valid = !Array.isArray(template.seed_issues) || template.seed_issues.length === 0;
+    const opt = document.createElement("option");
+    opt.value = template.path;
+    opt.disabled = !valid;
+    opt.textContent = valid
+      ? `${template.name} (${template.instrument_or_instrument_list || "contract from seed"}, ${template._source})`
+      : `${template.name} (${template.seed_issues.join(", ")})`;
+    seed.appendChild(opt);
+    if (valid && !first) first = template.path;
+  });
+  seed.disabled = !first;
+  if (first) seed.value = first;
+  $("seed-note").textContent = first
+    ? `Selected seed: ${first}`
+    : "No seed found. Click Generate weekly seed to create one in the project seed store.";
+}
+
+async function regenerateWeeklySeed() {
+  const strategyId = $("strategy").value;
+  if (!strategyId) {
+    $("status").textContent = "Pick a strategy first.";
+    return;
+  }
+  const btn = $("regenerate-seed-btn");
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Generating...";
+  $("status").textContent = "Generating a weekly seed outside the NinjaTrader template folder...";
+  try {
+    const data = await fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}/regenerate-seed`, {
+      method: "POST",
+      body: JSON.stringify({
+        instrument: $("instrument").value,
+        from_date: $("start-date").value,
+        to_date: $("end-date").value,
+        template_dir: WEEKLY_SEED_DIR,
+      }),
+    });
+    const newPath = data && data.seed && data.seed.path;
+    await loadSeeds(strategyId);
+    if (newPath) {
+      const match = Array.from($("seed").options).find((opt) => opt.value === newPath);
+      if (match) $("seed").value = newPath;
+    }
+    $("seed-note").textContent = `Generated weekly seed: ${newPath || "(path unavailable)"}`;
+    $("status").textContent = "Weekly seed generated. The page is ready to run.";
+  } catch (err) {
+    $("status").textContent = `Generate seed failed: ${err.message}`;
+  } finally {
+    btn.disabled = !strategyId;
+    btn.textContent = oldText;
+  }
+}
+
+async function runWeekly() {
+  const btn = $("run-btn");
+  btn.disabled = true;
+  $("status").textContent = "Creating weekly coverage session and sending the run request...";
+  $("result-panel").classList.add("hidden");
+  try {
+    const payload = {
+      strategy_id: $("strategy").value,
+      seed_template_path: $("seed").value,
+      label: $("label").value,
+      instrument: $("instrument").value,
+      market_suffix: $("market-suffix").value,
+      start_date: $("start-date").value,
+      end_date: $("end-date").value,
+      min_trades: numberValue("min-trades"),
+      min_profit_factor: numberValue("min-pf"),
+      max_drawdown: numberValue("max-dd"),
+      min_net_profit: numberValue("min-net"),
+      min_percent_days_traded: numberValue("min-days-traded"),
+      start_hours: startHours(),
+      duration_hours: numberValue("duration-hours"),
+      slow_ma_values: slowMaValues(),
+      final_per_lane: numberValue("final-per-lane"),
+      average_fast_min: numberValue("fast-min"),
+      average_fast_max: numberValue("fast-max"),
+      average_fast_step: numberValue("fast-step"),
+      max_stop_min: numberValue("stop-min"),
+      max_stop_max: numberValue("stop-max"),
+      max_stop_step: numberValue("stop-step"),
+      max_tp_ratio_min: numberValue("tp-min"),
+      max_tp_ratio_max: numberValue("tp-max"),
+      max_tp_ratio_step: numberValue("tp-step"),
+    };
+    const data = await fetchJSON("/api/optimizer/weekly-coverage/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const session = data.session || {};
+    const plan = data.plan || {};
+    const info = {
+      session_id: session.session_id,
+      label: $("label").value,
+      started_at: new Date().toISOString(),
+      summary: `Plan: ${plan.template_count || 0} templates, ${(plan.combination_estimate || 0).toLocaleString()} estimated backtests.`,
+      urls: data.urls || {},
+    };
+    saveLastRun(info);
+    renderLastRun(info);
+    $("status").textContent = "Run request sent. Watch NinjaTrader, then come back and click Build package & reports when the final backtests are ingested.";
+  } catch (err) {
+    $("status").textContent = `Run failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadRecentRuns() {
+  let data;
+  try {
+    data = await fetchJSON("/api/optimizer/weekly-coverage/recent");
+  } catch (e) { return; }
+  const sessions = data.sessions || [];
+  const sel = $("recent-select");
+  sel.innerHTML = "";
+  if (!sessions.length) {
+    $("recent-panel").classList.add("hidden");
+    return;
+  }
+  for (const s of sessions) {
+    const opt = document.createElement("option");
+    opt.value = s.session_id;
+    const ready = s.final_review_exists ? "✓ ready to build" : (s.state || "in progress");
+    const when = s.updated_at ? new Date(s.updated_at).toLocaleString() : "";
+    opt.textContent = `${s.session_id}${s.label ? " — " + s.label : ""}  ·  ${ready}${when ? "  ·  " + when : ""}`;
+    sel.appendChild(opt);
+  }
+  $("recent-panel").classList.remove("hidden");
+}
+
+function openRecentRun() {
+  const sid = $("recent-select").value;
+  if (!sid) return;
+  const label = $("recent-select").selectedOptions[0]?.textContent || "";
+  const info = { session_id: sid, label: "", started_at: "", summary: label, urls: {} };
+  saveLastRun(info);
+  renderLastRun(info);
+  $("result-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+const LAST_RUN_KEY = "weeklyCoverage.lastRun";
+
+function saveLastRun(info) {
+  try { localStorage.setItem(LAST_RUN_KEY, JSON.stringify(info)); } catch (e) {}
+}
+
+function loadLastRun() {
+  try { return JSON.parse(localStorage.getItem(LAST_RUN_KEY) || "null"); } catch (e) { return null; }
+}
+
+function forgetLastRun() {
+  try { localStorage.removeItem(LAST_RUN_KEY); } catch (e) {}
+  $("result-panel").classList.add("hidden");
+}
+
+let STATUS_TIMER = null;
+let BUILD_READY = false;
+
+function setBuildReady(ready) {
+  BUILD_READY = ready;
+  const btn = $("build-package-btn");
+  btn.style.opacity = ready ? "1" : "0.5";
+  btn.title = ready ? "" : "Available once the run's final backtests are ingested.";
+}
+
+function renderLastRun(info) {
+  if (!info || !info.session_id) return;
+  const sid = info.session_id;
+  const when = info.started_at ? new Date(info.started_at).toLocaleString() : "";
+  $("result-summary").textContent = `${sid}${info.label ? ` — ${info.label}` : ""}${when ? ` (started ${when})` : ""}. ${info.summary || ""}`;
+  const urls = info.urls || {};
+  $("session-link").href = urls.session || `/optimizer/sessions/${sid}`;
+  $("recipe-link").href = urls.recipe || `/optimizer/sessions/${sid}/resume`;
+  $("results-link").href = urls.results || `/optimizer/sessions/${sid}/resume?focus_tab=results&stage=stage_1`;
+  $("package-links").classList.add("hidden");
+  $("package-status").textContent = "";
+  $("result-panel").classList.remove("hidden");
+  setBuildReady(false);
+  pollStatus(sid);
+}
+
+async function pollStatus(sid) {
+  if (STATUS_TIMER) { clearTimeout(STATUS_TIMER); STATUS_TIMER = null; }
+  let data;
+  try {
+    // POST /recipe/advance drives the state machine one step (ingest results,
+    // generate + dispatch the final backtest, etc.) AND returns the status, so
+    // the run finishes on its own while this page is open — no Advanced view hop.
+    data = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(sid)}/recipe/advance`, {
+      method: "POST", body: JSON.stringify({}),
+    });
+  } catch (err) {
+    $("run-state").textContent = `Could not advance run: ${err.message}`;
+    setBuildReady(true);  // don't hard-block; let the user try the build
+    return;
+  }
+  const st = (data.state || {}).state || "unknown";
+  const stage = (data.state || {}).current_stage_id || "";
+  const lastErr = (data.state || {}).last_error;
+  const fr = data.final_review || {};
+  const prog = data.progress || {};
+  const ready = !!fr.exists;
+  setBuildReady(ready);
+
+  const el = $("run-state");
+  if (ready) {
+    el.textContent = "✓ Final backtests are in — click Build package & reports.";
+    el.className = "text-xs rounded px-3 py-2 mb-4 bg-emerald-900/40 text-emerald-200";
+    return;  // stop polling
+  }
+  if (st === "failed") {
+    el.textContent = `Run failed${lastErr ? `: ${lastErr}` : ""}. Open Advanced view to inspect.`;
+    el.className = "text-xs rounded px-3 py-2 mb-4 bg-rose-900/40 text-rose-200";
+    return;
+  }
+  if (st === "stopped") {
+    el.textContent = "Run stopped. Resume it from Advanced view, or start a new run.";
+    el.className = "text-xs rounded px-3 py-2 mb-4 bg-amber-900/40 text-amber-200";
+    return;
+  }
+  const pct = (prog.percent != null) ? ` — ${prog.percent}%` : "";
+  const done = (prog.completed_templates != null) ? ` (${prog.completed_templates} templates done)` : "";
+  el.textContent = `Run in progress: ${st}${stage ? ` / ${stage}` : ""}${pct}${done}. Build unlocks automatically when final backtests are ingested.`;
+  el.className = "text-xs rounded px-3 py-2 mb-4 bg-slate-800/60 text-slate-300";
+  STATUS_TIMER = setTimeout(() => pollStatus(sid), 7000);
+}
+
+async function buildWeeklyPackage() {
+  const info = loadLastRun();
+  if (!info || !info.session_id) {
+    $("package-status").textContent = "No remembered run to build from. Run a weekly coverage first.";
+    return;
+  }
+  if (!BUILD_READY) {
+    $("package-status").textContent = "The run hasn't produced final backtest results yet — wait for the status above to turn green, then build.";
+    return;
+  }
+  const btn = $("build-package-btn");
+  btn.disabled = true;
+  const sid = encodeURIComponent(info.session_id);
+  $("package-status").textContent = "Building weekly coverage package...";
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${sid}/weekly-coverage-package`, {
+      method: "POST", body: JSON.stringify({}),
+    });
+    const r = data.result || {};
+    $("report-link").href = r.report_url || `/optimizer/sessions/${info.session_id}/weekly-coverage-package/report`;
+    $("zip-link").href = r.zip_url || `/optimizer/sessions/${info.session_id}/weekly-coverage-package.zip`;
+    $("bundle-link").href = data.category_bundle_url || `/optimizer/sessions/${info.session_id}/category-bundle`;
+    $("refine-link").href = `/optimizer/sessions/${info.session_id}/refine`;
+
+    // The standard session candidate report is built automatically when the
+    // recipe completes — link to it (no slow rebuild). Hide if not present yet.
+    let stdNote = "";
+    if (data.standard_report_exists) {
+      $("standard-report-link").href = data.standard_report_url || `/optimizer/sessions/${info.session_id}/candidate-report`;
+      $("standard-report-link").style.display = "";
+    } else {
+      $("standard-report-link").style.display = "none";
+      stdNote = " Standard report not found — it builds when the run fully completes.";
+    }
+
+    $("package-links").classList.remove("hidden");
+    const covered = (r.covered_lane_count != null && r.lane_count != null) ? ` ${r.covered_lane_count}/${r.lane_count} lanes covered.` : "";
+    $("package-status").textContent =
+      `Built ${r.validated_template_count || 0} validated + ${r.fallback_template_count || 0} fallback templates.${covered} Open either report or download the .zip for the team.${stdNote}`;
+  } catch (err) {
+    const msg = /not found/i.test(err.message)
+      ? "The run hasn't finished producing final backtest results yet. Wait for the status above to turn green, then build."
+      : err.message;
+    $("package-status").textContent = `Build failed: ${msg}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("strategy").addEventListener("change", (event) => loadSeeds(event.target.value).catch((err) => {
+  $("seed-note").textContent = err.message;
+}));
+["fast-min","fast-max","fast-step","stop-min","stop-max","stop-step","tp-min","tp-max","tp-step","slow-ma-values","start-hours","duration-hours","final-per-lane"].forEach((id) => {
+  $(id).addEventListener("input", updateScope);
+});
+
+updateScope();
+renderLastRun(loadLastRun());
+loadRecentRuns();
+loadStrategies().catch((err) => {
+  $("strategy").innerHTML = '<option value="">Failed to load strategies</option>';
+  $("status").textContent = err.message;
+});
+</script>
+</body>
+</html>

@@ -9,7 +9,12 @@ from ta_foundation.web import app as web_app
 from ta_foundation.web import optimizer_session as opt_session
 from ta_foundation.web.optimizer_candidate_report import (
     DEFAULT_FINALIST_SECTIONS,
+    DEFAULT_SESSION_CANDIDATE_SECTIONS,
     group_sections_by_bucket,
+)
+from ta_foundation.web.optimizer_report_config import (
+    final_report_config_path,
+    save_final_report_config,
 )
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 
@@ -56,6 +61,18 @@ def test_section_buckets_include_every_registered_section_once():
     assert len(section_ids) == len(set(section_ids))
     for section_id in DEFAULT_FINALIST_SECTIONS:
         assert section_id in section_ids
+
+
+def test_section_buckets_can_use_session_report_defaults():
+    buckets = group_sections_by_bucket(default_sections=DEFAULT_SESSION_CANDIDATE_SECTIONS)
+    checked = {
+        section["id"]
+        for bucket in buckets
+        for section in bucket["sections"]
+        if section["checked"]
+    }
+
+    assert checked == set(DEFAULT_SESSION_CANDIDATE_SECTIONS)
 
 
 @needs_fixture
@@ -132,3 +149,68 @@ def test_session_candidate_report_route_serves_generated_html(client):
     body = res.get_data(as_text=True)
     assert "comparison_overview" in body
     assert "F_001" in body
+
+
+@needs_fixture
+def test_final_report_builder_page_lists_saved_sections(client):
+    test_client, session_dir = client
+    session = opt_session.get_session(FIXTURE_SESSION)
+    assert session is not None
+    save_final_report_config(session, {"sections": ["run_kpi_cards"]})
+
+    res = test_client.get(f"/optimizer/sessions/{FIXTURE_SESSION}/final-report-builder")
+    body = res.get_data(as_text=True)
+
+    assert res.status_code == 200
+    assert "Final all-template report sections" in body
+    assert "run_kpi_cards" in body
+    assert "Save and rebuild final report" in body
+    assert (session_dir / "deployment_package" / "report_configs" / "final_report_config.json").exists()
+
+
+@needs_fixture
+def test_final_report_builder_post_saves_and_uses_selected_sections(client):
+    test_client, session_dir = client
+    res = test_client.post(
+        f"/api/optimizer/sessions/{FIXTURE_SESSION}/candidate-session-report",
+        json={"sections": ["run_kpi_cards"], "save": True},
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload["result"]["sections_rendered"] == ["run_kpi_cards"]
+    assert payload["config"]["sections"] == [{"id": "run_kpi_cards"}]
+    assert final_report_config_path(opt_session.get_session(FIXTURE_SESSION)).exists()
+
+    html = (
+        session_dir
+        / "deployment_package"
+        / "session_candidate_report.html"
+    ).read_text(encoding="utf-8")
+    assert "run_kpi_cards" in html
+    assert "comparison_overview" not in html
+
+
+@needs_fixture
+def test_selected_final_report_uses_only_requested_run_ids(client):
+    test_client, session_dir = client
+    res = test_client.post(
+        f"/api/optimizer/sessions/{FIXTURE_SESSION}/candidate-session-report",
+        json={"sections": ["run_kpi_cards"], "save": False, "run_ids": ["F_001", "F_002"]},
+    )
+    payload = res.get_json()
+
+    assert res.status_code == 200
+    assert payload["report_url"] == f"/optimizer/sessions/{FIXTURE_SESSION}/candidate-report-selected"
+    assert payload["result"]["package_count"] == 2
+    assert payload["result"]["run_ids"] == ["F_001", "F_002"]
+
+    html_path = session_dir / "deployment_package" / "selected_candidate_report.html"
+    html = html_path.read_text(encoding="utf-8")
+    assert "F_001" in html
+    assert "F_002" in html
+    assert "F_008" not in html
+
+    served = test_client.get(f"/optimizer/sessions/{FIXTURE_SESSION}/candidate-report-selected")
+    assert served.status_code == 200
+    assert served.mimetype == "text/html"

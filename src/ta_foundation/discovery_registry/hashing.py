@@ -236,8 +236,14 @@ def _extract_outcome(raw: Dict[str, Any]) -> Tuple[Tuple[Any, ...], Tuple[Any, .
             sl = _normalize_value(ticks.get("stop") or [])
             return tp, sl, "ticks"
         if isinstance(atr, dict) and atr.get("enabled", False):
-            tp = _normalize_value(atr.get("take_profit_mult") or [])
-            sl = _normalize_value(atr.get("stop_mult") or [])
+            tp_val = atr.get("take_profit_mult") or atr.get("target_mult") or []
+            sl_val = atr.get("stop_mult") or []
+            if not isinstance(tp_val, (list, tuple, set)):
+                tp_val = [tp_val]
+            if not isinstance(sl_val, (list, tuple, set)):
+                sl_val = [sl_val]
+            tp = _normalize_value(list(tp_val))
+            sl = _normalize_value(list(sl_val))
             return tp, sl, "atr"
     return (), (), "none"
 

@@ -87,6 +87,8 @@ def _label_trades_by_regime(
     bar at or before its entry.
     """
     trades_work = trades.copy()
+    if regime_column in trades_work.columns:
+        trades_work = trades_work.drop(columns=[regime_column])
     trades_work["_entry_utc"] = _to_naive_utc(pd.to_datetime(trades_work["entry_time"]))
     trades_work = trades_work.sort_values("_entry_utc").reset_index(drop=True)
 

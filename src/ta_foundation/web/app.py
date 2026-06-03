@@ -1092,6 +1092,10 @@ def create_app() -> "Flask":
             active_session_id=active,
         )
 
+    @app.route("/optimizer/weekly-coverage")
+    def optimizer_weekly_coverage_page():
+        return render_template("optimizer_weekly_coverage.html")
+
     @app.route("/optimizer/sessions/<session_id>")
     def optimizer_session_detail_page(session_id: str):
         from ta_foundation.web.optimizer_session import get_session
@@ -1122,6 +1126,26 @@ def create_app() -> "Flask":
             if session_report.exists()
             else None
         )
+        # Surface the weekly coverage package (report + zip) so a past session
+        # is reachable without re-running the weekly-coverage one-off page.
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_coverage_report_path,
+            weekly_coverage_zip_path,
+        )
+        summary["weekly_coverage_report_url"] = (
+            f"/optimizer/sessions/{session.id}/weekly-coverage-package/report"
+            if weekly_coverage_report_path(session).exists()
+            else None
+        )
+        summary["weekly_coverage_zip_url"] = (
+            f"/optimizer/sessions/{session.id}/weekly-coverage-package.zip"
+            if weekly_coverage_zip_path(session).exists()
+            else None
+        )
+        # Does a final review exist? (gates whether risk-refine is meaningful)
+        summary["has_final_review"] = (
+            pkg_dir / "final_backtest_handoff" / "final_backtest_review"
+        ).exists()
         return render_template(
             "optimizer_session_detail.html",
             session=doc.to_dict(),
@@ -1455,6 +1479,60 @@ def create_app() -> "Flask":
             post_url=f"/api/optimizer/sessions/{session_id}/candidates/{run_id}/report-builder",
         )
 
+    @app.route("/optimizer/sessions/<session_id>/final-report-builder")
+    def optimizer_final_report_builder_page(session_id: str):
+        from flask import abort
+        from ta_foundation.web.optimizer_candidate_report import group_sections_by_bucket
+        from ta_foundation.web.optimizer_report_config import load_final_report_config
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        doc = session.load_document()
+        config = load_final_report_config(session)
+        default_sections = []
+        for entry in config.get("sections", []):
+            section_id = entry.get("id") if isinstance(entry, dict) else entry
+            if section_id:
+                default_sections.append(str(section_id))
+        return render_template(
+            "optimizer_final_report_builder.html",
+            session=doc.to_dict(),
+            config=config,
+            buckets=group_sections_by_bucket(default_sections=default_sections),
+            report_url=f"/optimizer/sessions/{session_id}/candidate-report",
+            post_url=f"/api/optimizer/sessions/{session_id}/candidate-session-report",
+            config_url=f"/api/optimizer/sessions/{session_id}/final-report-config",
+        )
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/final-report-config",
+        methods=["GET", "PUT"],
+    )
+    def api_optimizer_final_report_config(session_id: str):
+        from ta_foundation.web.optimizer_report_config import (
+            OptimizerReportConfigError,
+            load_final_report_config,
+            save_final_report_config,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        if request.method == "GET":
+            return jsonify({"config": load_final_report_config(session)})
+
+        payload = request.get_json(silent=True) or {}
+        try:
+            config = save_final_report_config(session, payload)
+        except OptimizerReportConfigError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected report config save error: {exc}"}), 500
+        return jsonify({"config": config})
+
     @app.route(
         "/api/optimizer/sessions/<session_id>/candidates/<run_id>/report-builder",
         methods=["POST"],
@@ -1539,13 +1617,280 @@ def create_app() -> "Flask":
         from ta_foundation.web.optimizer_session import get_session
         from ta_foundation.web.optimizer_candidate_report import (
             build_session_candidate_report,
+            selected_session_candidate_report_path,
+        )
+        from ta_foundation.web.optimizer_report_config import (
+            OptimizerReportConfigError,
+            load_final_report_config,
+            save_final_report_config,
+            sections_from_final_report_config,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        try:
+            if isinstance(payload.get("sections"), list):
+                config_payload = {
+                    "sections": payload.get("sections"),
+                    "output_filename": (
+                        payload.get("output_filename") or "session_candidate_report.html"
+                    ),
+                    "auto_build_on_recipe_complete": payload.get(
+                        "auto_build_on_recipe_complete",
+                        True,
+                    ),
+                }
+                config = (
+                    save_final_report_config(session, config_payload)
+                    if payload.get("save", True)
+                    else config_payload
+                )
+            else:
+                config = load_final_report_config(session)
+            raw_run_ids = payload.get("run_ids")
+            run_ids = (
+                [str(run_id) for run_id in raw_run_ids if str(run_id).strip()]
+                if isinstance(raw_run_ids, list)
+                else None
+            )
+            output_path = selected_session_candidate_report_path(session) if run_ids else None
+            result = build_session_candidate_report(
+                session,
+                sections=sections_from_final_report_config(config),
+                output_path=output_path,
+                run_ids=run_ids,
+            )
+        except OptimizerReportConfigError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected report build error: {exc}"}), 500
+        report_url = (
+            f"/optimizer/sessions/{session_id}/candidate-report-selected"
+            if run_ids else f"/optimizer/sessions/{session_id}/candidate-report"
+        )
+        return jsonify({"result": result.to_dict(), "config": config, "report_url": report_url})
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/weekly-coverage-package",
+        methods=["POST"],
+    )
+    def api_optimizer_weekly_coverage_package(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            WeeklyCoverageConfig,
+            WeeklyCoveragePackageError,
+            build_weekly_coverage_package,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        try:
+            result = build_weekly_coverage_package(
+                session,
+                config=WeeklyCoverageConfig.from_session(session, payload),
+            )
+        except WeeklyCoveragePackageError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected weekly package build error: {exc}"}), 500
+        # The standard session candidate report is auto-built when the recipe
+        # completes (_auto_finalize_artifacts). Surface it so the weekly page can
+        # link to both reports without a slow rebuild.
+        std_report = session.directory / "deployment_package" / "session_candidate_report.html"
+        return jsonify({
+            "result": result.to_dict(),
+            "standard_report_exists": std_report.exists(),
+            "standard_report_url": f"/optimizer/sessions/{session_id}/candidate-report",
+            "category_bundle_url": f"/optimizer/sessions/{session_id}/category-bundle",
+        })
+
+    @app.route("/api/optimizer/sessions/<session_id>/category-bundle", methods=["GET"])
+    def api_optimizer_category_bundle(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_category_bundle import compute_category_bundle
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        try:
+            view = compute_category_bundle(session)
+        except Exception as exc:
+            return jsonify({"error": f"category bundle error: {exc}"}), 500
+        return jsonify(view.to_dict())
+
+    @app.route("/api/optimizer/sessions/<session_id>/category-bundle/build", methods=["POST"])
+    def api_optimizer_category_bundle_build(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_category_bundle import (
+            CategoryBundleError,
+            build_pruned_bundle,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        keep = payload.get("keep_run_ids")
+        if not isinstance(keep, list):
+            return jsonify({"error": "keep_run_ids (list) is required"}), 400
+        try:
+            result = build_pruned_bundle(session, [str(r) for r in keep])
+        except CategoryBundleError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"pruned bundle build error: {exc}"}), 500
+        return jsonify({"result": result})
+
+    @app.route("/optimizer/sessions/<session_id>/category-bundle", methods=["GET"])
+    def optimizer_category_bundle_page(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            from flask import abort
+            return abort(404)
+        return render_template("optimizer_category_bundle.html", session_id=session_id)
+
+    @app.route("/optimizer/sessions/<session_id>/category-bundle.zip", methods=["GET"])
+    def optimizer_category_bundle_zip(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_category_bundle import pruned_bundle_zip_path
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        zip_path = pruned_bundle_zip_path(session)
+        if not zip_path.exists():
+            return abort(404)
+        return send_file(zip_path.resolve(), as_attachment=True, download_name=zip_path.name)
+
+    @app.route("/api/optimizer/sessions/<session_id>/refine/candidates", methods=["GET"])
+    def api_optimizer_refine_candidates(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_refinement import (
+            RefinementError,
+            list_refinable_candidates,
         )
 
         session = get_session(session_id)
         if session is None:
             return jsonify({"error": "session not found"}), 404
         try:
-            result = build_session_candidate_report(session)
+            candidates = list_refinable_candidates(session)
+        except RefinementError as exc:
+            return jsonify({"error": str(exc), "candidates": []}), 400
+        return jsonify({"candidates": candidates})
+
+    @app.route("/api/optimizer/sessions/<session_id>/refine", methods=["POST"])
+    def api_optimizer_refine(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_recipe import load_recipe
+        from ta_foundation.web.optimizer_recipe_state import (
+            RecipeRunState,
+            append_recipe_event,
+            load_recipe_state,
+            save_recipe_state,
+        )
+        from ta_foundation.web.optimizer_refinement import (
+            RefinementError,
+            RefinementRanges,
+            prepare_refinement,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        run_ids = payload.get("candidate_run_ids")
+        if not isinstance(run_ids, list) or not run_ids:
+            return jsonify({"error": "candidate_run_ids (non-empty list) is required"}), 400
+        try:
+            prep = prepare_refinement(
+                session,
+                [str(r) for r in run_ids],
+                ranges=RefinementRanges.from_payload(payload.get("ranges")),
+                keep_per_candidate=_payload_int(payload, "keep_per_candidate", 2),
+            )
+            # Rearm the orchestrator at the new refine stage so the next advance
+            # generates + dispatches it (the page polls advance to auto-finish).
+            recipe = load_recipe(session)
+            state = load_recipe_state(session) or RecipeRunState(
+                recipe_id=recipe.recipe_id, state="generating_child_stage",
+            )
+            state.state = "generating_child_stage"
+            state.current_stage_id = prep.refine_stage_id
+            state.last_error = None
+            state.pause_requested = False
+            state.stop_requested = False
+            save_recipe_state(session, state)
+            append_recipe_event(
+                session,
+                event_type="refinement_launched",
+                recipe_id=recipe.recipe_id,
+                stage_id=prep.refine_stage_id,
+                message=(
+                    f"Refinement launched on {prep.candidate_count} candidate(s); "
+                    f"{prep.combos_per_candidate} risk combos each."
+                ),
+            )
+        except RefinementError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"refinement launch error: {exc}"}), 500
+        return jsonify({
+            "refine_stage_id": prep.refine_stage_id,
+            "final_stage_id": prep.final_stage_id,
+            "candidate_count": prep.candidate_count,
+            "combos_per_candidate": prep.combos_per_candidate,
+            "total_combinations": prep.total_combinations,
+            "pinned_params": prep.pinned_params,
+        })
+
+    @app.route("/optimizer/sessions/<session_id>/refine", methods=["GET"])
+    def optimizer_refine_page(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            from flask import abort
+            return abort(404)
+        return render_template("optimizer_refine.html", session_id=session_id)
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/final-template-card-report",
+        methods=["POST"],
+    )
+    def api_optimizer_build_final_template_card_report(session_id: str):
+        from pathlib import Path
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            build_final_template_card_report,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        doc = session.load_document()
+        images_dir = payload.get("images_dir") or doc.god_images_dir or None
+        week_ending = payload.get("week_ending") or None
+        output_path = Path(payload["output_path"]) if payload.get("output_path") else None
+        cards_dir = Path(payload["cards_dir"]) if payload.get("cards_dir") else None
+        export_cards = bool(payload.get("export_exec_cards_png", True))
+        try:
+            result = build_final_template_card_report(
+                session,
+                output_path=output_path,
+                images_dir=images_dir,
+                export_exec_cards_png=export_cards,
+                exec_cards_dir=cards_dir,
+                week_ending=week_ending,
+            )
         except Exception as exc:
             return jsonify({"error": f"unexpected report build error: {exc}"}), 500
         return jsonify({"result": result.to_dict()})
@@ -1708,6 +2053,59 @@ def create_app() -> "Flask":
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
 
+    @app.route("/optimizer/sessions/<session_id>/candidate-report-selected")
+    def optimizer_selected_session_candidate_report_page(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            selected_session_candidate_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = selected_session_candidate_report_path(session)
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-coverage-package/report")
+    def optimizer_weekly_coverage_package_report_page(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_coverage_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = weekly_coverage_report_path(session)
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-coverage-package.zip")
+    def optimizer_weekly_coverage_package_zip(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_coverage_zip_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        zip_path = weekly_coverage_zip_path(session)
+        if not zip_path.exists():
+            return abort(404)
+        return send_file(
+            zip_path.resolve(),
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=zip_path.name,
+        )
+
     @app.route(
         "/api/optimizer/sessions/<session_id>/final-templates/rename",
         methods=["POST"],
@@ -1763,7 +2161,7 @@ def create_app() -> "Flask":
         from ta_foundation.web.optimizer_session import get_session
         from ta_foundation.web.optimizer_final_templates import (
             active_final_templates_dir,
-            final_template_export_name,
+            final_template_export_name_for_session,
             list_active_final_templates,
         )
 
@@ -1780,7 +2178,7 @@ def create_app() -> "Flask":
         memory_file = io.BytesIO()
         with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in active_files:
-                zf.write(path, arcname=final_template_export_name(path))
+                zf.write(path, arcname=final_template_export_name_for_session(session, path))
         memory_file.seek(0)
         return send_file(
             memory_file,
@@ -1802,7 +2200,7 @@ def create_app() -> "Flask":
         from ta_foundation.web.optimizer_session import get_session
         from ta_foundation.web.optimizer_final_templates import (
             active_final_templates_dir,
-            final_template_export_name,
+            final_template_export_name_for_session,
             list_active_final_templates_filtered,
         )
 
@@ -1825,7 +2223,7 @@ def create_app() -> "Flask":
         memory_file = io.BytesIO()
         with zipfile.ZipFile(memory_file, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in active_files:
-                zf.write(path, arcname=final_template_export_name(path))
+                zf.write(path, arcname=final_template_export_name_for_session(session, path))
         memory_file.seek(0)
         suffix = "_".join(sorted(run_ids)) if len(run_ids) <= 4 else f"{len(run_ids)}_selected"
         return send_file(
@@ -1954,6 +2352,276 @@ def create_app() -> "Flask":
             market_suffix=str(payload.get("market_suffix") or "NQ"),
         )
         return jsonify({"session": session.load_document().to_dict()})
+
+    @app.route("/api/optimizer/weekly-coverage/run", methods=["POST"])
+    def api_optimizer_weekly_coverage_run():
+        from ta_foundation.web.optimizer_recipe import save_recipe
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan
+        from ta_foundation.web.optimizer_session import create_session
+
+        payload = request.get_json(silent=True) or {}
+        strategy_id = str(payload.get("strategy_id") or "").strip()
+        seed_template_path = str(payload.get("seed_template_path") or "").strip()
+        if not strategy_id:
+            return jsonify({"error": "Pick a strategy first."}), 400
+        if not seed_template_path:
+            return jsonify({"error": "Pick a seed template first."}), 400
+
+        instrument = str(payload.get("instrument") or "NQ 06-26").strip() or "NQ 06-26"
+        market_suffix = str(payload.get("market_suffix") or "NQ").strip() or "NQ"
+        label = str(payload.get("label") or "Weekly Coverage").strip() or "Weekly Coverage"
+
+        session = create_session(
+            label=label,
+            strategy_id=strategy_id,
+            seed_template_path=seed_template_path,
+            instrument=instrument,
+            market_suffix=market_suffix,
+        )
+        session.update(
+            oos_from_date=str(payload.get("start_date") or ""),
+            oos_to_date=str(payload.get("end_date") or ""),
+            guardrails={
+                "min_trades": _payload_number(payload, "min_trades", 20),
+                "min_profit_factor": _payload_number(payload, "min_profit_factor", 1.2),
+                "max_drawdown_dollars": _payload_number(payload, "max_drawdown", 2500),
+                "min_net_profit": _payload_number(payload, "min_net_profit", 0),
+                "min_percent_days_traded": _payload_number(payload, "min_percent_days_traded", 20),
+            },
+            chunking={
+                "max_combinations_per_chunk": _payload_number(payload, "max_combinations_per_chunk", 5000),
+                "max_runtime_minutes_per_chunk": _payload_number(payload, "max_runtime_minutes_per_chunk", 180),
+                "keep_best_results": _payload_number(payload, "keep_best_results", 1000),
+            },
+        )
+
+        recipe = _weekly_coverage_recipe_payload(
+            strategy_id=strategy_id,
+            recipe_name=label,
+            start_hours=_payload_int_list(payload, "start_hours", [0, 4, 8, 12, 16, 20]),
+            duration_hours=_payload_int(payload, "duration_hours", 4),
+            slow_ma_values=_payload_int_list(payload, "slow_ma_values", [20, 50, 100, 200, 300, 400]),
+            final_per_lane=_payload_int(payload, "final_per_lane", 2),
+            min_trades=_payload_number(payload, "min_trades", 20),
+            min_profit_factor=_payload_number(payload, "min_profit_factor", 1.2),
+            max_drawdown=_payload_number(payload, "max_drawdown", 2500),
+            min_net_profit=_payload_number(payload, "min_net_profit", 0),
+            average_fast_min=_payload_number(payload, "average_fast_min", 5),
+            average_fast_max=_payload_number(payload, "average_fast_max", 5),
+            average_fast_step=_payload_number(payload, "average_fast_step", 1),
+            max_stop_min=_payload_number(payload, "max_stop_min", 50),
+            max_stop_max=_payload_number(payload, "max_stop_max", 350),
+            max_stop_step=_payload_number(payload, "max_stop_step", 50),
+            max_tp_ratio_min=_payload_number(payload, "max_tp_ratio_min", 0.5),
+            max_tp_ratio_max=_payload_number(payload, "max_tp_ratio_max", 2.0),
+            max_tp_ratio_step=_payload_number(payload, "max_tp_ratio_step", 0.5),
+        )
+        try:
+            save_recipe(session, recipe)
+            plan = build_and_save_recipe_plan(session)
+            status = RecipeRunOrchestrator(session).start()
+        except Exception as exc:
+            return jsonify({"error": str(exc), "session": session.load_document().to_dict()}), 400
+
+        response = jsonify({
+            "session": session.load_document().to_dict(),
+            "recipe": recipe,
+            "plan": plan.to_dict(),
+            "status": status,
+            "urls": {
+                "session": f"/optimizer/sessions/{session.id}",
+                "recipe": f"/optimizer/sessions/{session.id}/resume",
+                "results": f"/optimizer/sessions/{session.id}/resume?focus_tab=results&stage=stage_1",
+            },
+        })
+        response.set_cookie(
+            _OPTIMIZER_COOKIE,
+            session.id,
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite="Lax",
+        )
+        return response
+
+    @app.route("/api/optimizer/weekly-coverage/recent", methods=["GET"])
+    def api_optimizer_weekly_coverage_recent():
+        """List recent weekly/lane-coverage sessions so the page can offer a way
+        back to a run regardless of browser localStorage (which is per-port)."""
+        import json as _json
+        from ta_foundation.web.optimizer_session import get_session, list_sessions
+
+        out: list[dict] = []
+        for summary in list_sessions()[:60]:
+            sid = summary.get("session_id")
+            session = get_session(sid) if sid else None
+            if session is None:
+                continue
+            recipe_path = session.directory / "recipe.json"
+            if not recipe_path.exists():
+                continue
+            try:
+                recipe = _json.loads(recipe_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            recipe_id = str(recipe.get("recipe_id") or "")
+            is_coverage = "weekly" in recipe_id.lower() or any(
+                str((stage.get("selection") or {}).get("mode") or "") == "coverage_matrix_sequence"
+                for stage in (recipe.get("stages") or [])
+            )
+            if not is_coverage:
+                continue
+            state = ""
+            state_path = session.directory / "recipe_state.json"
+            if state_path.exists():
+                try:
+                    state = str(_json.loads(state_path.read_text(encoding="utf-8")).get("state") or "")
+                except (OSError, ValueError):
+                    state = ""
+            review_exists = (
+                session.directory / "deployment_package" / "final_backtest_handoff"
+                / "final_backtest_review"
+            ).exists()
+            out.append({
+                "session_id": sid,
+                "label": summary.get("label") or "",
+                "updated_at": summary.get("updated_at") or "",
+                "state": state,
+                "final_review_exists": review_exists,
+            })
+            if len(out) >= 10:
+                break
+        return jsonify({"sessions": out})
+
+    def _payload_number(payload: dict, key: str, default: float) -> float:
+        try:
+            return float(payload.get(key, default))
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _payload_int(payload: dict, key: str, default: int) -> int:
+        try:
+            return int(float(payload.get(key, default)))
+        except (TypeError, ValueError):
+            return int(default)
+
+    def _payload_int_list(payload: dict, key: str, default: list[int]) -> list[int]:
+        raw = payload.get(key)
+        if isinstance(raw, str):
+            raw = [piece for piece in raw.replace(",", " ").split()]
+        if not isinstance(raw, list):
+            return list(default)
+        out: list[int] = []
+        for item in raw:
+            try:
+                value = int(float(item))
+            except (TypeError, ValueError):
+                continue
+            if value >= 0 and value not in out:
+                out.append(value)
+        return sorted(out) or list(default)
+
+    def _weekly_coverage_recipe_payload(
+        *,
+        strategy_id: str,
+        recipe_name: str,
+        start_hours: list[int],
+        duration_hours: int,
+        slow_ma_values: list[int],
+        final_per_lane: int,
+        min_trades: float,
+        min_profit_factor: float,
+        max_drawdown: float,
+        min_net_profit: float,
+        average_fast_min: float,
+        average_fast_max: float,
+        average_fast_step: float,
+        max_stop_min: float,
+        max_stop_max: float,
+        max_stop_step: float,
+        max_tp_ratio_min: float,
+        max_tp_ratio_max: float,
+        max_tp_ratio_step: float,
+    ) -> dict:
+        safe_name = "".join(ch.lower() if ch.isalnum() else "_" for ch in recipe_name).strip("_")
+        recipe_id = f"rec_{safe_name or 'weekly_coverage'}"
+        slow_ma_values = sorted({int(v) for v in slow_ma_values if int(v) >= 0}) or [20, 50, 100, 200, 300, 400]
+        start_hours = sorted({int(v) for v in start_hours if 0 <= int(v) <= 23}) or [0, 4, 8, 12, 16, 20]
+        duration_hours = max(1, int(duration_hours))
+        return {
+            "recipe_version": 1,
+            "mode": "matrix_sequence",
+            "recipe_id": recipe_id,
+            "recipe_name": recipe_name,
+            "strategy_id": strategy_id,
+            "entries_per_direction": 1,
+            "target_final_candidates": max(1, final_per_lane),
+            "safety_caps": {
+                "max_total_combinations": 250000,
+                "max_templates_per_stage": 250,
+            },
+            "base_matrix": [
+                {"param": "StartTimeH", "role": "matrix_axis", "values": list(start_hours)},
+                {"param": "DurationTimeH", "role": "fixed", "value": duration_hours},
+                {"param": "Reverse", "role": "matrix_axis", "values": [False, True]},
+                {"param": "averageSlow", "role": "matrix_axis", "values": list(slow_ma_values)},
+            ],
+            "stages": [
+                {
+                    "stage_id": "stage_1",
+                    "stage_type": "optimizer",
+                    "description": "Weekly coverage broad search",
+                    "optimize_inside_template": {
+                        "averageFast": {
+                            "min": average_fast_min,
+                            "max": average_fast_max,
+                            "step": average_fast_step,
+                        },
+                        "MaxStop": {
+                            "min": max_stop_min,
+                            "max": max_stop_max,
+                            "step": max_stop_step,
+                        },
+                        "MaxTPRatio": {
+                            "min": max_tp_ratio_min,
+                            "max": max_tp_ratio_max,
+                            "step": max_tp_ratio_step,
+                        },
+                    },
+                    # Always sweep direction enables for this strategy — the team
+                    # wants long-only, short-only, and both evaluated every week.
+                    "add_optimize": {
+                        "Long": [False, True],
+                        "Short": [False, True],
+                    },
+                    "selection": {
+                        "mode": "coverage_matrix_sequence",
+                        "group_by": ["StartTimeH", "Reverse", "averageSlow"],
+                        "coverage_grid": {
+                            "StartTimeH": list(start_hours),
+                            "Reverse": [False, True],
+                            "averageSlow": list(slow_ma_values),
+                        },
+                        "keep_per_group": max(1, final_per_lane),
+                        "fitness_metrics": ["profit_factor", "total_net_profit"],
+                        "min_trades": min_trades,
+                        "min_profit_factor": min_profit_factor,
+                        "max_drawdown": max_drawdown,
+                        "min_net_profit": min_net_profit,
+                    },
+                },
+                {
+                    "stage_id": "final_backtest",
+                    "stage_type": "fixed_backtest",
+                    "from": "stage_1.selected_rows",
+                    "finalists_per_bucket": max(1, final_per_lane),
+                    "description": "Final fixed Backtest validation",
+                },
+            ],
+            "optimizer_type": "Default",
+            "keep_best_results": 1000,
+            "active_targets": ["MaxProfitFactor", "MaxNetProfit"],
+        }
 
     @app.route("/api/optimizer/sessions/<session_id>", methods=["GET"])
     def api_optimizer_session_get(session_id: str):
@@ -2316,10 +2984,15 @@ def create_app() -> "Flask":
         return jsonify({"report": report.to_dict()})
 
     @app.route(
-        "/api/optimizer/sessions/<session_id>/refine",
+        "/api/optimizer/sessions/<session_id>/clone-refine",
         methods=["POST"],
     )
     def api_optimizer_session_refine(session_id: str):
+        # NOTE: previously registered at .../refine, which collided with the
+        # in-session risk-knob refine (api_optimizer_refine) — Flask dispatched
+        # the first-registered rule, so this clone-refine handler was
+        # unreachable and callers got a 400 about candidate_run_ids. Distinct
+        # path now; the in-session risk refine owns .../refine.
         from ta_foundation.web.optimizer_refine import (
             OptimizerRefineError,
             refine_from_rows,
@@ -2702,17 +3375,25 @@ def create_app() -> "Flask":
     def api_optimizer_recipe_advance(session_id: str):
         from ta_foundation.web.optimizer_recipe import OptimizerRecipeError
         from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_recipe_runner import RecipeRunnerError
         from ta_foundation.web.optimizer_session import get_session
 
         session = get_session(session_id)
         if session is None:
             return jsonify({"error": "session not found"}), 404
-        
+
         try:
             status = RecipeRunOrchestrator(session).advance_once()
         except OptimizerRecipeError as exc:
             return jsonify({"error": str(exc)}), 400
-        
+        except RecipeRunnerError as exc:
+            # Submit-to-NinjaTrader failures (e.g. the shared command bridge is
+            # still busy with the previous stage) are transient: report them as
+            # a retryable conflict, not a 500. advance_once normally absorbs
+            # these via the ready_to_run_stage recovery path; this is a safety
+            # net for the inline fast-path dispatch.
+            return jsonify({"error": str(exc), "retryable": True}), 409
+
         return jsonify(status)
 
     @app.route(
@@ -2867,6 +3548,9 @@ def create_app() -> "Flask":
                 "rows": selection.selected_rows,
                 "selected_rows": selection.selected_rows,
                 "rejected_rows": selection.rejected_rows,
+                "coverage_rows": selection.coverage_rows,
+                "coverage_csv": selection.coverage_csv,
+                "coverage_json": selection.coverage_json,
             })
             return jsonify(out)
         except Exception as exc:

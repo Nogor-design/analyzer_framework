@@ -271,6 +271,14 @@ def compute_regime_breakdown(
     try:
         # Normalize timestamps to naive UTC for merge_asof
         trades_work = trades.copy()
+        # Drop columns that we will merge from bars_with_regime to avoid conflicts
+        desired = {
+            "regime", "vol_regime", "vol_regime_tertile", "vol_regime_quartile",
+            "trend_direction", "trend_strength"
+        }
+        conflict_cols = [c for c in desired if c in trades_work.columns]
+        if conflict_cols:
+            trades_work = trades_work.drop(columns=conflict_cols)
         trades_work["_entry_utc"] = _tz_to_naive_utc(pd.to_datetime(trades_work["entry_time"]))
         trades_work = trades_work.sort_values("_entry_utc").reset_index(drop=True)
 

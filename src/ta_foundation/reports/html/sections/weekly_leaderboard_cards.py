@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as _html
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
@@ -366,9 +367,9 @@ def _resolve_dashboard_window(
     rolling_days_count = int(options.get("rolling_days_count", 6))
     rolling_trading_only = bool(options.get("rolling_trading_days_only", True))
 
-    use_rolling = window_mode == "rolling" or (
-        window_mode == "auto" and (requested_end is None or requested_end > today)
-    )
+    # Auto reports should follow the available package data instead of expanding
+    # a partial historical week into future no-trade days.
+    use_rolling = window_mode in {"auto", "rolling"}
 
     if use_rolling:
         active_end = today if requested_end is None else min(requested_end, today)
@@ -564,13 +565,15 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
     # If worst buffer <= warn_buffer, show a "TIGHT" badge.
     warn_buffer = float(options.get("warn_buffer", 500))
-    recent_days_count = int(options.get("recent_trading_days_count", 5))
-    recent_strip_days = _recent_trading_days(recent_days_count)
-    recent_strip_end = recent_strip_days[-1] if recent_strip_days else datetime.now(TZ_DENVER).date().isoformat()
-
     week_days, prev_week_days, labels, window_descriptor = _resolve_dashboard_window(options, packages)
     if not week_days:
         return "<div><em>No week could be inferred (no trades timestamps found).</em></div>"
+    recent_days_count = int(options.get("recent_trading_days_count", len(week_days)))
+    if recent_days_count == len(week_days):
+        recent_strip_days = [d.isoformat() for d in week_days]
+    else:
+        recent_strip_days = _recent_trading_days(recent_days_count, today=week_days[-1])
+    recent_strip_end = recent_strip_days[-1] if recent_strip_days else week_days[-1].isoformat()
 
     compact_noimg = bool(options.get("compact_noimg", True))
 
@@ -1049,6 +1052,8 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
 
     for row in bot_rows:
         run_id = row["run_id"]
+        derived = (getattr(packages.get(run_id), "metadata", None) or {}).get("derived", {}) or {}
+        display_name = str(derived.get("display_name") or derived.get("display_name_spaced") or run_id)
         card_uri = row["card_uri"]
         snaps_week: List[Optional[PropDaySnapshot]] = row["snaps_week"]
 
@@ -1118,7 +1123,10 @@ def render_weekly_leaderboard_cards(ctx: Dict[str, Any]) -> str:
         # Left meta (optional image)
         html.append('<div class="tf-week-meta">')
         html.append('<div class="tf-week-identity">')
-        html.append(f'<div class="{title_cls}" title="{run_id}">{run_id}</div>')
+        html.append(
+            f'<div class="{title_cls}" title="{_html.escape(str(run_id))}">'
+            f'{_html.escape(display_name)}</div>'
+        )
 
 
         # html.append(

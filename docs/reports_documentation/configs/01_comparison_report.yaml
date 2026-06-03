@@ -1,0 +1,22 @@
+# 01_comparison_report.yaml
+# Core Strategy Comparison Report
+# Ingests NinjaTrader backtest exports and ranks all runs with their equity curves and KPI cards.
+
+report:
+  title: "Comparison Report"
+  output_filename: "Comparison_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  # Shows all bots ranked by net profit. Includes Net Profit, Profit Factor, Max Drawdown, Trades, Win Rate
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  # Shows a chart with all bots on a combined equity curve
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  # Shows key KPIs in nice executive-row card formats
+  - id: run_kpi_cards
+    title: "Run KPI Cards"

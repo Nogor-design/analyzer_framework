@@ -1,0 +1,25 @@
+# 06_run_card_catalog.yaml
+# Run Card Catalog Report
+# Group backtests into a catalog of cards sorted by trading session (London, NY, Asia) and market.
+
+report:
+  title: "Daily run_card_catalog"
+  output_filename: "run_card_catalog_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: run_card_catalog
+    title: "Cards by Session → Market"
+    options:
+      metric: profit_factor
+      sort_desc: true
+      max_per_group: 200
+      hide_missing_cards: true
+      fallback_session_label: "Unclassified"
+      fallback_market_label: "Unknown"
+      session_windows:
+        - { label: "London",        start: "00:00", end: "04:00" }
+        - { label: "NY Pre→Early",  start: "04:00", end: "10:30" }
+        - { label: "NY Late",       start: "10:30", end: "16:00" }
+        - { label: "Asia",          start: "16:00", end: "23:59" }

@@ -81,7 +81,6 @@ def compute_and_attach_regime_recommendation(
 
     # Parameter sensitivity class from strategy_discovery metadata
     sensitivity_class = None
-    derived = getattr(pkg, "metadata", {}).get("derived", {}) or {}
     sd_derived = derived.get("strategy_discovery") or {}
     ps_result = sd_derived.get("parameter_sensitivity") or {}
     if isinstance(ps_result, dict):

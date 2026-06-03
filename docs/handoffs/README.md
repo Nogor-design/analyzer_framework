@@ -43,6 +43,18 @@ history. If a fact isn't in the spec, the AI can't use it.
 When the queue gets long, move `Done` rows to an archive section
 below. Keep the active table short enough to scan at a glance.
 
+## Continuation prompts (cold-start briefs)
+
+Self-contained context dumps for picking up a long workstream in a new
+chat. Not tied to the queue above; read these before resuming the
+named topic.
+
+- [`recipe_optimizer_continuation_prompt.md`](recipe_optimizer_continuation_prompt.md) — Recipe Optimizer Phases 4 & 5
+- [`promote_and_run_continuation_2026-05-30.md`](promote_and_run_continuation_2026-05-30.md) — Shortlist → Promote & Run (one-click NT batch); shipped 2026-05-30
+- [`weekly_coverage_package_continuation_2026-06-01.md`](weekly_coverage_package_continuation_2026-06-01.md) - Weekly Pantheon coverage package and next coverage-recipe phase
+
+- [`weekly_coverage_report_repair_handoff_2026-06-03.md`](weekly_coverage_report_repair_handoff_2026-06-03.md) - Weekly package report repair pass for `opt_f2ac9fefeb44`: deduped executive report, naming, MaxTrades card value, Daily Winner names, and data-ended W/L windows
+
 ## Done (archive)
 
 _(empty)_

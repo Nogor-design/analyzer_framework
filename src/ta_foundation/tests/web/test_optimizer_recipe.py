@@ -1047,6 +1047,138 @@ def test_select_recipe_stage_candidates_uses_explicit_stage_target_cap(tmp_path:
     assert [row["candidate_id"] for row in summary.selected_rows] == ["candidate_4", "candidate_3"]
 
 
+def test_select_recipe_stage_candidates_coverage_matrix_keeps_diverse_lane_winners(tmp_path: Path):
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(SEED_XML, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ",
+    )
+    payload = _recipe_payload()
+    payload["stages"][0]["selection"] = {
+        "mode": "coverage_matrix_sequence",
+        "group_by": ["StartTimeH", "Reverse", "averageSlow"],
+        "keep_per_group": 2,
+        "fitness_metrics": ["profit_factor", "total_net_profit"],
+        "coverage_grid": {
+            "StartTimeH": [0, 4, 8],
+            "Reverse": [False],
+            "averageSlow": [100],
+        },
+    }
+    save_recipe(session, payload)
+    rows = [
+        {
+            "candidate_id": "lane0_pf",
+            "bucket_id": "bucket_0",
+            "StartTimeH": 0,
+            "Reverse": False,
+            "averageSlow": 100,
+            "DurationTimeH": 4,
+            "averageFast": 8,
+            "MaxStop": 100,
+            "MaxTPRatio": 1.5,
+            "ProfitStop": 300,
+            "LossStop": 200,
+            "MaxTrades": 3,
+            "Long": True,
+            "Short": False,
+            "profit_factor": 3.0,
+            "total_net_profit": 1000,
+            "drawdown_abs": 200,
+            "total_trades": 12,
+        },
+        {
+            "candidate_id": "lane0_net_duplicate_shape",
+            "bucket_id": "bucket_0",
+            "StartTimeH": 0,
+            "Reverse": False,
+            "averageSlow": 100,
+            "DurationTimeH": 4,
+            "averageFast": 8,
+            "MaxStop": 100,
+            "MaxTPRatio": 1.5,
+            "ProfitStop": 300,
+            "LossStop": 200,
+            "MaxTrades": 3,
+            "Long": True,
+            "Short": False,
+            "profit_factor": 2.0,
+            "total_net_profit": 5000,
+            "drawdown_abs": 250,
+            "total_trades": 12,
+        },
+        {
+            "candidate_id": "lane0_short_alternative",
+            "bucket_id": "bucket_0",
+            "StartTimeH": 0,
+            "Reverse": False,
+            "averageSlow": 100,
+            "DurationTimeH": 4,
+            "averageFast": 8,
+            "MaxStop": 100,
+            "MaxTPRatio": 1.5,
+            "ProfitStop": 300,
+            "LossStop": 200,
+            "MaxTrades": 3,
+            "Long": False,
+            "Short": True,
+            "profit_factor": 1.8,
+            "total_net_profit": 4000,
+            "drawdown_abs": 250,
+            "total_trades": 12,
+        },
+        {
+            "candidate_id": "lane4_only",
+            "bucket_id": "bucket_4",
+            "StartTimeH": 4,
+            "Reverse": False,
+            "averageSlow": 100,
+            "DurationTimeH": 4,
+            "averageFast": 9,
+            "MaxStop": 100,
+            "MaxTPRatio": 1.5,
+            "ProfitStop": 300,
+            "LossStop": 200,
+            "MaxTrades": 3,
+            "Long": True,
+            "Short": False,
+            "profit_factor": 2.2,
+            "total_net_profit": 3000,
+            "drawdown_abs": 250,
+            "total_trades": 12,
+        },
+    ]
+    results = RecipeStageResults(
+        recipe_id=payload["recipe_id"],
+        stage_id="stage_1",
+        output_dir=str(session.directory / "nt_output" / "stage_1"),
+        row_count=len(rows),
+        batch_count=1,
+        parse_warnings=0,
+        rows=rows,
+    )
+
+    summary = select_recipe_stage_candidates(session, stage_id="stage_1", results=results)
+
+    assert summary.selected_count == 3
+    assert {row["candidate_id"] for row in summary.selected_rows} == {
+        "lane0_pf",
+        "lane0_short_alternative",
+        "lane4_only",
+    }
+    assert "lane0_net_duplicate_shape" not in {row["candidate_id"] for row in summary.selected_rows}
+    assert summary.coverage_csv
+    coverage_rows = json.loads(Path(summary.coverage_json).read_text(encoding="utf-8"))
+    by_start = {int(row["StartTimeH"]): row for row in coverage_rows}
+    assert by_start[0]["lane_status"] == "full"
+    assert by_start[4]["lane_status"] == "thin"
+    assert by_start[4]["lane_gap_reason"] == "thin_only_one_passed"
+    assert by_start[8]["lane_status"] == "missing"
+    assert by_start[8]["lane_gap_reason"] == "missing_no_results"
+
+
 def test_start_recipe_stage_run_writes_stage_specific_runbatch_command(tmp_path: Path):
     seed_path = tmp_path / "seed.xml"
     seed_path.write_text(SEED_XML, encoding="utf-8")
@@ -1402,6 +1534,93 @@ def test_recipe_orchestrator_advance_once_waits_when_stage_output_is_incomplete(
     assert "stage_output_complete" not in event_types
 
 
+def test_stage_output_completion_ignores_partial_batch_run_summary(tmp_path: Path):
+    """A chunked NT run can emit a BatchRunSummary.csv covering only some of the
+    stage's templates. That partial summary must NOT be treated as the whole
+    stage being complete, otherwise the recipe advances early and tries to
+    dispatch the next stage onto a still-busy command bridge (the opt_3f40...
+    refine wedge / Advance 500)."""
+    from ta_foundation.web.optimizer_recipe_orchestrator import _stage_output_completion
+
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(SEED_XML, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ",
+    )
+    save_recipe(session, _recipe_payload())
+    build_and_save_recipe_plan(session)
+    generate_recipe_stage_templates(session, stage_id="stage_1")
+
+    manifest = json.loads(
+        (session.directory / "generated_templates" / "stage_1" / "recipe_template_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected = len(manifest["templates"])
+    assert expected > 1
+
+    output_dir = session.directory / "nt_output" / "stage_1"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    header = (
+        "Template,Status,Strategy,Instrument,Backtest start,Backtest end,"
+        "Total net profit,Trades,Profit factor,Max drawdown,Run start time,"
+        "Run end time,Output folder,Error\n"
+    )
+
+    def _write_batch_summary(rows: int) -> None:
+        lines = [header]
+        for i in range(rows):
+            lines.append(f"tpl_{i},Completed,,,,,,,,,,,,\n")
+        (output_dir / "BatchRunSummary.csv").write_text("".join(lines), encoding="utf-8")
+
+    # Partial summary (all rows "Completed", but fewer than the stage expects).
+    _write_batch_summary(expected - 1)
+    partial = _stage_output_completion(session, stage_id="stage_1")
+    assert partial["complete"] is False
+    assert partial["reason"] == "incomplete"
+
+    # Full-coverage summary is still honored.
+    _write_batch_summary(expected)
+    full = _stage_output_completion(session, stage_id="stage_1")
+    assert full["complete"] is True
+    assert full["reason"] == "batch_run_summary"
+
+
+def test_recipe_orchestrator_recovers_ready_to_run_stage_on_next_advance(tmp_path: Path):
+    """If an inline dispatch parks at ready_to_run_stage because the submit
+    failed (e.g. the command bridge was busy), a later advance must retry the
+    submit and move the stage to running rather than no-op forever."""
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(SEED_XML, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ",
+    )
+    save_recipe(session, _recipe_payload())
+    orchestrator = RecipeRunOrchestrator(session)
+    orchestrator.start(command_file=tmp_path / "cmd.json")
+
+    # Simulate the wedge: templates exist for stage_1, but state is parked at
+    # ready_to_run_stage with no submitted run.
+    state = load_recipe_state(session)
+    state.state = "ready_to_run_stage"
+    state.current_stage_id = "stage_1"
+    from ta_foundation.web.optimizer_recipe_state import save_recipe_state
+
+    save_recipe_state(session, state)
+
+    status = orchestrator.advance_once(command_file=tmp_path / "retry_cmd.json")
+
+    assert status["state"]["state"] == "running_stage"
+    assert status["state"]["current_stage_id"] == "stage_1"
+    assert (tmp_path / "retry_cmd.json").exists()
+    event_types = [event["event_type"] for event in load_recipe_events(session)]
+    assert "stage_run_requested" in event_types
+
+
 def test_recipe_orchestrator_stops_when_no_candidates_pass_guardrails(tmp_path: Path):
     seed_path = tmp_path / "seed.xml"
     seed_path.write_text(SEED_XML, encoding="utf-8")
@@ -1741,4 +1960,3 @@ def test_generate_recipe_child_stage_templates_fails_cleanly_on_empty_bounds(tmp
             generate_recipe_stage_templates(session, stage_id="stage_2")
             
     assert "empty or invalid sweep bounds" in str(exc_info.value)
-

@@ -103,6 +103,71 @@ def test_resume_recipe_session_redirects_to_recipe_optimizer(client, tmp_path: P
     assert res.headers["Location"] == "/optimizer/recipe"
 
 
+def test_weekly_coverage_page_shows_current_default_grid(client):
+    res = client.get("/optimizer/weekly-coverage")
+
+    assert res.status_code == 200
+    text = res.get_data(as_text=True)
+    assert "72 lanes" in text
+    assert "Max deployable target: 144 templates" in text
+    assert "slowMA 20/50/100/200/300/400" in text
+    assert 'value="20, 50, 100, 200, 300, 400"' in text
+    assert "72 templates x 112 combos = 8,064 backtests" in text
+    assert "Generate weekly seed" in text
+
+
+def test_weekly_coverage_run_writes_recipe_with_default_lane_grid(
+    client, tmp_path: Path, monkeypatch
+):
+    seed = tmp_path / "weekly_seed.xml"
+    seed.write_text("<StrategyTemplate />", encoding="utf-8")
+
+    from ta_foundation.web import optimizer_recipe_orchestrator as orchestrator_mod
+
+    class _NoDispatchOrchestrator:
+        def __init__(self, session):
+            self.session = session
+
+        def start(self):
+            return {"state": {"state": "started"}}
+
+    monkeypatch.setattr(
+        orchestrator_mod,
+        "RecipeRunOrchestrator",
+        _NoDispatchOrchestrator,
+    )
+
+    res = client.post(
+        "/api/optimizer/weekly-coverage/run",
+        data=json.dumps({
+            "strategy_id": "PantheonMasterBotV01TesterV2",
+            "seed_template_path": str(seed),
+            "label": "Weekly Coverage Test",
+            "instrument": "NQ 06-26",
+            "market_suffix": "NQ",
+        }),
+        content_type="application/json",
+    )
+
+    assert res.status_code == 200
+    body = res.get_json()
+    session = opt_session.get_session(body["session"]["session_id"])
+    assert session is not None
+    recipe = json.loads((session.directory / "recipe.json").read_text(encoding="utf-8"))
+    assert recipe["base_matrix"] == [
+        {"param": "StartTimeH", "role": "matrix_axis", "values": [0, 4, 8, 12, 16, 20]},
+        {"param": "DurationTimeH", "role": "fixed", "value": 4},
+        {"param": "Reverse", "role": "matrix_axis", "values": [False, True]},
+        {"param": "averageSlow", "role": "matrix_axis", "values": [20, 50, 100, 200, 300, 400]},
+    ]
+    selection = recipe["stages"][0]["selection"]
+    assert selection["mode"] == "coverage_matrix_sequence"
+    assert selection["group_by"] == ["StartTimeH", "Reverse", "averageSlow"]
+    assert selection["keep_per_group"] == 2
+    assert body["plan"]["template_count"] == 72
+    assert body["plan"]["combination_estimate"] == 8064
+
+
 def test_session_lifecycle_and_plan_preview(client, fake_nt_install):
     # Create
     res = client.post(
@@ -252,7 +317,7 @@ def test_templates_generate_and_rename_round_trip(client, fake_nt_install, tmp_p
     monkeypatch.setattr(namer_mod, "DEFAULT_TEMPLATE_NAMING_DIR", naming_dir)
     monkeypatch.setattr(namer_mod.shutil, "which", lambda _: None)
 
-    def fake_run(cmd, cwd=None, capture_output=True, text=True, timeout=None):
+    def fake_run(cmd, cwd=None, capture_output=True, text=True, timeout=None, **kwargs):
         out_idx = cmd.index("--output-dir") + 1
         out_path = Path(cmd[out_idx])
         out_path.mkdir(parents=True, exist_ok=True)

@@ -333,14 +333,18 @@ def compute_break_outcome_time_of_day_stats(
     h = bars["high"].to_numpy(dtype=float)
     lo = bars["low"].to_numpy(dtype=float)
     n = len(bars)
-    idx = bars.index
+    # Ensure we get actual pd.Timestamp values to access .hour safely (handles RangeIndex and DatetimeIndex)
+    if "dt" in bars.columns:
+        dt_series = pd.to_datetime(bars["dt"])
+    else:
+        dt_series = pd.Series(pd.to_datetime(bars.index))
 
     hourly: Dict[int, Dict[str, int]] = {}
     for reg in broken:
         if reg.broken_bar is None or reg.broken_bar >= n:
             continue
 
-        break_ts = idx[reg.broken_bar]
+        break_ts = dt_series.iloc[reg.broken_bar]
         hour = int(break_ts.hour)
         bucket = hourly.setdefault(
             hour,

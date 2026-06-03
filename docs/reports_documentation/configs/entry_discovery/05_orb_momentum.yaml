@@ -1,0 +1,199 @@
+# ============================================================
+# STAGE 5 — ORB, BB, MA MOMENTUM SIGNALS
+# ============================================================
+# Run this if Stage 1 showed orb_discovery, bb_discovery, or
+# ma_discovery with PF >= 1.2.
+#
+# Full parameter sweep for opening range and trend signals:
+#   ORB  — Opening Range Breakout (5/10/15/30 min window)
+#   BB   — Bollinger Band squeeze, reversal, breakout
+#   MA   — Moving average cross and pullback
+#   Pullback — Trend continuation pullback
+#
+# Runtime: ~4-6 minutes with --no-tick-data
+# Combos:  ~350
+#
+# WHAT TO LOOK AT:
+#   Compare ORB vs MA vs BB ranked tables.
+#   ORB windows: 5m = first-candle scalp, 30m = trend confirmation.
+#   MA cross: fast/slow period ratio tells you trend strength threshold.
+# ============================================================
+
+report:
+  title: "Stage 5 — ORB, BB & MA Momentum"
+  output_filename: "05_orb_momentum.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "05_orb_momentum"
+  instrument: "NQ"
+
+# ============================================================
+# ORB — full window sweep
+# 4 windows × 2 entries × 3 TP × 2 SL = 48 combos
+# ============================================================
+orb_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 15
+  orb_windows_min: [5, 10, 15, 30]
+  session_open_hour: 7
+  session_open_minute: 30     # 07:30 Denver = NY bell (MDT)
+  # Winter (MST): change to 8, 30 for 08:30 Denver = NY bell
+  tick_size: 0.25
+  tick_value: 5.00
+
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1
+      fill_timeout_bars: 3
+    body_midpoint:
+      enabled: false          # ORB doesn't benefit much from midpoint entries
+
+  outcome:
+    atr:
+      enabled: true
+      target_mult: 1.5
+      stop_mult: 1.0
+    ticks:
+      enabled: true
+      take_profit: [15, 20, 30]
+      stop: [8, 12]
+    max_bars_timeout: 20
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: true, top_n: 5}
+
+# ============================================================
+# BB DISCOVERY — 2 period × 2 std_dev × 3 signals
+# ~80 combos
+# ============================================================
+bb_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 15
+  timeframes: [1, 5]
+
+  signals:
+    bb_mean_reversion:   {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Touch outer band -> revert to mean
+    bb_continuation:     {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Close outside band -> continuation
+    bb_squeeze_breakout: {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Volatility compression -> expansion
+    bb_walk:             {enabled: true, period: [14, 20], n_std: [1.5, 2.0]}    # Ride a persistent outer-band trend
+
+  entry_timing:
+    next_open: {enabled: true}
+
+  outcome:
+    ticks:
+      enabled: true
+      take_profit: [15, 20]
+      stop: [8, 12]
+    max_bars_timeout: 20
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# MA DISCOVERY — 3 MA combos × 2 signals × 2 TP × 1 SL
+# ~96 combos
+# ============================================================
+ma_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  timeframes: [1, 5]
+  min_trades: 15
+
+  signals:
+    ma_cross:
+      enabled: true
+      fast_period: [9, 20]
+      slow_period: [20, 50]
+      ma_type: [ema, sma]
+
+    ma_pullback:
+      enabled: true
+      period: [9, 20, 50]
+      ma_type: [ema]
+
+  entry_timing:
+    next_open:
+      enabled: true
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1
+      fill_timeout_bars: 3
+    body_midpoint:
+      enabled: false
+
+  outcome:
+    atr:
+      enabled: true
+      target_mult: 1.5
+      stop_mult: 1.0
+    ticks:
+      enabled: true
+      take_profit: [20, 30]
+      stop: [10]
+    max_bars_timeout: 20
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: true, top_n: 5}
+
+# ============================================================
+# PULLBACK DISCOVERY — trend continuation
+# ~80 combos
+# ============================================================
+pullback_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 15
+  lookback_bars: [5, 10, 20]
+  timeframes: [1, 5]
+
+  signals:
+    trend_pullback:    {enabled: true}
+    retracement_entry: {enabled: true}
+
+  outcome:
+    ticks:
+      enabled: true
+      take_profit: [20, 30]
+      stop: [10]
+    max_bars_timeout: 20
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+sections:
+  - id: orb_discovery_overview
+
+  - id: bb_discovery_overview
+
+  - id: ma_discovery_overview
+
+  - id: pullback_discovery_overview
+
+  - id: strategy_discovery_unified
+    options:
+      top_n: 25
+
+  - id: daily_scoreboard
+    options:
+      top_n: 10

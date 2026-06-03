@@ -22,6 +22,7 @@ check git history before relying on it.
 | `docs/AI_REPO_INDEX.md` | Generated index of subsystems, routes AI sessions to the smallest relevant slice. Regenerate via `scripts/build_ai_index.py`. |
 | `docs/AI_CAPABILITY_MAP.md` | Capability surface (backtest reports / discovery / prediction / templates / execution bridge / market-data dashboard). Read before any web, RAG, or CLI orchestration change. |
 | `docs/AI_WORKFLOW.md` | Standard prompts and narrow-context workflow for AI sessions. |
+| `docs/reports_documentation/` | Master reference guide detailing system architecture, visual customizers, and functional taxonomy for every report section, with 11 split YAML configs. |
 | `docs/GETTING_STARTED.md` | User-facing tour of the web app. |
 | `USER_MANUAL.md` (repo root) | Architecture / data-model reference. Pairs with `GETTING_STARTED.md`. |
 
@@ -58,7 +59,9 @@ check git history before relying on it.
 | `docs/designs/pantheon_optimizer_handoff_plan.md` | Engine design for the standalone Pantheon optimizer (phase 1→2→3→final). Updated 2026-05-16 with web layer additions, the BatchControl path-length fix, and the proven `opt_5bab6a5ee1ea` reference session. |
 | `docs/designs/optimizer_known_issues.md` | Living list of unfixed/operational issues in the optimizer (NT custom-optimizer bool-sweep, cancel mid-template, etc.) plus resolved-item history. Open this when something behaves unexpectedly. |
 | `docs/runbooks/recipe_optimizer_user_guide.md` | Screenshot-driven operator guide for the Recipe Optimizer flow: final results, final report, final `.xml` template list/download, and on-disk artifact paths. |
+| `docs/runbooks/weekly_coverage_package_user_guide.md` | Operator guide for the Decision Dashboard weekly coverage package: bucket x Reverse x slowMA lanes, operational diversity checks, deployable/review template folders, report, ZIP, and API routes. |
 | `docs/runbooks/pantheon_web_optimizer_full_run.md` | Operator runbook for the `/optimizer` web flow end to end — session config → preflight → RunBatch → phase 2/3 → final fixed Backtests → operator decision package. |
+| `docs/handoffs/weekly_coverage_report_repair_handoff_2026-06-03.md` | Cold-start handoff for the `opt_f2ac9fefeb44` weekly package report repair pass: deduped executive report, naming buckets, MaxTrades display, Daily Winner names, and data-ended W/L windows. |
 | `docs/runbooks/pantheon_custom_optimizer_full_run.md` | Operator runbook for the equivalent CLI flow (`ta_foundation.optimization.*`). Use when the web UI is not desired. |
 | `docs/direction_policy_semantics.md` | Direction-policy semantics across signal/entry/outcome layers. |
 | `docs/NT8_EXECUTION_PROJECT_HANDOFF.md` | NinjaTrader 8 execution bridge handoff. |
@@ -68,6 +71,18 @@ check git history before relying on it.
 | Path | Role |
 |---|---|
 | `docs/ideas/IMPROVEMENT_IDEAS.md` | Outside critique that has been filtered. Leads with an Assessment table marking which suggestions were adopted as roadmap items (P0-HASH, P0-CUMULATIVE, P1-REGIME). The unfiltered critique below the table is raw input, not canonical guidance. |
+
+### Reference library (relocated from root 2026-06-03)
+
+Generated reference material moved out of the repo root into `docs/`. Treat
+as supporting reference, not the doc-of-record (those remain in
+`docs/designs/`).
+
+| Path | Role |
+|---|---|
+| `docs/reference/` | Subsystem READMEs, schema references, and capability guides (web API, system map, data model, configuration, entry strategies, pattern engine, regime recommender, discovery registry, risk management, testing, quick starts). |
+| `docs/audits/` | Point-in-time audit / review artifacts (documentation audit index, gap analysis, review, discovery summary, recipe optimizer validation report). Snapshots, not living docs. |
+| `docs/runbooks/NINJATRADER_INTEGRATION_RUNBOOK.md` | NinjaTrader integration runbook (relocated from root). |
 
 ---
 
@@ -82,10 +97,13 @@ check git history before relying on it.
 
 ---
 
-## Repo-root legacy `.md` files (CLEANED 2026-05-14)
+## Repo-root legacy `.md` files (CLEANED 2026-05-14, re-cleaned 2026-06-03)
 
-The repo root has been cleaned of ~30 legacy `.md` files. Only canonical
-entry points listed above remain.
+The repo root has been cleaned of legacy `.md` files. Only canonical entry
+points (`CLAUDE.md`, `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md`,
+`USER_MANUAL.md`) remain. On 2026-06-03, 22 generated reference/audit docs
+were relocated from root into `docs/reference/`, `docs/audits/`, and
+`docs/runbooks/` (see the Reference library section above).
 
 ---
 

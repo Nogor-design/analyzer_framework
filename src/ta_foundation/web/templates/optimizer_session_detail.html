@@ -46,6 +46,11 @@
             title="Generate one report from all final candidate templates for comparison sections.">
       Build final report
     </button>
+    <a href="/optimizer/sessions/{{ session.session_id }}/final-report-builder"
+       class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline"
+       title="Choose and save the sections used by the final all-template report.">
+      Customize final report
+    </a>
     {% if summary.session_candidate_report_url %}
       <a href="{{ summary.session_candidate_report_url }}" target="_blank" rel="noopener"
          class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">
@@ -54,8 +59,21 @@
     {% endif %}
     <a href="/optimizer/sessions/{{ session.session_id }}/decision"
        class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Decision dashboard</a>
+    {% if summary.has_final_review %}
+      <a href="/optimizer/sessions/{{ session.session_id }}/refine"
+         class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Refine risk params</a>
+    {% endif %}
+    {% if summary.weekly_coverage_report_url %}
+      <a href="{{ summary.weekly_coverage_report_url }}" target="_blank" rel="noopener"
+         class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Weekly coverage report</a>
+    {% endif %}
+    {% if summary.weekly_coverage_zip_url %}
+      <a href="{{ summary.weekly_coverage_zip_url }}"
+         class="btn-ghost px-3 py-1.5 rounded text-sm font-semibold no-underline">Weekly ZIP</a>
+    {% endif %}
     <a href="/optimizer/sessions/{{ session.session_id }}/resume"
-       class="btn-primary px-3 py-1.5 rounded text-sm font-semibold no-underline">Resume</a>
+       class="btn-primary px-3 py-1.5 rounded text-sm font-semibold no-underline"
+       title="Opens the Recipe editor. Note: the Start button there re-runs from stage 1.">Resume</a>
   </div>
 </header>
 
@@ -1112,23 +1130,17 @@ function fmt(v, digits) {
       document.querySelectorAll(".rec-check").forEach((cb) => { cb.checked = e.target.checked; });
     });
 
-    $("refine-btn").addEventListener("click", async () => {
+    $("refine-btn").addEventListener("click", () => {
+      // Risk-knob refinement (ProfitStop / LossStop / MaxTrades) lives on the
+      // dedicated Refine Risk Params page. Carry the picked rows over as a
+      // preselect so they arrive pre-checked. This page no longer POSTs a
+      // refine itself — one canonical risk-refine surface, in-session and
+      // additive (originals are kept).
       const runIds = Array.from(document.querySelectorAll(".rec-check"))
         .filter((cb) => cb.checked).map((cb) => cb.dataset.run);
       if (!runIds.length) { $("refine-status").textContent = "Select at least one row."; return; }
-      $("refine-status").textContent = "Spawning refined session…";
-      const res = await fetch("/api/optimizer/sessions/" + SID + "/refine", {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ run_ids: runIds }),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        $("refine-status").textContent = "Refine failed: " + res.status + " " + body;
-        return;
-      }
-      const body = await res.json();
-      const newSid = body.session && body.session.session_id;
-      if (newSid) window.location.href = "/optimizer/sessions/" + newSid;
+      const q = encodeURIComponent(runIds.join(","));
+      window.location.href = "/optimizer/sessions/" + SID + "/refine?preselect=" + q;
     });
   } catch (e) {
     /* if the review folder doesn't exist yet the section just stays hidden */

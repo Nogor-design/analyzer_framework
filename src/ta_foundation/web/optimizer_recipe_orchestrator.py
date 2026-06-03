@@ -24,6 +24,7 @@ from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan, 
 from ta_foundation.web.optimizer_recipe_results import load_recipe_stage_results
 from ta_foundation.web.optimizer_recipe_runner import (
     NT_OUTPUT_DIRNAME,
+    RecipeRunnerError,
     RecipeStageRunRecord,
     cancel_recipe_stage_run,
     load_recipe_run_history,
@@ -167,6 +168,14 @@ class RecipeRunOrchestrator:
 
         if state.state == "running_final_backtest":
             return self._advance_final_backtest(state)
+
+        if state.state == "ready_to_run_stage":
+            # A prior dispatch generated templates and parked at
+            # ready_to_run_stage but the submit to NinjaTrader did not land
+            # (typically the shared command bridge was still busy with the
+            # previous stage). Retry the submit so the recipe self-heals
+            # instead of wedging here forever.
+            return self._submit_ready_stage(state, command_file=command_file, status_file=status_file)
 
         if state.state not in {"running_stage", "waiting_for_results"}:
             append_recipe_event(
@@ -488,6 +497,68 @@ class RecipeRunOrchestrator:
                 "finalize": finalize,
                 **completion,
             },
+        )
+        return self.status()
+
+    def _submit_ready_stage(
+        self,
+        state: RecipeRunState,
+        *,
+        command_file: Path | None,
+        status_file: Path | None,
+    ) -> dict[str, Any]:
+        """Submit a stage that is parked at ``ready_to_run_stage``.
+
+        Used as the recovery path when an inline dispatch generated templates
+        but failed to hand off to NinjaTrader (e.g. the shared command bridge
+        was still busy). On a busy/transient submit failure this leaves the
+        state at ``ready_to_run_stage`` and returns a waiting status so the
+        next advance retries, rather than letting the error wedge the recipe
+        or surface as a 500.
+        """
+        recipe = load_recipe(self.session)
+        stage_id = state.current_stage_id
+        if not stage_id:
+            state.state = "failed"
+            state.last_error = "Cannot submit stage: current stage is missing."
+            save_recipe_state(self.session, state)
+            append_recipe_event(
+                self.session,
+                event_type="advance_failed",
+                recipe_id=recipe.recipe_id,
+                message=state.last_error,
+            )
+            return self.status()
+
+        stage = _stage_by_id(load_recipe_plan(self.session) or {}, stage_id)
+        is_final = bool(stage) and stage.get("stage_type") == "fixed_backtest"
+
+        try:
+            run = start_recipe_stage_run(
+                self.session,
+                stage_id=stage_id,
+                command_file=command_file,
+                status_file=status_file,
+            )
+        except RecipeRunnerError as exc:
+            append_recipe_event(
+                self.session,
+                event_type="waiting_for_bridge",
+                recipe_id=recipe.recipe_id,
+                stage_id=stage_id,
+                message=f"Cannot submit {stage_id} yet: {exc}",
+            )
+            return self.status()
+
+        state.state = "running_final_backtest" if is_final else "running_stage"
+        save_recipe_state(self.session, state)
+        append_recipe_event(
+            self.session,
+            event_type="final_backtest_run_requested" if is_final else "stage_run_requested",
+            recipe_id=recipe.recipe_id,
+            stage_id=stage_id,
+            message=f"Submitted {stage_id} to NinjaTrader.",
+            details=run.to_dict(),
         )
         return self.status()
 
@@ -1034,7 +1105,15 @@ def _stage_output_completion(
     )
 
     complete_by_summary = bool(expected_ids) and expected_ids.issubset(summary_completed)
-    complete_by_batch = bool(batch_summary["complete"])
+    # Only trust NinjaTrader's batch-run summary when it actually covers the
+    # whole stage. A chunked run can emit a partial BatchRunSummary.csv (e.g.
+    # 115 rows for a 374-template stage); honoring that as "complete" would
+    # advance the recipe before NT is done and dispatch the next stage onto a
+    # still-busy command bridge. When expected_count is unknown (0) we fall
+    # back to the prior behavior of trusting the batch summary as-is.
+    complete_by_batch = bool(batch_summary["complete"]) and (
+        expected_count <= 0 or int(batch_summary["total"]) >= expected_count
+    )
     complete_by_output_evidence = expected_count > 0 and len(summary_completed | optimization_completed) >= expected_count
     complete = complete_by_summary or complete_by_batch or complete_by_output_evidence
 
@@ -1247,8 +1326,16 @@ def _auto_finalize_artifacts(session: OptimizerSession) -> dict[str, Any]:
         from ta_foundation.web.optimizer_candidate_report import (
             build_session_candidate_report,
         )
+        from ta_foundation.web.optimizer_report_config import (
+            load_final_report_config,
+            sections_from_final_report_config,
+        )
 
-        report = build_session_candidate_report(session)
+        config = load_final_report_config(session)
+        report = build_session_candidate_report(
+            session,
+            sections=sections_from_final_report_config(config),
+        )
         result["session_candidate_report"] = {
             "ok": bool(report.html_path),
             "html_path": report.html_path,

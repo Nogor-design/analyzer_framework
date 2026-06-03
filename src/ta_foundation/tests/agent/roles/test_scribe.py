@@ -286,7 +286,7 @@ def _good_letter_llm():
 
 def test_weekly_letter_with_window_data(repo: Repository) -> None:
     today = date.today()
-    week_start = today - timedelta(days=today.isoweekday() - 1)
+    week_start = today - timedelta(days=6)
     _seed_candidate_in_window(repo, cid="c_001", days_ago=2,
                                 pf_dev=1.62, n_trades_dev=47)
     _seed_candidate_in_window(repo, cid="c_002", days_ago=4,

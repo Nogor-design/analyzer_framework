@@ -33,7 +33,9 @@ Caller can override the section list (used by the on-demand picker).
 
 import shutil
 from dataclasses import asdict, dataclass, field
+import math
 from pathlib import Path
+import re
 from typing import Any
 
 from ta_foundation.core.pipeline import ingest_folder
@@ -44,12 +46,15 @@ from ta_foundation.parsers.ninjatrader.settings_csv import NinjaTraderSettingsCs
 from ta_foundation.parsers.ninjatrader.summary_csv import NinjaTraderSummaryCsvParser
 from ta_foundation.parsers.ninjatrader.trades_csv import NinjaTraderTradesCsvParser
 from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
+from ta_foundation.reports.html.embed import file_to_data_uri
+from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 from ta_foundation.web.optimizer_session import OptimizerSession
 
 
 PER_CANDIDATE_REPORTS_DIRNAME = "per_candidate_reports"
 SESSION_CANDIDATE_REPORT_FILENAME = "session_candidate_report.html"
+SELECTED_SESSION_CANDIDATE_REPORT_FILENAME = "selected_candidate_report.html"
 DEFAULT_PORTRAIT_DIRS: tuple[Path, ...] = (
     Path.home() / "Pictures" / "NewGodImages",
     Path.home() / "Pictures" / "God images",
@@ -68,6 +73,7 @@ DEFAULT_FINALIST_SECTIONS: list[str] = [
 
 DEFAULT_SESSION_CANDIDATE_SECTIONS: list[str] = [
     "comparison_overview",
+    "final_template_bundle_basket",
     "equity_curve_comparison",
     "run_kpi_cards",
     "run_metadata_cards",
@@ -76,6 +82,53 @@ DEFAULT_SESSION_CANDIDATE_SECTIONS: list[str] = [
     "daily_leaderboard_cards",
     "run_settings_table",
 ]
+
+EXEC_PROFILE_SECTION: dict[str, Any] = {
+    "id": "run_executive_profile_cards",
+    "options": {
+        "show_hint": True,
+        "show_run_image": True,
+        "background_style": "image-dark-overlay",
+        "card_width_px": 1180,
+        "card_padding_px": 24,
+        "image_width_px": 420,
+        "wlr_days_back": 30,
+        "wlr_gap_px": 2,
+        "show_detail_charts": True,
+        "detail_chart_layout": "stack",
+        "detail_chart_width_px": 1080,
+        "timeline_render_bin_minutes": 15,
+        "timeline_cell_h_px": 10,
+        "timeline_show_hours": True,
+        "timeline_show_summary": True,
+    },
+}
+
+DAILY_WINNER_SECTION: dict[str, Any] = {
+    "id": "daily_winner_spotlight",
+    "title": "Daily Winner Insight",
+    "options": {
+        "top_n": 10,
+        "strip_days": 6,
+    },
+}
+
+WEEKLY_PROP_SECTION: dict[str, Any] = {
+    "id": "weekly_leaderboard_cards",
+    "title": "Weekly Prop Dashboard",
+    "options": {
+        "top_n": 200,
+        "starting_balance": 50000,
+        "trailing_dd": 2500,
+        "baseline_mode": "fresh_week",
+        "show_card_image": True,
+        "show_chart": False,
+        "show_debug_table": False,
+        "warn_buffer": 500,
+        "compact_noimg": True,
+        "bot_columns": 1,
+    },
+}
 
 
 SECTION_BUCKET_RULES: list[tuple[str, str, str, tuple[str, ...]]] = [
@@ -167,19 +220,24 @@ class SessionCandidateReportResult:
     html_path: str | None
     sections_rendered: list[str]
     package_count: int
+    cards_dir: str | None = None
+    cards_exported: int = 0
+    run_ids: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def group_sections_by_bucket() -> list[dict[str, Any]]:
+def group_sections_by_bucket(
+    default_sections: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> list[dict[str, Any]]:
     """Return report sections grouped for the on-demand picker page."""
     buckets: list[dict[str, Any]] = [
         {"id": bucket_id, "title": title, "description": description, "sections": []}
         for bucket_id, title, description, _patterns in SECTION_BUCKET_RULES
     ]
-    default_selected = set(DEFAULT_FINALIST_SECTIONS)
+    default_selected = set(default_sections or DEFAULT_FINALIST_SECTIONS)
 
     for section_id, section_def in SECTION_REGISTRY.items():
         bucket_index = _bucket_index_for_section(section_id)
@@ -388,8 +446,13 @@ def build_all_candidate_reports(
 def build_session_candidate_report(
     session: OptimizerSession,
     *,
-    sections: list[str] | None = None,
+    sections: list[str | dict[str, Any]] | None = None,
     output_path: Path | None = None,
+    images_dir: Path | str | None = None,
+    export_exec_cards_png: bool = False,
+    exec_cards_dir: Path | None = None,
+    dark_shell: bool = False,
+    run_ids: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> SessionCandidateReportResult:
     """Build one HTML report that ingests every final candidate together.
 
@@ -401,6 +464,7 @@ def build_session_candidate_report(
     results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
     out_path = output_path or (pkg_dir / SESSION_CANDIDATE_REPORT_FILENAME)
     notes: list[str] = []
+    requested_run_ids = {str(run_id).strip() for run_id in (run_ids or []) if str(run_id).strip()}
 
     if not results_dir.exists():
         return SessionCandidateReportResult(
@@ -424,21 +488,45 @@ def build_session_candidate_report(
         raise CandidateReportError(
             f"Ingest produced no packages for {results_dir}"
         )
+    if requested_run_ids:
+        ingest.packages = {
+            package_id: package
+            for package_id, package in ingest.packages.items()
+            if package_id in requested_run_ids
+            or str(getattr(package, "run_id", "") or "") in requested_run_ids
+        }
+        if not ingest.packages:
+            raise CandidateReportError(
+                "No final candidate packages matched selected run id(s): "
+                + ", ".join(sorted(requested_run_ids))
+            )
+        notes.append(
+            "Filtered final report to selected run id(s): "
+            + ", ".join(sorted(requested_run_ids))
+        )
     if ingest.unparsed_files:
         notes.append(f"{len(ingest.unparsed_files)} non-report file(s) skipped during ingest.")
 
+    image_notes = _enrich_final_template_report_packages(
+        session,
+        ingest.packages,
+        images_dir=images_dir,
+    )
+    notes.extend(image_notes)
+
     html_sections: list[HtmlSection] = []
     rendered: list[str] = []
-    for sec_id in requested:
+    for entry in requested:
+        sec_id, title_override, options = _normalize_section_entry(entry)
         section_def = SECTION_REGISTRY.get(sec_id)
         if section_def is None:
             notes.append(f"Unknown section id: {sec_id}")
             continue
         html_sections.append(HtmlSection(
             id=section_def.id,
-            title=section_def.default_title,
+            title=title_override or section_def.default_title,
             render_fn=section_def.render_fn,
-            options={},
+            options=options,
         ))
         rendered.append(sec_id)
 
@@ -457,16 +545,63 @@ def build_session_candidate_report(
         "options": {},
         "all_options": {},
     })
+    if dark_shell:
+        html = _apply_dark_report_shell(html)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
+
+    cards_dir: Path | None = None
+    cards_exported = 0
+    if export_exec_cards_png:
+        cards_dir = exec_cards_dir or (out_path.parent / "cards")
+        try:
+            export = export_exec_cards_to_png(out_path, cards_dir)
+            cards_exported = len(export.exported)
+            for skipped in export.skipped:
+                notes.append(f"card export skipped: {skipped}")
+        except Exception as exc:
+            notes.append(f"card export failed: {exc}")
 
     return SessionCandidateReportResult(
         session_id=session.id,
         html_path=str(out_path),
         sections_rendered=rendered,
         package_count=len(ingest.packages),
+        cards_dir=str(cards_dir) if cards_dir else None,
+        cards_exported=cards_exported,
+        run_ids=sorted(str(run_id) for run_id in ingest.packages.keys()),
         notes=notes,
+    )
+
+
+def build_final_template_card_report(
+    session: OptimizerSession,
+    *,
+    output_path: Path | None = None,
+    images_dir: Path | str | None = None,
+    export_exec_cards_png: bool = True,
+    exec_cards_dir: Path | None = None,
+    week_ending: str | None = None,
+) -> SessionCandidateReportResult:
+    sections = [
+        DAILY_WINNER_SECTION,
+        EXEC_PROFILE_SECTION,
+        _section_with_overrides(
+            WEEKLY_PROP_SECTION,
+            {"week_ending": week_ending} if week_ending else {},
+        ),
+    ]
+    pkg_dir = session.directory / "deployment_package"
+    out_path = output_path or (pkg_dir / "final_template_cards_report.html")
+    return build_session_candidate_report(
+        session,
+        sections=sections,
+        output_path=out_path,
+        images_dir=images_dir,
+        export_exec_cards_png=export_exec_cards_png,
+        exec_cards_dir=exec_cards_dir or (pkg_dir / "cards"),
+        dark_shell=True,
     )
 
 
@@ -486,6 +621,10 @@ def session_candidate_report_path(session: OptimizerSession) -> Path:
     return session.directory / "deployment_package" / SESSION_CANDIDATE_REPORT_FILENAME
 
 
+def selected_session_candidate_report_path(session: OptimizerSession) -> Path:
+    return session.directory / "deployment_package" / SELECTED_SESSION_CANDIDATE_REPORT_FILENAME
+
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
@@ -498,6 +637,450 @@ def _build_registry() -> ParserRegistry:
         NinjaTraderSettingsCsvParser(),
         NinjaTraderOptimizationCsvParser(),
     ])
+
+
+def _normalize_section_entry(entry: str | dict[str, Any]) -> tuple[str, str | None, dict[str, Any]]:
+    if isinstance(entry, str):
+        return entry, None, {}
+    if not isinstance(entry, dict):
+        return str(entry), None, {}
+    return (
+        str(entry.get("id") or ""),
+        str(entry.get("title")) if entry.get("title") else None,
+        dict(entry.get("options") or {}),
+    )
+
+
+def _section_with_overrides(section: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+    out = dict(section)
+    merged = dict(section.get("options") or {})
+    for key, value in options.items():
+        if value is not None:
+            merged[key] = value
+    out["options"] = merged
+    return out
+
+
+def _apply_dark_report_shell(html: str) -> str:
+    css = """
+    <style id="ta-final-template-dark-shell">
+      :root {
+        --bg: #000000;
+        --card: #07090d;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --border: rgba(148,163,184,0.26);
+        --shadow: 0 18px 42px rgba(0,0,0,0.55);
+      }
+      html, body { background: #000000 !important; color: #f8fafc !important; }
+      body { min-height: 100vh; }
+      nav {
+        background: #02040a !important;
+        border-bottom: 1px solid rgba(148,163,184,0.28) !important;
+      }
+      nav a { color: #cbd5e1 !important; }
+      nav a:hover { color: #ffffff !important; }
+      .wrap { background: transparent !important; }
+      .header { border-bottom-color: rgba(148,163,184,0.22) !important; }
+      .title, .card h2, .card h3 { color: #f8fafc !important; }
+      .subtitle, .muted, .mono { color: #94a3b8 !important; }
+      .card {
+        background: #07090d !important;
+        border-color: rgba(148,163,184,0.24) !important;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.55) !important;
+      }
+      .card h2 { border-bottom-color: rgba(148,163,184,0.22) !important; }
+      .pill {
+        background: rgba(37,99,235,0.16) !important;
+        border-color: rgba(96,165,250,0.36) !important;
+        color: #bfdbfe !important;
+      }
+      ::-webkit-scrollbar-track { background: #05070c !important; }
+      ::-webkit-scrollbar-thumb { background: #334155 !important; }
+    </style>
+    """
+    return html.replace("</head>", f"{css}\n</head>")
+
+
+def _enrich_final_template_report_packages(
+    session: OptimizerSession,
+    packages: dict[str, Any],
+    *,
+    images_dir: Path | str | None,
+) -> list[str]:
+    notes: list[str] = []
+    resolved_images_dir = _resolve_images_dir(images_dir)
+    if not resolved_images_dir:
+        notes.append("No portrait images dir configured; executive cards will omit portraits.")
+
+    doc = session.load_document()
+    instrument = (doc.instrument or "").strip()
+    market_root = instrument.split()[0] if instrument else (doc.market_suffix or "").strip()
+
+    for run_id, pkg in packages.items():
+        derived = pkg.metadata.setdefault("derived", {})
+        template_path = _find_template_path_for_run_id(session, run_id)
+        if template_path is None:
+            notes.append(f"{run_id}: no matching renamed/final template XML found for image lookup.")
+        else:
+            derived["template_path"] = str(template_path)
+            _attach_template_display_name(derived, {}, template_path=template_path, market_root=market_root)
+            _apply_bot_name_to_settings(pkg, str(derived.get("display_name_spaced") or ""))
+
+        candidate_dir = _resolve_candidate_results_dir(session.directory / "deployment_package", run_id)
+        if candidate_dir is not None:
+            analysis_csv = candidate_dir / "Analysis.csv"
+            if analysis_csv.exists():
+                derived["analysis_csv_path"] = str(analysis_csv)
+                _attach_analysis_chart_image(pkg, analysis_csv)
+                _attach_analysis_derived_metrics(pkg)
+            _attach_settings_table_image(pkg)
+            _attach_potential_metrics(pkg)
+
+        if template_path is None:
+            continue
+
+        if not resolved_images_dir:
+            continue
+
+        try:
+            from ta_foundation.web.optimizer_image_lookup import lookup_image_for_template
+            lookup = lookup_image_for_template(
+                template_path,
+                images_dir=resolved_images_dir,
+                market_suffix=market_root or None,
+            )
+        except Exception as exc:
+            notes.append(f"{run_id}: image lookup failed: {exc}")
+            continue
+
+        if lookup.image_path:
+            portrait = Path(lookup.image_path)
+            uri = file_to_data_uri(portrait)
+            if uri:
+                derived["run_image_uri"] = uri
+                derived["run_image_path"] = str(portrait)
+                derived["run_image_source"] = lookup.matched_step or "template_lookup"
+                pkg.assets.setdefault("run_image_uri", uri)
+                pkg.assets.setdefault("run_image_path", str(portrait))
+
+            background = _matching_background_path(portrait)
+            if background is not None:
+                bg_uri = file_to_data_uri(background)
+                if bg_uri:
+                    derived["background_image_uri"] = bg_uri
+                    derived["background_image_path"] = str(background)
+            elif uri:
+                derived.setdefault("background_image_uri", uri)
+                derived.setdefault("background_image_path", str(portrait))
+        else:
+            notes.append(f"{run_id}: no image matched template {template_path.name}.")
+
+        if lookup.decoded:
+            derived["template_naming"] = lookup.decoded
+            _attach_template_display_name(derived, lookup.decoded, template_path=template_path, market_root=market_root)
+        else:
+            _attach_template_display_name(derived, {}, template_path=template_path, market_root=market_root)
+
+    return notes
+
+
+def _attach_template_display_name(
+    derived: dict[str, Any],
+    decoded: dict[str, Any],
+    *,
+    template_path: Path | None = None,
+    market_root: str | None = None,
+) -> None:
+    """Expose the semantic template name to report sections.
+
+    The run folder remains ``F_001`` for data joins and card exports, but the
+    visual identity should use the name written by the template-naming pass.
+    """
+    template_display = _stem_without_market(template_path.name if template_path else "", market_root)
+    compact = str(decoded.get("compact_name") or "").strip()
+    spaced = str(decoded.get("spaced_name") or "").strip()
+    output_name = str(decoded.get("output_file_name") or "").strip()
+
+    display = template_display or compact or _stem_without_market(output_name, market_root)
+    if display:
+        derived["display_name"] = display
+    if template_display:
+        derived["display_name_spaced"] = _space_template_name(template_display)
+    elif spaced:
+        derived["display_name_spaced"] = spaced
+    elif display:
+        derived["display_name_spaced"] = display
+
+
+def _stem_without_market(name: str, market_root: str | None) -> str:
+    stem = Path(name).stem if name else ""
+    market = (market_root or "").strip()
+    if market and stem.lower().endswith(f"-{market}".lower()):
+        stem = stem[: -(len(market) + 1)]
+    return stem
+
+
+def _space_template_name(name: str) -> str:
+    if not name:
+        return ""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    spaced = re.sub(r"(?<=[A-Za-z])(?=V\d+$)", " ", spaced)
+    return spaced
+
+
+def _apply_bot_name_to_settings(pkg: Any, bot_name: str) -> None:
+    if not bot_name:
+        return
+    try:
+        import pandas as pd
+    except Exception:
+        return
+    df = getattr(pkg, "settings", None)
+    if not isinstance(df, pd.DataFrame) or df.empty or "item" not in df.columns:
+        return
+    mask = df["item"].astype(str).str.strip().str.lower().eq("bot_name")
+    if mask.any() and "value" in df.columns:
+        df.loc[mask, "value"] = bot_name
+
+
+def _attach_analysis_derived_metrics(pkg: Any) -> None:
+    """Add weighted MAE/MFE/ETD values from the daily Analysis.csv dataframe."""
+    try:
+        import pandas as pd
+    except Exception:
+        return
+
+    df = getattr(pkg, "daily", None)
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return
+
+    derived = pkg.metadata.setdefault("derived", {})
+    for col, target in (
+        ("avg_mae", "avg_mae_usd"),
+        ("avg_mfe", "avg_mfe_usd"),
+        ("avg_etd", "avg_etd_usd"),
+    ):
+        if col not in df.columns:
+            continue
+        values = pd.to_numeric(df[col], errors="coerce")
+        weights = pd.to_numeric(df.get("trade_count"), errors="coerce") if "trade_count" in df.columns else None
+        if weights is not None:
+            valid = values.notna() & weights.notna() & (weights > 0)
+            if valid.any() and float(weights[valid].sum()) != 0:
+                derived[target] = float((values[valid] * weights[valid]).sum() / weights[valid].sum())
+                continue
+        values = values.dropna()
+        if not values.empty:
+            derived[target] = float(values.mean())
+
+
+def _attach_potential_metrics(pkg: Any) -> None:
+    """Derive session potential from Pantheon's per-trade bracket and guardrails."""
+    derived = pkg.metadata.setdefault("derived", {})
+    settings = _settings_map(pkg)
+    max_stop = _safe_float(settings.get("maxstop"))
+    max_tp_ratio = _safe_float(settings.get("maxtpratio"))
+    contracts = _safe_float(settings.get("contracts")) or 1.0
+    tick_value = _safe_float(derived.get("tick_value_usd")) or _infer_tick_value(settings)
+    profit_stop = _safe_float(settings.get("profitstop"))
+    loss_stop = _safe_float(settings.get("lossstop"))
+    max_trades = _safe_float(settings.get("maxtrades"))
+    use_max_tp = _setting_bool(settings, "use_maxtp", "usemaxtp")
+
+    if max_stop is None or tick_value is None:
+        return
+
+    per_trade_loss = max_stop * tick_value * contracts
+    raw_max_trades = int(max_trades) if max_trades is not None and max_trades > 0 else None
+    target_ticks = math.floor(max_stop * max_tp_ratio) if max_tp_ratio is not None else None
+    per_trade_profit = (target_ticks * tick_value * contracts) if target_ticks is not None else None
+    if use_max_tp is False:
+        per_trade_profit = None
+
+    profit_trades = _effective_trades_for_guard(raw_max_trades, profit_stop, per_trade_profit)
+    loss_trades = _effective_trades_for_guard(raw_max_trades, loss_stop, per_trade_loss)
+
+    possible_trade_counts = [value for value in (raw_max_trades, profit_trades, loss_trades) if value is not None]
+    if possible_trade_counts:
+        derived["effective_max_trades_per_session"] = min(possible_trade_counts)
+    if raw_max_trades is not None:
+        derived["raw_max_trades_per_session"] = raw_max_trades
+
+    derived["stop_loss_usd_per_trade"] = per_trade_loss
+    if target_ticks is not None:
+        derived["max_tp_ticks_per_trade"] = target_ticks
+    if per_trade_profit is not None:
+        derived["max_tp_usd_per_trade"] = per_trade_profit
+
+    if loss_trades is not None:
+        derived["max_potential_loss_usd"] = _potential_with_guardrail_overshoot(
+            raw_max_trades,
+            loss_stop,
+            per_trade_loss,
+        )
+        derived["max_potential_loss_trades"] = loss_trades
+    if profit_trades is not None and per_trade_profit is not None:
+        derived["max_potential_profit_usd"] = _potential_with_guardrail_overshoot(
+            raw_max_trades,
+            profit_stop,
+            per_trade_profit,
+        )
+        derived["max_potential_profit_trades"] = profit_trades
+
+
+def _effective_trades_for_guard(
+    raw_max_trades: int | None,
+    session_stop: float | None,
+    per_trade_amount: float | None,
+) -> int | None:
+    counts: list[int] = []
+    if raw_max_trades is not None:
+        counts.append(raw_max_trades)
+    if session_stop is not None and session_stop > 0 and per_trade_amount is not None and per_trade_amount > 0:
+        counts.append(max(1, int(math.ceil(session_stop / per_trade_amount))))
+    return min(counts) if counts else None
+
+
+def _potential_with_guardrail_overshoot(
+    raw_max_trades: int | None,
+    session_stop: float | None,
+    per_trade_amount: float,
+) -> float:
+    max_by_trade_count = raw_max_trades * per_trade_amount if raw_max_trades is not None else None
+    if session_stop is None or session_stop <= 0:
+        return max_by_trade_count if max_by_trade_count is not None else per_trade_amount
+
+    # Pantheon checks the session guard after a trade closes, so the run can
+    # be just below the guardrail and then add one more full bracket result.
+    max_by_guardrail = max(0.0, session_stop - 1.0) + per_trade_amount
+    if max_by_trade_count is None:
+        return max_by_guardrail
+    return min(max_by_trade_count, max_by_guardrail)
+
+
+def _setting_bool(settings: dict[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        if key not in settings:
+            continue
+        raw = str(settings.get(key)).strip().lower()
+        if raw in {"true", "1", "yes", "y"}:
+            return True
+        if raw in {"false", "0", "no", "n"}:
+            return False
+    return None
+
+
+def _settings_map(pkg: Any) -> dict[str, Any]:
+    try:
+        import pandas as pd
+    except Exception:
+        return {}
+
+    df = getattr(pkg, "settings", None)
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return {}
+    out: dict[str, Any] = {}
+    for _, row in df.iterrows():
+        key = str(row.get("item", "")).strip().lower()
+        if key:
+            out[key] = row.get("value", "")
+    return out
+
+
+def _infer_tick_value(settings: dict[str, Any]) -> float | None:
+    instrument = str(settings.get("instrument") or "").upper()
+    if instrument.startswith("NQ") or instrument.startswith("MNQ"):
+        return 5.0 if instrument.startswith("NQ") else 0.5
+    if instrument.startswith("ES") or instrument.startswith("MES"):
+        return 12.5 if instrument.startswith("ES") else 1.25
+    return None
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        text = str(value).replace("$", "").replace(",", "").strip()
+        if text.startswith("(") and text.endswith(")"):
+            text = "-" + text[1:-1]
+        number = float(text)
+    except (TypeError, ValueError):
+        return None
+    if number != number:
+        return None
+    return number
+
+
+def _matching_background_path(portrait: Path) -> Path | None:
+    for ext in (portrait.suffix, ".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        candidate = portrait.with_name(f"{portrait.stem}_Background{ext}")
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _attach_analysis_chart_image(pkg: Any, analysis_csv: Path) -> None:
+    try:
+        from ta_foundation.reports.html.sections.analysis_chart_replica import (
+            _build_figure,
+            _fig_to_data_uri,
+            _read_analysis_csv,
+        )
+
+        rows = _read_analysis_csv(analysis_csv)
+        fig = _build_figure(rows) if rows else None
+        if fig is None:
+            return
+        pkg.metadata.setdefault("derived", {})["analysis_image_uri"] = _fig_to_data_uri(fig)
+        pkg.metadata["derived"]["analysis_image_source"] = "generated_from_analysis_csv"
+    except Exception as exc:
+        pkg.warnings.append({
+            "code": "ANALYSIS_CARD_IMAGE_FAILED",
+            "message": f"Failed to generate analysis image from {analysis_csv.name}: {exc}",
+        })
+
+
+def _attach_settings_table_image(pkg: Any) -> None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import pandas as pd
+        from ta_foundation.reports.html.embed import fig_to_base64_png
+
+        settings = getattr(pkg, "settings", None)
+        if not isinstance(settings, pd.DataFrame) or settings.empty:
+            return
+        cols = [c for c in ("section", "item", "value") if c in settings.columns]
+        if not cols:
+            return
+        df = settings.loc[:, cols].head(80).fillna("")
+        fig_h = max(4.0, min(22.0, 0.24 * (len(df) + 1)))
+        fig, ax = plt.subplots(figsize=(11, fig_h), facecolor="#111827")
+        ax.set_facecolor("#111827")
+        ax.axis("off")
+        table = ax.table(
+            cellText=df.astype(str).values,
+            colLabels=df.columns,
+            loc="center",
+            cellLoc="left",
+            colLoc="left",
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(7.5)
+        table.scale(1, 1.25)
+        for (row, _col), cell in table.get_celld().items():
+            cell.set_edgecolor("#374151")
+            cell.set_text_props(color="#f3f4f6")
+            cell.set_facecolor("#1f2937" if row == 0 else "#111827")
+        pkg.metadata.setdefault("derived", {})["summery_image_uri"] = fig_to_base64_png(fig)
+        pkg.metadata["derived"]["summery_image_source"] = "generated_from_settings_csv"
+    except Exception as exc:
+        pkg.warnings.append({
+            "code": "SETTINGS_CARD_IMAGE_FAILED",
+            "message": f"Failed to generate settings image: {exc}",
+        })
 
 
 def _resolve_candidate_results_dir(pkg_dir: Path, run_id: str) -> Path | None:

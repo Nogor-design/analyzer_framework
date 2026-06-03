@@ -79,6 +79,21 @@ def _fmt_number(x: Any, decimals: int = 2) -> str:
         return str(x)
 
 
+def _float_or_none(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        text = str(value).replace("$", "").replace(",", "").strip()
+        if text.startswith("(") and text.endswith(")"):
+            text = "-" + text[1:-1]
+        out = float(text)
+    except Exception:
+        return None
+    if out != out:
+        return None
+    return out
+
+
 def _to_bool(x: Any) -> Optional[bool]:
     if x is None:
         return None
@@ -562,24 +577,37 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         pf = _kpi_lookup(pkg, "profit factor")
 
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        display_name = str(derived.get("display_name") or derived.get("display_name_spaced") or run_id)
+
         avg_win = _kpi_lookup(pkg, "avg. winning trade", "average winning trade")
         avg_loss = _kpi_lookup(pkg, "avg. losing trade", "average losing trade")
 
         avg_mae = _kpi_lookup(pkg, "avg. mae", "average mae")
         avg_mfe = _kpi_lookup(pkg, "avg. mfe", "average mfe")
         avg_etd = _kpi_lookup(pkg, "avg. etd", "average etd")
+        if avg_mae in (None, ""):
+            avg_mae = derived.get("avg_mae_usd")
+        if avg_mfe in (None, ""):
+            avg_mfe = derived.get("avg_mfe_usd")
+        if avg_etd in (None, ""):
+            avg_etd = derived.get("avg_etd_usd")
 
         mae_mfe = None
         mfe_etd = None
         try:
-            if avg_mae not in (None, "") and avg_mfe not in (None, "") and float(avg_mfe) != 0:
-                mae_mfe = float(avg_mae) / float(avg_mfe)
+            mae = _float_or_none(avg_mae)
+            mfe = _float_or_none(avg_mfe)
+            if mae is not None and mfe not in (None, 0):
+                mae_mfe = mae / mfe
         except Exception:
             mae_mfe = None
 
         try:
-            if avg_mfe not in (None, "") and avg_etd not in (None, "") and float(avg_etd) != 0:
-                mfe_etd = float(avg_mfe) / float(avg_etd)
+            mfe = _float_or_none(avg_mfe)
+            etd = _float_or_none(avg_etd)
+            if mfe is not None and etd not in (None, 0):
+                mfe_etd = mfe / etd
         except Exception:
             mfe_etd = None
 
@@ -893,7 +921,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
                 f'<img src="{img_uri}" style="width:{img_w}px; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
             )
         else:
-            card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
+            card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(display_name)}</div>')
         card_parts.append("</td>")  # Column 1 (CLOSE td)
 
 
@@ -906,7 +934,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         # Strategy Profile block
         card_parts.append(f'<div style="{body}">')
-        card_parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
+        card_parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(display_name)}</div>')
         card_parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
         if instrument and tick_value:
             card_parts.append(f'<div"><span style="font-weight:800;">Instrument:</span> {_esc(instrument)} 'f'(<span style="font-weight:800;">Tick:</span> ${_esc(tick_value)})</div>')
