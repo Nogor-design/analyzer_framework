@@ -28,6 +28,9 @@
     select.leaderboard-select:focus, input.leaderboard-input:focus { outline: none; border-color: #f59e0b; }
     table.leaderboard { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.leaderboard th { color: #6b7280; text-align: left; font-weight: 500; padding: 6px 8px; border-bottom: 1px solid #374151; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
+    table.leaderboard th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.leaderboard th.sortable:hover { color: #fcd34d; }
+    .sort-ind { color: #f59e0b; }
     table.leaderboard td { padding: 6px 8px; border-bottom: 1px solid #1f2937; vertical-align: top; }
     table.leaderboard td.num { text-align: right; font-variant-numeric: tabular-nums; }
     table.leaderboard td.metric { font-variant-numeric: tabular-nums; color: #f3f4f6; font-weight: 600; text-align: right; }
@@ -132,19 +135,19 @@
           ＋ Add selected to shortlist
         </button>
       </div>
-      <table class="leaderboard">
+      <table class="leaderboard" id="leaderboard-table">
         <thead>
           <tr>
             <th><input type="checkbox" id="leaderboard-check-all" title="Select all visible rows" /></th>
-            <th>#</th>
-            <th>Stage</th>
-            <th>Candidate</th>
-            <th>Status</th>
-            <th class="text-right">{{ report.metric }}</th>
-            <th class="text-right">PF</th>
-            <th class="text-right">Net</th>
-            <th class="text-right">|DD|</th>
-            <th class="text-right">Trades</th>
+            <th class="sortable" data-key="rank" data-type="num" title="Sort by rank">#<span class="sort-ind"></span></th>
+            <th class="sortable" data-key="stage" data-type="text" title="Sort by stage">Stage<span class="sort-ind"></span></th>
+            <th class="sortable" data-key="candidate" data-type="text" title="Sort by candidate id">Candidate<span class="sort-ind"></span></th>
+            <th class="sortable" data-key="status" data-type="text" title="Sort by status">Status<span class="sort-ind"></span></th>
+            <th class="text-right sortable" data-key="metric" data-type="num" title="Sort by {{ report.metric }}">{{ report.metric }}<span class="sort-ind"></span></th>
+            <th class="text-right sortable" data-key="pf" data-type="num" title="Sort by profit factor">PF<span class="sort-ind"></span></th>
+            <th class="text-right sortable" data-key="net" data-type="num" title="Sort by net profit">Net<span class="sort-ind"></span></th>
+            <th class="text-right sortable" data-key="dd" data-type="num" title="Sort by abs drawdown">|DD|<span class="sort-ind"></span></th>
+            <th class="text-right sortable" data-key="trades" data-type="num" title="Sort by trade count">Trades<span class="sort-ind"></span></th>
             <th>Params</th>
             <th>Links</th>
           </tr>
@@ -155,30 +158,30 @@
                 data-stage-id="{{ row.stage_id }}"
                 data-candidate-id="{{ row.candidate_id }}">
               <td><input type="checkbox" class="leaderboard-row-check" /></td>
-              <td class="num row-rank">{{ loop.index }}</td>
-              <td>
+              <td class="num row-rank" data-key="rank" data-sort="{{ loop.index }}">{{ loop.index }}</td>
+              <td data-key="stage" data-sort="{{ row.stage_id }}">
                 <span class="pill pill-stage">{{ row.stage_id }}</span>
                 <div class="text-[10px] text-gray-500 mt-1">{{ row.stage_label }}</div>
               </td>
-              <td>
+              <td data-key="candidate" data-sort="{{ row.candidate_id }}">
                 <span class="pathish text-[11px]">{{ row.candidate_id }}</span>
                 {% if row.optimizer_target %}
                   <div class="text-[10px] text-gray-500 mt-1">→ {{ row.optimizer_target }}</div>
                 {% endif %}
               </td>
-              <td>
+              <td data-key="status" data-sort="{{ row.status }}">
                 <span class="pill pill-{{ row.status }}">{{ row.status }}</span>
                 {% if row.beats_best_finalist %}
                   <div class="mt-1"><span class="pill pill-beats">▲ beats finalist IS</span></div>
                 {% endif %}
               </td>
-              <td class="metric">
+              <td class="metric" data-key="metric" data-sort="{{ row.metric_value if row.metric_value is not none else '' }}">
                 {% if row.metric_value is none %}—{% else %}{{ "%.3f"|format(row.metric_value) }}{% endif %}
               </td>
-              <td class="num">{% if row.kpis.profit_factor is none %}—{% else %}{{ "%.2f"|format(row.kpis.profit_factor) }}{% endif %}</td>
-              <td class="num">{% if row.kpis.total_net_profit is none %}—{% else %}{{ "%.0f"|format(row.kpis.total_net_profit) }}{% endif %}</td>
-              <td class="num">{% if row.kpis.max_drawdown_abs is none %}—{% else %}{{ "%.0f"|format(row.kpis.max_drawdown_abs) }}{% endif %}</td>
-              <td class="num">{% if row.kpis.trades is none %}—{% else %}{{ row.kpis.trades }}{% endif %}</td>
+              <td class="num" data-key="pf" data-sort="{{ row.kpis.profit_factor if row.kpis.profit_factor is not none else '' }}">{% if row.kpis.profit_factor is none %}—{% else %}{{ "%.2f"|format(row.kpis.profit_factor) }}{% endif %}</td>
+              <td class="num" data-key="net" data-sort="{{ row.kpis.total_net_profit if row.kpis.total_net_profit is not none else '' }}">{% if row.kpis.total_net_profit is none %}—{% else %}{{ "%.0f"|format(row.kpis.total_net_profit) }}{% endif %}</td>
+              <td class="num" data-key="dd" data-sort="{{ row.kpis.max_drawdown_abs if row.kpis.max_drawdown_abs is not none else '' }}">{% if row.kpis.max_drawdown_abs is none %}—{% else %}{{ "%.0f"|format(row.kpis.max_drawdown_abs) }}{% endif %}</td>
+              <td class="num" data-key="trades" data-sort="{{ row.kpis.trades if row.kpis.trades is not none else '' }}">{% if row.kpis.trades is none %}—{% else %}{{ row.kpis.trades }}{% endif %}</td>
               <td>
                 {% if row.params %}
                   <details>
@@ -296,6 +299,72 @@
       });
     }
     updateCount();
+  })();
+</script>
+
+<script>
+  (function () {
+    // Click-to-sort for the Leaderboard table. Reorders the existing row
+    // nodes in place so row-checkbox selections and the shortlist add flow
+    // survive a sort. Numeric columns default high-to-low on first click;
+    // text columns default A→Z; clicking the active header flips direction.
+    const table = document.getElementById("leaderboard-table");
+    if (!table) return;
+    const tbody = table.querySelector("tbody");
+    if (!tbody) return;
+
+    let activeKey = null;
+    let dir = 1; // 1 = ascending, -1 = descending
+
+    function cellValue(tr, key, type) {
+      const td = tr.querySelector('td[data-key="' + key + '"]');
+      const raw = td ? td.getAttribute("data-sort") : null;
+      if (raw === null || raw === undefined || raw === "") return null;
+      if (type === "num") {
+        const n = parseFloat(raw);
+        return isNaN(n) ? null : n;
+      }
+      return raw.toLowerCase();
+    }
+
+    function compare(a, b) {
+      // Missing values always sink to the bottom regardless of direction.
+      if (a === null && b === null) return 0;
+      if (a === null) return 1;
+      if (b === null) return -1;
+      if (a < b) return -1 * dir;
+      if (a > b) return 1 * dir;
+      return 0;
+    }
+
+    function updateIndicators() {
+      table.querySelectorAll("th[data-key] .sort-ind").forEach((s) => { s.textContent = ""; });
+      if (!activeKey) return;
+      const ind = table.querySelector('th[data-key="' + activeKey + '"] .sort-ind');
+      if (ind) ind.textContent = dir === 1 ? " ▲" : " ▼";
+    }
+
+    function applySort(key, type) {
+      if (activeKey === key) {
+        dir = -dir;
+      } else {
+        activeKey = key;
+        dir = type === "text" ? 1 : -1;
+      }
+      const trs = Array.from(tbody.children).filter((el) => el.tagName === "TR");
+      const decorated = trs.map((tr) => ({ tr, v: cellValue(tr, key, type) }));
+      decorated.sort((x, y) => compare(x.v, y.v));
+      const frag = document.createDocumentFragment();
+      decorated.forEach((d) => frag.appendChild(d.tr));
+      tbody.appendChild(frag);
+      updateIndicators();
+    }
+
+    table.querySelectorAll("th.sortable").forEach((th) => {
+      th.addEventListener("click", () => {
+        applySort(th.getAttribute("data-key"), th.getAttribute("data-type") || "text");
+      });
+    });
   })();
 </script>
 

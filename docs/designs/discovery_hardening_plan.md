@@ -16,7 +16,7 @@ This file is the single source of truth for the work queue. It exists so a fresh
 | P0-4 | Hard exclusion gates with fund-grade defaults | ✅ Done | T6. `evaluate_hard_gates()` in ranking.py; survivors vs rejected in cross-run output. Defaults: `min_oos_trades=30`, `min_profit_factor=1.0`. Fund-grade users tighten via `strategy_discovery.ranking_gates:` YAML. |
 | P1-5 | True k≥6 rolling walk-forward + fold distribution | ✅ Done | T7. `wf_type='rolling'` divides dev into n_folds+1 disjoint blocks; per-fold IS slices verifiably non-overlapping. Default n_folds=6. `folds_distribution`, `oos_expectancy_std`, `oos_pf_std`, `oos_sharpe_mean` surfaced. Stability score now blends fold-variance penalty. |
 | P1-7 | Slippage and latency stress sweep | ✅ Done | T8. New `slippage_stress.py` re-prices dev trades across `slippage_ticks × entry_delays` grid using a delay→tick cost model. `discovery_block["slippage_stress"]` surfaces the matrix + a configurable `stress_cell` (default slip=2, delay=1). Opt-in `require_slippage_stress_passed` gate added to `evaluate_hard_gates`. |
-| P1-6 | Permutation/null tests | ⏳ Queued | T9 |
+| P1-6 | Permutation/null tests | ✅ Done | T9. New trade-level sign-flip null test module plus opt-in ranking gate. |
 | P1-9 | Cross-period and cross-instrument robustness | ⏳ Queued | T10 |
 | P1-8 | Tick-replay intra-bar touch resolution | ⏳ Queued | T11 |
 | P1-10 | Romano-Wolf / Deflated-Sharpe family-wise correction | ⏳ Queued (blocked by T9) | T12 (T5 + T7 now done) |
@@ -157,6 +157,19 @@ strategy_discovery:
 ```
 
 All 329 + 11 new = 340 strategy_discovery tests pass; full suite at 1,197 passing with the same pre-existing `regime_recommender` failure unrelated to this work.
+
+### Already-shipped: T9 — P1-6 permutation / null tests
+
+- `src/ta_foundation/analysis/strategy_discovery/permutation_tests.py` (new)
+  - Added `PermutationResult`, `permutation_test_returns()`, and `permutation_test_for_discovery()`.
+  - Uses a seeded `numpy.random.Generator` and a trade-level sign-flip null: per-trade magnitudes are preserved while random signs destroy directional edge.
+  - Reuses existing evaluation/risk metric functions for expectancy, profit factor, and Sharpe.
+  - Discovery helper tests the OOS pool via `extract_oos_pool()` when full cost-normalized trades are supplied, and returns `status="insufficient_trades"` below 30 OOS trades.
+- `src/ta_foundation/analysis/strategy_discovery/ranking.py`
+  - Added opt-in `require_permutation_passed` gate with `max_permutation_p` defaulting to `0.05`.
+  - With the gate disabled, ranking behavior is unchanged; when enabled, candidates with an OOS permutation p-value above threshold are rejected with reason `permutation_p>{threshold}`.
+- `src/ta_foundation/tests/analysis/strategy_discovery/test_permutation_tests.py`
+  - Covers pure-noise non-significance, strong-edge significance, deterministic seeding, OOS-pool extraction, and the opt-in ranking gate.
 
 ---
 

@@ -19,6 +19,8 @@
     details.bucket > summary { cursor: pointer; list-style: none; }
     details.bucket > summary::-webkit-details-marker { display: none; }
     input[type="checkbox"] { accent-color: #f59e0b; }
+    .preset-card { border: 1px solid #374151; border-radius: 8px; padding: 12px; background: #111827; }
+    .preset-card.active { border-color: #f59e0b; background: #451a03; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -53,6 +55,36 @@
   </section>
 
   <form id="builder-form" class="space-y-4">
+    <section class="card">
+      <div class="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 class="text-amber-400 font-semibold text-sm">Report presets</h2>
+          <div class="text-xs text-gray-500 mt-1">
+            Apply a saved section set, then fine-tune individual sections below.
+          </div>
+        </div>
+        <span id="preset-status" class="text-xs text-gray-500"></span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3">
+        {% for preset in presets %}
+          <div class="preset-card {% if preset.id == config.preset_id %}active{% endif %}" data-preset-card="{{ preset.id }}">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold text-sm text-gray-100">{{ preset.name }}</div>
+                <div class="text-xs text-gray-400 mt-1">{{ preset.description }}</div>
+                <div class="text-[11px] text-gray-500 mt-2">{{ preset.sections|length }} sections</div>
+              </div>
+              <button type="button"
+                      class="preset-apply-btn btn-ghost px-3 py-1.5 rounded text-xs font-semibold shrink-0"
+                      data-preset-id="{{ preset.id }}">
+                Apply
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
     {% for bucket in buckets %}
       <details class="bucket card" open>
         <summary class="flex items-center justify-between gap-4">
@@ -103,9 +135,64 @@ const statusEl = document.getElementById("status");
 const notesEl = document.getElementById("notes");
 const openReport = document.getElementById("open-report");
 const openReportTop = document.getElementById("open-report-top");
+const presetStatus = document.getElementById("preset-status");
+const presets = {{ presets | tojson }};
+const savedConfigSections = {{ config.sections | tojson }};
+let activePresetId = {{ (config.preset_id or "custom") | tojson }};
+let activePresetSections = savedConfigSections || null;
+
+function normalizeSectionEntry(entry) {
+  if (typeof entry === "string") return {id: entry};
+  if (entry && typeof entry === "object" && entry.id) return entry;
+  return null;
+}
+
+function presetById(id) {
+  return presets.find((preset) => preset.id === id) || null;
+}
+
+function sectionEntriesForCurrentSelection() {
+  const checkedIds = new Set(Array.from(form.querySelectorAll("input[name='sections']:checked")).map((el) => el.value));
+  const entries = [];
+  const used = new Set();
+  if (activePresetSections) {
+    activePresetSections.forEach((entry) => {
+      const normalized = normalizeSectionEntry(entry);
+      if (normalized && checkedIds.has(normalized.id) && !used.has(normalized.id)) {
+        entries.push(normalized);
+        used.add(normalized.id);
+      }
+    });
+  }
+  checkedIds.forEach((id) => {
+    if (!used.has(id)) entries.push({id});
+  });
+  return entries;
+}
+
+function setActivePreset(id) {
+  activePresetId = id || "custom";
+  document.querySelectorAll("[data-preset-card]").forEach((card) => {
+    card.classList.toggle("active", card.dataset.presetCard === activePresetId);
+  });
+  const preset = presetById(activePresetId);
+  presetStatus.textContent = preset ? `Active preset: ${preset.name}` : "Custom section set";
+}
+
+function applyPreset(id) {
+  const preset = presetById(id);
+  if (!preset) return;
+  const ids = new Set((preset.sections || []).map(normalizeSectionEntry).filter(Boolean).map((entry) => entry.id));
+  form.querySelectorAll("input[name='sections']").forEach((el) => {
+    el.checked = ids.has(el.value);
+  });
+  activePresetSections = preset.sections || [];
+  setActivePreset(id);
+  statusEl.textContent = `Applied ${preset.name}. Save or rebuild to persist it.`;
+}
 
 function selectedSections() {
-  return Array.from(form.querySelectorAll("input[name='sections']:checked")).map((el) => ({id: el.value}));
+  return sectionEntriesForCurrentSelection();
 }
 
 function resetNotes() {
@@ -122,7 +209,7 @@ async function saveConfig() {
   const response = await fetch("{{ config_url }}", {
     method: "PUT",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({sections}),
+    body: JSON.stringify({sections, preset_id: activePresetId}),
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -147,6 +234,19 @@ saveButton.addEventListener("click", async () => {
   }
 });
 
+document.querySelectorAll(".preset-apply-btn").forEach((button) => {
+  button.addEventListener("click", () => applyPreset(button.dataset.presetId));
+});
+
+form.querySelectorAll("input[name='sections']").forEach((checkbox) => {
+  checkbox.addEventListener("change", () => {
+    if (activePresetSections) {
+      activePresetSections = null;
+      setActivePreset("custom");
+    }
+  });
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const sections = selectedSections();
@@ -164,7 +264,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("{{ post_url }}", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({sections, save: true}),
+      body: JSON.stringify({sections, preset_id: activePresetId, save: true}),
     });
     const payload = await response.json();
     if (!response.ok) {
@@ -185,6 +285,8 @@ form.addEventListener("submit", async (event) => {
     saveButton.disabled = false;
   }
 });
+
+setActivePreset(activePresetId);
 </script>
 
 </body>

@@ -124,7 +124,7 @@ def build_recipe_plan_preview(recipe: OptimizerRecipeDocument) -> RecipePlanPrev
     }
     matrix_axes = [
         entry for entry in recipe.base_matrix
-        if entry.role == "matrix_axis"
+        if entry.role in {"matrix_axis", "matrix_bundle_axis"}
     ]
     if not matrix_axes:
         warnings.append("no_matrix_axes_configured")
@@ -193,10 +193,16 @@ def _root_stage_plan(
         per_template_combinations *= max(1, sweep.step_count)
 
     jobs: list[RecipeJobPlan] = []
-    axis_names = [axis.param for axis in matrix_axes]
-    axis_values = [axis.values for axis in matrix_axes]
-    for values in itertools.product(*axis_values):
-        matrix_values = dict(zip(axis_names, values))
+    axis_options = []
+    for axis in matrix_axes:
+        if axis.role == "matrix_bundle_axis":
+            axis_options.append([dict(value) for value in axis.values])
+        else:
+            axis_options.append([{axis.param: value} for value in axis.values])
+    for combo in itertools.product(*axis_options):
+        matrix_values = {}
+        for fragment in combo:
+            matrix_values.update(fragment)
         bucket_id = _bucket_id(matrix_values)
         template_id = f"{stage.stage_id}__{bucket_id}"
         jobs.append(
@@ -322,4 +328,3 @@ def _to_decimal(value: Any) -> Decimal | None:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-

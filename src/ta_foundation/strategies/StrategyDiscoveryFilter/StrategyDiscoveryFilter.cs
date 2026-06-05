@@ -81,6 +81,47 @@ namespace NinjaTrader.NinjaScript.Strategies
         BreakEvenOnly   = 5,   // Move stop to breakeven after trigger, no trail
     }
 
+    /// <summary>
+    /// Entry trigger family. Maps to the ta_foundation discovery signal families.
+    /// EmaCross is the legacy baseline; the candle values mirror
+    /// analysis/entry_strategies/candle/patterns.py PATTERN_REGISTRY keys exactly.
+    /// NbarBreakout mirrors the breakout family (close beyond prior N-bar channel).
+    ///
+    /// IMPORTANT: this enum is PINNED, not swept. NinjaTrader's optimizer cannot
+    /// enumerate enum parameters (it NullReferences in Strategy Analyzer). The
+    /// recipe seed fixes EntrySignal to one value; it must never appear in
+    /// &lt;OptimizationParameters&gt;.
+    /// </summary>
+    public enum SdfEntrySignal
+    {
+        EmaCross          = 0,   // legacy: CrossAbove(fastEma, slowEma)
+        LargeBody         = 1,   // detect_large_body
+        PinBarBullish     = 2,   // detect_pin_bar_bullish  (long only)
+        PinBarBearish     = 3,   // detect_pin_bar_bearish  (short only)
+        InsideBar         = 4,   // detect_inside_bar
+        OutsideBar        = 5,   // detect_outside_bar
+        EngulfingBullish  = 6,   // detect_engulfing_bullish (long only)
+        EngulfingBearish  = 7,   // detect_engulfing_bearish (short only)
+        Doji              = 8,   // detect_doji (both directions)
+        CleanBreakoutBar  = 9,   // detect_clean_breakout_bar
+        NbarBreakout      = 10,  // breakout family: close beyond prior N-bar high/low
+    }
+
+    /// <summary>
+    /// Entry timing mode. Mirrors analysis/entry_strategies/candle/signals.py.
+    ///   NextOpen     — market order on signal-bar close → fills next bar open.
+    ///   BreakExtreme — buy-stop above signal high / sell-stop below signal low.
+    ///   BodyMidpoint — limit at (open+close)/2 of the signal bar (retrace entry).
+    /// PHASE 2: BreakExtreme/BodyMidpoint fill behaviour must be parity-checked
+    /// against the Python outcome simulator before their results are trusted.
+    /// </summary>
+    public enum SdfTimingMode
+    {
+        NextOpen     = 0,
+        BreakExtreme = 1,
+        BodyMidpoint = 2,
+    }
+
     // =========================================================================
     // Rolling helpers (same pattern as PantheonBotV2)
     // =========================================================================
@@ -153,6 +194,187 @@ namespace NinjaTrader.NinjaScript.Strategies
     }
 
     // =========================================================================
+    // Candle feature engine — bit-for-bit parity with
+    // analysis/entry_strategies/candle/features.py + patterns.py
+    // =========================================================================
+    //
+    // PARITY CONTRACT (do not "improve" any of this without re-running the
+    // parity harness — every constant here matches the Python source):
+    //
+    //  * body        = |close - open|
+    //  * upper_wick  = high - max(close, open)        (clipped at 0)
+    //  * lower_wick  = min(close, open) - low         (clipped at 0)
+    //  * total_range = high - low                     (clipped at 0)
+    //  * is_bullish  = close >= open                  (doji counts as bullish)
+    //  * size_ticks  = round(total_range / tick_size, 2)
+    //  * body_to_range      = clip(body/range, 0..1); NaN when range == 0
+    //  * upper/lower_wick_to_body = wick/body; NaN when body < 1 tick
+    //  * body_vs_roll_N / size_vs_roll_N: divide by the rolling mean of the
+    //    PRIOR N bars (pandas .rolling(N, min_periods=1).mean().shift(1)) —
+    //    the current bar is EXCLUDED from its own average.
+    //  * ATR: simple rolling mean of True Range over `atrPeriod`
+    //    (min_periods=1), INCLUDING the current bar's TR. This matches
+    //    features.py `_compute_atr` which uses pandas .rolling().mean() —
+    //    a SIMPLE mean, NOT Wilder's smoothing. DO NOT substitute
+    //    NinjaTrader's ATR() indicator here; it is Wilder-smoothed and will
+    //    silently diverge from the discovery report.
+    //  * rolling extreme (clean breakout / N-bar breakout): max/min of the
+    //    PRIOR N highs/lows (high.shift(1).rolling(N).max()).
+    //
+    // NaN handling mirrors the pandas `.fillna()` calls at each comparison
+    // site in patterns.py:
+    //  * wick-to-body comparisons use .fillna(0)  → NaN treated as 0.0
+    //  * body_to_range comparisons use .fillna(1) → NaN treated as 1.0
+    //  * vs-roll / vs-atr comparisons use .fillna(0) → NaN treated as 0.0
+    // C# comparisons against double.NaN are always false, so call sites use the
+    // Nz0()/Nz1() helpers to reproduce the fillna semantics exactly.
+
+    internal class SdfCandleFeatureEngine
+    {
+        private readonly double tickSize;
+        private readonly double minBodyPrice;   // 1 tick (features.py min_body_ticks=1)
+        private readonly int    rollLookback;   // body_vs_roll / size_vs_roll window
+        private readonly int    atrPeriod;
+        private readonly int    extremeLookback;
+
+        private readonly Queue<double> bodyBuf  = new Queue<double>();
+        private readonly Queue<double> rangeBuf = new Queue<double>();
+        private readonly Queue<double> trBuf    = new Queue<double>();
+        private readonly Queue<double> highBuf  = new Queue<double>();
+        private readonly Queue<double> lowBuf   = new Queue<double>();
+
+        private bool   hasPrevInternal = false;
+        private double pOpen, pHigh, pLow, pClose, pBody;
+
+        public int Count { get; private set; }
+
+        // Current-bar raw values (valid after Update)
+        public double CurOpen, CurHigh, CurLow, CurClose;
+
+        // Current-bar features (valid after Update)
+        public bool   HasPrev;
+        public double Body, UpperWick, LowerWick, TotalRange;
+        public bool   IsBullish;
+        public double SizeTicks;
+        public double BodyToRange;       // NaN when range == 0
+        public double UpperWickToBody;   // NaN when body < 1 tick
+        public double LowerWickToBody;
+        public double SizeVsRoll;        // NaN when no prior bar
+        public double BodyVsRoll;
+        public double SizeVsAtr;
+        public double RollHigh, RollLow; // prior-N extreme; NaN when no prior bar
+        public double PrevOpen, PrevHigh, PrevLow, PrevClose, PrevBody;
+
+        public SdfCandleFeatureEngine(double tickSize, int rollLookback, int atrPeriod, int extremeLookback)
+        {
+            this.tickSize        = tickSize > 0 ? tickSize : 0.25;
+            this.minBodyPrice    = 1.0 * this.tickSize;
+            this.rollLookback    = Math.Max(1, rollLookback);
+            this.atrPeriod       = Math.Max(1, atrPeriod);
+            this.extremeLookback = Math.Max(1, extremeLookback);
+        }
+
+        private static double MeanQ(Queue<double> q)
+        {
+            if (q.Count == 0) return double.NaN;
+            double s = 0.0;
+            foreach (double v in q) s += v;
+            return s / q.Count;
+        }
+
+        private static double MaxQ(Queue<double> q)
+        {
+            if (q.Count == 0) return double.NaN;
+            double m = double.NegativeInfinity;
+            foreach (double v in q) if (v > m) m = v;
+            return m;
+        }
+
+        private static double MinQ(Queue<double> q)
+        {
+            if (q.Count == 0) return double.NaN;
+            double m = double.PositiveInfinity;
+            foreach (double v in q) if (v < m) m = v;
+            return m;
+        }
+
+        public void Update(double o, double h, double l, double c)
+        {
+            CurOpen = o; CurHigh = h; CurLow = l; CurClose = c;
+
+            // ── Anatomy ────────────────────────────────────────────────────
+            double body  = Math.Abs(c - o);
+            double maxOC = Math.Max(c, o);
+            double minOC = Math.Min(c, o);
+            double upperWick = Math.Max(0.0, h - maxOC);
+            double lowerWick = Math.Max(0.0, minOC - l);
+            double range     = Math.Max(0.0, h - l);
+
+            Body       = body;
+            UpperWick  = upperWick;
+            LowerWick  = lowerWick;
+            TotalRange = range;
+            IsBullish  = c >= o;
+            SizeTicks  = Math.Round(range / tickSize, 2);
+
+            BodyToRange = range > 0.0
+                ? Math.Min(1.0, Math.Max(0.0, body / range))
+                : double.NaN;
+
+            if (body >= minBodyPrice)
+            {
+                UpperWickToBody = upperWick / body;
+                LowerWickToBody = lowerWick / body;
+            }
+            else
+            {
+                UpperWickToBody = double.NaN;
+                LowerWickToBody = double.NaN;
+            }
+
+            // ── ATR (simple mean of TR, current bar INCLUDED) ───────────────
+            // First bar: prev_close is undefined; pandas skips the NaN terms so
+            // TR collapses to (high - low). Seeding prevClose = c reproduces
+            // that because |h-c| and |l-c| are both <= h-l.
+            double prevCloseForTr = hasPrevInternal ? pClose : c;
+            double tr = Math.Max(h - l,
+                          Math.Max(Math.Abs(h - prevCloseForTr),
+                                   Math.Abs(l - prevCloseForTr)));
+            trBuf.Enqueue(tr);
+            while (trBuf.Count > atrPeriod) trBuf.Dequeue();
+            double atr = MeanQ(trBuf);
+            SizeVsAtr = (atr > 0.0) ? range / atr : double.NaN;
+
+            // ── Rolling-average comparison (PRIOR bars only — shift(1)) ─────
+            // Buffers currently hold only prior bars (we push the current bar
+            // at the end of Update), so their mean already excludes bar i.
+            double avgBody  = MeanQ(bodyBuf);
+            double avgRange = MeanQ(rangeBuf);
+            BodyVsRoll = (avgBody  > 0.0) ? body  / avgBody  : double.NaN;
+            SizeVsRoll = (avgRange > 0.0) ? range / avgRange : double.NaN;
+
+            // ── Rolling extreme (PRIOR N highs/lows) ────────────────────────
+            RollHigh = MaxQ(highBuf);
+            RollLow  = MinQ(lowBuf);
+
+            // ── Expose prior bar for 2-bar patterns ─────────────────────────
+            HasPrev   = hasPrevInternal;
+            PrevOpen  = pOpen;  PrevHigh = pHigh; PrevLow = pLow;
+            PrevClose = pClose; PrevBody = pBody;
+
+            // ── Push current bar into rolling state (AFTER feature compute) ──
+            bodyBuf.Enqueue(body);   while (bodyBuf.Count  > rollLookback)    bodyBuf.Dequeue();
+            rangeBuf.Enqueue(range); while (rangeBuf.Count > rollLookback)    rangeBuf.Dequeue();
+            highBuf.Enqueue(h);      while (highBuf.Count  > extremeLookback) highBuf.Dequeue();
+            lowBuf.Enqueue(l);       while (lowBuf.Count   > extremeLookback) lowBuf.Dequeue();
+
+            pOpen = o; pHigh = h; pLow = l; pClose = c; pBody = body;
+            hasPrevInternal = true;
+            Count++;
+        }
+    }
+
+    // =========================================================================
     // Strategy
     // =========================================================================
 
@@ -160,9 +382,10 @@ namespace NinjaTrader.NinjaScript.Strategies
     [Gui.CategoryOrder("B: Session Filter",  2)]
     [Gui.CategoryOrder("C: Direction",       3)]
     [Gui.CategoryOrder("D: Entry Signal",    4)]
-    [Gui.CategoryOrder("E: Exit Policy",     5)]
-    [Gui.CategoryOrder("F: Daily Risk",      6)]
-    [Gui.CategoryOrder("G: Debug",           7)]
+    [Gui.CategoryOrder("D2: Entry Pattern",  5)]
+    [Gui.CategoryOrder("E: Exit Policy",     6)]
+    [Gui.CategoryOrder("F: Daily Risk",      7)]
+    [Gui.CategoryOrder("G: Debug",           8)]
     public class StrategyDiscoveryFilter : Strategy
     {
         // =====================================================================
@@ -205,6 +428,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         // Bar-level cache
         private bool   conditionsMet = false;
+
+        // Candle feature engine (parity with candle/features.py + patterns.py)
+        private SdfCandleFeatureEngine candleEngine;
+
+        // Pending stop/limit entry tracking (BreakExtreme / BodyMidpoint timing)
+        private Order pendingEntryOrder = null;
+        private int   pendingEntryBar   = -1;
 
         // =====================================================================
         // State machine
@@ -269,6 +499,27 @@ namespace NinjaTrader.NinjaScript.Strategies
                 // Extra: require ATR > this multiple of its own average (avoid dead markets)
                 RequireMinAtrMultiple   = 0.0;   // 0 = disabled; try 0.8
 
+                // ── D2: Entry Pattern (parity with candle discovery) ──────────
+                EntrySignal             = SdfEntrySignal.EmaCross;
+                TimingMode              = SdfTimingMode.NextOpen;
+                BufferTicks             = 1.0;   // break_extreme stop buffer
+                FillTimeoutBars         = 3;     // bars to wait for a stop/limit fill
+                // Rolling/comparison windows (candle/features.py defaults)
+                BodyRollLookback        = 20;    // body_vs_roll_20 / size_vs_roll_20
+                ExtremeLookback         = 20;    // clean breakout + N-bar breakout
+                // Pattern thresholds (patterns.py per-detector defaults)
+                BodyMultiplier          = 1.5;   // large_body body_multiplier
+                WickToBodyMax           = 0.5;   // large_body wick_to_body_max
+                PinWickToBodyMin        = 1.5;   // pin bar wick_to_body_min
+                PinOppWickToBodyMax     = 0.5;   // pin bar opposite-wick max
+                PinBodyToRangeMax       = 0.35;  // pin bar body_to_range_max
+                EngulfRatio             = 1.0;   // engulfing engulf_ratio
+                DojiBodyToRangeMax      = 0.15;  // doji body_to_range_max
+                CleanAtrMult            = 1.5;   // clean breakout size_vs_atr >=
+                CleanBodyToRangeMin     = 0.60;  // clean breakout body_to_range >=
+                EntryMinSizeTicks       = 4;     // min_size_ticks
+                EntryMaxSizeTicks       = 200;   // max_size_ticks
+
                 // ── E: Exit Policy ────────────────────────────────────────────
                 ExitPolicy              = SdfExitPolicy.FixedRR;
                 StopTicks               = 60;
@@ -295,6 +546,12 @@ namespace NinjaTrader.NinjaScript.Strategies
                 entryEma      = EMA(EntryEmaPeriod);
                 regimeEma     = EMA(RegimeEmaPeriod);
                 atrPercentile = new SdfRollingPercentile(AtrLookbackBars);
+
+                // Candle feature engine. ATR period 14 matches features.py
+                // DEFAULT_CONFIG["atr_period"] (the discovery feature ATR, which
+                // is independent of the regime-filter ATR above).
+                candleEngine  = new SdfCandleFeatureEngine(
+                    TickSize, BodyRollLookback, 14, ExtremeLookback);
             }
             else if (State == State.Realtime)
             {
@@ -313,8 +570,50 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         protected override void OnBarUpdate()
         {
+            // ── Feed the candle feature engine on EVERY bar ───────────────────
+            // Parity: features.py computes over the full bar series, so the
+            // rolling windows must see the warmup bars too. Must run BEFORE the
+            // BarsRequiredToTrade gate or the first ~lookback signals will not
+            // match the discovery report.
+            candleEngine.Update(Open[0], High[0], Low[0], Close[0]);
+
             if (CurrentBar < BarsRequiredToTrade)
                 return;
+
+            // ── Cancel a stale pending stop/limit entry (timing modes) ────────
+            if (pendingEntryOrder != null)
+            {
+                bool working = pendingEntryOrder.OrderState == OrderState.Working
+                            || pendingEntryOrder.OrderState == OrderState.Accepted
+                            || pendingEntryOrder.OrderState == OrderState.Submitted;
+                if (Position.MarketPosition != MarketPosition.Flat || !working)
+                {
+                    pendingEntryOrder = null;
+                }
+                else if (CurrentBar - pendingEntryBar >= FillTimeoutBars)
+                {
+                    CancelOrder(pendingEntryOrder);
+                    pendingEntryOrder = null;
+                }
+            }
+
+            // ── Signal-level parity probe ─────────────────────────────────────
+            // Logs every bar the RAW candle pattern fires, BEFORE any regime/
+            // session/direction/position gating. This is what the Python parity
+            // harness (scripts/parity_signal_export.py) emits, so the two lists
+            // can be diffed bar-for-bar to prove the detector math matches.
+            // Independent of execution — does not place orders.
+            if (EnableDebugPrint && EntrySignal != SdfEntrySignal.EmaCross)
+            {
+                bool rawLong, rawShort;
+                ComputeCandleSignal(out rawLong, out rawShort);
+                if (rawLong || rawShort)
+                {
+                    int dir = rawLong && rawShort ? 0 : (rawLong ? 1 : -1);
+                    Print($"[SDF-SIGNAL] {Time[0]:yyyy-MM-ddTHH:mm:ss} dir={dir} " +
+                          $"sig={EntrySignal} bar={CurrentBar}");
+                }
+            }
 
             // ── Feed rolling ATR percentile ───────────────────────────────────
             if (atrPrimary[0] > 0)
@@ -368,9 +667,9 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (!conditionsMet)
                 return;
 
-            // ── Entry signal: EMA crossover ───────────────────────────────────
-            bool longSignal  = CrossAbove(entryEma, regimeEma, 1);
-            bool shortSignal = CrossBelow(entryEma, regimeEma, 1);
+            // ── Entry signal: dispatch on EntrySignal ─────────────────────────
+            bool longSignal, shortSignal;
+            ComputeEntrySignals(out longSignal, out shortSignal);
 
             // Trend-alignment: only take signals in the direction of regime
             if (UseTrendAlignment)
@@ -386,32 +685,235 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (!AllowShort) shortSignal = false;
 
             // ── Place entries ─────────────────────────────────────────────────
-            if (longSignal && Position.MarketPosition == MarketPosition.Flat)
+            // One attempt at a time: must be flat AND have no working stop/limit
+            // entry from a prior BreakExtreme / BodyMidpoint submission.
+            if (Position.MarketPosition != MarketPosition.Flat || pendingEntryOrder != null)
+                return;
+
+            if (longSignal)
+                PlaceEntry(isLong: true);
+            else if (shortSignal)
+                PlaceEntry(isLong: false);
+        }
+
+        // =====================================================================
+        // Entry-signal dispatch (parity with candle/patterns.py)
+        // =====================================================================
+
+        // fillna(0): a NaN feature compares as 0.0 (matches pandas .fillna(0)).
+        private static double Nz0(double v) => double.IsNaN(v) ? 0.0 : v;
+        // fillna(1): a NaN body_to_range compares as 1.0 (matches .fillna(1)).
+        private static double Nz1(double v) => double.IsNaN(v) ? 1.0 : v;
+
+        private void ComputeEntrySignals(out bool longSignal, out bool shortSignal)
+        {
+            longSignal  = false;
+            shortSignal = false;
+
+            if (EntrySignal == SdfEntrySignal.EmaCross)
             {
-                ResetEntryTracking(isLong: true);
-                EnterLong(Contracts, "Long");
-
-                if (ExitPolicy == SdfExitPolicy.FixedRR || ExitPolicy == SdfExitPolicy.FixedStop)
-                    SetStopLoss("Long", CalculationMode.Ticks, StopTicks, false);
-
-                if (ExitPolicy == SdfExitPolicy.FixedRR)
-                    SetProfitTarget("Long", CalculationMode.Ticks, TargetTicks);
-
-                LogEntry("Long");
+                // Legacy baseline entry.
+                longSignal  = CrossAbove(entryEma, regimeEma, 1);
+                shortSignal = CrossBelow(entryEma, regimeEma, 1);
+                return;
             }
-            else if (shortSignal && Position.MarketPosition == MarketPosition.Flat)
+
+            ComputeCandleSignal(out longSignal, out shortSignal);
+        }
+
+        /// <summary>
+        /// Reproduces the per-pattern boolean masks from candle/patterns.py.
+        /// Emits the pattern's *inherent* direction(s); direction filtering
+        /// (AllowLong/Short, trend alignment) is applied by the caller, exactly
+        /// as the discovery applies its direction param downstream.
+        /// </summary>
+        private void ComputeCandleSignal(out bool longSignal, out bool shortSignal)
+        {
+            longSignal  = false;
+            shortSignal = false;
+
+            var e = candleEngine;
+            bool inBounds = e.SizeTicks >= EntryMinSizeTicks
+                         && e.SizeTicks <= EntryMaxSizeTicks;
+            // Patterns that only gate on a lower size floor (no upper cap).
+            bool minSizeOk = e.SizeTicks >= EntryMinSizeTicks;
+
+            switch (EntrySignal)
             {
-                ResetEntryTracking(isLong: false);
-                EnterShort(Contracts, "Short");
+                case SdfEntrySignal.LargeBody:
+                {
+                    bool largeBody  = Nz0(e.BodyVsRoll) >= BodyMultiplier;
+                    bool smallWicks = Nz0(e.UpperWickToBody) <= WickToBodyMax
+                                   && Nz0(e.LowerWickToBody) <= WickToBodyMax;
+                    bool baseMask   = largeBody && smallWicks && inBounds;
+                    longSignal  = baseMask &&  e.IsBullish;
+                    shortSignal = baseMask && !e.IsBullish;
+                    break;
+                }
 
-                if (ExitPolicy == SdfExitPolicy.FixedRR || ExitPolicy == SdfExitPolicy.FixedStop)
-                    SetStopLoss("Short", CalculationMode.Ticks, StopTicks, false);
+                case SdfEntrySignal.PinBarBullish:
+                {
+                    longSignal =
+                        Nz0(e.LowerWickToBody) >= PinWickToBodyMin &&
+                        Nz0(e.UpperWickToBody) <= PinOppWickToBodyMax &&
+                        Nz1(e.BodyToRange)     <= PinBodyToRangeMax &&
+                        inBounds;
+                    break;
+                }
 
-                if (ExitPolicy == SdfExitPolicy.FixedRR)
-                    SetProfitTarget("Short", CalculationMode.Ticks, TargetTicks);
+                case SdfEntrySignal.PinBarBearish:
+                {
+                    shortSignal =
+                        Nz0(e.UpperWickToBody) >= PinWickToBodyMin &&
+                        Nz0(e.LowerWickToBody) <= PinOppWickToBodyMax &&
+                        Nz1(e.BodyToRange)     <= PinBodyToRangeMax &&
+                        inBounds;
+                    break;
+                }
 
-                LogEntry("Short");
+                case SdfEntrySignal.InsideBar:
+                {
+                    // patterns.py uses a min_size floor of 2 ticks for inside
+                    // bars, but here EntryMinSizeTicks is the single knob; the
+                    // generator pins it to the discovered value.
+                    bool inside = e.HasPrev
+                               && e.CurHigh < e.PrevHigh
+                               && e.CurLow  > e.PrevLow
+                               && minSizeOk;
+                    longSignal  = inside &&  e.IsBullish;
+                    shortSignal = inside && !e.IsBullish;
+                    break;
+                }
+
+                case SdfEntrySignal.OutsideBar:
+                {
+                    bool outside = e.HasPrev
+                                && e.CurHigh > e.PrevHigh
+                                && e.CurLow  < e.PrevLow
+                                && minSizeOk;
+                    longSignal  = outside &&  e.IsBullish;
+                    shortSignal = outside && !e.IsBullish;
+                    break;
+                }
+
+                case SdfEntrySignal.EngulfingBullish:
+                {
+                    double pb = e.HasPrev ? e.PrevBody : 0.0;
+                    longSignal = e.IsBullish
+                              && e.HasPrev
+                              && e.CurOpen  <= e.PrevClose
+                              && e.CurClose >= e.PrevOpen
+                              && e.Body     >= pb * EngulfRatio
+                              && minSizeOk;
+                    break;
+                }
+
+                case SdfEntrySignal.EngulfingBearish:
+                {
+                    double pb = e.HasPrev ? e.PrevBody : 0.0;
+                    shortSignal = !e.IsBullish
+                               && e.HasPrev
+                               && e.CurOpen  >= e.PrevClose
+                               && e.CurClose <= e.PrevOpen
+                               && e.Body     >= pb * EngulfRatio
+                               && minSizeOk;
+                    break;
+                }
+
+                case SdfEntrySignal.Doji:
+                {
+                    bool doji = Nz1(e.BodyToRange) <= DojiBodyToRangeMax && minSizeOk;
+                    // Discovery emits both sides for a doji; direction filter decides.
+                    longSignal  = doji;
+                    shortSignal = doji;
+                    break;
+                }
+
+                case SdfEntrySignal.CleanBreakoutBar:
+                {
+                    bool large = Nz0(e.SizeVsAtr)   >= CleanAtrMult;
+                    bool clean = Nz0(e.BodyToRange) >= CleanBodyToRangeMin;
+                    bool baseMask = large && clean && minSizeOk;
+                    // C# comparisons vs NaN RollHigh/RollLow are false → no
+                    // signal until the extreme window has a prior bar, matching
+                    // pandas (high >= NaN → False).
+                    longSignal  = baseMask &&  e.IsBullish && e.CurHigh >= e.RollHigh;
+                    shortSignal = baseMask && !e.IsBullish && e.CurLow  <= e.RollLow;
+                    break;
+                }
+
+                case SdfEntrySignal.NbarBreakout:
+                {
+                    // Breakout family: close beyond the prior N-bar channel.
+                    longSignal  = e.HasPrev && e.CurClose > e.RollHigh;
+                    shortSignal = e.HasPrev && e.CurClose < e.RollLow;
+                    break;
+                }
             }
+        }
+
+        // =====================================================================
+        // Entry placement — timing modes mirror candle/signals.py emitters
+        // =====================================================================
+
+        private void PlaceEntry(bool isLong)
+        {
+            string signalName = isLong ? "Long" : "Short";
+            ResetEntryTracking(isLong);
+
+            switch (TimingMode)
+            {
+                case SdfTimingMode.NextOpen:
+                    // Market on bar close → fills at the next bar's open.
+                    if (isLong) EnterLong(Contracts, signalName);
+                    else        EnterShort(Contracts, signalName);
+                    ApplyFixedExits(signalName);
+                    LogEntry(signalName);
+                    break;
+
+                case SdfTimingMode.BreakExtreme:
+                {
+                    // Stop-market just beyond the signal bar's extreme.
+                    double buf = BufferTicks * TickSize;
+                    double trigger = isLong
+                        ? candleEngine.CurHigh + buf
+                        : candleEngine.CurLow  - buf;
+                    pendingEntryOrder = isLong
+                        ? EnterLongStopMarket(0, true, Contracts, trigger, signalName)
+                        : EnterShortStopMarket(0, true, Contracts, trigger, signalName);
+                    pendingEntryBar = CurrentBar;
+                    ApplyFixedExits(signalName);
+                    LogEntry(signalName);
+                    break;
+                }
+
+                case SdfTimingMode.BodyMidpoint:
+                {
+                    // Limit at the midpoint of the signal bar's body (retrace).
+                    double mid = (candleEngine.CurOpen + candleEngine.CurClose) / 2.0;
+                    pendingEntryOrder = isLong
+                        ? EnterLongLimit(0, true, Contracts, mid, signalName)
+                        : EnterShortLimit(0, true, Contracts, mid, signalName);
+                    pendingEntryBar = CurrentBar;
+                    ApplyFixedExits(signalName);
+                    LogEntry(signalName);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Attach fixed stop/target for FixedRR / FixedStop policies. For named
+        /// entry signals NinjaTrader applies these on fill, so it is safe to set
+        /// them alongside a stop/limit entry submission.
+        /// </summary>
+        private void ApplyFixedExits(string signalName)
+        {
+            if (ExitPolicy == SdfExitPolicy.FixedRR || ExitPolicy == SdfExitPolicy.FixedStop)
+                SetStopLoss(signalName, CalculationMode.Ticks, StopTicks, false);
+
+            if (ExitPolicy == SdfExitPolicy.FixedRR)
+                SetProfitTarget(signalName, CalculationMode.Ticks, TargetTicks);
         }
 
         // =====================================================================
@@ -910,6 +1412,132 @@ namespace NinjaTrader.NinjaScript.Strategies
                                "Use to avoid dead / compressed markets.",
                  GroupName = "D: Entry Signal", Order = 4)]
         public double RequireMinAtrMultiple { get; set; }
+
+        #endregion
+
+        #region D2: Entry Pattern
+
+        [NinjaScriptProperty]
+        [Display(Name = "Entry Signal",
+                 Description = "Entry trigger family. Mirrors the ta_foundation discovery " +
+                               "signal families. PINNED only — the NT optimizer cannot sweep enums.",
+                 GroupName = "D2: Entry Pattern", Order = 1)]
+        public SdfEntrySignal EntrySignal { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Timing Mode",
+                 Description = "NextOpen = market at bar close. BreakExtreme = stop beyond the " +
+                               "signal bar. BodyMidpoint = limit at body midpoint. PINNED only.",
+                 GroupName = "D2: Entry Pattern", Order = 2)]
+        public SdfTimingMode TimingMode { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.0, 20.0)]
+        [Display(Name = "Buffer Ticks",
+                 Description = "BreakExtreme: ticks beyond the signal bar extreme for the stop trigger.",
+                 GroupName = "D2: Entry Pattern", Order = 3)]
+        public double BufferTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 50)]
+        [Display(Name = "Fill Timeout Bars",
+                 Description = "BreakExtreme/BodyMidpoint: cancel the working entry after this many bars.",
+                 GroupName = "D2: Entry Pattern", Order = 4)]
+        public int FillTimeoutBars { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(2, 200)]
+        [Display(Name = "Body Roll Lookback",
+                 Description = "Window N for body_vs_roll_N / size_vs_roll_N (features.py size_lookbacks). " +
+                               "Discovery default 20.",
+                 GroupName = "D2: Entry Pattern", Order = 5)]
+        public int BodyRollLookback { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(2, 200)]
+        [Display(Name = "Extreme Lookback",
+                 Description = "Window N for clean-breakout extreme and N-bar breakout channel. " +
+                               "Discovery default 20.",
+                 GroupName = "D2: Entry Pattern", Order = 6)]
+        public int ExtremeLookback { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.1, 10.0)]
+        [Display(Name = "Body Multiplier",
+                 Description = "LargeBody: body_vs_roll >= this. patterns.py body_multiplier (default 1.5).",
+                 GroupName = "D2: Entry Pattern", Order = 7)]
+        public double BodyMultiplier { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.05, 5.0)]
+        [Display(Name = "Wick-to-Body Max",
+                 Description = "LargeBody: both wicks/body <= this. patterns.py wick_to_body_max (default 0.5).",
+                 GroupName = "D2: Entry Pattern", Order = 8)]
+        public double WickToBodyMax { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.5, 10.0)]
+        [Display(Name = "Pin Wick-to-Body Min",
+                 Description = "PinBar: dominant wick/body >= this. patterns.py wick_to_body_min (default 1.5).",
+                 GroupName = "D2: Entry Pattern", Order = 9)]
+        public double PinWickToBodyMin { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.05, 5.0)]
+        [Display(Name = "Pin Opp Wick-to-Body Max",
+                 Description = "PinBar: opposite wick/body <= this. patterns.py *_wick_to_body_max (default 0.5).",
+                 GroupName = "D2: Entry Pattern", Order = 10)]
+        public double PinOppWickToBodyMax { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.01, 1.0)]
+        [Display(Name = "Pin Body-to-Range Max",
+                 Description = "PinBar: body/range <= this. patterns.py body_to_range_max (default 0.35).",
+                 GroupName = "D2: Entry Pattern", Order = 11)]
+        public double PinBodyToRangeMax { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.1, 10.0)]
+        [Display(Name = "Engulf Ratio",
+                 Description = "Engulfing: current body >= prior body × this. patterns.py engulf_ratio (default 1.0).",
+                 GroupName = "D2: Entry Pattern", Order = 12)]
+        public double EngulfRatio { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.01, 1.0)]
+        [Display(Name = "Doji Body-to-Range Max",
+                 Description = "Doji: body/range <= this. patterns.py body_to_range_max (default 0.15).",
+                 GroupName = "D2: Entry Pattern", Order = 13)]
+        public double DojiBodyToRangeMax { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.1, 10.0)]
+        [Display(Name = "Clean ATR Mult",
+                 Description = "CleanBreakout: size_vs_atr >= this. patterns.py atr_mult (default 1.5).",
+                 GroupName = "D2: Entry Pattern", Order = 14)]
+        public double CleanAtrMult { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0.1, 1.0)]
+        [Display(Name = "Clean Body-to-Range Min",
+                 Description = "CleanBreakout: body/range >= this. patterns.py body_to_range_min (default 0.60).",
+                 GroupName = "D2: Entry Pattern", Order = 15)]
+        public double CleanBodyToRangeMin { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(0, 500)]
+        [Display(Name = "Entry Min Size Ticks",
+                 Description = "Signal bar total range >= this many ticks. patterns.py min_size_ticks.",
+                 GroupName = "D2: Entry Pattern", Order = 16)]
+        public int EntryMinSizeTicks { get; set; }
+
+        [NinjaScriptProperty]
+        [Range(1, 2000)]
+        [Display(Name = "Entry Max Size Ticks",
+                 Description = "Signal bar total range <= this many ticks (large_body / pin bars). " +
+                               "patterns.py max_size_ticks (default 200).",
+                 GroupName = "D2: Entry Pattern", Order = 17)]
+        public int EntryMaxSizeTicks { get; set; }
 
         #endregion
 

@@ -168,6 +168,77 @@ def test_weekly_coverage_run_writes_recipe_with_default_lane_grid(
     assert body["plan"]["combination_estimate"] == 8064
 
 
+def _run_weekly_coverage(client, tmp_path, monkeypatch, payload_extra):
+    seed = tmp_path / "weekly_seed.xml"
+    seed.write_text("<StrategyTemplate />", encoding="utf-8")
+
+    from ta_foundation.web import optimizer_recipe_orchestrator as orchestrator_mod
+
+    class _NoDispatchOrchestrator:
+        def __init__(self, session):
+            self.session = session
+
+        def start(self):
+            return {"state": {"state": "started"}}
+
+    monkeypatch.setattr(orchestrator_mod, "RecipeRunOrchestrator", _NoDispatchOrchestrator)
+
+    payload = {
+        "strategy_id": "PantheonMasterBotV01TesterV2",
+        "seed_template_path": str(seed),
+        "label": "Weekly Coverage Test",
+        "instrument": "NQ 06-26",
+        "market_suffix": "NQ",
+    }
+    payload.update(payload_extra)
+    res = client.post(
+        "/api/optimizer/weekly-coverage/run",
+        data=json.dumps(payload),
+        content_type="application/json",
+    )
+    assert res.status_code == 200, res.get_data(as_text=True)
+    session = opt_session.get_session(res.get_json()["session"]["session_id"])
+    return json.loads((session.directory / "recipe.json").read_text(encoding="utf-8"))
+
+
+def test_weekly_coverage_auto_chains_risk_stage_preserving_per_bucket(
+    client, tmp_path: Path, monkeypatch
+):
+    # Operator set "Templates per bucket" = 4; the auto-chained risk pass must
+    # keep exactly that count (one risk-tuned variant per lane winner).
+    recipe = _run_weekly_coverage(client, tmp_path, monkeypatch, {"final_per_lane": 4})
+
+    stage_ids = [s["stage_id"] for s in recipe["stages"]]
+    assert stage_ids == ["stage_1", "refine_risk", "final_backtest"]
+
+    # stage_1 keeps the operator's 4 winners per lane.
+    assert recipe["stages"][0]["selection"]["keep_per_group"] == 4
+
+    risk = recipe["stages"][1]
+    assert risk["stage_type"] == "optimizer"
+    assert risk["from"] == "stage_1.selected_rows"
+    # Only the three risk knobs sweep; structure is pinned.
+    assert set(risk["optimize_inside_template"]) == {"ProfitStop", "LossStop", "MaxTrades"}
+    for structural in ("averageFast", "MaxStop", "MaxTPRatio", "Long", "Short", "averageSlow"):
+        assert structural in risk["pin"]
+    # One tuned variant per lane winner -> per-bucket count is preserved.
+    assert risk["selection"]["group_by"] == ["parent_candidate_id"]
+    assert risk["selection"]["keep_per_group"] == 1
+
+    final = recipe["stages"][2]
+    assert final["from"] == "refine_risk.selected_rows"
+    assert final["finalists_per_bucket"] == 4
+
+
+def test_weekly_coverage_can_opt_out_of_risk_chain(client, tmp_path: Path, monkeypatch):
+    recipe = _run_weekly_coverage(
+        client, tmp_path, monkeypatch, {"auto_refine_risk": False}
+    )
+    stage_ids = [s["stage_id"] for s in recipe["stages"]]
+    assert stage_ids == ["stage_1", "final_backtest"]
+    assert recipe["stages"][-1]["from"] == "stage_1.selected_rows"
+
+
 def test_session_lifecycle_and_plan_preview(client, fake_nt_install):
     # Create
     res = client.post(

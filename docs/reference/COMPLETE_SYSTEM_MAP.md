@@ -1,6 +1,17 @@
 # TA Foundation — Complete System Map & Capability Catalog
 
-**Last Updated:** May 24, 2026  
+> **⚠ VERIFIED REFRESH — 2026-06-05.** This map was re-audited against actual code + tests (the
+> original May-24 pass read aspirational). Trust this header + the "Verified status" table over older
+> body prose. Full evidence: `docs/audits/capability_and_cleanup_audit_2026-06-05.md`. External
+> sibling repos: `docs/reference/EXTERNAL_PROJECTS_MAP.md`.
+>
+> **Key corrections from the audit:** the agentic research loop is **shipped** (not "Partial");
+> `prediction/` **is** the daily lineup/forecast engine (daily Claude + horizon ensemble), not just
+> scaffolding; `analysis/prop_evaluation/` **already implements the APEX trailing-drawdown model**;
+> the three internal `.cs` paths (StrategyDiscoveryFilter / ExecutionShell / DataExport) are
+> **distinct and all tested**, not duplicates. Status legend: ✅ shipped · 🟡 partial · 🔩 stub · ⚰ dead.
+
+**Last Updated:** 2026-06-05 (verified refresh; original draft May 24, 2026)
 **Scope:** Comprehensive discovery of all capabilities, entry points, integrations, and workflows
 
 ---
@@ -53,6 +64,27 @@
 ```
 
 ---
+
+## Verified status at a glance (2026-06-05)
+
+| # | Capability | Status | Verified notes |
+|---|---|---|---|
+| 1 | Backtest report generation | ✅ shipped | 130 registered report sections |
+| 2 | Strategy discovery funnel | ✅ shipped | 8 entry families + pattern engine + walk-forward |
+| 3 | Daily prediction (Claude) | ✅ shipped | `claude_agent.py`; **this is the daily lineup engine** |
+| 4 | Horizon prediction ensemble | ✅ shipped | statistical/analogue/regime/session + stacking + ECE |
+| 5 | Autonomous NT strategy loop | ✅ shipped | author→compile→repair→optimize, validated live |
+| 6 | Agentic research program | ✅ shipped | roles + scheduler + research_ledger (map previously said "Partial") |
+| 7 | Pattern engine + Monte Carlo | ✅ shipped | but `pattern_engine/monte_carlo.py` is an empty ⚰ stub |
+| 8 | Large candle excursion | ✅ shipped | |
+| 9 | Execution bridge | ✅ shipped | 34 integration tests |
+| 10 | Discovery UI / web workbench | ✅ shipped | ~151 Flask routes, 54 web test files |
+| + | Prop-account evaluation (APEX DD) | ✅ shipped | `analysis/prop_evaluation/simulation.py` — trailing DD, daily loss, MC |
+| + | External sibling repos | see `EXTERNAL_PROJECTS_MAP.md` | local-deep-research, NinjatraderDocScrapper, NinjaAccountManager, DailyAnalysis, agentic-engine |
+
+**Known dead/stub (cleanup register has full list):** `plots/`, `agent/graph.py`,
+`pattern_engine/monte_carlo.py`, 3 `test_anchor_*.py` files in `reports/html/sections/`,
+`prediction/ollama_agent.py` (stub), duplicate registry key `anchor_interaction_overview`.
 
 ## 10 Core Capabilities
 
@@ -1313,12 +1345,19 @@ Aggregate calibration
 
 ## External Integrations
 
+### 0. **External sibling repos (the ecosystem)** — see `docs/reference/EXTERNAL_PROJECTS_MAP.md`
+This project is one repo in a multi-repo effort. Before building, check the ecosystem map:
+- `D:\local-deep-research` — online research agent; **already wired** via `research_intake/ldr.py`.
+- `D:\NinjatraderDocScrapper` — NinjaScript **strategy factory** + learning RAG (discovered edge → `.cs`).
+- `D:\NinjaAccountManager` — real-time NT account monitor + order API.
+- `D:\DailyAnalysis` — rule-based NQ daily market context.
+- `D:\agentic-engine` — idea→hypothesis→decision validation ledger.
+
 ### 1. **D:\NinjaAccountManager**
-- External project referenced for:
-  - AddOn batch processing
-  - Strategy Analyzer control
-  - Live account management
-- Handoff points: compile status, optimizer results
+- Real-time NT8 account monitor (balance/equity/margin/PnL, positions, orders) + order-submission API.
+- Connects to NT via **WebSocket/JSON-lines** (`ws://127.0.0.1:8765`) + strategy API tcp `:8766` —
+  **not** NT plugin hooks. Has an unused `daily_lockout` flag; lacks per-firm drawdown rules (the gap
+  the existing `analysis/prop_evaluation` DD math would fill once wired).
 
 ### 2. **NinjaTrader 8**
 - AddOn: `BatchStrategyOptimizerAddOn`
@@ -1345,7 +1384,18 @@ Aggregate calibration
 
 ---
 
-## Gaps & Undocumented Areas
+## Gaps, Known Issues & Cleanup (refreshed 2026-06-05)
+
+**Current verified gaps + the full cleanup register live in
+`docs/audits/capability_and_cleanup_audit_2026-06-05.md`.** Summary: the genuine gaps are small —
+(1) a daily-lineup *selection surface* over `prediction/` + the deployment-matrix pool (the engine
+exists; the picking UI/logic does not); (2) a versioned **APEX DD profile** wiring the existing
+`prop_evaluation` math to `NinjaAccountManager` live account state; (3) discoverability hygiene so
+existing capability stops getting rebuilt. Known code cleanup: duplicate registry key, dead
+`plots/`/`agent/graph.py`/`monte_carlo.py`, 22MB checked-in `node_modules`, ~25 stray root `*.yaml`.
+
+> The original May-24 "documentation wishlist" is retained below for history; several of its items
+> are now done (e.g. a capability catalog exists at `docs/CAPABILITY_CATALOG.md`).
 
 ### Critical Documentation Gaps
 
@@ -1533,5 +1583,10 @@ The **ta_foundation** project is a production-grade, multi-layered analytics and
 - **NinjaTrader integration** with deterministic repair and autonomous optimization loop
 - **Multi-model AI coordination** (Claude PM + Codex/Gemini executors)
 
-The system is **well-engineered but under-documented**. High-priority documentation improvements would unlock faster onboarding and reduce repeated questions.
-
+**Verified conclusion (2026-06-05):** the system is **more built than it is documented** — the
+2026-06-05 audit found the agentic loop, prediction engine, prop-account DD model, and execution
+bridge all shipped and tested, contradicting the impression of half-finished scaffolding. The real
+risk is **not missing capability but discoverability**: capabilities (internal and in the 5 sibling
+repos) keep getting rebuilt because they aren't surfaced. The fixes are this verified map,
+`docs/CAPABILITY_CATALOG.md`, `docs/reference/EXTERNAL_PROJECTS_MAP.md`, and the cleanup register in
+`docs/audits/capability_and_cleanup_audit_2026-06-05.md` — not another round of feature building.

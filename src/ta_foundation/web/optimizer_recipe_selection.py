@@ -162,11 +162,12 @@ def _apply_hard_filters(df: pd.DataFrame, filters: dict[str, Any]) -> pd.DataFra
 def _select_rows(df: pd.DataFrame, selection: dict[str, Any]) -> pd.DataFrame:
     if df.empty:
         return df.copy()
+    group_by = [str(value) for value in (selection.get("group_by") or [])]
+    df = _ensure_single_multi_group_column(df, group_by)
     if str(selection.get("mode") or "").strip().lower() == "coverage_matrix_sequence":
         return _select_coverage_matrix_rows(df, selection)
     keep_per_group = max(1, int(selection.get("keep_per_group") or 1))
     target_total = _optional_int(selection.get("target_total_candidates"))
-    group_by = [str(value) for value in (selection.get("group_by") or [])]
     
     # Check if custom fitness_metrics are specified (ranked fitness checkboxes in UI)
     fitness_metrics = selection.get("fitness_metrics")
@@ -243,6 +244,7 @@ def _select_rows(df: pd.DataFrame, selection: dict[str, Any]) -> pd.DataFrame:
 def _select_coverage_matrix_rows(df: pd.DataFrame, selection: dict[str, Any]) -> pd.DataFrame:
     keep_per_group = max(1, int(selection.get("keep_per_group") or 2))
     group_by = [str(value) for value in (selection.get("group_by") or [])]
+    df = _ensure_single_multi_group_column(df, group_by)
     resolved_group_by = [_resolve_column(df, col) for col in group_by]
     resolved_group_by = [col for col in resolved_group_by if col]
     if not resolved_group_by:
@@ -531,6 +533,56 @@ def _sort_spec(selection: dict[str, Any]) -> tuple[list[str], list[bool]]:
             sort_cols.append(key)
             ascending.append(False)
     return sort_cols, ascending
+
+
+def _ensure_single_multi_group_column(df: pd.DataFrame, group_by: list[str]) -> pd.DataFrame:
+    if "single_multi" not in group_by or "single_multi" in df.columns:
+        return df
+
+    max_trades_col = _resolve_column(df, "MaxTrades")
+    profit_stop_col = _resolve_column(df, "ProfitStop")
+    loss_stop_col = _resolve_column(df, "LossStop")
+    if not max_trades_col or not profit_stop_col or not loss_stop_col:
+        out = df.copy()
+        out["single_multi"] = "multi"
+        return out
+
+    # The per-trade bracket inputs let us classify by EFFECTIVE trades (matching
+    # the canonical name); they may be absent, in which case classify_single_multi
+    # falls back to the raw-cap rule.
+    max_stop_col = _resolve_column(df, "MaxStop")
+    max_tp_ratio_col = _resolve_column(df, "MaxTPRatio")
+
+    from ta_foundation.web.optimizer_deployment_matrix import classify_single_multi
+
+    def _opt_float(row: pd.Series, col: str | None) -> float | None:
+        if not col:
+            return None
+        value = row.get(col)
+        if value is None or pd.isna(value):
+            return None
+        return float(value)
+
+    def classify(row: pd.Series) -> str:
+        try:
+            max_trades = row.get(max_trades_col)
+            profit_stop = row.get(profit_stop_col)
+            loss_stop = row.get(loss_stop_col)
+            if pd.isna(max_trades) or pd.isna(profit_stop) or pd.isna(loss_stop):
+                return "multi"
+            return classify_single_multi(
+                int(float(max_trades)),
+                float(profit_stop),
+                float(loss_stop),
+                max_stop=_opt_float(row, max_stop_col),
+                max_tp_ratio=_opt_float(row, max_tp_ratio_col),
+            )
+        except (TypeError, ValueError):
+            return "multi"
+
+    out = df.copy()
+    out["single_multi"] = out.apply(classify, axis=1)
+    return out
 
 
 def _resolve_column(df: pd.DataFrame, name: str) -> str | None:

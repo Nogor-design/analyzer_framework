@@ -704,6 +704,122 @@ _EXIT_POLICY_STRINGS = {
 
 
 # ---------------------------------------------------------------------------
+# Entry signal mapping (Phase 1 — parameterized entry, Path A)
+# ---------------------------------------------------------------------------
+#
+# Maps a discovered candle/breakout *structure* to the SdfEntrySignal enum name
+# in StrategyDiscoveryFilter.cs. Keys are the PATTERN_REGISTRY ids from
+# analysis/entry_strategies/candle/patterns.py plus the breakout family.
+# The enum names MUST match the C# enum exactly.
+
+_STRUCTURE_TO_ENTRY_SIGNAL = {
+    "large_body":          "LargeBody",
+    "pin_bar_bullish":     "PinBarBullish",
+    "pin_bar_bearish":     "PinBarBearish",
+    "inside_bar":          "InsideBar",
+    "outside_bar":         "OutsideBar",
+    "engulfing_bullish":   "EngulfingBullish",
+    "engulfing_bearish":   "EngulfingBearish",
+    "doji":                "Doji",
+    "clean_breakout_bar":  "CleanBreakoutBar",
+    # breakout family
+    "n_bar_breakout":      "NbarBreakout",
+    "nbar_breakout":       "NbarBreakout",
+}
+
+# Discovery timing-mode string → C# SdfTimingMode enum name.
+_TIMING_TO_ENUM = {
+    "next_open":     "NextOpen",
+    "break_extreme": "BreakExtreme",
+    "body_midpoint": "BodyMidpoint",
+}
+
+
+def _extract_entry_signal(sd: Dict[str, Any], options: Dict[str, Any], warnings: List[str]):
+    """
+    Resolve the SdfEntrySignal enum name + reasoning, in priority order:
+      1. options['entry_signal'] explicit override (already an enum name)
+      2. a `structure` condition in one of the top signal rules
+      3. top_structures from the signal corpus insights
+      4. 'EmaCross' legacy fallback (with a warning)
+
+    Returns (entry_signal_name, reasoning_str).
+    """
+    opt_sig = (options or {}).get("entry_signal")
+    if opt_sig:
+        return str(opt_sig), "explicit option override"
+
+    sed = sd.get("signal_entry_discovery") or {}
+    for rule in (sed.get("top_signal_rules") or [])[:5]:
+        for cond in (rule.get("conditions") or []):
+            if str(cond.get("column")) == "structure":
+                struct = str(cond.get("value"))
+                sig = _STRUCTURE_TO_ENTRY_SIGNAL.get(struct)
+                if sig:
+                    return sig, f"structure condition '{struct}' in top signal rule"
+
+    sig_insights = _extract_signal_insights(sd, warnings)
+    for struct in (sig_insights.get("top_structures") or []):
+        sig = _STRUCTURE_TO_ENTRY_SIGNAL.get(str(struct))
+        if sig:
+            return sig, f"top structure '{struct}' from signal corpus"
+
+    warnings.append(
+        "No entry structure found in discovery — EntrySignal defaulted to "
+        "EmaCross (legacy). The NT backtest will NOT match the discovered entry."
+    )
+    return "EmaCross", "no structure found — legacy EMA cross (does not match discovery)"
+
+
+def _extract_entry_pattern_params(options: Dict[str, Any]):
+    """
+    Build the entry-pattern parameter block. Values come from
+    options['entry_params'] (e.g. the swept candle params behind a discovered
+    rule); anything absent defaults to the patterns.py / features.py default,
+    which is exactly what StrategyDiscoveryFilter.cs SetDefaults uses. So a
+    discovery that used default thresholds matches with no params supplied.
+
+    Returns (params_dict, timeframe_minutes).
+    """
+    ep = (options or {}).get("entry_params") or {}
+
+    def g(key: str, default: Any) -> Any:
+        v = ep.get(key)
+        return default if v is None else v
+
+    timing_raw = str(g("timing_mode", "next_open")).lower()
+    timing_enum = _TIMING_TO_ENUM.get(timing_raw, "NextOpen")
+
+    timeframe_minutes = int(
+        (options or {}).get("timeframe_minutes")
+        or ep.get("tf")
+        or ep.get("timeframe")
+        or 1
+    )
+
+    params = {
+        "EntrySignal": None,  # filled by caller
+        "TimingMode": timing_enum,
+        "BufferTicks": float(g("buffer_ticks", 1.0)),
+        "FillTimeoutBars": int(g("fill_timeout_bars", 3)),
+        "BodyRollLookback": int(g("lookback", 20)),
+        "ExtremeLookback": int(g("extreme_lookback", 20)),
+        "BodyMultiplier": float(g("body_multiplier", 1.5)),
+        "WickToBodyMax": float(g("wick_to_body_max", 0.5)),
+        "PinWickToBodyMin": float(g("wick_to_body_min", 1.5)),
+        "PinOppWickToBodyMax": float(g("opp_wick_to_body_max", 0.5)),
+        "PinBodyToRangeMax": float(g("pin_body_to_range_max", 0.35)),
+        "EngulfRatio": float(g("engulf_ratio", 1.0)),
+        "DojiBodyToRangeMax": float(g("doji_body_to_range_max", 0.15)),
+        "CleanAtrMult": float(g("atr_mult", 1.5)),
+        "CleanBodyToRangeMin": float(g("body_to_range_min", 0.60)),
+        "EntryMinSizeTicks": int(g("min_size_ticks", 4)),
+        "EntryMaxSizeTicks": int(g("max_size_ticks", 200)),
+    }
+    return params, timeframe_minutes
+
+
+# ---------------------------------------------------------------------------
 # XML builder — matches the NinjaTrader StrategyTemplate format exactly
 # ---------------------------------------------------------------------------
 
@@ -718,11 +834,20 @@ def _fmt_val(v: Any) -> str:
     return str(v)
 
 
-def _build_xml(params: Dict[str, Any], run_id: str, reasoning: Dict[str, str]) -> str:
+def _build_xml(
+    params: Dict[str, Any],
+    run_id: str,
+    reasoning: Dict[str, str],
+    timeframe_minutes: int = 1,
+) -> str:
     """
     Build a NinjaTrader StrategyTemplate XML string.
     Matches the format that NinjaTrader 8 uses for saved strategy templates.
+
+    timeframe_minutes drives the primary bar period so the NT backtest runs on
+    the same timeframe the discovery used (previously hard-coded to 1 minute).
     """
+    tf = max(1, int(timeframe_minutes or 1))
 
     def e(tag: str, value: Any) -> str:
         return f"      <{tag}>{_fmt_val(value)}</{tag}>"
@@ -747,12 +872,12 @@ def _build_xml(params: Dict[str, Any], run_id: str, reasoning: Dict[str, str]) -
       <BarsPeriodSerializable>
         <BarsPeriodTypeSerialize>4</BarsPeriodTypeSerialize>
         <BaseBarsPeriodType>Minute</BaseBarsPeriodType>
-        <BaseBarsPeriodValue>1</BaseBarsPeriodValue>
+        <BaseBarsPeriodValue>{tf}</BaseBarsPeriodValue>
         <VolumetricDeltaType>BidAsk</VolumetricDeltaType>
         <MarketDataType>Last</MarketDataType>
         <PointAndFigurePriceType>Close</PointAndFigurePriceType>
         <ReversalType>Tick</ReversalType>
-        <Value>1</Value>
+        <Value>{tf}</Value>
         <Value2>1</Value2>
       </BarsPeriodSerializable>
       <BarsToLoad>0</BarsToLoad>
@@ -845,6 +970,23 @@ def _build_xml(params: Dict[str, Any], run_id: str, reasoning: Dict[str, str]) -
 {e("SlowEmaPeriod", params["SlowEmaPeriod"])}
 {e("RequireEmaConfirmation", params["RequireEmaConfirmation"])}
 {e("RequireMinAtrMultiple", params["RequireMinAtrMultiple"])}
+{e("EntrySignal", params["EntrySignal"])}
+{e("TimingMode", params["TimingMode"])}
+{e("BufferTicks", params["BufferTicks"])}
+{e("FillTimeoutBars", params["FillTimeoutBars"])}
+{e("BodyRollLookback", params["BodyRollLookback"])}
+{e("ExtremeLookback", params["ExtremeLookback"])}
+{e("BodyMultiplier", params["BodyMultiplier"])}
+{e("WickToBodyMax", params["WickToBodyMax"])}
+{e("PinWickToBodyMin", params["PinWickToBodyMin"])}
+{e("PinOppWickToBodyMax", params["PinOppWickToBodyMax"])}
+{e("PinBodyToRangeMax", params["PinBodyToRangeMax"])}
+{e("EngulfRatio", params["EngulfRatio"])}
+{e("DojiBodyToRangeMax", params["DojiBodyToRangeMax"])}
+{e("CleanAtrMult", params["CleanAtrMult"])}
+{e("CleanBodyToRangeMin", params["CleanBodyToRangeMin"])}
+{e("EntryMinSizeTicks", params["EntryMinSizeTicks"])}
+{e("EntryMaxSizeTicks", params["EntryMaxSizeTicks"])}
 {e("ExitPolicy", params["ExitPolicy"])}
 {e("StopTicks", params["StopTicks"])}
 {e("TargetTicks", params["TargetTicks"])}
@@ -935,6 +1077,14 @@ def generate_nt_template(
     )
     reasoning["MaxDailyLossUsd/MaxDailyTrades"] = risk_reason
 
+    # -- D2: Entry pattern (Path A — the entry trigger itself) --
+    entry_signal, entry_signal_reason = _extract_entry_signal(sd, options, warnings)
+    entry_pattern_params, timeframe_minutes = _extract_entry_pattern_params(options)
+    entry_pattern_params["EntrySignal"] = entry_signal
+    reasoning["EntrySignal"] = entry_signal_reason
+    if entry_signal != "EmaCross":
+        reasoning["Timeframe"] = f"{timeframe_minutes}m bars (from discovery)"
+
     # Assemble parameters dict
     # RegimeMode and ExitPolicy use C# enum string names (must match exactly)
     params: Dict[str, Any] = {
@@ -986,7 +1136,10 @@ def generate_nt_template(
         "Contracts": 1,
     }
 
-    xml_str = _build_xml(params, run_id, reasoning)
+    # D2: Entry pattern — merge the entry trigger + pattern thresholds.
+    params.update(entry_pattern_params)
+
+    xml_str = _build_xml(params, run_id, reasoning, timeframe_minutes=timeframe_minutes)
 
     return GeneratedTemplate(
         xml_str=xml_str,

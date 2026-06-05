@@ -32,6 +32,9 @@
     .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
     .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     th { color: #6b7280; text-align: left; font-weight: 500; }
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { color: #fcd34d; }
+    .sort-ind { color: #f59e0b; font-size: 10px; }
     td { padding: 4px 8px; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     details.flagbox > summary { cursor: pointer; list-style: none; }
@@ -81,6 +84,11 @@
               class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
               title="Build the weekly bucket x Reverse x slowMA package with operational diversity checks.">
         Build weekly package
+      </button>
+      <button id="build-weekly-daily-update-btn"
+              class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
+              title="Build a lightweight daily progress report for the templates sent in this week's weekly package.">
+        Daily update
       </button>
       <a href="/optimizer/sessions/{{ dashboard.session_id }}/final-report-builder"
          class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
@@ -196,38 +204,38 @@
       </div>
       <div id="decision-refine-status" class="text-xs text-amber-300 mb-2 min-h-[1em]"></div>
       <div class="overflow-x-auto">
-        <table class="text-xs w-full">
+        <table id="candidates-table" class="text-xs w-full">
           <thead>
             <tr class="border-b border-gray-700">
               <th class="pr-3 w-6">
                 <input type="checkbox" id="decision-refine-toggle-all" title="Select / deselect all" />
               </th>
-              <th class="pr-3">Adj #</th>
-              <th class="pr-3">Status</th>
-              <th class="pr-3">Run</th>
-              <th class="pr-3">Mode</th>
-              <th class="pr-3">Session</th>
-              <th class="pr-3 num">Score</th>
-              <th class="pr-3 num">Net</th>
-              <th class="pr-3 num">PF</th>
-              <th class="pr-3 num">Max DD</th>
-              <th class="pr-3 num">Trades</th>
-              <th class="pr-3 num">%days</th>
-              <th class="pr-3">Bootstrap</th>
-              <th class="pr-3">Walk-fwd</th>
-              <th class="pr-3">Neighborhood</th>
-              <th class="pr-3">Shadow</th>
+              <th class="pr-3 sortable" data-key="adj" data-type="num" title="Sort by robustness-adjusted rank">Adj #<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="status" data-type="text" title="Sort by status">Status<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="run" data-type="text" title="Sort by run id">Run<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="mode" data-type="text" title="Sort by mode">Mode<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="session" data-type="text" title="Sort by session bucket">Session<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="score" data-type="num" title="Sort by score">Score<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="net" data-type="num" title="Sort by net profit">Net<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="pf" data-type="num" title="Sort by profit factor">PF<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="dd" data-type="num" title="Sort by max drawdown">Max DD<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="trades" data-type="num" title="Sort by trade count">Trades<span class="sort-ind"></span></th>
+              <th class="pr-3 num sortable" data-key="pdays" data-type="num" title="Sort by percent of days traded">%days<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="check0" data-type="sev" title="Sort by bootstrap severity">Bootstrap<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="check1" data-type="sev" title="Sort by walk-forward severity">Walk-fwd<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="check2" data-type="sev" title="Sort by neighborhood severity">Neighborhood<span class="sort-ind"></span></th>
+              <th class="pr-3 sortable" data-key="check3" data-type="sev" title="Sort by shadow severity">Shadow<span class="sort-ind"></span></th>
             </tr>
           </thead>
           <tbody>
             {% for row in dashboard.candidate_rows %}
-              <tr class="border-b border-gray-800 align-top">
+              <tr class="border-b border-gray-800 align-top candidate-row">
                 <td class="pr-2">
                   <input type="checkbox" class="decision-refine-checkbox" value="{{ row.run_id }}"
                          data-status="{{ row.status }}"
                          title="Include {{ row.run_id }} in the next refinement stage" />
                 </td>
-                <td>
+                <td data-key="adj" data-sort="{{ row.adjusted_rank if row.adjusted_rank is not none else '' }}">
                   <span class="pill pill-adj">#{{ row.adjusted_rank }}</span>
                   {% if row.rank is not none and row.adjusted_rank is not none and (row.adjusted_rank - row.rank)|abs >= 2 %}
                     {% if row.adjusted_rank < row.rank %}
@@ -239,7 +247,7 @@
                     {% endif %}
                   {% endif %}
                 </td>
-                <td>
+                <td data-key="status" data-sort="{{ row.status }}">
                   {% if row.kind == "promoted" %}
                     <span class="pill pill-promoted" title="Promoted from a shortlist stage row (P_NNN)">promoted</span>
                   {% endif %}
@@ -252,7 +260,7 @@
                     <span class="pill pill-evaluated">evaluated</span>
                   {% endif %}
                 </td>
-                <td class="font-mono text-gray-300">
+                <td class="font-mono text-gray-300" data-key="run" data-sort="{{ row.run_id }}">
                   {% if row.report_url %}
                     <div class="flex items-center gap-2 flex-wrap">
                       <a href="{{ row.report_url }}" target="_blank" rel="noopener"
@@ -302,16 +310,16 @@
                     </div>
                   {% endif %}
                 </td>
-                <td class="text-gray-400">{{ row.mode }}</td>
-                <td class="text-gray-400">{{ row.session_bucket }}</td>
-                <td class="num text-gray-200">{{ "%.1f"|format(row.score) if row.score is not none else "" }}</td>
-                <td class="num">{{ "{:,.0f}".format(row.total_net_profit) if row.total_net_profit is not none else "" }}</td>
-                <td class="num">{{ "%.2f"|format(row.profit_factor) if row.profit_factor is not none else "" }}</td>
-                <td class="num text-red-300">{{ "{:,.0f}".format(row.max_drawdown) if row.max_drawdown is not none else "" }}</td>
-                <td class="num">{{ row.trades }}</td>
-                <td class="num text-gray-300">{{ "%.1f"|format(row.percent_days_traded) if row.percent_days_traded is not none else "" }}</td>
+                <td class="text-gray-400" data-key="mode" data-sort="{{ row.mode }}">{{ row.mode }}</td>
+                <td class="text-gray-400" data-key="session" data-sort="{{ row.session_bucket }}">{{ row.session_bucket }}</td>
+                <td class="num text-gray-200" data-key="score" data-sort="{{ row.score if row.score is not none else '' }}">{{ "%.1f"|format(row.score) if row.score is not none else "" }}</td>
+                <td class="num" data-key="net" data-sort="{{ row.total_net_profit if row.total_net_profit is not none else '' }}">{{ "{:,.0f}".format(row.total_net_profit) if row.total_net_profit is not none else "" }}</td>
+                <td class="num" data-key="pf" data-sort="{{ row.profit_factor if row.profit_factor is not none else '' }}">{{ "%.2f"|format(row.profit_factor) if row.profit_factor is not none else "" }}</td>
+                <td class="num text-red-300" data-key="dd" data-sort="{{ row.max_drawdown if row.max_drawdown is not none else '' }}">{{ "{:,.0f}".format(row.max_drawdown) if row.max_drawdown is not none else "" }}</td>
+                <td class="num" data-key="trades" data-sort="{{ row.trades if row.trades is not none else '' }}">{{ row.trades }}</td>
+                <td class="num text-gray-300" data-key="pdays" data-sort="{{ row.percent_days_traded if row.percent_days_traded is not none else '' }}">{{ "%.1f"|format(row.percent_days_traded) if row.percent_days_traded is not none else "" }}</td>
                 {% for check in row.checks %}
-                  <td>
+                  <td class="check-cell" data-key="check{{ loop.index0 }}" data-sort="{{ check.severity }}">
                     <details class="flagbox">
                       <summary>
                         <span class="badge badge-{{ check.severity }}">{{ check.headline }}</span>
@@ -328,9 +336,9 @@
                 {% endfor %}
               </tr>
               {% if row.decision_reason %}
-                <tr class="border-b border-gray-800">
+                <tr class="border-b border-gray-800 reason-row">
                   <td></td>
-                  <td colspan="14" class="text-xs text-gray-400 italic pb-2">{{ row.decision_reason }}</td>
+                  <td colspan="15" class="text-xs text-gray-400 italic pb-2">{{ row.decision_reason }}</td>
                 </tr>
               {% endif %}
             {% endfor %}
@@ -374,6 +382,7 @@
   const btn = document.getElementById("build-reports-btn");
   const sessionBtn = document.getElementById("build-session-report-btn");
   const weeklyBtn = document.getElementById("build-weekly-coverage-package-btn");
+  const dailyUpdateBtn = document.getElementById("build-weekly-daily-update-btn");
   const status = document.getElementById("build-status");
   if (renameBtn) renameBtn.addEventListener("click", async () => {
     const sid = {{ dashboard.session_id | tojson }};
@@ -381,6 +390,7 @@
     if (btn) btn.disabled = true;
     if (sessionBtn) sessionBtn.disabled = true;
     if (weeklyBtn) weeklyBtn.disabled = true;
+    if (dailyUpdateBtn) dailyUpdateBtn.disabled = true;
     renameBtn.textContent = "Renaming...";
     status.textContent = "Naming final NinjaTrader templates before report generation...";
     try {
@@ -395,6 +405,7 @@
         if (btn) btn.disabled = false;
         if (sessionBtn) sessionBtn.disabled = false;
         if (weeklyBtn) weeklyBtn.disabled = false;
+        if (dailyUpdateBtn) dailyUpdateBtn.disabled = false;
         return;
       }
       const result = body.result || {};
@@ -409,6 +420,7 @@
       if (btn) btn.disabled = false;
       if (sessionBtn) sessionBtn.disabled = false;
       if (weeklyBtn) weeklyBtn.disabled = false;
+      if (dailyUpdateBtn) dailyUpdateBtn.disabled = false;
     }
   });
   if (btn) btn.addEventListener("click", async () => {
@@ -501,6 +513,34 @@
     } finally {
       weeklyBtn.textContent = "Build weekly package";
       weeklyBtn.disabled = false;
+    }
+  });
+  if (dailyUpdateBtn) dailyUpdateBtn.addEventListener("click", async () => {
+    const sid = {{ dashboard.session_id | tojson }};
+    dailyUpdateBtn.disabled = true;
+    dailyUpdateBtn.textContent = "Building...";
+    status.textContent = "Building daily update from this week's shipped template package...";
+    try {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-daily-update-report", {
+        method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
+      });
+      const body = await r.json();
+      if (!r.ok) {
+        status.textContent = "Daily update failed: " + (body.error || r.status);
+        return;
+      }
+      const result = body.result || {};
+      const noteLines = (result.notes || []).slice(0, 4).join(" - ");
+      const reportUrl = body.report_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-daily-update-report");
+      status.innerHTML =
+        "Built daily update for " + (result.package_count || 0) + " shipped template(s). " +
+        (noteLines ? "Notes: " + noteLines + " " : "") +
+        "<a class='text-amber-300 underline' target='_blank' rel='noopener' href='" + reportUrl + "'>View daily update</a>";
+    } catch (e) {
+      status.textContent = "Daily update failed: " + e;
+    } finally {
+      dailyUpdateBtn.textContent = "Daily update";
+      dailyUpdateBtn.disabled = false;
     }
   });
 })();
@@ -633,6 +673,91 @@
       refineStatus.textContent = "Refine failed: " + (e.message || e);
       refineBtn.disabled = false;
     }
+  });
+})();
+
+(function () {
+  // Click-to-sort for the Candidates table. Reorders the existing DOM
+  // row-groups (each candidate row + its optional reason row) in place, so
+  // checkbox selections, their listeners, and the shortlist pre-check all
+  // survive a sort. Numeric/severity columns default high-to-low on first
+  // click; text columns default A→Z; clicking the active header flips it.
+  const table = document.getElementById("candidates-table");
+  if (!table) return;
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+
+  const SEV = { fail: 3, warn: 2, ok: 1, none: 0 };
+  let activeKey = null;
+  let dir = 1; // 1 = ascending, -1 = descending
+
+  function rowGroups() {
+    const groups = [];
+    let cur = null;
+    Array.from(tbody.children).forEach((tr) => {
+      if (tr.classList.contains("candidate-row")) {
+        cur = { main: tr, extras: [] };
+        groups.push(cur);
+      } else if (cur) {
+        cur.extras.push(tr);
+      }
+    });
+    return groups;
+  }
+
+  function cellValue(main, key, type) {
+    const td = main.querySelector('td[data-key="' + key + '"]');
+    const raw = td ? td.getAttribute("data-sort") : null;
+    if (raw === null || raw === undefined || raw === "") return null;
+    if (type === "num") {
+      const n = parseFloat(raw);
+      return isNaN(n) ? null : n;
+    }
+    if (type === "sev") {
+      return raw in SEV ? SEV[raw] : null;
+    }
+    return raw.toLowerCase();
+  }
+
+  function compare(a, b) {
+    // Missing values always sort to the bottom regardless of direction.
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (a < b) return -1 * dir;
+    if (a > b) return 1 * dir;
+    return 0;
+  }
+
+  function updateIndicators() {
+    table.querySelectorAll("th[data-key] .sort-ind").forEach((s) => { s.textContent = ""; });
+    if (!activeKey) return;
+    const ind = table.querySelector('th[data-key="' + activeKey + '"] .sort-ind');
+    if (ind) ind.textContent = dir === 1 ? " ▲" : " ▼";
+  }
+
+  function applySort(key, type) {
+    if (activeKey === key) {
+      dir = -dir;
+    } else {
+      activeKey = key;
+      dir = type === "text" ? 1 : -1;
+    }
+    const decorated = rowGroups().map((g) => ({ g, v: cellValue(g.main, key, type) }));
+    decorated.sort((x, y) => compare(x.v, y.v));
+    const frag = document.createDocumentFragment();
+    decorated.forEach((d) => {
+      frag.appendChild(d.g.main);
+      d.g.extras.forEach((e) => frag.appendChild(e));
+    });
+    tbody.appendChild(frag);
+    updateIndicators();
+  }
+
+  table.querySelectorAll("th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      applySort(th.getAttribute("data-key"), th.getAttribute("data-type") || "text");
+    });
   });
 })();
 </script>

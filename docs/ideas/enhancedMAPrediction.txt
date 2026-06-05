@@ -1,0 +1,28 @@
+I am working on D:\Backup\projects\PythonProject\ta_foundation\docs\designs\recipe_optimizer_final_review_readme.md D:\Backup\projects\PythonProject\ta_foundation\docs\DOCS_INDEX.md D:\Backup\projects\PythonProject\ta_foundation\docs\runbooks\weekly_optimization_and_reports_guide.md I am trying to get the best set of strategy templates to my team. Currently I have a system that uses the MA cross even though I know this is not the best entry however, for now I want to make this system the best it can be. The weekly report feeds into another AI system that does daily predictions to help pick the ones to run from that list.  If the list is bad it will have bad predictions. I want to look at the analysis and reports that the system already creates to help with prediction and analysis based on the MA cross.  D:\Backup\projects\PythonProject\ta_foundation\src\ta_foundation\reports\html\sections\anchor_interaction_overview.py I know that I have a lot that runs on local candle data.  exit_policy_simulation.py file:///D:/Backup/projects/PythonProject/ta_foundation/outputs/full_ExitStrat.html Do a deep dive into what already exists.  The documentation may not have captured it all. D:\Backup\projects\PythonProject\ta_foundation\docs\reports_documentation\README.md
+1:07 PM
+
+Worked for 4m 36s
+I did the deep dive without editing files. Big takeaway: the system already has a lot of analysis horsepower, but the weekly team package mostly uses the safer “run export only” reports. The missing bridge is turning the richer local candle/tick diagnostics into candidate-selection signals.
+
+What Exists
+
+Weekly package builder: optimizer_weekly_coverage_package.py (line 234) reads final backtest review rows, copies named XMLs, writes manifest CSVs/report/ZIP, and selects per lane by top PF, top net, fallback score, then drops exact/operational duplicates: selection logic (line 507).
+Current reference package opt_3f4050fadb0c has 34 validated templates, 17 / 84 lanes covered, 67 missing lanes, and no fallbacks: coverage report (line 14).
+Candidate reports default to safe sections only: comparison, final bundle basket, equity, KPI, metadata, daily scoreboard, daily winner, daily leaders, settings: optimizer_candidate_report.py (line 72). Market-data sections are explicitly bucketed separately: section buckets (line 144).
+The current session report also shows a real gap: final_template_bundle_basket could not find at least two StartTimeH buckets even though package lane data exists: session_candidate_report.html (line 404).
+Under-Documented Analysis
+
+anchor_interaction_overview.py is mostly a shell: renderer (line 108). But the actual MA anchor engine is rich: anchors, segments, path stats, regime summaries, TP/SL candidates, recommendations, validation folds, and trade alignment: orchestrator (line 19), run function (line 271).
+exit_policy_simulation.py is a real tick-path simulator, not just a report: renderer (line 355). Your saved full_ExitStrat.html analyzed 112 packages, probed ~16.8M NQ ticks, compared multiple policies, and rendered cross-run policy comparison.
+The report registry currently exposes about 130 sections, including 26 strategy_discovery_*, 45 large_candle_excursion_*, 8 anchor sections, 3 exit policy sections, and horizon_overview: registry (line 1107). The docs saying 127 sections are probably stale.
+strategy_discovery_full is already in the web report catalog and includes ranking, walk-forward validation, MAE/MFE, entry/filter/exit discovery, signal entries, signal exit sweep, and NT template output: report_catalog.py (line 252).
+Prediction is already split into daily and horizon systems. Horizon reports include agent leaderboard, timeframe x horizon matrix, session matrix, best-edge finder, calibration, and drift: HORIZON_DESIGN.md (line 205), horizon_overview.py (line 50).
+Best Next Move
+For making the MA-cross pool “best possible,” I’d document and then wire a template_quality_features layer: keep the weekly lane/manifest outputs, but add optional market-data enrichment fields per template: anchor TP/SL stability, trade-alignment fit, exit-policy robustness, MAE/MFE shape, daily consistency, prop survival, regime/session fit, and horizon-prediction cell fit.
+
+The clean strategic path is probably:
+
+Fix/extend the final bundle basket so it reads package lane manifest data, not only candidate Settings.csv.
+Add a richer “market-data enriched finalist report” preset using anchor, exit, strategy discovery, and maybe LCE sections.
+Export those diagnostics to CSV/JSON alongside the weekly manifest so the downstream AI predictor gets features, not just template names and PF/net.
+Treat Deployment Matrix as the predictor-facing future shape, because its 252-cell manifest is explicitly designed as the daily-prediction interface: deployment_matrix_252_capability.md (line 113).

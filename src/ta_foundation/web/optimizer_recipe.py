@@ -66,7 +66,7 @@ class RecipeMatrixEntry:
             "param": self.param,
             "role": self.role,
         }
-        if self.role == "matrix_axis":
+        if self.role in {"matrix_axis", "matrix_bundle_axis"}:
             payload["values"] = list(self.values)
         else:
             payload["value"] = self.value
@@ -78,7 +78,7 @@ class RecipeMatrixEntry:
         role = str(data.get("role") or "").strip()
         if not param:
             raise OptimizerRecipeSchemaError("Recipe matrix entry is missing param.")
-        if role not in {"matrix_axis", "fixed"}:
+        if role not in {"matrix_axis", "fixed", "matrix_bundle_axis"}:
             raise OptimizerRecipeSchemaError(
                 f"Invalid recipe matrix role for {param}: {role!r}"
             )
@@ -87,6 +87,12 @@ class RecipeMatrixEntry:
             raise OptimizerRecipeSchemaError(
                 f"Matrix axis {param} must define at least one value."
             )
+        if role == "matrix_bundle_axis":
+            if not values or not all(isinstance(value, dict) for value in values):
+                raise OptimizerRecipeSchemaError(
+                    f"Matrix bundle axis {param} must define at least one dict value."
+                )
+            values = tuple(dict(value) for value in values)
         return cls(
             param=param,
             role=role,

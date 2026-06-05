@@ -73,6 +73,8 @@ FINAL_WEIGHTS: Dict[str, float] = {
 #       max_drawdown_pct: 25.0
 #       require_sensitivity_class: "moderate"
 #       require_validation_passed: true
+#       require_permutation_passed: true
+#       max_permutation_p: 0.05
 
 DEFAULT_RANKING_GATES: Dict[str, Any] = {
     "enabled": True,
@@ -83,6 +85,8 @@ DEFAULT_RANKING_GATES: Dict[str, Any] = {
     "require_sensitivity_class": None,  # null | "moderate" | "robust"
     "require_validation_passed": False,
     "require_slippage_stress_passed": False,  # T8 — opt-in gate
+    "require_permutation_passed": False,      # T9 — opt-in null-test gate
+    "max_permutation_p": 0.05,
 }
 
 
@@ -98,6 +102,28 @@ def _safe_float(v: Any, default: Optional[float] = None) -> Optional[float]:
         return default if not np.isfinite(f) else f
     except Exception:
         return default
+
+
+def _extract_permutation_p_values(sd: Dict[str, Any]) -> Dict[str, float]:
+    """Return metric -> empirical p-value from a permutation-test block."""
+    block = sd.get("permutation_tests") or sd.get("permutation_null") or {}
+    if not isinstance(block, dict):
+        return {}
+
+    p_values: Dict[str, float] = {}
+    direct = _safe_float(block.get("p_value"))
+    if direct is not None:
+        metric = str(block.get("metric") or "permutation")
+        p_values[metric] = direct
+
+    for metric, payload in block.items():
+        if not isinstance(payload, dict):
+            continue
+        p_val = _safe_float(payload.get("p_value"))
+        if p_val is not None:
+            p_values[str(metric)] = p_val
+
+    return p_values
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -583,6 +609,30 @@ def evaluate_hard_gates(
                 "threshold": True,
                 "reason": "validation gates did not all pass",
             })
+
+    # Gate: require one-sided OOS permutation p-values to clear the configured
+    # significance threshold. All available metric p-values must pass; the
+    # worst p-value is reported so reviewers can see which metric failed.
+    if cfg.get("require_permutation_passed"):
+        threshold = float(cfg.get("max_permutation_p", 0.05))
+        p_values = _extract_permutation_p_values(sd)
+        reason = f"permutation_p>{threshold:g}"
+        if not p_values:
+            failures.append({
+                "gate": "require_permutation_passed",
+                "value": "not_run",
+                "threshold": threshold,
+                "reason": reason,
+            })
+        else:
+            worst_metric, worst_p = max(p_values.items(), key=lambda item: item[1])
+            if worst_p > threshold:
+                failures.append({
+                    "gate": "require_permutation_passed",
+                    "value": {"metric": worst_metric, "p_value": worst_p},
+                    "threshold": threshold,
+                    "reason": reason,
+                })
 
     # Gate: require the slippage / latency stress cell to pass (T8). When the
     # sweep was disabled or errored, we treat it as not satisfying the gate so

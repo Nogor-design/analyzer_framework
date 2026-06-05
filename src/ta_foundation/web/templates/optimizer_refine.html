@@ -46,6 +46,20 @@
     </div>
   </section>
 
+  <section id="coverage-panel" class="panel p-5 hidden">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+      <h2 class="text-sm font-bold text-sky-300 uppercase tracking-wider">Lane coverage — what's already covered</h2>
+      <div id="coverage-summary" class="text-xs text-slate-400"></div>
+    </div>
+    <div class="text-[11px] text-slate-500 mb-3">
+      Each cell is a lane (time bucket × side × slowMA).
+      <span class="text-emerald-300">green</span> = covered with validated winners,
+      <span class="text-amber-300">amber</span> = thin / fallback only,
+      <span class="text-rose-300">red</span> = nothing ran. Hover a cell for run ids.
+    </div>
+    <div id="coverage-host" class="overflow-auto"></div>
+  </section>
+
   <section class="panel p-5">
     <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
       <h2 class="text-sm font-bold text-amber-400 uppercase tracking-wider">Pick candidates to refine</h2>
@@ -103,7 +117,45 @@ function updateScope(){
   $("scope").textContent = `${c} candidate(s) × ${per} risk combos = ${(c*per).toLocaleString()} backtests`;
 }
 
+async function loadCoverage() {
+  let d;
+  try {
+    d = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/weekly-coverage/lanes`);
+  } catch (e) { return; }
+  const lanes = d.lanes || [];
+  if (!d.built || !lanes.length) return;
+  // Group into a bucket(row) x slowMA(col) grid per side.
+  const buckets = [...new Set(lanes.map(l => l.bucket))];
+  const slows = [...new Set(lanes.map(l => String(l.slowMA)))];
+  const by = {};
+  let covered = 0;
+  for (const l of lanes) {
+    by[`${l.bucket}|${l.side}|${l.slowMA}`] = l;
+    if (l.validated > 0 || l.fallback > 0) covered++;
+  }
+  const cell = (l) => {
+    if (!l) return `<td class="text-slate-600 text-center">·</td>`;
+    let cls = "text-rose-300", mark = "0";
+    if (l.validated > 0) { cls = "text-emerald-300"; mark = String(l.validated); }
+    else if (l.fallback > 0) { cls = "text-amber-300"; mark = "f"; }
+    const tip = `${l.bucket} ${l.side} ${l.naming_family} slowMA${l.slowMA} — validated ${l.validated}, fallback ${l.fallback}, passed ${l.passed}${l.run_ids ? " · " + l.run_ids : ""}`;
+    return `<td class="text-center ${cls}" title="${tip.replace(/"/g,'&quot;')}">${mark}</td>`;
+  };
+  let html = "";
+  for (const side of ["God", "Monster"]) {
+    html += `<tr><td colspan="${slows.length+1}" class="text-[11px] text-slate-500 pt-2 font-semibold">${side}</td></tr>`;
+    html += `<tr><th class="text-left">Bucket</th>${slows.map(s => `<th class="text-center">${s}</th>`).join("")}</tr>`;
+    for (const b of buckets) {
+      html += `<tr><td class="mono text-slate-300">${b}</td>${slows.map(s => cell(by[`${b}|${side}|${s}`])).join("")}</tr>`;
+    }
+  }
+  $("coverage-host").innerHTML = `<table>${html}</table>`;
+  $("coverage-summary").textContent = `${covered}/${lanes.length} lanes covered`;
+  $("coverage-panel").classList.remove("hidden");
+}
+
 async function load() {
+  loadCoverage();
   try {
     const d = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/refine/candidates`);
     CANDS = d.candidates || [];

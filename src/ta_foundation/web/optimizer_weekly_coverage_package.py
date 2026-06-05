@@ -38,6 +38,7 @@ FALLBACK_BY_RUN_DIRNAME = "best_effort_fallback_named_templates_by_run"
 DATA_DIRNAME = "data"
 REPORTS_DIRNAME = "reports"
 REPORT_FILENAME = "operationally_diverse_weekly_coverage_package_report.html"
+DAILY_UPDATE_REPORT_FILENAME = "weekly_strategy_daily_update_report.html"
 ZIP_FILENAME = "weekly_coverage_package.zip"
 
 
@@ -139,6 +140,95 @@ def weekly_coverage_report_path(session: OptimizerSession, config: WeeklyCoverag
 
 def weekly_coverage_zip_path(session: OptimizerSession, config: WeeklyCoverageConfig | None = None) -> Path:
     return weekly_coverage_package_dir(session, config).parent / ZIP_FILENAME
+
+
+def weekly_daily_update_report_path(session: OptimizerSession, config: WeeklyCoverageConfig | None = None) -> Path:
+    return weekly_coverage_package_dir(session, config) / REPORTS_DIRNAME / DAILY_UPDATE_REPORT_FILENAME
+
+
+def build_weekly_daily_update_report(
+    session: OptimizerSession,
+    *,
+    config: WeeklyCoverageConfig | None = None,
+    include_fallbacks: bool = False,
+    target_date: str | None = None,
+):
+    """Build a lightweight progress report for this week's shipped templates.
+
+    This is post-run/report-only: it reads the existing weekly package manifest
+    and final backtest result folders. It does not launch NinjaTrader.
+    """
+    cfg = config or WeeklyCoverageConfig()
+    package_dir = weekly_coverage_package_dir(session, cfg)
+    data_dir = package_dir / DATA_DIRNAME
+    validated_path = data_dir / "operationally_diverse_validated_selection.csv"
+    fallback_path = data_dir / "best_effort_fallback_selection.csv"
+    if not validated_path.exists():
+        raise WeeklyCoveragePackageError(
+            "Weekly coverage package has not been built yet; build the package first."
+        )
+
+    rows = _read_csv(validated_path)
+    notes: list[str] = ["Daily update uses operationally diverse validated templates from the weekly package."]
+    if include_fallbacks and fallback_path.exists():
+        fallback_rows = _read_csv(fallback_path)
+        rows.extend(fallback_rows)
+        if fallback_rows:
+            notes.append(
+                f"Included {len(fallback_rows)} best-effort fallback template(s); "
+                "these may not have passed final guardrails."
+            )
+
+    run_ids = sorted(
+        {
+            str(row.get("run_id") or "").strip()
+            for row in rows
+            if str(row.get("run_id") or "").strip()
+        },
+        key=_run_sort_key,
+    )
+    if not run_ids:
+        raise WeeklyCoveragePackageError(
+            f"No run ids found in weekly package manifest: {validated_path}"
+        )
+
+    from ta_foundation.web.optimizer_candidate_report import build_session_candidate_report
+
+    winner_options: dict[str, Any] = {"top_n": 200, "strip_days": 6}
+    if target_date:
+        winner_options["target_date"] = target_date
+
+    result = build_session_candidate_report(
+        session,
+        sections=[
+            {
+                "id": "daily_winner_spotlight",
+                "title": "Daily Update Winner Insight",
+                "options": winner_options,
+            },
+            {
+                "id": "run_snapshot_clipboard",
+                "title": "Weekly Shipped Strategy Snapshot",
+                "options": {
+                    "style": "minimal",
+                    "density": "compact",
+                    "layout": "grid",
+                    "columns": 2,
+                    "show_hint": False,
+                },
+            },
+        ],
+        output_path=weekly_daily_update_report_path(session, cfg),
+        dark_shell=True,
+        run_ids=run_ids,
+        enrich_packages=False,
+    )
+    return result.__class__(
+        **{
+            **result.to_dict(),
+            "notes": [*notes, *result.notes],
+        }
+    )
 
 
 def build_weekly_coverage_package(

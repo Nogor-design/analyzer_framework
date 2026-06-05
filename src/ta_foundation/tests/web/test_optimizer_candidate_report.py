@@ -67,6 +67,10 @@ def test_single_candidate_renders_default_sections(fixture_session):
     assert Path(result.html_path).stat().st_size > 50_000  # non-trivial HTML
     assert result.sections_rendered == DEFAULT_FINALIST_SECTIONS
     assert all(not n.startswith("Unknown section id") for n in result.notes)
+    html = Path(result.html_path).read_text(encoding="utf-8")
+    assert "run_executive_profile_cards" in html
+    assert "run_snapshot_clipboard" in html
+    assert "analysis_chart_replica" not in html
 
 
 @needs_fixture

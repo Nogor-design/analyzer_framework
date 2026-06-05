@@ -25,7 +25,10 @@
     <span class="text-amber-400 font-extrabold text-lg tracking-tight">Weekly Coverage</span>
     <span class="text-slate-500 text-sm">/ Pantheon package run</span>
   </div>
-  <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Advanced recipe editor</a>
+  <div class="flex items-center gap-2">
+    <a href="/optimizer/deployment-matrix" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Deployment Matrix (252)</a>
+    <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Advanced recipe editor</a>
+  </div>
 </header>
 
 <main class="max-w-5xl mx-auto p-6 space-y-5">
@@ -35,6 +38,13 @@
         <h1 class="text-xl font-bold text-slate-100">Run the weekly coverage recipe</h1>
         <div class="text-xs text-slate-400 mt-1">
           Fixed grid: 6 time buckets, God/Monster sides, slowMA 20/50/100/200/300/400, target 2 diverse winners per lane.
+        </div>
+        <div class="text-xs text-slate-300 mt-2 leading-relaxed">
+          <span class="text-amber-400 font-semibold">One run, three stages — fully automatic:</span>
+          <span class="text-slate-400">1) broad search (MA / stop / target per lane)
+          → 2) risk-knob refine (max profit / max loss / max trades on each lane winner)
+          → 3) final fixed-backtest validation.</span>
+          You don't open a separate page for the risk stage anymore — it runs inline.
         </div>
       </div>
       <div class="text-right text-xs text-slate-400">
@@ -176,9 +186,52 @@
     </div>
   </details>
 
+  <section class="panel p-5">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-1">
+      <h2 class="text-sm font-bold text-amber-400 uppercase tracking-wider">Risk refinement (auto-chained final stage)</h2>
+      <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+        <input id="auto-refine-risk" type="checkbox" checked class="accent-amber-500 w-4 h-4">
+        Auto-refine ProfitStop / LossStop / MaxTrades on each lane winner
+      </label>
+    </div>
+    <div class="text-[11px] text-slate-500 mb-3">
+      After the broad search picks winners per lane, this second optimizer pass sweeps the three risk knobs
+      (max profit / max loss / max trades) on each winner and keeps the single best-tuned version — so your
+      <b>Templates per bucket</b> count is preserved. Turn it off for a quick structure-only run.
+    </div>
+    <div id="risk-ranges" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">ProfitStop <span class="text-slate-500 font-normal">(max profit · min / max / step)</span></div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="ps-min" type="number" value="1" /><input id="ps-max" type="number" value="1001" /><input id="ps-step" type="number" value="500" />
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">LossStop <span class="text-slate-500 font-normal">(max loss · min / max / step)</span></div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="ls-min" type="number" value="1" /><input id="ls-max" type="number" value="1001" /><input id="ls-step" type="number" value="500" />
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-slate-400 mb-2">MaxTrades <span class="text-slate-500 font-normal">(min / max / step)</span></div>
+        <div class="grid grid-cols-3 gap-2">
+          <input id="mt-min" type="number" value="1" /><input id="mt-max" type="number" value="11" /><input id="mt-step" type="number" value="2" />
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap mt-4 text-xs">
+      <span class="text-slate-400">Keep risk pass under</span>
+      <input id="risk-budget" type="number" value="5000" min="100" step="500" class="w-24" />
+      <span class="text-slate-400">backtests</span>
+      <button type="button" onclick="narrowRiskPass()" class="btn-ghost px-3 py-1.5 rounded font-semibold">Fit ranges</button>
+      <span id="risk-fit-note" class="text-slate-500">Widens the steps (keeps your min/max) so winners × risk combos stays under budget.</span>
+    </div>
+  </section>
+
   <section class="panel p-5 flex items-center justify-between gap-4 flex-wrap">
     <div>
       <div id="scope" class="text-sm font-mono text-slate-200">72 templates x 112 combos = 8,064 backtests (72 lanes)</div>
+      <div id="scope-risk" class="text-xs font-mono text-amber-300/80 mt-0.5"></div>
       <div id="status" class="text-xs text-slate-500 mt-1"></div>
     </div>
     <button id="run-btn" type="button" onclick="runWeekly()" class="btn-primary px-6 py-3 rounded-lg text-sm font-extrabold">
@@ -225,8 +278,12 @@
       <div id="package-links" class="flex flex-wrap gap-2 mt-3 hidden">
         <a id="standard-report-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open standard report</a>
         <a id="report-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open coverage report</a>
-        <a id="refine-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Refine risk params (pick winners)</a>
+        <button id="daily-update-btn" type="button" onclick="buildWeeklyDailyUpdate()" class="btn-ghost px-3 py-2 rounded text-xs">
+          Build daily update
+        </button>
+        <a id="daily-update-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline hidden">Open daily update</a>
         <a id="bundle-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Prune near-identical (category bundle)</a>
+        <a id="refine-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline opacity-70" title="Optional. This run already swept ProfitStop / LossStop / MaxTrades. Use this only to hand-pick winners and re-sweep with different ranges.">Extra manual risk refine (optional)</a>
         <a id="zip-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Download package .zip</a>
       </div>
     </div>
@@ -267,11 +324,72 @@ function updateScope() {
   $("lane-note").textContent =
     `Lanes = ${hours} start hours x 2 directions x ${slowCount} slow-MA = ${lanes}. ` +
     `Stage 1 also sweeps Long/Short enables. Up to ${perBucket} template(s) kept per lane, skipping near-identical shapes.`;
+
+  // Risk-refinement pass estimate: one template per kept lane winner, each
+  // sweeping the three risk knobs. Winners = lanes x perBucket (worst case).
+  const riskOn = $("auto-refine-risk").checked;
+  $("risk-ranges").style.opacity = riskOn ? "1" : "0.4";
+  if (riskOn) {
+    const riskCombos =
+      stepCount(numberValue("ps-min"), numberValue("ps-max"), numberValue("ps-step")) *
+      stepCount(numberValue("ls-min"), numberValue("ls-max"), numberValue("ls-step")) *
+      stepCount(numberValue("mt-min"), numberValue("mt-max"), numberValue("mt-step"));
+    const winners = lanes * perBucket;
+    const riskBacktests = winners * riskCombos;
+    $("scope-risk").textContent =
+      `+ risk pass: up to ${winners.toLocaleString()} winners x ${riskCombos} risk combos = ${riskBacktests.toLocaleString()} backtests`;
+  } else {
+    $("scope-risk").textContent = "risk pass off — ProfitStop / LossStop / MaxTrades stay at seed defaults";
+  }
 }
 
 function stepCount(min, max, step) {
   if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step) || step <= 0 || max < min) return 0;
   return Math.floor((max - min) / step) + 1;
+}
+
+const RISK_KNOBS = [
+  { min: "ps-min", max: "ps-max", step: "ps-step" },
+  { min: "ls-min", max: "ls-max", step: "ls-step" },
+  { min: "mt-min", max: "mt-max", step: "mt-step" },
+];
+
+// Set a knob's step so its min..max range yields ~n inclusive values (keeping
+// the user's min/max). Uses ceil so the resulting count never exceeds n.
+function applyKnobCount(knob, n) {
+  const mn = numberValue(knob.min), mx = numberValue(knob.max);
+  const range = mx - mn;
+  if (range <= 0) return;                       // already a single value
+  if (n <= 1) { $(knob.step).value = range + 1; return; }  // collapse to just min
+  $(knob.step).value = Math.max(1, Math.ceil(range / (n - 1)));
+}
+
+// One-click: widen the three risk steps until winners × risk-combos fits the
+// budget, keeping min/max. Grows resolution greedily and evenly across knobs.
+function narrowRiskPass() {
+  if (!$("auto-refine-risk").checked) {
+    $("risk-fit-note").textContent = "Turn on auto-refine first, then fit ranges.";
+    return;
+  }
+  const lanes = (startHours().length || 1) * 2 * (slowMaValues().length || 1);
+  const winners = Math.max(1, lanes * (numberValue("final-per-lane") || 1));
+  const budget = Math.max(1, numberValue("risk-budget") || 5000);
+  const target = Math.max(1, Math.floor(budget / winners));  // combos allowed per winner
+
+  let counts = [1, 1, 1];
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (let i = 0; i < 3; i++) {
+      const trial = counts.slice();
+      trial[i] += 1;
+      if (trial[0] * trial[1] * trial[2] <= target) { counts = trial; grew = true; }
+    }
+  }
+  RISK_KNOBS.forEach((knob, i) => applyKnobCount(knob, counts[i]));
+  updateScope();
+  $("risk-fit-note").textContent =
+    `Fit to ${winners.toLocaleString()} winners: targeting ≤ ${target} risk combos each.`;
 }
 
 function resetDefaults() {
@@ -435,6 +553,16 @@ async function runWeekly() {
       max_tp_ratio_min: numberValue("tp-min"),
       max_tp_ratio_max: numberValue("tp-max"),
       max_tp_ratio_step: numberValue("tp-step"),
+      auto_refine_risk: $("auto-refine-risk").checked,
+      profit_stop_min: numberValue("ps-min"),
+      profit_stop_max: numberValue("ps-max"),
+      profit_stop_step: numberValue("ps-step"),
+      loss_stop_min: numberValue("ls-min"),
+      loss_stop_max: numberValue("ls-max"),
+      loss_stop_step: numberValue("ls-step"),
+      max_trades_min: numberValue("mt-min"),
+      max_trades_max: numberValue("mt-max"),
+      max_trades_step: numberValue("mt-step"),
     };
     const data = await fetchJSON("/api/optimizer/weekly-coverage/run", {
       method: "POST",
@@ -574,7 +702,13 @@ async function pollStatus(sid) {
   }
   const pct = (prog.percent != null) ? ` — ${prog.percent}%` : "";
   const done = (prog.completed_templates != null) ? ` (${prog.completed_templates} templates done)` : "";
-  el.textContent = `Run in progress: ${st}${stage ? ` / ${stage}` : ""}${pct}${done}. Build unlocks automatically when final backtests are ingested.`;
+  const stageLabel = stage
+    ? (stage === "stage_1" ? "1/3 broad search"
+       : stage.startsWith("refine_risk") ? "2/3 risk-knob refine (max profit / loss / trades)"
+       : stage === "final_backtest" || stage.startsWith("refine_final") ? "3/3 final validation"
+       : stage)
+    : "";
+  el.textContent = `Run in progress: ${st}${stageLabel ? ` — ${stageLabel}` : ""}${pct}${done}. Build unlocks automatically when final backtests are ingested.`;
   el.className = "text-xs rounded px-3 py-2 mb-4 bg-slate-800/60 text-slate-300";
   STATUS_TIMER = setTimeout(() => pollStatus(sid), 7000);
 }
@@ -602,6 +736,8 @@ async function buildWeeklyPackage() {
     $("zip-link").href = r.zip_url || `/optimizer/sessions/${info.session_id}/weekly-coverage-package.zip`;
     $("bundle-link").href = data.category_bundle_url || `/optimizer/sessions/${info.session_id}/category-bundle`;
     $("refine-link").href = `/optimizer/sessions/${info.session_id}/refine`;
+    $("daily-update-link").href = `/optimizer/sessions/${info.session_id}/weekly-daily-update-report`;
+    $("daily-update-link").classList.add("hidden");
 
     // The standard session candidate report is built automatically when the
     // recipe completes — link to it (no slow rebuild). Hide if not present yet.
@@ -628,12 +764,41 @@ async function buildWeeklyPackage() {
   }
 }
 
+async function buildWeeklyDailyUpdate() {
+  const info = loadLastRun();
+  if (!info || !info.session_id) {
+    $("package-status").textContent = "No remembered run to build from. Run a weekly coverage first.";
+    return;
+  }
+  const btn = $("daily-update-btn");
+  btn.disabled = true;
+  const sid = encodeURIComponent(info.session_id);
+  $("package-status").textContent = "Building daily update from the shipped weekly package...";
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${sid}/weekly-daily-update-report`, {
+      method: "POST", body: JSON.stringify({}),
+    });
+    const r = data.result || {};
+    const url = data.report_url || `/optimizer/sessions/${info.session_id}/weekly-daily-update-report`;
+    $("daily-update-link").href = url;
+    $("daily-update-link").classList.remove("hidden");
+    const notes = (r.notes || []).slice(0, 3).join(" ");
+    $("package-status").textContent =
+      `Built daily update for ${r.package_count || 0} shipped template(s). ${notes}`;
+  } catch (err) {
+    $("package-status").textContent = `Daily update failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 $("strategy").addEventListener("change", (event) => loadSeeds(event.target.value).catch((err) => {
   $("seed-note").textContent = err.message;
 }));
-["fast-min","fast-max","fast-step","stop-min","stop-max","stop-step","tp-min","tp-max","tp-step","slow-ma-values","start-hours","duration-hours","final-per-lane"].forEach((id) => {
+["fast-min","fast-max","fast-step","stop-min","stop-max","stop-step","tp-min","tp-max","tp-step","slow-ma-values","start-hours","duration-hours","final-per-lane","ps-min","ps-max","ps-step","ls-min","ls-max","ls-step","mt-min","mt-max","mt-step"].forEach((id) => {
   $(id).addEventListener("input", updateScope);
 });
+$("auto-refine-risk").addEventListener("change", updateScope);
 
 updateScope();
 renderLastRun(loadLastRun());

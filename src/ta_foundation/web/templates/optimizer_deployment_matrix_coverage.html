@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Deployment Matrix Coverage</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .pathish { overflow-wrap:anywhere; word-break:break-word; font-family:ui-monospace,Menlo,Consolas,monospace; }
+    .chip { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+    a { color:#fbbf24; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/sessions" class="text-slate-400 text-xs no-underline">&larr; Sessions</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Deployment Matrix Coverage</span>
+    <span class="text-slate-500 text-sm pathish">/ {{ session_id }}</span>
+  </div>
+  <a href="/optimizer/sessions/{{ session_id }}/resume" class="text-xs no-underline">Open session &rarr;</a>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+  <section class="panel p-5">
+    <h1 class="text-lg font-bold text-slate-100">252-cell coverage</h1>
+    <div class="flex flex-wrap items-center gap-3 mt-3 text-sm">
+      <span class="chip" style="background:#14532d;color:#bbf7d0;">covered {{ covered }}</span>
+      <span class="chip" style="background:#7c2d12;color:#fed7aa;">fallback {{ fallback }}</span>
+      <span class="chip" style="background:#7f1d1d;color:#fecaca;">missing {{ missing }}</span>
+      <span class="text-slate-400">of {{ total }} cells</span>
+    </div>
+    <div class="text-[11px] text-slate-400 mt-3 leading-relaxed">
+      Each cell holds the best template for that (session x single/multi x MA tier x god/monster) slot.
+      Names are computed by the canonical <span class="pathish">template_naming</span> rules, so single/multi
+      reflects effective trades after the ProfitStop/LossStop guardrails. <span class="text-amber-300">Fallback</span>
+      cells borrow the nearest same-side template so the pool is always full.
+    </div>
+    <div class="mt-3">
+      <a class="text-xs" href="/api/optimizer/sessions/{{ session_id }}/deployment-matrix/manifest?write=1" target="_blank">Download/write manifest (json + csv)</a>
+    </div>
+  </section>
+
+  <section class="panel p-5 overflow-x-auto">
+    {{ grid_html | safe }}
+  </section>
+</main>
+</body>
+</html>

@@ -1096,6 +1096,10 @@ def create_app() -> "Flask":
     def optimizer_weekly_coverage_page():
         return render_template("optimizer_weekly_coverage.html")
 
+    @app.route("/optimizer/deployment-matrix")
+    def optimizer_deployment_matrix_page():
+        return render_template("optimizer_deployment_matrix.html")
+
     @app.route("/optimizer/sessions/<session_id>")
     def optimizer_session_detail_page(session_id: str):
         from ta_foundation.web.optimizer_session import get_session
@@ -1483,7 +1487,10 @@ def create_app() -> "Flask":
     def optimizer_final_report_builder_page(session_id: str):
         from flask import abort
         from ta_foundation.web.optimizer_candidate_report import group_sections_by_bucket
-        from ta_foundation.web.optimizer_report_config import load_final_report_config
+        from ta_foundation.web.optimizer_report_config import (
+            final_report_presets,
+            load_final_report_config,
+        )
         from ta_foundation.web.optimizer_session import get_session
 
         session = get_session(session_id)
@@ -1500,6 +1507,7 @@ def create_app() -> "Flask":
             "optimizer_final_report_builder.html",
             session=doc.to_dict(),
             config=config,
+            presets=final_report_presets(),
             buckets=group_sections_by_bucket(default_sections=default_sections),
             report_url=f"/optimizer/sessions/{session_id}/candidate-report",
             post_url=f"/api/optimizer/sessions/{session_id}/candidate-session-report",
@@ -1624,6 +1632,7 @@ def create_app() -> "Flask":
             load_final_report_config,
             save_final_report_config,
             sections_from_final_report_config,
+            sections_from_preset,
         )
 
         session = get_session(session_id)
@@ -1633,7 +1642,25 @@ def create_app() -> "Flask":
         try:
             if isinstance(payload.get("sections"), list):
                 config_payload = {
+                    "preset_id": payload.get("preset_id") or "custom",
                     "sections": payload.get("sections"),
+                    "output_filename": (
+                        payload.get("output_filename") or "session_candidate_report.html"
+                    ),
+                    "auto_build_on_recipe_complete": payload.get(
+                        "auto_build_on_recipe_complete",
+                        True,
+                    ),
+                }
+                config = (
+                    save_final_report_config(session, config_payload)
+                    if payload.get("save", True)
+                    else config_payload
+                )
+            elif payload.get("preset_id"):
+                config_payload = {
+                    "preset_id": payload.get("preset_id"),
+                    "sections": sections_from_preset(str(payload.get("preset_id"))),
                     "output_filename": (
                         payload.get("output_filename") or "session_candidate_report.html"
                     ),
@@ -1706,6 +1733,38 @@ def create_app() -> "Flask":
             "standard_report_exists": std_report.exists(),
             "standard_report_url": f"/optimizer/sessions/{session_id}/candidate-report",
             "category_bundle_url": f"/optimizer/sessions/{session_id}/category-bundle",
+        })
+
+    @app.route(
+        "/api/optimizer/sessions/<session_id>/weekly-daily-update-report",
+        methods=["POST"],
+    )
+    def api_optimizer_weekly_daily_update_report(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            WeeklyCoverageConfig,
+            WeeklyCoveragePackageError,
+            build_weekly_daily_update_report,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        try:
+            result = build_weekly_daily_update_report(
+                session,
+                config=WeeklyCoverageConfig.from_session(session, payload),
+                include_fallbacks=bool(payload.get("include_fallbacks", False)),
+                target_date=payload.get("target_date") or None,
+            )
+        except WeeklyCoveragePackageError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected daily update report build error: {exc}"}), 500
+        return jsonify({
+            "result": result.to_dict(),
+            "report_url": f"/optimizer/sessions/{session_id}/weekly-daily-update-report",
         })
 
     @app.route("/api/optimizer/sessions/<session_id>/category-bundle", methods=["GET"])
@@ -1850,6 +1909,46 @@ def create_app() -> "Flask":
             "total_combinations": prep.total_combinations,
             "pinned_params": prep.pinned_params,
         })
+
+    @app.route("/api/optimizer/sessions/<session_id>/weekly-coverage/lanes", methods=["GET"])
+    def api_optimizer_weekly_coverage_lanes(session_id: str):
+        """Return the lane-coverage grid (bucket x side x slowMA) the weekly
+        package writes, so the refine page can show what is already covered."""
+        import csv as _csv
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_coverage_package_dir,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        lanes_path = (
+            weekly_coverage_package_dir(session) / "data"
+            / "operationally_diverse_lane_coverage.csv"
+        )
+        if not lanes_path.exists():
+            return jsonify({"lanes": [], "built": False})
+        def _as_int(value: Any) -> int:
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return 0
+
+        rows: list[dict] = []
+        with lanes_path.open(newline="", encoding="utf-8-sig") as handle:
+            for row in _csv.DictReader(handle):
+                rows.append({
+                    "bucket": row.get("bucket", ""),
+                    "side": row.get("side", ""),
+                    "slowMA": row.get("slowMA", ""),
+                    "naming_family": row.get("naming_family", ""),
+                    "validated": _as_int(row.get("operationally_diverse_count")),
+                    "fallback": _as_int(row.get("fallback_count")),
+                    "passed": _as_int(row.get("passed_count")),
+                    "run_ids": row.get("operationally_diverse_run_ids", ""),
+                })
+        return jsonify({"lanes": rows, "built": True})
 
     @app.route("/optimizer/sessions/<session_id>/refine", methods=["GET"])
     def optimizer_refine_page(session_id: str):
@@ -2081,6 +2180,22 @@ def create_app() -> "Flask":
         if session is None:
             return abort(404)
         html_path = weekly_coverage_report_path(session)
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-daily-update-report")
+    def optimizer_weekly_daily_update_report_page(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_daily_update_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = weekly_daily_update_report_path(session)
         if not html_path.exists():
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
@@ -2353,6 +2468,83 @@ def create_app() -> "Flask":
         )
         return jsonify({"session": session.load_document().to_dict()})
 
+    @app.route("/api/optimizer/edge-confirm/run", methods=["POST"])
+    def api_optimizer_edge_confirm_run():
+        """Route a discovered edge into a StrategyDiscoveryFilter confirmation run.
+
+        Body: either ``edge`` (an EdgeSpec dict) or ``discovery`` (a
+        strategy_discovery dict) plus optional ``run_id`` / ``timeframe_minutes``
+        / ``timing_mode``; ``instrument``, ``from_date``, ``to_date``, ``label``.
+
+        SAFE BY DEFAULT: only assembles + persists the seed/session/recipe/plan
+        and returns the plan for review. Pass ``"start": true`` to actually
+        dispatch to NinjaTrader — do NOT do this while another NT optimization
+        is running.
+        """
+        from ta_foundation.analysis.strategy_discovery.edge_spec import (
+            EdgeSpec,
+            edge_spec_from_discovery,
+        )
+        from ta_foundation.web.optimizer_recipe_from_edge import prepare_confirmation_session
+
+        payload = request.get_json(silent=True) or {}
+
+        edge = None
+        if payload.get("edge"):
+            try:
+                edge = EdgeSpec(**payload["edge"])
+            except TypeError as exc:
+                return jsonify({"error": f"invalid edge spec: {exc}"}), 400
+        elif payload.get("discovery"):
+            edge = edge_spec_from_discovery(
+                payload["discovery"],
+                run_id=str(payload.get("run_id") or ""),
+                timeframe_minutes=_payload_int(payload, "timeframe_minutes", 1),
+                timing_mode=str(payload.get("timing_mode") or "next_open"),
+            )
+
+        if edge is None:
+            return jsonify({
+                "error": "No confirmable edge. Provide 'edge' (EdgeSpec) or a "
+                         "'discovery' result containing a candle structure rule."
+            }), 400
+
+        instrument = str(payload.get("instrument") or "NQ 06-26").strip() or "NQ 06-26"
+        start = bool(payload.get("start") or False)
+        try:
+            prepared = prepare_confirmation_session(
+                edge,
+                instrument=instrument,
+                market_suffix=str(payload.get("market_suffix") or "NQ").strip() or "NQ",
+                from_date=(payload.get("from_date") or "").strip() or None,
+                to_date=(payload.get("to_date") or "").strip() or None,
+                label=(payload.get("label") or "").strip() or None,
+                start=start,
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        session = prepared["session"]
+        return jsonify({
+            "edge": edge.to_dict(),
+            "session": session.load_document().to_dict(),
+            "recipe": prepared["recipe"].to_dict(),
+            "plan": prepared["plan"].to_dict(),
+            "started": prepared["started"],
+            "status": prepared["status"],
+            "seed_path": prepared["seed_path"],
+            "urls": {
+                "session": f"/optimizer/sessions/{session.id}",
+                "resume": f"/optimizer/sessions/{session.id}/resume",
+            },
+            "note": (
+                "Dispatched to NinjaTrader."
+                if start else
+                "Prepared but NOT started (start=false). Review the plan, then "
+                "POST again with start=true to dispatch."
+            ),
+        })
+
     @app.route("/api/optimizer/weekly-coverage/run", methods=["POST"])
     def api_optimizer_weekly_coverage_run():
         from ta_foundation.web.optimizer_recipe import save_recipe
@@ -2416,6 +2608,16 @@ def create_app() -> "Flask":
             max_tp_ratio_min=_payload_number(payload, "max_tp_ratio_min", 0.5),
             max_tp_ratio_max=_payload_number(payload, "max_tp_ratio_max", 2.0),
             max_tp_ratio_step=_payload_number(payload, "max_tp_ratio_step", 0.5),
+            auto_refine_risk=bool(payload.get("auto_refine_risk", True)),
+            profit_stop_min=_payload_number(payload, "profit_stop_min", 1),
+            profit_stop_max=_payload_number(payload, "profit_stop_max", 1001),
+            profit_stop_step=_payload_number(payload, "profit_stop_step", 500),
+            loss_stop_min=_payload_number(payload, "loss_stop_min", 1),
+            loss_stop_max=_payload_number(payload, "loss_stop_max", 1001),
+            loss_stop_step=_payload_number(payload, "loss_stop_step", 500),
+            max_trades_min=_payload_number(payload, "max_trades_min", 1),
+            max_trades_max=_payload_number(payload, "max_trades_max", 11),
+            max_trades_step=_payload_number(payload, "max_trades_step", 2),
         )
         try:
             save_recipe(session, recipe)
@@ -2443,6 +2645,220 @@ def create_app() -> "Flask":
             samesite="Lax",
         )
         return response
+
+    @app.route("/api/optimizer/deployment-matrix/preview", methods=["GET"])
+    def api_optimizer_deployment_matrix_preview():
+        """Summarise the fixed 252-cell grid from naming_rules.json so the launcher
+        page can show what a run will cover before anything is dispatched."""
+        from ta_foundation.web.optimizer_deployment_matrix import (
+            load_naming_rules,
+            session_timeboxes,
+            tier_slow_values,
+        )
+
+        try:
+            rules = load_naming_rules()
+        except Exception as exc:
+            return jsonify({"error": f"could not load naming rules: {exc}"}), 400
+
+        timeboxes = session_timeboxes(rules)
+        tiers = [
+            {"tier_index": i, "god": t.get("god"), "monster": t.get("monster"),
+             "minimum": t.get("minimum"), "maximum": t.get("maximum")}
+            for i, t in enumerate(rules.get("ma_tiers", []), start=1)
+        ]
+        slow_values = tier_slow_values(rules)
+        sessions = [
+            {
+                "session": tb["session"],
+                "start": f"{int(tb['start_h']):02d}:{int(tb['start_m']):02d}",
+                "duration": f"{int(tb['dur_h']):02d}:{int(tb['dur_m']):02d}",
+            }
+            for tb in timeboxes
+        ]
+        n_sessions, n_tiers = len(sessions), len(tiers)
+        return jsonify({
+            "sessions": sessions,
+            "tiers": tiers,
+            "slow_ma_values": slow_values,
+            "sides": ["god", "monster"],
+            "single_multi": ["single", "multi"],
+            "counts": {
+                "sessions": n_sessions,
+                "tiers": n_tiers,
+                "sides": 2,
+                "single_multi": 2,
+                "root_lanes": n_sessions * 2 * n_tiers,          # session x reverse x tier
+                "final_cells": n_sessions * 2 * n_tiers * 2,     # x single/multi
+            },
+        })
+
+    @app.route("/api/optimizer/deployment-matrix/run", methods=["POST"])
+    def api_optimizer_deployment_matrix_run():
+        """Build a deployment-matrix session, recipe, and plan.
+
+        SAFE BY DEFAULT: nothing is dispatched to NinjaTrader. The full 252-cell
+        run is large, so the launcher builds + previews the plan and the operator
+        explicitly dispatches afterwards. Pass ``"start": true`` to dispatch stage 1
+        immediately (do NOT do this while another NT optimization is running)."""
+        from ta_foundation.web.optimizer_deployment_matrix import (
+            build_deployment_matrix_recipe,
+            load_naming_rules,
+        )
+        from ta_foundation.web.optimizer_recipe import save_recipe
+        from ta_foundation.web.optimizer_recipe_orchestrator import RecipeRunOrchestrator
+        from ta_foundation.web.optimizer_recipe_plan import build_and_save_recipe_plan
+        from ta_foundation.web.optimizer_session import create_session
+
+        payload = request.get_json(silent=True) or {}
+        strategy_id = str(payload.get("strategy_id") or "").strip()
+        seed_template_path = str(payload.get("seed_template_path") or "").strip()
+        if not strategy_id:
+            return jsonify({"error": "Pick a strategy first."}), 400
+        if not seed_template_path:
+            return jsonify({"error": "Pick a seed template first."}), 400
+
+        instrument = str(payload.get("instrument") or "NQ 06-26").strip() or "NQ 06-26"
+        market_suffix = str(payload.get("market_suffix") or "NQ").strip() or "NQ"
+        label = str(payload.get("label") or "Deployment Matrix").strip() or "Deployment Matrix"
+
+        try:
+            rules = load_naming_rules()
+        except Exception as exc:
+            return jsonify({"error": f"could not load naming rules: {exc}"}), 400
+
+        max_trades_values = _payload_int_list(payload, "max_trades_values", [1, 3, 5, 10])
+        recipe = build_deployment_matrix_recipe(
+            strategy_id=strategy_id,
+            recipe_name=label,
+            rules=rules,
+            average_fast=_payload_number(payload, "average_fast", 5),
+            max_stop=(
+                _payload_number(payload, "max_stop_min", 50),
+                _payload_number(payload, "max_stop_max", 350),
+                _payload_number(payload, "max_stop_step", 50),
+            ),
+            max_tp_ratio=(
+                _payload_number(payload, "max_tp_ratio_min", 0.5),
+                _payload_number(payload, "max_tp_ratio_max", 2.0),
+                _payload_number(payload, "max_tp_ratio_step", 0.5),
+            ),
+            profit_stop=(
+                _payload_number(payload, "profit_stop_min", 1),
+                _payload_number(payload, "profit_stop_max", 1001),
+                _payload_number(payload, "profit_stop_step", 500),
+            ),
+            loss_stop=(
+                _payload_number(payload, "loss_stop_min", 1),
+                _payload_number(payload, "loss_stop_max", 1001),
+                _payload_number(payload, "loss_stop_step", 500),
+            ),
+            max_trades=tuple(max_trades_values) or (1, 3, 5, 10),
+            refine_selection_min_trades=_payload_int(payload, "refine_selection_min_trades", 0),
+        )
+
+        session = create_session(
+            label=label,
+            strategy_id=strategy_id,
+            seed_template_path=seed_template_path,
+            instrument=instrument,
+            market_suffix=market_suffix,
+        )
+        session.update(
+            oos_from_date=str(payload.get("start_date") or ""),
+            oos_to_date=str(payload.get("end_date") or ""),
+        )
+
+        try:
+            save_recipe(session, recipe)
+            plan = build_and_save_recipe_plan(session)
+        except Exception as exc:
+            return jsonify({"error": str(exc), "session": session.load_document().to_dict()}), 400
+
+        start_requested = bool(payload.get("start", False))
+        status = None
+        if start_requested:
+            try:
+                status = RecipeRunOrchestrator(session).start()
+            except Exception as exc:
+                return jsonify({
+                    "error": f"plan built but dispatch failed: {exc}",
+                    "session": session.load_document().to_dict(),
+                    "plan": plan.to_dict(),
+                    "dispatched": False,
+                }), 400
+
+        response = jsonify({
+            "session": session.load_document().to_dict(),
+            "recipe": recipe,
+            "plan": plan.to_dict(),
+            "dispatched": start_requested,
+            "status": status,
+            "urls": {
+                "session": f"/optimizer/sessions/{session.id}",
+                "resume": f"/optimizer/sessions/{session.id}/resume",
+            },
+        })
+        response.set_cookie(
+            _OPTIMIZER_COOKIE,
+            session.id,
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite="Lax",
+        )
+        return response
+
+    @app.route("/optimizer/sessions/<session_id>/deployment-matrix/coverage")
+    def optimizer_deployment_matrix_coverage_page(session_id: str):
+        from ta_foundation.web.optimizer_deployment_matrix import load_naming_rules
+        from ta_foundation.web.optimizer_deployment_matrix_manifest import render_coverage_grid_html
+        from ta_foundation.web.optimizer_deployment_matrix_session import (
+            build_session_deployment_manifest,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return ("session not found", 404)
+        rules = load_naming_rules()
+        manifest = build_session_deployment_manifest(session, rules)
+        grid_html = render_coverage_grid_html(manifest, rules)
+        return render_template(
+            "optimizer_deployment_matrix_coverage.html",
+            session_id=session_id,
+            covered=manifest["covered"],
+            fallback=manifest.get("fallback", 0),
+            missing=manifest["missing"],
+            total=manifest["total"],
+            grid_html=grid_html,
+        )
+
+    @app.route("/api/optimizer/sessions/<session_id>/deployment-matrix/manifest", methods=["GET"])
+    def api_optimizer_deployment_matrix_manifest(session_id: str):
+        from ta_foundation.web.optimizer_deployment_matrix_manifest import write_manifest
+        from ta_foundation.web.optimizer_deployment_matrix_session import (
+            build_session_deployment_manifest,
+        )
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        # Predictor-facing export: compute the (expensive) quality features unless
+        # explicitly skipped with ?features=0.
+        with_features = str(request.args.get("features") or "1") not in {"0", "false", "no"}
+        manifest = build_session_deployment_manifest(session, with_features=with_features)
+        out: dict[str, Any] = {
+            "total": manifest["total"],
+            "covered": manifest["covered"],
+            "fallback": manifest.get("fallback", 0),
+            "missing": manifest["missing"],
+            "cells": manifest["cells"],
+        }
+        if str(request.args.get("write") or "") in {"1", "true", "yes"}:
+            paths = write_manifest(manifest, session.directory / "deployment_matrix")
+            out["written"] = {k: str(v) for k, v in paths.items()}
+        return jsonify(out)
 
     @app.route("/api/optimizer/weekly-coverage/recent", methods=["GET"])
     def api_optimizer_weekly_coverage_recent():
@@ -2542,12 +2958,55 @@ def create_app() -> "Flask":
         max_tp_ratio_min: float,
         max_tp_ratio_max: float,
         max_tp_ratio_step: float,
+        auto_refine_risk: bool = True,
+        profit_stop_min: float = 1,
+        profit_stop_max: float = 1001,
+        profit_stop_step: float = 500,
+        loss_stop_min: float = 1,
+        loss_stop_max: float = 1001,
+        loss_stop_step: float = 500,
+        max_trades_min: float = 1,
+        max_trades_max: float = 11,
+        max_trades_step: float = 2,
     ) -> dict:
         safe_name = "".join(ch.lower() if ch.isalnum() else "_" for ch in recipe_name).strip("_")
         recipe_id = f"rec_{safe_name or 'weekly_coverage'}"
         slow_ma_values = sorted({int(v) for v in slow_ma_values if int(v) >= 0}) or [20, 50, 100, 200, 300, 400]
         start_hours = sorted({int(v) for v in start_hours if 0 <= int(v) <= 23}) or [0, 4, 8, 12, 16, 20]
         duration_hours = max(1, int(duration_hours))
+
+        # Structural params the broad search (stage_1) determines per lane. The
+        # auto-chained risk pass must PIN every one of these so each lane winner
+        # keeps its exact structure while only the risk knobs sweep — otherwise a
+        # non-pinned param would silently fall back to the seed default.
+        structural_pins = [
+            "StartTimeH", "DurationTimeH", "Reverse", "averageSlow",
+            "averageFast", "MaxStop", "MaxTPRatio", "Long", "Short",
+        ]
+        # Risk pass: from each lane winner, sweep only ProfitStop/LossStop/MaxTrades
+        # and keep exactly ONE tuned variant per winner (group_by parent_candidate_id,
+        # keep 1). Because stage_1 already kept `final_per_lane` winners per lane,
+        # this preserves the operator's per-bucket count end-to-end. The final
+        # fixed-backtest then validates those rows 1:1 (risk-refine source path).
+        refine_risk_stage = {
+            "stage_id": "refine_risk",
+            "stage_type": "optimizer",
+            "from": "stage_1.selected_rows",
+            "description": "Auto-refine risk knobs (ProfitStop / LossStop / MaxTrades) on each lane winner.",
+            "pin": list(structural_pins),
+            "optimize_inside_template": {
+                "ProfitStop": {"min": profit_stop_min, "max": profit_stop_max, "step": profit_stop_step},
+                "LossStop": {"min": loss_stop_min, "max": loss_stop_max, "step": loss_stop_step},
+                "MaxTrades": {"min": max_trades_min, "max": max_trades_max, "step": max_trades_step},
+            },
+            "selection": {
+                "group_by": ["parent_candidate_id"],
+                "keep_per_group": 1,
+                "fitness_metrics": ["profit_factor", "total_net_profit"],
+            },
+        }
+        final_from = "refine_risk.selected_rows" if auto_refine_risk else "stage_1.selected_rows"
+        middle_stages = [refine_risk_stage] if auto_refine_risk else []
         return {
             "recipe_version": 1,
             "mode": "matrix_sequence",
@@ -2610,10 +3069,11 @@ def create_app() -> "Flask":
                         "min_net_profit": min_net_profit,
                     },
                 },
+                *middle_stages,
                 {
                     "stage_id": "final_backtest",
                     "stage_type": "fixed_backtest",
-                    "from": "stage_1.selected_rows",
+                    "from": final_from,
                     "finalists_per_bucket": max(1, final_per_lane),
                     "description": "Final fixed Backtest validation",
                 },

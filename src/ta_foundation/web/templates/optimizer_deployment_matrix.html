@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Deployment Matrix</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    input, select { background:#0f172a; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:7px 10px; font-size:13px; }
+    input:focus, select:focus { outline:none; border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,.18); }
+    .btn-primary { background:#f59e0b; color:#0f172a; transition:all .15s; }
+    .btn-primary:hover { background:#fbbf24; }
+    .btn-danger { background:#dc2626; color:#fff; transition:all .15s; }
+    .btn-danger:hover { background:#ef4444; }
+    .btn-ghost { border:1px solid #334155; color:#cbd5e1; transition:all .15s; }
+    .btn-ghost:hover { border-color:#f59e0b; color:#fcd34d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .pathish { overflow-wrap:anywhere; word-break:break-word; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    .lbl { font-size:11px; color:#94a3b8; margin-bottom:3px; display:block; }
+    .grid-cell { border:1px solid #334155; padding:3px 5px; text-align:center; font-size:11px; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/sessions" class="text-slate-400 hover:text-amber-400 text-xs no-underline">&larr; Sessions</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Deployment Matrix</span>
+    <span class="text-slate-500 text-sm">/ 252 named templates for the daily pool</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="/optimizer/weekly-coverage" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Weekly Coverage</a>
+    <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Advanced recipe editor</a>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto p-6 space-y-5">
+  <section class="panel p-5">
+    <h1 class="text-xl font-bold text-slate-100">Build the deployment-matrix pool</h1>
+    <div class="text-xs text-slate-300 mt-2 leading-relaxed">
+      Produces the fixed <span class="text-amber-400 font-semibold">252-cell</span> pool
+      (<span id="dims" class="text-slate-200">7 sessions x 2 single/multi x 9 MA tiers x 2 god/monster</span>)
+      &mdash; the best template per cell &mdash; for the daily-prediction tool. Sessions, tiers, and names
+      come from <span class="pathish text-slate-400">D:\templateNaming\naming_rules.json</span>.
+      Sibling to Weekly Coverage; it does not change it.
+    </div>
+    <div class="text-[11px] text-amber-300/90 mt-2">
+      Safe by default: <span class="font-semibold">Build &amp; preview</span> only writes a session, recipe, and plan.
+      Nothing hits NinjaTrader until you explicitly dispatch.
+    </div>
+  </section>
+
+  <section class="panel p-5 space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="lbl">Strategy</label>
+        <select id="strategy" class="w-full"><option value="">Loading strategies...</option></select>
+      </div>
+      <div>
+        <label class="lbl">Seed template</label>
+        <select id="seed" class="w-full" disabled><option value="">Pick a strategy first</option></select>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div id="seed-note" class="text-[11px] text-slate-500 pathish flex-1"></div>
+      <button id="regenerate-seed-btn" type="button" onclick="regenerateSeed()" class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold" disabled>Generate seed</button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div><label class="lbl">Instrument</label><input id="instrument" value="NQ 06-26" class="w-full" /></div>
+      <div><label class="lbl">Market suffix</label><input id="market_suffix" value="NQ" class="w-full" /></div>
+      <div><label class="lbl">Start date (OOS)</label><input id="start_date" type="date" class="w-full" /></div>
+      <div><label class="lbl">End date (OOS)</label><input id="end_date" type="date" class="w-full" /></div>
+    </div>
+
+    <details class="mt-1">
+      <summary class="text-xs text-amber-400 cursor-pointer">Sweep ranges (structural + risk knobs)</summary>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+        <div><label class="lbl">averageFast (fixed)</label><input id="average_fast" type="number" value="5" class="w-full" /></div>
+        <div><label class="lbl">MaxStop min/max/step</label>
+          <div class="flex gap-1"><input id="max_stop_min" type="number" value="50" class="w-full" /><input id="max_stop_max" type="number" value="350" class="w-full" /><input id="max_stop_step" type="number" value="50" class="w-full" /></div>
+        </div>
+        <div><label class="lbl">MaxTPRatio min/max/step</label>
+          <div class="flex gap-1"><input id="max_tp_ratio_min" type="number" step="0.1" value="0.5" class="w-full" /><input id="max_tp_ratio_max" type="number" step="0.1" value="2.0" class="w-full" /><input id="max_tp_ratio_step" type="number" step="0.1" value="0.5" class="w-full" /></div>
+        </div>
+        <div><label class="lbl">MaxTrades values (csv)</label><input id="max_trades_values" value="1, 3, 5, 10" class="w-full" /></div>
+        <div><label class="lbl">ProfitStop min/max/step</label>
+          <div class="flex gap-1"><input id="profit_stop_min" type="number" value="1" class="w-full" /><input id="profit_stop_max" type="number" value="1001" class="w-full" /><input id="profit_stop_step" type="number" value="500" class="w-full" /></div>
+        </div>
+        <div><label class="lbl">LossStop min/max/step</label>
+          <div class="flex gap-1"><input id="loss_stop_min" type="number" value="1" class="w-full" /><input id="loss_stop_max" type="number" value="1001" class="w-full" /><input id="loss_stop_step" type="number" value="500" class="w-full" /></div>
+        </div>
+      </div>
+    </details>
+
+    <div class="flex items-center gap-3 pt-1">
+      <button id="build-btn" onclick="run(false)" class="btn-primary px-4 py-2 rounded text-sm font-semibold">Build &amp; preview (no NT)</button>
+      <button id="dispatch-btn" onclick="run(true)" class="btn-danger px-4 py-2 rounded text-sm font-semibold">Build &amp; dispatch to NinjaTrader</button>
+      <div id="status" class="text-xs text-slate-400 flex-1"></div>
+    </div>
+  </section>
+
+  <section class="panel p-5">
+    <h2 class="text-sm font-semibold text-slate-200 mb-2">Coverage target (from naming_rules.json)</h2>
+    <div id="preview" class="text-xs text-slate-400">Loading grid...</div>
+  </section>
+
+  <section id="result" class="panel p-5 hidden">
+    <h2 class="text-sm font-semibold text-slate-200 mb-2">Result</h2>
+    <div id="result-body" class="text-xs text-slate-300 space-y-1"></div>
+  </section>
+</main>
+
+<script>
+const SEED_DIR = ".ta_artifacts/web_optimizer/recipe_seeds";
+const $ = (id) => document.getElementById(id);
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+  return data;
+}
+
+async function loadStrategies() {
+  const data = await fetchJSON("/api/optimizer/strategies");
+  const sel = $("strategy");
+  sel.innerHTML = '<option value="">- pick a strategy -</option>';
+  (data.strategies || []).forEach((s) => {
+    const opt = document.createElement("option");
+    opt.value = s.strategy_id;
+    opt.textContent = `${s.strategy_id} (${s.seed_template_count || 0} seeds)`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadSeeds(strategyId) {
+  const seed = $("seed");
+  seed.disabled = true;
+  seed.innerHTML = '<option value="">Loading seeds...</option>';
+  $("seed-note").textContent = "";
+  $("regenerate-seed-btn").disabled = !strategyId;
+  if (!strategyId) { seed.innerHTML = '<option value="">Pick a strategy first</option>'; return; }
+  const [projectDetail, defaultDetail] = await Promise.all([
+    fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}?template_dir=${encodeURIComponent(SEED_DIR)}`).catch(() => ({ seed_templates: [] })),
+    fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}`).catch(() => ({ seed_templates: [] })),
+  ]);
+  seed.innerHTML = '<option value="">- pick a seed -</option>';
+  let first = "";
+  const seen = new Set();
+  [...(projectDetail.seed_templates || []).map((t) => ({ ...t, _src: "seed store" })),
+   ...(defaultDetail.seed_templates || []).map((t) => ({ ...t, _src: "NT templates" }))].forEach((t) => {
+    if (!t.path || seen.has(t.path)) return;
+    seen.add(t.path);
+    const valid = !Array.isArray(t.seed_issues) || t.seed_issues.length === 0;
+    if (valid && !first) first = t.path;
+    const opt = document.createElement("option");
+    opt.value = t.path;
+    opt.textContent = valid ? `${t.name} (${t._src})` : `${t.name} (${t.seed_issues.join(", ")})`;
+    seed.appendChild(opt);
+  });
+  seed.disabled = !first;
+  if (first) seed.value = first;
+  $("seed-note").textContent = first ? `Selected seed: ${first}` : "No seed found. Click Generate seed.";
+}
+
+async function regenerateSeed() {
+  const strategyId = $("strategy").value;
+  if (!strategyId) return;
+  const btn = $("regenerate-seed-btn");
+  btn.disabled = true;
+  $("status").textContent = "Generating a recipe seed outside the NinjaTrader template folder...";
+  try {
+    const data = await fetchJSON(`/api/optimizer/strategies/${encodeURIComponent(strategyId)}/regenerate-seed`, {
+      method: "POST", body: JSON.stringify({ template_dir: SEED_DIR, instrument: $("instrument").value }),
+    });
+    await loadSeeds(strategyId);
+    const newPath = data && data.seed && data.seed.path;
+    if (newPath) {
+      const match = Array.from($("seed").options).find((o) => o.value === newPath);
+      if (match) $("seed").value = newPath;
+      $("seed-note").textContent = `Generated seed: ${newPath}`;
+    }
+    $("status").textContent = "Seed ready.";
+  } catch (e) {
+    $("status").textContent = `Seed generation failed: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadPreview() {
+  try {
+    const p = await fetchJSON("/api/optimizer/deployment-matrix/preview");
+    $("dims").textContent = `${p.counts.sessions} sessions x 2 single/multi x ${p.counts.tiers} MA tiers x 2 god/monster`;
+    let html = `<div class="mb-2 text-slate-300">${p.counts.root_lanes} root lanes &rarr; <span class="text-amber-400 font-semibold">${p.counts.final_cells} final cells</span></div>`;
+    html += '<div class="overflow-x-auto"><table class="border-collapse"><tr><th class="grid-cell text-slate-300">Session \\ start</th>';
+    p.tiers.forEach((t) => { html += `<th class="grid-cell text-slate-400" title="${t.god}/${t.monster} (${t.minimum}-${t.maximum})">T${t.tier_index}</th>`; });
+    html += "</tr>";
+    p.sessions.forEach((s) => {
+      html += `<tr><td class="grid-cell text-left text-slate-300">${s.session} <span class="text-slate-500">${s.start}</span></td>`;
+      p.tiers.forEach(() => { html += '<td class="grid-cell text-slate-600">&middot;</td>'; });
+      html += "</tr>";
+    });
+    html += "</table></div>";
+    html += `<div class="mt-2 text-slate-500">MA tier slow values: ${p.slow_ma_values.join(", ")}</div>`;
+    $("preview").innerHTML = html;
+  } catch (e) {
+    $("preview").textContent = `Could not load grid preview: ${e.message}`;
+  }
+}
+
+function csvInts(id, fallback) {
+  const raw = ($(id).value || "").split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !Number.isNaN(n));
+  return raw.length ? raw : fallback;
+}
+
+async function run(dispatch) {
+  if (!$("strategy").value) { $("status").textContent = "Pick a strategy first."; return; }
+  if (!$("seed").value) { $("status").textContent = "Pick a seed first."; return; }
+  if (dispatch && !confirm("Dispatch the full deployment-matrix stage 1 to NinjaTrader now?\\n\\nThis is a large run and will occupy NT. Make sure no other optimization is running.")) return;
+  const num = (id) => parseFloat($(id).value);
+  const payload = {
+    strategy_id: $("strategy").value,
+    seed_template_path: $("seed").value,
+    instrument: $("instrument").value,
+    market_suffix: $("market_suffix").value,
+    start_date: $("start_date").value,
+    end_date: $("end_date").value,
+    average_fast: num("average_fast"),
+    max_stop_min: num("max_stop_min"), max_stop_max: num("max_stop_max"), max_stop_step: num("max_stop_step"),
+    max_tp_ratio_min: num("max_tp_ratio_min"), max_tp_ratio_max: num("max_tp_ratio_max"), max_tp_ratio_step: num("max_tp_ratio_step"),
+    profit_stop_min: num("profit_stop_min"), profit_stop_max: num("profit_stop_max"), profit_stop_step: num("profit_stop_step"),
+    loss_stop_min: num("loss_stop_min"), loss_stop_max: num("loss_stop_max"), loss_stop_step: num("loss_stop_step"),
+    max_trades_values: csvInts("max_trades_values", [1, 3, 5, 10]),
+    start: dispatch,
+  };
+  ["build-btn", "dispatch-btn"].forEach((id) => ($(id).disabled = true));
+  $("status").textContent = dispatch ? "Building and dispatching to NinjaTrader..." : "Building recipe and plan...";
+  try {
+    const data = await fetchJSON("/api/optimizer/deployment-matrix/run", { method: "POST", body: JSON.stringify(payload) });
+    const plan = data.plan || {};
+    const stage1 = (plan.stages || [])[0] || {};
+    $("result").classList.remove("hidden");
+    $("result-body").innerHTML = `
+      <div>Session: <a class="text-amber-400" href="${data.urls.session}">${data.session.session_id}</a></div>
+      <div>Stage 1 root lanes: <span class="text-slate-100">${stage1.template_count ?? plan.template_count ?? "?"}</span></div>
+      <div>Combination estimate: <span class="text-slate-100">${(plan.combination_estimate ?? "?").toLocaleString?.() ?? plan.combination_estimate}</span></div>
+      <div>Stages: <span class="text-slate-100">${(plan.stages || []).map((s) => s.stage_id).join(" &rarr; ")}</span></div>
+      <div>Dispatched to NinjaTrader: <span class="${data.dispatched ? "text-emerald-400" : "text-slate-400"}">${data.dispatched ? "yes - stage 1 running" : "no - safe build only"}</span></div>
+      <div class="pt-1 flex gap-4">
+        <a class="text-amber-400" href="${data.urls.resume}">Open session &rarr;</a>
+        <a class="text-amber-400" href="/optimizer/sessions/${data.session.session_id}/deployment-matrix/coverage">252 coverage view &rarr;</a>
+      </div>`;
+    $("status").textContent = data.dispatched ? "Dispatched. Stage 1 is running on NinjaTrader." : "Built. Review the plan, then dispatch when ready.";
+  } catch (e) {
+    $("status").textContent = `Error: ${e.message}`;
+  } finally {
+    ["build-btn", "dispatch-btn"].forEach((id) => ($(id).disabled = false));
+  }
+}
+
+$("strategy").addEventListener("change", (e) => loadSeeds(e.target.value));
+loadStrategies();
+loadPreview();
+</script>
+</body>
+</html>

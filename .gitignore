@@ -58,3 +58,5 @@ generate_synthetic_data.py
 # Ad-hoc scratch dir + editor backups.
 scratch/
 *.bak
+
+.codex_tmp/

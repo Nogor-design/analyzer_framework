@@ -61,13 +61,11 @@ DEFAULT_PORTRAIT_DIRS: tuple[Path, ...] = (
 )
 
 DEFAULT_FINALIST_SECTIONS: list[str] = [
-    "exec_card_god_banner",
+    "run_executive_profile_cards",
+    "run_snapshot_clipboard",
     "run_kpi_cards",
-    "analysis_chart_replica",
-    "run_metadata_cards",
     "daily_scoreboard",
     "daily_winner_spotlight",
-    "daily_leaderboard_cards",
     "run_settings_table",
 ]
 
@@ -128,6 +126,18 @@ WEEKLY_PROP_SECTION: dict[str, Any] = {
         "compact_noimg": True,
         "bot_columns": 1,
     },
+}
+
+DEFAULT_FINALIST_SECTION_OPTIONS: dict[str, dict[str, Any]] = {
+    "run_executive_profile_cards": dict(EXEC_PROFILE_SECTION["options"]),
+    "run_snapshot_clipboard": {
+        "style": "minimal",
+        "density": "compact",
+        "layout": "stack",
+        "columns": 1,
+        "show_hint": False,
+    },
+    "daily_winner_spotlight": dict(DAILY_WINNER_SECTION["options"]),
 }
 
 
@@ -254,7 +264,7 @@ def build_candidate_report(
     session: OptimizerSession,
     run_id: str,
     *,
-    sections: list[str] | None = None,
+    sections: list[str | dict[str, Any]] | None = None,
     images_dir: Path | str | None = None,
     output_dir: Path | None = None,
 ) -> CandidateReportResult:
@@ -266,8 +276,8 @@ def build_candidate_report(
         The optimizer session whose final-Backtest results live on disk.
     run_id : str
         Candidate id (e.g. ``F_001``).
-    sections : list[str] | None
-        Section ids in render order. ``None`` uses
+    sections : list[str | dict[str, Any]] | None
+        Section ids or section config dicts in render order. ``None`` uses
         :data:`DEFAULT_FINALIST_SECTIONS`. Unknown section ids are
         silently skipped with a note.
     images_dir : Path | str | None
@@ -331,18 +341,30 @@ def build_candidate_report(
     if template_path is None:
         notes.append(f"No matching template for {run_id}; banner will fall back to plain text.")
 
+    notes.extend(
+        _enrich_final_template_report_packages(
+            session,
+            {run_id: pkg},
+            images_dir=images_dir,
+        )
+    )
+
     html_sections: list[HtmlSection] = []
     rendered: list[str] = []
-    for sec_id in requested:
+    for entry in requested:
+        sec_id, title_override, section_options = _normalize_section_entry(entry)
         section_def = SECTION_REGISTRY.get(sec_id)
         if section_def is None:
             notes.append(f"Unknown section id: {sec_id}")
             continue
+        options = dict(base_options)
+        options.update(DEFAULT_FINALIST_SECTION_OPTIONS.get(sec_id, {}))
+        options.update(section_options)
         html_sections.append(HtmlSection(
             id=section_def.id,
-            title=section_def.default_title,
+            title=title_override or section_def.default_title,
             render_fn=section_def.render_fn,
-            options=dict(base_options),
+            options=options,
         ))
         rendered.append(sec_id)
 
@@ -377,7 +399,7 @@ def build_candidate_report(
 def build_all_candidate_reports(
     session: OptimizerSession,
     *,
-    sections: list[str] | None = None,
+    sections: list[str | dict[str, Any]] | None = None,
     images_dir: Path | str | None = None,
     purge_existing: bool = True,
 ) -> CandidateReportBatchResult:
@@ -453,6 +475,7 @@ def build_session_candidate_report(
     exec_cards_dir: Path | None = None,
     dark_shell: bool = False,
     run_ids: list[str] | tuple[str, ...] | set[str] | None = None,
+    enrich_packages: bool = True,
 ) -> SessionCandidateReportResult:
     """Build one HTML report that ingests every final candidate together.
 
@@ -507,12 +530,15 @@ def build_session_candidate_report(
     if ingest.unparsed_files:
         notes.append(f"{len(ingest.unparsed_files)} non-report file(s) skipped during ingest.")
 
-    image_notes = _enrich_final_template_report_packages(
-        session,
-        ingest.packages,
-        images_dir=images_dir,
-    )
-    notes.extend(image_notes)
+    if enrich_packages:
+        image_notes = _enrich_final_template_report_packages(
+            session,
+            ingest.packages,
+            images_dir=images_dir,
+        )
+        notes.extend(image_notes)
+    else:
+        notes.extend(_enrich_final_template_report_package_names(session, ingest.packages))
 
     html_sections: list[HtmlSection] = []
     rendered: list[str] = []
@@ -781,6 +807,29 @@ def _enrich_final_template_report_packages(
             _attach_template_display_name(derived, lookup.decoded, template_path=template_path, market_root=market_root)
         else:
             _attach_template_display_name(derived, {}, template_path=template_path, market_root=market_root)
+
+    return notes
+
+
+def _enrich_final_template_report_package_names(
+    session: OptimizerSession,
+    packages: dict[str, Any],
+) -> list[str]:
+    """Attach semantic template names without generating image/chart assets."""
+    notes: list[str] = []
+    doc = session.load_document()
+    instrument = (doc.instrument or "").strip()
+    market_root = instrument.split()[0] if instrument else (doc.market_suffix or "").strip()
+
+    for run_id, pkg in packages.items():
+        derived = pkg.metadata.setdefault("derived", {})
+        template_path = _find_template_path_for_run_id(session, str(run_id))
+        if template_path is None:
+            notes.append(f"{run_id}: no matching renamed/final template XML found for display name.")
+            continue
+        derived["template_path"] = str(template_path)
+        _attach_template_display_name(derived, {}, template_path=template_path, market_root=market_root)
+        _apply_bot_name_to_settings(pkg, str(derived.get("display_name_spaced") or ""))
 
     return notes
 

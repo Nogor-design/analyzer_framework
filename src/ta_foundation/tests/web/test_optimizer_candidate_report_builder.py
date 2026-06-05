@@ -14,6 +14,7 @@ from ta_foundation.web.optimizer_candidate_report import (
 )
 from ta_foundation.web.optimizer_report_config import (
     final_report_config_path,
+    final_report_presets,
     save_final_report_config,
 )
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
@@ -73,6 +74,21 @@ def test_section_buckets_can_use_session_report_defaults():
     }
 
     assert checked == set(DEFAULT_SESSION_CANDIDATE_SECTIONS)
+
+
+def test_final_report_presets_reference_registered_sections():
+    presets = final_report_presets()
+
+    assert {preset["id"] for preset in presets} >= {
+        "operator_final_review",
+        "compact_comparison",
+        "weekly_package_review",
+        "deep_diagnostics",
+    }
+    for preset in presets:
+        assert preset["sections"]
+        for entry in preset["sections"]:
+            assert entry["id"] in SECTION_REGISTRY
 
 
 @needs_fixture
@@ -163,6 +179,9 @@ def test_final_report_builder_page_lists_saved_sections(client):
 
     assert res.status_code == 200
     assert "Final all-template report sections" in body
+    assert "Report presets" in body
+    assert "Operator Final Review" in body
+    assert "Weekly Package Review" in body
     assert "run_kpi_cards" in body
     assert "Save and rebuild final report" in body
     assert (session_dir / "deployment_package" / "report_configs" / "final_report_config.json").exists()
