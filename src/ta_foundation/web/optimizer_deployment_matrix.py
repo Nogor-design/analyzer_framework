@@ -197,6 +197,9 @@ def build_deployment_matrix_recipe(
     loss_stop: tuple[int | float, int | float, int | float] = (1, 1001, 500),
     max_trades: tuple[int | float, ...] = (1, 3, 5, 10),
     refine_selection_min_trades: int = 0,
+    fast_param: str = "averageFast",
+    slow_param: str = "averageSlow",
+    pinned_strategy_params: dict[str, Any] | None = None,
 ) -> dict:
     _validate_rules(rules)
     safe_name = "".join(ch.lower() if ch.isalnum() else "_" for ch in recipe_name).strip("_")
@@ -238,14 +241,24 @@ def build_deployment_matrix_recipe(
         "StartTimeM",
         "DurationTimeH",
         "DurationTimeM",
-        "averageSlow",
-        "averageFast",
+        slow_param,
+        fast_param,
         "MaxStop",
         "MaxTPRatio",
         "Long",
         "Short",
         "Reverse",
     ]
+    # Extra strategy params pinned (never swept) — e.g. PantheonMaster's regime
+    # filter + exit policy. Enums/strings land in the <Strategy> section; numerics
+    # also pin their OptimizationParameter. Pinning (not sweeping) keeps Stage 1
+    # combinatorics bounded for the 59-param advanced strategy.
+    extra_pins = dict(pinned_strategy_params or {})
+    extra_pin_entries = [
+        {"param": name, "role": "fixed", "value": value}
+        for name, value in extra_pins.items()
+    ]
+    structural_pins.extend(extra_pins.keys())
 
     return {
         "recipe_version": 1,
@@ -262,14 +275,15 @@ def build_deployment_matrix_recipe(
         "base_matrix": [
             {"param": "Session", "role": "matrix_bundle_axis", "values": session_values},
             {"param": "Reverse", "role": "matrix_axis", "values": [False, True]},
-            {"param": "averageSlow", "role": "matrix_axis", "values": slow_values},
-            {"param": "averageFast", "role": "fixed", "value": average_fast},
+            {"param": slow_param, "role": "matrix_axis", "values": slow_values},
+            {"param": fast_param, "role": "fixed", "value": average_fast},
             # Pin the trend filter OFF. The Pantheon seed defaults UseTrend=true,
             # which silently runs the whole grid trend-on -> most lanes take too
             # few trades and every survivor violates the UseTrend=false settings
             # contract. (See the 2026-06-04 full run: 4/252 covered, all rejected.)
             {"param": "UseTrend", "role": "fixed", "value": False},
             {"param": "UseTrendReverse", "role": "fixed", "value": False},
+            *extra_pin_entries,
         ],
         "stages": [
             {
@@ -286,12 +300,12 @@ def build_deployment_matrix_recipe(
                 },
                 "selection": {
                     "mode": "coverage_matrix_sequence",
-                    "group_by": ["StartTimeH", "StartTimeM", "Reverse", "averageSlow"],
+                    "group_by": ["StartTimeH", "StartTimeM", "Reverse", slow_param],
                     "coverage_grid": {
                         "StartTimeH": [value["StartTimeH"] for value in session_values],
                         "StartTimeM": [value["StartTimeM"] for value in session_values],
                         "Reverse": [False, True],
-                        "averageSlow": slow_values,
+                        slow_param: slow_values,
                     },
                     "keep_per_group": 1,
                     "fitness_metrics": ["profit_factor", "total_net_profit"],
@@ -331,6 +345,30 @@ def build_deployment_matrix_recipe(
         "optimizer_type": "Default",
         "keep_best_results": 1000,
         "active_targets": ["MaxProfitFactor", "MaxNetProfit"],
+    }
+
+
+def pantheonmaster_recipe_overrides() -> dict[str, Any]:
+    """``build_deployment_matrix_recipe`` kwargs to drive the advanced
+    PantheonMaster strategy through the deployment matrix.
+
+    PantheonMaster shares the risk + session param names the pipeline keys on, so
+    only the MA params differ (``FastPeriod``/``SlowPeriod``) and its two new
+    dimensions — regime filter + selectable exit — must be **pinned, never swept**
+    (59 params would explode Stage 1). Lean first-pass pins: regime=TrendingOnly,
+    exit=AtrTrail (the head-to-head hypothesis "MA cross + smart trend exit beats
+    the plain MA cross"). Tune these later from the exit-sim / regime analysis.
+    """
+    return {
+        "fast_param": "FastPeriod",
+        "slow_param": "SlowPeriod",
+        "pinned_strategy_params": {
+            "RegimeMode": "TrendingOnly",
+            "UseTrendAlignment": True,
+            "UseDiscoveryExitPolicy": True,
+            "DiscoveryExitPolicy": "AtrTrail",
+            "AtrTrailMultiple": 2.0,
+        },
     }
 
 

@@ -11,6 +11,7 @@ from ta_foundation.web.optimizer_deployment_matrix import (
     classify_single_multi,
     enumerate_cells,
     load_naming_rules,
+    pantheonmaster_recipe_overrides,
     session_timeboxes,
     tier_slow_values,
 )
@@ -345,8 +346,42 @@ def test_build_deployment_matrix_recipe_plan_shape() -> None:
     assert base_by_param["UseTrend"]["value"] is False
     assert base_by_param["UseTrendReverse"]["value"] is False
 
+
+def test_build_deployment_matrix_recipe_default_uses_ma_cross_params() -> None:
+    # Default (MA-cross) path must be unchanged: averageSlow swept, averageFast fixed.
+    recipe = build_deployment_matrix_recipe(
+        strategy_id="PantheonMasterBotV01TesterV2", recipe_name="ma", rules=_rules()
+    )
+    base = {e["param"]: e["role"] for e in recipe["base_matrix"]}
+    assert base.get("averageSlow") == "matrix_axis"
+    assert base.get("averageFast") == "fixed"
+    assert "SlowPeriod" not in base and "RegimeMode" not in base
     # Default: no trade floor on refine selection (top-PF behaviour unchanged).
-    assert "hard_filters" not in refine_selection
+    assert "hard_filters" not in recipe["stages"][1]["selection"]
+
+
+def test_build_deployment_matrix_recipe_pantheonmaster_overrides() -> None:
+    # PantheonMaster: MA params are FastPeriod/SlowPeriod and regime+exit are
+    # pinned (fixed) — never swept (would explode the 59-param Stage 1).
+    recipe = build_deployment_matrix_recipe(
+        strategy_id="PantheonMaster",
+        recipe_name="pm",
+        rules=_rules(),
+        **pantheonmaster_recipe_overrides(),
+    )
+    base = {e["param"]: e for e in recipe["base_matrix"]}
+    assert base["SlowPeriod"]["role"] == "matrix_axis"
+    assert base["FastPeriod"]["role"] == "fixed"
+    assert base["RegimeMode"] == {"param": "RegimeMode", "role": "fixed", "value": "TrendingOnly"}
+    assert base["DiscoveryExitPolicy"]["value"] == "AtrTrail"
+    assert base["UseDiscoveryExitPolicy"]["value"] is True
+    # Grid axis + refine pins follow the renamed MA param, not the MA-cross name.
+    assert recipe["stages"][0]["selection"]["group_by"] == [
+        "StartTimeH", "StartTimeM", "Reverse", "SlowPeriod",
+    ]
+    refine_pins = recipe["stages"][1]["pin"]
+    assert "SlowPeriod" in refine_pins and "averageSlow" not in refine_pins
+    assert {"RegimeMode", "DiscoveryExitPolicy"}.issubset(set(refine_pins))
 
 
 def test_refine_selection_min_trades_adds_trade_floor() -> None:
