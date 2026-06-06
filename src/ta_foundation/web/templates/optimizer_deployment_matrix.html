@@ -91,6 +91,14 @@
         <div><label class="lbl">LossStop min/max/step</label>
           <div class="flex gap-1"><input id="loss_stop_min" type="number" value="1" class="w-full" /><input id="loss_stop_max" type="number" value="1001" class="w-full" /><input id="loss_stop_step" type="number" value="500" class="w-full" /></div>
         </div>
+        <div>
+          <label class="lbl" title="Per-cell winners must clear this many trades over the OOS window. 0 = off. Default 10 removes low-trade noise winners (PF on 1-2 lucky trades). Applies to both structural and risk-refine selection.">Min trades (selection floor)</label>
+          <input id="refine_selection_min_trades" type="number" min="0" value="10" class="w-full" />
+        </div>
+      </div>
+      <div class="text-[11px] text-slate-500 mt-2">
+        Min-trades floor guards against high-PF/low-trade artifacts: a cell whose best result came
+        from 1–2 trades is rejected instead of promoted. 10 ≈ free (≈91% coverage held); 15–20 = stricter, more honest-edge fallbacks.
       </div>
     </details>
 
@@ -234,6 +242,7 @@ async function run(dispatch) {
     profit_stop_min: num("profit_stop_min"), profit_stop_max: num("profit_stop_max"), profit_stop_step: num("profit_stop_step"),
     loss_stop_min: num("loss_stop_min"), loss_stop_max: num("loss_stop_max"), loss_stop_step: num("loss_stop_step"),
     max_trades_values: csvInts("max_trades_values", [1, 3, 5, 10]),
+    refine_selection_min_trades: num("refine_selection_min_trades"),
     start: dispatch,
   };
   ["build-btn", "dispatch-btn"].forEach((id) => ($(id).disabled = true));

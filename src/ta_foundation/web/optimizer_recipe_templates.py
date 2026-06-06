@@ -573,8 +573,33 @@ def _child_stage_jobs_from_selection(session: OptimizerSession, *, stage_id: str
     return jobs
 
 
+def _bundle_component_param_names(entry: Any) -> set[str]:
+    """Component strategy-param names carried by a ``matrix_bundle_axis`` entry.
+
+    A bundle axis (e.g. ``Session``) sweeps several real strategy params together
+    — ``StartTimeH``/``StartTimeM``/``DurationTimeH``/``DurationTimeM`` — as a
+    single named axis whose ``param`` ("Session") is NOT itself a strategy field.
+    The component names live as the keys of each bundle point in ``values``.
+    """
+    names: set[str] = set()
+    for point in getattr(entry, "values", None) or ():
+        if isinstance(point, dict):
+            names.update(str(key) for key in point.keys())
+    return names
+
+
 def _final_strategy_param_names(recipe: Any, parent_stage_id: str) -> set[str]:
-    names = {entry.param for entry in recipe.base_matrix}
+    # A bundle axis's ``param`` is a synthetic axis label (e.g. "Session"), not a
+    # strategy field — expand it into the real params it pins (StartTimeH/M,
+    # DurationTimeH/M) so they survive into the final fixed-backtest template
+    # instead of falling back to the seed default (which collapsed every final to
+    # one session).
+    names: set[str] = set()
+    for entry in recipe.base_matrix:
+        if getattr(entry, "role", None) == "matrix_bundle_axis":
+            names.update(_bundle_component_param_names(entry))
+        else:
+            names.add(entry.param)
     for stage in recipe.stages:
         if stage.stage_id == parent_stage_id:
             names.update(stage.optimize_inside_template.keys())

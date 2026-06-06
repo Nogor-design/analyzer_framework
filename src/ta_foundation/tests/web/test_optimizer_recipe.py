@@ -544,6 +544,75 @@ def test_generate_recipe_final_backtest_uses_only_recipe_params_and_preserves_fi
     assert "<StartTime>99</StartTime>" not in xml
 
 
+def test_generate_recipe_final_backtest_propagates_bundle_axis_component_params(tmp_path: Path):
+    """A ``matrix_bundle_axis`` (e.g. ``Session``) sweeps several real strategy
+    params under one synthetic axis name. Its component params (StartTimeH,
+    DurationTimeH, ...) must survive into the final fixed-backtest template;
+    otherwise every final collapses to the seed-default session (the observed
+    "all StartTimeH=0 / all London Early" bug)."""
+    seed_path = tmp_path / "seed.xml"
+    seed_path.write_text(SEED_XML, encoding="utf-8")
+    session = opt_session.create_session(
+        strategy_id="FakeStrategy",
+        seed_template_path=str(seed_path),
+        instrument="NQ",
+    )
+    payload = _recipe_payload()
+    payload["base_matrix"] = [
+        {
+            "param": "Session",
+            "role": "matrix_bundle_axis",
+            "values": [
+                {"StartTimeH": 0, "DurationTimeH": 4},
+                {"StartTimeH": 16, "DurationTimeH": 3},
+            ],
+        },
+    ]
+    payload["stages"] = [
+        {
+            "stage_id": "stage_1",
+            "stage_type": "optimizer",
+            "optimize_inside_template": {
+                "averageSlow": {"min": 50, "max": 400, "step": 50},
+            },
+            "selection": {"keep_per_group": 1},
+        },
+        {
+            "stage_id": "final_backtest",
+            "stage_type": "fixed_backtest",
+            "from": "stage_1.selected_rows",
+        },
+    ]
+    save_recipe(session, payload)
+    build_and_save_recipe_plan(session)
+    selected_dir = session.directory / "parsed_results" / "stage_1"
+    selected_dir.mkdir(parents=True, exist_ok=True)
+    (selected_dir / "selected.json").write_text(
+        json.dumps([
+            {
+                "candidate_id": "stage_1__base__row00001",
+                "bucket_id": "base",
+                "StartTimeH": 16,
+                "DurationTimeH": 3,
+                "param_averageSlow": 225,
+                "total_net_profit": 1000,
+            }
+        ]),
+        encoding="utf-8",
+    )
+
+    written = generate_recipe_stage_templates(session, stage_id="final_backtest")
+
+    assert len(written) == 1
+    xml = Path(written[0].path).read_text(encoding="utf-8")
+    # Bundle component params propagate from the selected row, not the seed default
+    # (seed default is StartTimeH=0 / DurationTimeH=1).
+    assert "<StartTimeH>16</StartTimeH>" in xml
+    assert "<DurationTimeH>3</DurationTimeH>" in xml
+    # The synthetic bundle axis name must never leak as a strategy element.
+    assert "<Session>" not in xml
+
+
 def test_generate_recipe_final_backtest_clears_stale_renamed_exports(tmp_path: Path):
     seed_path = tmp_path / "seed.xml"
     seed_path.write_text(SEED_XML, encoding="utf-8")

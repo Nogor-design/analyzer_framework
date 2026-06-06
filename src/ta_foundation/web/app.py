@@ -2754,7 +2754,10 @@ def create_app() -> "Flask":
                 _payload_number(payload, "loss_stop_step", 500),
             ),
             max_trades=tuple(max_trades_values) or (1, 3, 5, 10),
-            refine_selection_min_trades=_payload_int(payload, "refine_selection_min_trades", 0),
+            # Default 10: kills the low-trade noise winners (PF-vs-trades corr was
+            # -0.74 on opt_91711cf3671c) at ~9% coverage cost. Floor applies to
+            # both stage_1 and refine_risk selection. See the redesign doc.
+            refine_selection_min_trades=_payload_int(payload, "refine_selection_min_trades", 10),
         )
 
         session = create_session(

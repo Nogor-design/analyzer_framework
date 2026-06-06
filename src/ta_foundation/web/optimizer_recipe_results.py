@@ -3,6 +3,7 @@ from __future__ import annotations
 """Result ingestion for Recipe/Matrix optimizer stages."""
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,14 @@ def load_recipe_stage_results(
         combined = pd.DataFrame()
 
     manifest = _load_template_manifest(session, stage_id)
-    enriched = _enrich_results(combined, recipe_id=recipe.recipe_id, stage_id=stage_id, manifest=manifest)
+    name_map = _load_batch_name_map(output_dir)
+    enriched = _enrich_results(
+        combined,
+        recipe_id=recipe.recipe_id,
+        stage_id=stage_id,
+        manifest=manifest,
+        name_map=name_map,
+    )
     
     rows = [_json_safe(row) for row in enriched.to_dict(orient="records")] if not enriched.empty else []
     parsed_csv: str | None = None
@@ -121,12 +129,48 @@ def _load_template_manifest(session: OptimizerSession, stage_id: str) -> dict[st
     return out
 
 
+def _load_batch_name_map(output_dir: Path) -> dict[str, str]:
+    """Map each run's (possibly truncated) output-folder basename to the full,
+    untruncated template name from ``BatchRunSummary.csv``.
+
+    NinjaTrader truncates per-run output-FOLDER names to satisfy path-length
+    limits (e.g. ``refine_risk__parent_stage_1_stage_1_0001_<hash>``), so a parsed
+    row's ``batch_id`` (derived from the folder) no longer matches the manifest
+    ``template_id``. The batch summary, however, records BOTH the truncated
+    ``Output folder`` and the full ``Template`` name — so it is the authoritative
+    bridge between the two. Without it, child-stage rows lose
+    ``parent_candidate_id`` and per-parent grouping collapses (see the deployment
+    matrix lineage bug, 2026-06-05).
+    """
+    summary_path = output_dir / "BatchRunSummary.csv"
+    if not summary_path.exists():
+        return {}
+    try:
+        summary = pd.read_csv(summary_path)
+    except (OSError, pd.errors.ParserError, ValueError):
+        return {}
+    summary.columns = [str(c).strip() for c in summary.columns]
+    if "Output folder" not in summary.columns or "Template" not in summary.columns:
+        return {}
+    name_map: dict[str, str] = {}
+    for folder, template in zip(summary["Output folder"], summary["Template"]):
+        if folder is None or template is None:
+            continue
+        # NT writes Windows paths; take the final path segment regardless of OS.
+        basename = re.split(r"[\\/]", str(folder).strip())[-1]
+        template_name = str(template).strip()
+        if basename and template_name:
+            name_map.setdefault(basename, template_name)
+    return name_map
+
+
 def _enrich_results(
     df: pd.DataFrame,
     *,
     recipe_id: str,
     stage_id: str,
     manifest: dict[str, dict[str, Any]],
+    name_map: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     if df.empty:
         return df.copy()
@@ -149,13 +193,29 @@ def _enrich_results(
             bucket_index.setdefault(token, meta)
     bucket_tokens = sorted(bucket_index, key=len, reverse=True)
 
+    name_map = name_map or {}
+
     def _meta_for(batch_id: str) -> dict[str, Any]:
         meta = manifest.get(batch_id)
         if meta:
             return meta
+        # Authoritative bridge: resolve the truncated folder name to the full
+        # template name via BatchRunSummary, then match the manifest exactly. This
+        # is what preserves parent_candidate_id for child stages whose folder names
+        # NT truncated past the point where the bucket_id token survives.
+        full_name = name_map.get(batch_id)
+        if full_name:
+            meta = manifest.get(full_name)
+            if meta:
+                return meta
         for token in bucket_tokens:
             if token in batch_id:
                 return bucket_index[token]
+        # Last resort: the resolved full name may itself contain a bucket token.
+        if full_name:
+            for token in bucket_tokens:
+                if token in full_name:
+                    return bucket_index[token]
         return {}
 
     template_ids: list[str] = []

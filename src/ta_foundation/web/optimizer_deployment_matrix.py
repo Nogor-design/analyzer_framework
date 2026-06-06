@@ -221,10 +221,14 @@ def build_deployment_matrix_recipe(
     slow_values = tier_slow_values(rules)
     # Promote, per cell, the best-PF candidate that ALSO clears a trade floor.
     # Top-PF-only selection promotes high-PF/low-trade candidates that then fail
-    # the final min_trades / %-days gates -> empty pool. A min_trades floor at
-    # selection time mirrors the operator's manual "make sure it has enough trades
-    # before promoting" heuristic (off by default; set per run).
-    refine_hard_filters = (
+    # the final min_trades / %-days gates -> empty pool. Measured on a real run
+    # (opt_91711cf3671c): PF vs trade-count correlate -0.74, so PF-first selection
+    # is effectively a fewest-trades selector. A min_trades floor at selection time
+    # mirrors the operator's "make sure it has enough trades before promoting"
+    # heuristic. Applied to BOTH stage_1 (structural) and refine_risk selection so
+    # a noise winner cannot survive either round. Off by default (0); the launcher
+    # ships a default of 10. See docs/designs/deployment_matrix_optimization_redesign.md.
+    selection_hard_filters = (
         {"hard_filters": {"min_trades": int(refine_selection_min_trades)}}
         if int(refine_selection_min_trades) > 0
         else {}
@@ -291,6 +295,7 @@ def build_deployment_matrix_recipe(
                     },
                     "keep_per_group": 1,
                     "fitness_metrics": ["profit_factor", "total_net_profit"],
+                    **selection_hard_filters,
                 },
             },
             {
@@ -312,7 +317,7 @@ def build_deployment_matrix_recipe(
                     "group_by": ["parent_candidate_id", "single_multi"],
                     "keep_per_group": 1,
                     "fitness_metrics": ["profit_factor", "total_net_profit"],
-                    **refine_hard_filters,
+                    **selection_hard_filters,
                 },
             },
             {
