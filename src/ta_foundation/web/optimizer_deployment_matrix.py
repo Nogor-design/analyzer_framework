@@ -331,6 +331,7 @@ def build_deployment_matrix_recipe(
                     "group_by": ["parent_candidate_id", "single_multi"],
                     "keep_per_group": 1,
                     "fitness_metrics": ["profit_factor", "total_net_profit"],
+                    "retain_parent_if_child_worse": True,
                     **selection_hard_filters,
                 },
             },
@@ -348,26 +349,45 @@ def build_deployment_matrix_recipe(
     }
 
 
-def pantheonmaster_recipe_overrides() -> dict[str, Any]:
+def pantheonmaster_recipe_overrides(
+    *,
+    exit_policy: str = "AtrTrail",
+    atr_trail_multiple: float = 2.0,
+) -> dict[str, Any]:
     """``build_deployment_matrix_recipe`` kwargs to drive the advanced
     PantheonMaster strategy through the deployment matrix.
 
     PantheonMaster shares the risk + session param names the pipeline keys on, so
     only the MA params differ (``FastPeriod``/``SlowPeriod``) and its two new
     dimensions — regime filter + selectable exit — must be **pinned, never swept**
-    (59 params would explode Stage 1). Lean first-pass pins: regime=TrendingOnly,
-    exit=AtrTrail (the head-to-head hypothesis "MA cross + smart trend exit beats
-    the plain MA cross"). Tune these later from the exit-sim / regime analysis.
+    (59 params would explode Stage 1).
+
+    **Relaxed regime pin (2026-06-07).** The first pass pinned
+    ``RegimeMode=TrendingOnly`` + ``UseTrendAlignment=True``; the head-to-head
+    (opt_3d12659e4be8) showed that pin is too restrictive — it filtered out most
+    session×tier cells (only 16 finals / 5 passed vs the MA-cross 183/116). Worse,
+    it left *two* variables between PantheonMaster and the MA-cross pool (regime
+    AND exit), so a result could not be attributed to the exit alone.
+
+    This now pins ``EnableDiscoveryFilters=False``, which short-circuits the whole
+    entry-filter block (regime + named-session double-gate + trend-alignment +
+    atr-pct + ema-confirm — see ``DiscoveryEntryAllowed``), giving **plain
+    MA-cross-parity entry and full 252-cell coverage**, while keeping
+    ``UseDiscoveryExitPolicy`` on. That isolates **the exit policy as the single
+    variable** vs the MA-cross bracket pool — the clean "does a smart exit beat
+    the plain bracket" experiment. Regime specialization is a *separate* later
+    experiment (run per-regime matrices), not mixed into the coverage pool.
+    ``RegimeMode=Any`` is pinned too for clarity (inert while filters are off).
     """
     return {
         "fast_param": "FastPeriod",
         "slow_param": "SlowPeriod",
         "pinned_strategy_params": {
-            "RegimeMode": "TrendingOnly",
-            "UseTrendAlignment": True,
+            "EnableDiscoveryFilters": False,
+            "RegimeMode": "Any",
             "UseDiscoveryExitPolicy": True,
-            "DiscoveryExitPolicy": "AtrTrail",
-            "AtrTrailMultiple": 2.0,
+            "DiscoveryExitPolicy": exit_policy,
+            "AtrTrailMultiple": atr_trail_multiple,
         },
     }
 

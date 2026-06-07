@@ -372,7 +372,12 @@ def test_build_deployment_matrix_recipe_pantheonmaster_overrides() -> None:
     base = {e["param"]: e for e in recipe["base_matrix"]}
     assert base["SlowPeriod"]["role"] == "matrix_axis"
     assert base["FastPeriod"]["role"] == "fixed"
-    assert base["RegimeMode"] == {"param": "RegimeMode", "role": "fixed", "value": "TrendingOnly"}
+    # Relaxed regime pin: entry filters OFF (full coverage, MA-cross-parity entry),
+    # regime inert (Any), exit policy ON (the single variable under test).
+    assert base["EnableDiscoveryFilters"] == {
+        "param": "EnableDiscoveryFilters", "role": "fixed", "value": False
+    }
+    assert base["RegimeMode"] == {"param": "RegimeMode", "role": "fixed", "value": "Any"}
     assert base["DiscoveryExitPolicy"]["value"] == "AtrTrail"
     assert base["UseDiscoveryExitPolicy"]["value"] is True
     # Grid axis + refine pins follow the renamed MA param, not the MA-cross name.
@@ -381,7 +386,7 @@ def test_build_deployment_matrix_recipe_pantheonmaster_overrides() -> None:
     ]
     refine_pins = recipe["stages"][1]["pin"]
     assert "SlowPeriod" in refine_pins and "averageSlow" not in refine_pins
-    assert {"RegimeMode", "DiscoveryExitPolicy"}.issubset(set(refine_pins))
+    assert {"EnableDiscoveryFilters", "RegimeMode", "DiscoveryExitPolicy"}.issubset(set(refine_pins))
 
 
 def test_refine_selection_min_trades_adds_trade_floor() -> None:
