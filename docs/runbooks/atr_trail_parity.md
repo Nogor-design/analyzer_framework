@@ -149,22 +149,48 @@ backtested AtrTrail edge is ~24% optimistic.**
 > tail. **Action: haircut the pool's backtested AtrTrail PF/net by ≥~24% for
 > sizing/expectations until Parity B Step 2 measures the real live gap.**
 
-## Step 2 — live/replay capture checklist (NT-side, pairs with "run it first")
+## Step 2 — live/replay capture sheet (operator runs NT; harness is built)
 
-1. **Run** PantheonMaster in **Market Replay** (tick replay) on the *same*
-   instrument/window as a known backtest, `EnableDebugPrint = true`, identical
-   params (AtrTrail, mult 2.0, StopTicks 60, regime off).
-2. **Capture**: the Output window (`[PantheonMaster] ChangeOrder stop -> {price}`
-   prints, L883, are the live trail moves), plus the replay `Trades.csv`
-   (entry/exit price/time, P&L).
-3. **Diff vs backtest** per trade (match on entry time): exit price Δ, exit time
-   Δ, per-trade P&L Δ, and aggregate P&L Δ.
-4. **Decision rule**: if live aggregate P&L is within tolerance of backtest
-   (say ≤ ~5-10% and no systematic worse-fill bias), the backtested pool is
-   trustworthy for sizing. If live is materially worse (expected: tighter trail
-   → earlier exits), apply the measured **haircut** to backtested PF/net before
-   promotion and account sizing — and treat the tick-model (Step 1) as the
-   planning number, not the bar backtest.
+The diff harness is ready: `scripts/atr_trail_live_diff.py` (core
+`diff_backtest_vs_live_trades` in `nt_atr_trail_parity.py`, tested). It matches
+the backtest and replay `Trades.csv` **per trade on entry time** and prints the
+measured aggregate haircut vs the Step 1 prediction. **The realized `Trades.csv`
+P&L is the source of truth — the `ChangeOrder` Output prints carry no timestamp
+and are diagnostic only (use them to eyeball the trail path, not to compute the
+number).** Do all of this on the *same instrument/window as a known backtest*.
+
+**A. Configure the strategy (must match the backtest exactly):**
+- `UseDiscoveryExitPolicy = true`, `DiscoveryExitPolicy = AtrTrail`
+- `AtrTrailMultiple = 2.0`, `StopTicks = 60`, `AtrPeriod = 14`
+- `EnableDiscoveryFilters = false`, `RegimeMode = Any` (regime off — isolate the trail)
+- `EnableDebugPrint = true`
+- Confirm the loaded build is the **`[BUG-3]`-fixed** one (see Gotchas) before trusting live behavior.
+
+**B. Run** PantheonMaster in **Market Replay** (tick replay), same date range and
+contract as the backtest session you'll diff against (default `opt_a09359e6b60b`,
+NQ 06-26, ≤ 2026-05-27 for tick coverage).
+
+**C. Export** the replay results as NinjaTrader **`Trades.csv`** (Strategy
+Performance → Trades → right-click → Export, or the grid export). Drop it in a
+folder, e.g. `C:\temp\replay\Trades.csv`. (Optionally save the Output window text
+alongside for the `ChangeOrder` trail-path sanity check.)
+
+**D. Run the diff:**
+```bash
+python scripts/atr_trail_live_diff.py --bt opt_a09359e6b60b --live C:\temp\replay
+# add --trail-only to grade just trailed-stop exits (the population the haircut is about)
+```
+It prints matched count, both-sides aggregate P&L, the **measured haircut $/%**,
+worse-live trade count, median per-trade and exit-time deltas, compares to the
+Step 1 floor (−23.9%), states the decision, and writes
+`atr_trail_live_diff_detail.csv` (per-trade rows for inspection).
+
+**E. Decision rule** (printed automatically): if live aggregate P&L is within
+~10% of backtest with no systematic worse-fill bias, the backtested pool is
+trustworthy for sizing. If live is materially worse (expected: tighter trail →
+earlier exits, and Step 1 says ≥~24%), apply the **measured** haircut to
+backtested PF/net before promotion/sizing — and treat the live number, not the
+bar backtest, as the planning figure.
 
 ## Gotchas
 
@@ -183,5 +209,7 @@ backtested AtrTrail edge is ~24% optimistic.**
 - **Parity A:** ✅ done (Wilder confirmed, model faithful).
 - **Parity B Step 1 (offline pre-estimate):** ✅ done — **backtest overstates
   AtrTrail P&L by ~24%** (live trails tighter); haircut the pool before sizing.
-- **Parity B Step 2 (live/replay diff):** ⬜ operator-side, gates real money —
-  confirms/refines the ~24% (expected to widen with real fill slippage).
+- **Parity B Step 2 (live/replay diff):** harness ✅ built & tested
+  (`scripts/atr_trail_live_diff.py`); ⬜ awaiting the operator's NT Market Replay
+  `Trades.csv` to produce the measured number. Gates real money — confirms/refines
+  the ~24% (expected to widen with real fill slippage). Capture sheet above.

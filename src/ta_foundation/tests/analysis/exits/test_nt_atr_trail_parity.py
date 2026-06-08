@@ -5,11 +5,13 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ta_foundation.analysis.exits.nt_atr_trail_parity import (
     NtAtrTrailConfig,
     _round_to_tick,
     compute_atr,
+    diff_backtest_vs_live_trades,
     replicate_nt_atr_trail,
     replicate_nt_atr_trail_tick,
 )
@@ -117,6 +119,60 @@ def test_tick_trail_no_exit():
                                     tick_prices=np.array([101.0, 103, 105]),
                                     tick_dts=np.arange(3), tick_atr=np.full(3, 4.0), cfg=cfg)
     assert r["reason"] == "no_exit_in_window"
+
+
+def _trade(entry_min, exit_min, ep, xp, direction, profit, name="stop loss"):
+    return {
+        "entry_dt": T0 + timedelta(minutes=entry_min),
+        "exit_dt": T0 + timedelta(minutes=exit_min),
+        "entry_price": ep, "exit_price": xp, "direction": direction,
+        "profit": profit, "exit_name": name,
+    }
+
+
+def test_diff_matches_on_entry_time_and_haircuts():
+    # Two trades. Backtest exits richer (runner) than live -> negative haircut.
+    bt = pd.DataFrame([
+        _trade(0, 30, 100.0, 110.0, 1, 200.0),   # bt runner exits at 110
+        _trade(60, 90, 100.0, 96.0, 1, -80.0),    # both lose the same
+    ])
+    live = pd.DataFrame([
+        # entry 2s late (within tolerance), tighter live trail exits at 106
+        {"entry_dt": T0 + timedelta(minutes=0, seconds=2), "exit_dt": T0 + timedelta(minutes=25),
+         "entry_price": 100.0, "exit_price": 106.0, "direction": 1, "profit": 120.0, "exit_name": "stoplong"},
+        _trade(60, 90, 100.0, 96.0, 1, -80.0, name="stopshort"),
+    ])
+    out = diff_backtest_vs_live_trades(bt, live, match_tolerance_s=5)
+    s = out["summary"]
+    assert s["n_matched"] == 2
+    assert s["bt_pnl"] == 120.0 and s["live_pnl"] == 40.0
+    assert s["haircut"] == -80.0
+    assert s["haircut_pct"] == pytest.approx(-66.6667, abs=1e-3)
+    assert s["n_worse_live"] == 1  # only the runner is worse live
+
+
+def test_diff_reports_unmatched_when_outside_tolerance():
+    bt = pd.DataFrame([_trade(0, 30, 100.0, 110.0, 1, 200.0)])
+    live = pd.DataFrame([_trade(10, 30, 100.0, 110.0, 1, 200.0)])  # entry 10min off
+    out = diff_backtest_vs_live_trades(bt, live, match_tolerance_s=5)
+    s = out["summary"]
+    assert s["n_matched"] == 0
+    assert s["n_bt_unmatched"] == 1 and s["n_live_unmatched"] == 1
+
+
+def test_diff_trail_only_filters_population():
+    bt = pd.DataFrame([
+        _trade(0, 30, 100.0, 110.0, 1, 200.0, name="stop loss"),
+        _trade(60, 90, 100.0, 108.0, 1, 160.0, name="Profit target"),  # not a trail exit
+    ])
+    live = pd.DataFrame([
+        _trade(0, 28, 100.0, 106.0, 1, 120.0, name="stoplong"),
+        _trade(60, 85, 100.0, 108.0, 1, 160.0, name="Profit target"),
+    ])
+    out = diff_backtest_vs_live_trades(bt, live, trail_only=True, match_tolerance_s=5)
+    s = out["summary"]
+    assert s["n_matched"] == 1          # only the trail-exit pair counts
+    assert s["bt_pnl"] == 200.0 and s["live_pnl"] == 120.0
 
 
 def test_compute_atr_modes_differ():
