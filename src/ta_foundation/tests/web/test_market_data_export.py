@@ -78,6 +78,11 @@ def test_build_export_template_pins_all_params(tmp_path: Path):
     # Instrument.
     assert _tag(text, "InstrumentOrInstrumentList") == "NQ 06-26"
 
+    # Fill resolution pinned to Standard: the export places no orders, so NT must
+    # NOT load a secondary tick series for High-resolution fills (that errors with
+    # "Insufficient data available for secondary series" on tick-less windows).
+    assert _tag(text, "OrderFillResolution") == "Standard"
+
     # Fixed BACKTEST, not an optimization — no swept params.
     assert _tag(text, "Category") == "Backtest"
     assert "<OptimizationParameters>" not in text

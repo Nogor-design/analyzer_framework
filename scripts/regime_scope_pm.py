@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -39,7 +40,8 @@ from ta_foundation.analysis.strategy_discovery.regime import compute_bar_regime
 from ta_foundation.analysis.strategy_discovery.regime_scoping import run_regime_scoping
 
 SESSIONS = Path(".ta_artifacts/web_optimizer/sessions")
-BARS_FILE = Path(r"D:\MarketData\NQ 06-26.Last.txt")
+# Override with TA_BARS_FILE to use a freshly-exported (fuller-coverage) file.
+BARS_FILE = Path(os.environ.get("TA_BARS_FILE", r"D:\MarketData\NQ 06-26.Last.txt"))
 COST_MODEL = {"commission_per_side": 2.09, "tick_value": 5.0, "slippage_ticks": 1}
 # NQ: 1 point = $20, tick = 0.25pt = $5. Honest re-price uses tick_value for slippage.
 

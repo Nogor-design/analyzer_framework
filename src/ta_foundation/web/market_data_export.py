@@ -214,6 +214,12 @@ def build_export_template(
     text = target.read_text(encoding="utf-8")
     text = _replace_tag_text(text, "OutputDirectory", out_dir, count=1)
     text = _replace_or_insert_strategy_tag(text, "InstrumentOrInstrumentList", inst)
+    # The seed inherits NT's default OrderFillResolution=High (Tick), which forces
+    # NT to load a SECONDARY TICK SERIES for fill simulation -> "Insufficient data
+    # available for secondary series" on any window NT lacks ticks for. The export
+    # strategy places NO orders, so tick-resolution fills are never needed; pin
+    # Standard so NT loads only the primary bar series being exported.
+    text = _replace_or_insert_strategy_tag(text, "OrderFillResolution", "Standard")
     target.write_text(text, encoding="utf-8")
 
     # Clean up the intermediate seed; the fixed template is self-contained.
