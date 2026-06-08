@@ -1,0 +1,30 @@
+# APEX Trader Funding — trailing-drawdown profile (Phase 2b config).
+#
+# VERIFIED-STATUS: corroborated by Phase-2a research (docs/reference/prop_firm_dd_rules_catalog.md,
+# 2026-06-08) — the 50k "$2,000 vs $2,500" conflict is resolved ($2,500; $2,000 was Topstep).
+# STILL gated: confirm against a primary APEX source / Eric, and the engine must replay a real
+# anonymized APEX account history exactly, before any client relies on this. Profiles are
+# version-stamped because firm rules change — never assume a number is still current.
+firm: APEX
+version: "4.0"
+# APEX 4.0 lets the trader choose ONE drawdown type permanently at signup.
+drawdown_type: intraday_trailing      # intraday_trailing | eod_trailing
+includes_unrealized: true             # intraday: peak tracks equity incl. open PnL
+lock_buffer: 100                      # threshold locks at starting_balance + lock_buffer
+eod_recalc_time_et: "16:59:59"        # only used when drawdown_type == eod_trailing
+
+account_sizes:
+  "25000":  { max_drawdown: 1500, profit_target: 1500, max_contracts: 4 }
+  "50000":  { max_drawdown: 2500, profit_target: 3000, max_contracts: 10 }
+  "75000":  { max_drawdown: 2750, profit_target: 4250, max_contracts: 12 }
+  "100000": { max_drawdown: 3000, profit_target: 6000, max_contracts: 14 }
+  "150000": { max_drawdown: 5000, profit_target: 9000, max_contracts: 17 }
+  "250000": { max_drawdown: 6500, profit_target: 15000, max_contracts: 27 }
+  "300000": { max_drawdown: 7500, profit_target: 20000, max_contracts: 35 }
+
+# APEX intraday plan has NO daily-loss limit. (EOD-trailing firms do — see catalog.)
+daily_loss_limit: null
+
+# PA accounts have consistency / min-days / payout rules; capture per profile as we verify them.
+consistency_rules:
+  payout_consistency_pct: 0.30        # 30% rule on funded payout requests (UNVERIFIED detail)

@@ -90,12 +90,20 @@ Given today's selector lineup + each account's `daily_risk_budget` + objective:
 
 ```
 src/ta_foundation/analysis/risk/
-  firm_profiles/apex.yaml        # verified, versioned config
-  account_state.py               # AccountState model + peak/threshold tracking
-  dd_engine.py                   # state machine: intraday + eod; cushion/budget/lock/violation
-  allocator.py                   # lineup x account budget x objective -> per-account daily plan
-bin/Custom/AddOns/<TaAccountManager>.cs   # NT data pipe (later sub-phase 2d)
+  firm_profiles/apex.yaml        # verified, versioned config                    [built 2026-06-08]
+  account_state.py               # FirmProfile + AccountState models             [built 2026-06-08]
+  dd_engine.py                   # state machine: intraday + eod; cushion/budget/lock/violation [built 2026-06-08]
+  allocator.py                   # lineup x account budget x objective -> per-account daily plan [TODO 2c]
+bin/Custom/AddOns/<TaAccountManager>.cs   # NT data pipe (later sub-phase 2d)    [TODO 2d]
 ```
+
+**2b status (2026-06-08):** engine + APEX profile + 9 table tests built and green
+(`tests/analysis/risk/test_dd_engine.py`): intraday trail→lock-at-start+buffer→violation,
+EOD daily-recalc + daily-loss-limit, eval/PA progress branching, cushion→daily-risk-budget.
+The math is firm-agnostic; APEX numbers are config (corroborated, see catalog). **The replay
+gate below is still mandatory before any client relies on it** — table tests prove the math is
+self-consistent, not that it matches APEX's actual trajectory. Next: 2c allocator (needs the
+selector lineup + this budget), then the real-account replay validation when Eric provides a history.
 
 ## Risks to validate before any live account relies on this
 
