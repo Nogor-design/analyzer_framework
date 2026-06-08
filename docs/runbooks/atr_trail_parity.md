@@ -123,16 +123,31 @@ Our two Python models conveniently bracket the two NT engines:
 `nt_atr_trail_parity.py` (bar-close) ≈ NT **backtest**; `analysis/exits/simulate.py`
 (tick-continuous) ≈ NT **live**.
 
-## Step 1 (do first, no NT) — offline pre-estimate of the gap
+## Step 1 (do first, no NT) — offline pre-estimate of the gap ✅ DONE
 
-Run **both** models on the same PantheonMaster trades + the NQ tick cache
-(`D:\MarketData\NQ 06-26 Tick.Last.txt`): bar-model exit vs tick-model exit per
-trade → an offline estimate of the live-vs-backtest haircut **before** any live
-run. If the tick-model P&L is materially below the bar-model P&L, the deployed
-pool's backtested PF is optimistic and must be haircut before sizing. *(Build:
-wire `simulate.py`'s `AtrTrailPolicy` — ATR period 14, multiple 2.0, Wilder per
-Parity A — onto the same pooled trades; reuse `scripts/atr_trail_parity.py`'s
-trade loader.)*
+`scripts/atr_trail_live_estimate.py` runs the **tick-trail** replica
+(`replicate_nt_atr_trail_tick`, ≈ live: trails off tick highs, ATR bar-close,
+Wilder per Parity A) on the NQ tick cache and compares its P&L to NT's **actual**
+backtest P&L, per pooled trail trade.
+
+**Result (opt_a09359e6b60b, 5,734 trail trades in tick coverage ≤ 2026-05-27):**
+
+| | total P&L |
+|---|--:|
+| NT backtest (actual) | **$81,275** |
+| tick "live" estimate | **$61,870** |
+| **Haircut (live − backtest)** | **−$19,405 = −23.9%** |
+
+Per-trade: median Δ **$0** (most trades exit identically), but **19% are worse
+live** and those runners carry the loss. This **confirms the predicted
+direction**: live trails tighter → exits trend runners earlier → **the
+backtested AtrTrail edge is ~24% optimistic.**
+
+> **Treat −24% as a floor, not the final number.** The tick model fills *at* the
+> stop price; real live stop-market fills add slippage, and ChangeOrder latency/
+> rejections can only make live *worse*. Coverage also misses the May 28–Jun 3
+> tail. **Action: haircut the pool's backtested AtrTrail PF/net by ≥~24% for
+> sizing/expectations until Parity B Step 2 measures the real live gap.**
 
 ## Step 2 — live/replay capture checklist (NT-side, pairs with "run it first")
 
@@ -166,6 +181,7 @@ trade loader.)*
 ## Status
 
 - **Parity A:** ✅ done (Wilder confirmed, model faithful).
-- **Parity B Step 1 (offline pre-estimate):** ⬜ buildable now (tick cache + both
-  models) — **recommended next**.
-- **Parity B Step 2 (live/replay diff):** ⬜ operator-side, gates real money.
+- **Parity B Step 1 (offline pre-estimate):** ✅ done — **backtest overstates
+  AtrTrail P&L by ~24%** (live trails tighter); haircut the pool before sizing.
+- **Parity B Step 2 (live/replay diff):** ⬜ operator-side, gates real money —
+  confirms/refines the ~24% (expected to widen with real fill slippage).

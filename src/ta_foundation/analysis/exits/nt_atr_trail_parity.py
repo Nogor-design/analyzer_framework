@@ -124,6 +124,47 @@ def replicate_nt_atr_trail(
     return {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
 
 
+def replicate_nt_atr_trail_tick(
+    *,
+    entry_price: float,
+    direction: int,
+    tick_prices: np.ndarray,
+    tick_dts: np.ndarray,
+    tick_atr: np.ndarray,
+    cfg: NtAtrTrailConfig,
+) -> dict[str, Any]:
+    """LIVE analog of the trail (Parity B): identical to the bar replica EXCEPT
+    the favorable reference is the **tick** high/low (running max/min over ticks
+    since entry), mirroring NT's live ``ManageLiveDynamicStop`` (OnMarketData,
+    tick-by-tick) vs the backtest's bar-close ``highSinceEntry``. ATR is still the
+    bar-close ATR (NT updates ``currentAtr`` at bar close in both paths). Fully
+    vectorized: the resting stop a tick fills against is the stop set by *prior*
+    ticks (a long never trips its own freshly-raised stop). This isolates the
+    single live-vs-backtest difference: tick-high vs bar-high reference."""
+    p = np.asarray(tick_prices, dtype=float)
+    if p.size == 0:
+        return {"exit_dt": None, "exit_price": None, "reason": "no_ticks"}
+    a = np.nan_to_num(np.asarray(tick_atr, dtype=float), nan=1e9)  # NaN ATR => no trail pull
+    tick = cfg.tick_size
+    initial = entry_price - direction * cfg.stop_ticks * tick
+    if direction > 0:
+        run_ext = np.maximum.accumulate(p)
+        raw = np.round((run_ext - cfg.atr_multiple * a) / tick) * tick
+        stop_set = np.maximum(initial, np.maximum.accumulate(raw))      # ratchet up, floored
+        stop_active = np.concatenate(([initial], stop_set[:-1]))        # resting stop (prior tick)
+        hit = p <= stop_active
+    else:
+        run_ext = np.minimum.accumulate(p)
+        raw = np.round((run_ext + cfg.atr_multiple * a) / tick) * tick
+        stop_set = np.minimum(initial, np.minimum.accumulate(raw))      # ratchet down, capped
+        stop_active = np.concatenate(([initial], stop_set[:-1]))
+        hit = p >= stop_active
+    if not hit.any():
+        return {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
+    idx = int(np.argmax(hit))
+    return {"exit_dt": tick_dts[idx], "exit_price": float(stop_active[idx]), "reason": "trail_stop"}
+
+
 # NT Trades.csv exit names that mean "the (trailed) protective stop fired".
 NT_TRAIL_EXIT_NAMES = {"stop loss", "stop", "trail stop", "trailing stop"}
 

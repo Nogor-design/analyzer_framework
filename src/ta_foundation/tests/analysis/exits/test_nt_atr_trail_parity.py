@@ -11,6 +11,7 @@ from ta_foundation.analysis.exits.nt_atr_trail_parity import (
     _round_to_tick,
     compute_atr,
     replicate_nt_atr_trail,
+    replicate_nt_atr_trail_tick,
 )
 
 T0 = datetime(2026, 5, 1, 9, 0)
@@ -83,6 +84,39 @@ def test_stop_only_ratchets_never_loosens():
     ])
     r = replicate_nt_atr_trail(entry_dt=T0, entry_price=100.0, direction=1, bars=bars, cfg=CFG)
     assert r["exit_price"] == 112.0
+
+
+def test_tick_trail_initial_and_ratchet():
+    cfg = NtAtrTrailConfig()
+    dts = np.arange(5)
+    # long entry 100, initial stop 85, atr const 4 -> offset 8.
+    # prices 100,104,108,112,95 -> stop_active 85,92,96,100,104 -> fill at 95<=104 => 104.
+    prices = np.array([100.0, 104, 108, 112, 95])
+    atr = np.full(5, 4.0)
+    r = replicate_nt_atr_trail_tick(entry_price=100.0, direction=1,
+                                    tick_prices=prices, tick_dts=dts, tick_atr=atr, cfg=cfg)
+    assert r["reason"] == "trail_stop" and r["exit_price"] == 104.0
+
+
+def test_tick_trail_tighter_than_bar_on_intrabar_spike():
+    # An intrabar SPIKE high the bar-close never records makes the tick trail
+    # ratchet higher -> tighter stop -> earlier/ higher exit than the bar model.
+    cfg = NtAtrTrailConfig()
+    dts = np.arange(4)
+    prices = np.array([100.0, 120.0, 101.0, 108.0])  # spike to 120 then settle
+    atr = np.full(4, 4.0)  # offset 8 -> after spike stop ~ 112
+    r = replicate_nt_atr_trail_tick(entry_price=100.0, direction=1,
+                                    tick_prices=prices, tick_dts=dts, tick_atr=atr, cfg=cfg)
+    # spike 120 sets stop 112 (active next tick); 101 <= 112 -> exit at 112.
+    assert r["exit_price"] == 112.0
+
+
+def test_tick_trail_no_exit():
+    cfg = NtAtrTrailConfig()
+    r = replicate_nt_atr_trail_tick(entry_price=100.0, direction=1,
+                                    tick_prices=np.array([101.0, 103, 105]),
+                                    tick_dts=np.arange(3), tick_atr=np.full(3, 4.0), cfg=cfg)
+    assert r["reason"] == "no_exit_in_window"
 
 
 def test_compute_atr_modes_differ():
