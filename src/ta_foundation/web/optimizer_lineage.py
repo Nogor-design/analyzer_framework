@@ -90,7 +90,7 @@ class LineageNode:
     stage_id: str
     stage_label: str
     stage_type: str  # "optimizer" | "fixed_backtest" | "unknown"
-    role: str  # "stage_root" | "stage_winner" | "finalist"
+    role: str  # "stage_root" | "stage_winner" | "suppressed_refinement" | "finalist"
     candidate_id: str | None
     template_id: str | None
     bucket_id: str | None
@@ -233,6 +233,13 @@ def build_lineage(session: OptimizerSession, candidate_id: str) -> LineageReport
 
     # nodes were built finalist-first; flip so Stage 1 root comes first.
     ordered = list(reversed(nodes))
+    suppressed_node = _suppressed_refinement_node(
+        session=session,
+        manifest_entry=finalist_entry,
+        recipe_stages=recipe_stages,
+    )
+    if suppressed_node is not None:
+        ordered.insert(max(0, len(ordered) - 1), suppressed_node)
 
     # The finalist's params come from the manifest's ``strategy_values``,
     # which is the strategy's FULL canonical parameter dict (including
@@ -420,6 +427,51 @@ def _build_finalist_node(
     )
 
 
+def _suppressed_refinement_node(
+    *,
+    session: OptimizerSession,
+    manifest_entry: dict[str, Any],
+    recipe_stages: dict[str, dict[str, Any]],
+) -> LineageNode | None:
+    metadata = manifest_entry.get("selection_metadata")
+    if not isinstance(metadata, dict):
+        return None
+    child = metadata.get("suppressed_refinement_child")
+    if not isinstance(child, dict) or not child:
+        return None
+
+    stage_id = str(
+        metadata.get("suppressed_refinement_stage_id")
+        or child.get("stage_id")
+        or "refinement"
+    )
+    stage_meta = recipe_stages.get(stage_id) or {}
+    metric_reason = str(metadata.get("retained_parent_reason") or "").replace("_", " ")
+    status_reason = (
+        "Refinement attempt was not retained because it did not beat the parent baseline."
+        if not metric_reason
+        else f"Refinement attempt was not retained: {metric_reason}."
+    )
+    candidate_id = _str_or_none(child.get("candidate_id"))
+    return LineageNode(
+        depth=-1,
+        stage_id=stage_id,
+        stage_label=str(stage_meta.get("description") or stage_id),
+        stage_type=str(stage_meta.get("stage_type") or "optimizer"),
+        role="suppressed_refinement",
+        candidate_id=candidate_id,
+        template_id=_str_or_none(child.get("template_id")),
+        bucket_id=_str_or_none(child.get("bucket_id")),
+        row_index=_int_or_none(child.get("optimizer_row_id")),
+        params=_params_from_suppressed_child(child),
+        param_diff={},
+        kpis=_kpis_from_row(child),
+        status="rejected",
+        status_reason=status_reason,
+        links=_links_for_stage_row(session, stage_id=stage_id),
+    )
+
+
 def _candidate_label(manifest_entry: dict[str, Any], eval_row: dict[str, Any] | None) -> str | None:
     eval_row = eval_row or {}
     label = str(eval_row.get("label") or manifest_entry.get("label") or "").strip()
@@ -587,6 +639,33 @@ def _merge_finalist_params(
     })
     merged.update(_extract_params(eval_row))
     return merged
+
+
+def _params_from_suppressed_child(row: dict[str, Any]) -> dict[str, Any]:
+    out = _extract_params(row)
+    direct_names = (
+        "StartTimeH",
+        "StartTimeM",
+        "DurationTimeH",
+        "DurationTimeM",
+        "Reverse",
+        "averageFast",
+        "averageSlow",
+        "MaxStop",
+        "MaxTPRatio",
+        "ProfitStop",
+        "LossStop",
+        "MaxTrades",
+        "Long",
+        "Short",
+        "UseTrend",
+        "UseTrendReverse",
+    )
+    for name in direct_names:
+        value = row.get(name)
+        if value is not None and name not in out:
+            out[name] = value
+    return out
 
 
 def _kpis_from_row(row: dict[str, Any]) -> LineageKpis:

@@ -148,15 +148,13 @@ def final_template_export_name(path: Path) -> str:
 
 
 def final_template_export_name_for_session(session: OptimizerSession, path: Path) -> str:
-    """Return the stable run-id export name for a possibly semantic XML path."""
+    """Return the operator-facing export name for a possibly semantic XML path."""
     resolved = path.resolve()
-    for run_id, indexed_path in _renamed_templates_by_run_id(session).items():
+    for _run_id, indexed_path in _renamed_templates_by_run_id(session).items():
         if indexed_path.resolve() == resolved:
-            parts = [_safe_filename(run_id)]
-            start_hour = _start_hour_from_template(path)
-            if start_hour is not None:
-                parts.append(f"StartTimeH_{start_hour:02d}")
-            return "_".join(parts) + ".xml"
+            return _safe_filename(path.name)
+    if active_final_templates_dir(session) == final_renamed_templates_dir(session):
+        return _safe_filename(path.name)
     return final_template_export_name(path)
 
 

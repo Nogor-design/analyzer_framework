@@ -30,6 +30,12 @@ def _panel_variant(slug: str) -> str:
     return f"tf-sess-panel--{safe}"
 
 
+def _display_name_for_row(row: Dict[str, Any]) -> str:
+    pkg = row.get("pkg")
+    derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg is not None else {}
+    return str(derived.get("display_name_spaced") or derived.get("display_name") or row.get("run_id") or "")
+
+
 def _render_group_table(rows: List[Dict[str, Any]], strip_days_iso: List[str], *, options: Dict[str, Any]) -> str:
     if not rows:
         return '<div class="tf-sess-empty">No matching strategies yet.</div>'
@@ -64,11 +70,13 @@ def _render_group_table(rows: List[Dict[str, Any]], strip_days_iso: List[str], *
         active_window = row.get("active_window") or {}
         stackability = row.get("stackability") or {}
         group_rank = row.get(f"group_rank_{row['session_slug']}", row.get("overall_rank", row.get("rank", "")))
+        display_name = escape(_display_name_for_row(row))
+        run_id = escape(str(row["run_id"]))
         out.append("<tr>")
         out.append(f"<td>#{int(group_rank)}</td>")
         out.append(
             "<td>"
-            f'<div class="tf-sess-name">{escape(str(row["run_id"]))}</div>'
+            f'<div class="tf-sess-name">{display_name}</div>'
             f'<div class="tf-sess-sub">{escape(str(row["session_label"]))} | '
             f'10D win rate {escape(f"{(recent10.win_rate or 0.0) * 100.0:.0f}%" if recent10.win_rate is not None else "-")} | '
             f'5D active {recent5.active_days}/{len(recent5.days)}</div>'

@@ -46,6 +46,8 @@ from typing import Any, Iterable
 
 
 SUPPORTED_EXTS: tuple[str, ...] = (".jpeg", ".jpg", ".png")
+_PORTRAIT_CACHE: dict[str, tuple[Path, ...]] = {}
+_CHILD_DIR_CACHE: dict[str, tuple[Path, ...]] = {}
 
 
 @dataclass(frozen=True)
@@ -330,17 +332,14 @@ def _pick_from_god_pool(img_dir: Path, ma_name: str) -> Path | None:
     """
     needle = f"{ma_name}_images".lower()
     subdir: Path | None = None
-    for entry in img_dir.iterdir():
-        if entry.is_dir() and entry.name.lower() == needle:
+    for entry in _child_dirs(img_dir):
+        if entry.name.lower() == needle:
             subdir = entry
             break
     if subdir is None:
         return None
 
-    candidates = sorted(
-        (p for p in subdir.iterdir() if _is_portrait(p)),
-        key=lambda p: p.name.lower(),
-    )
+    candidates = _iter_portraits(subdir)
     return candidates[0] if candidates else None
 
 
@@ -357,10 +356,31 @@ def _substring_search(img_dir: Path, needle: str) -> Path | None:
 
 
 def _iter_portraits(img_dir: Path) -> list[Path]:
+    key = str(img_dir.resolve())
+    cached = _PORTRAIT_CACHE.get(key)
+    if cached is not None:
+        return list(cached)
     try:
-        return sorted((entry for entry in img_dir.rglob("*") if _is_portrait(entry)), key=lambda p: str(p).lower())
+        portraits = tuple(
+            sorted((entry for entry in img_dir.rglob("*") if _is_portrait(entry)), key=lambda p: str(p).lower())
+        )
     except OSError:
         return []
+    _PORTRAIT_CACHE[key] = portraits
+    return list(portraits)
+
+
+def _child_dirs(img_dir: Path) -> list[Path]:
+    key = str(img_dir.resolve())
+    cached = _CHILD_DIR_CACHE.get(key)
+    if cached is not None:
+        return list(cached)
+    try:
+        children = tuple(sorted((entry for entry in img_dir.iterdir() if entry.is_dir()), key=lambda p: p.name.lower()))
+    except OSError:
+        return []
+    _CHILD_DIR_CACHE[key] = children
+    return list(children)
 
 
 def _safe_float(value: Any) -> float | None:

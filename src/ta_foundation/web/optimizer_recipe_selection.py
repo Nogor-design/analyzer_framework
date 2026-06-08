@@ -73,6 +73,13 @@ def select_recipe_stage_candidates(
     ranked = _add_scores(df)
     filtered = _apply_hard_filters(ranked, selection.get("hard_filters") or selection)
     selected = _select_rows(filtered, selection)
+    selected = _retain_parent_baselines_if_configured(
+        session,
+        stage=stage,
+        ranked=ranked,
+        selected=selected,
+        selection=selection,
+    )
 
     selected_ids = set(str(row.get("candidate_id") or "") for row in selected.to_dict(orient="records"))
     rejected = ranked[~ranked["candidate_id"].astype(str).isin(selected_ids)].copy()
@@ -239,6 +246,202 @@ def _select_rows(df: pd.DataFrame, selection: dict[str, Any]) -> pd.DataFrame:
     if target_total is not None:
         selected = selected.head(max(1, target_total))
     return selected
+
+
+def _retain_parent_baselines_if_configured(
+    session: OptimizerSession,
+    *,
+    stage: RecipeStage,
+    ranked: pd.DataFrame,
+    selected: pd.DataFrame,
+    selection: dict[str, Any],
+) -> pd.DataFrame:
+    if not bool(selection.get("retain_parent_if_child_worse")):
+        return selected
+    if selected.empty or "parent_candidate_id" not in selected.columns:
+        return selected
+
+    parent_stage_id = _parent_stage_id(stage.from_ref)
+    if not parent_stage_id:
+        return selected
+    parent_rows = _parent_rows_by_candidate_id(session, parent_stage_id)
+    if not parent_rows:
+        return selected
+
+    out_rows: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for _, child in selected.iterrows():
+        parent_id = str(child.get("parent_candidate_id") or "").strip()
+        parent = parent_rows.get(parent_id)
+        if parent is None or _child_is_not_worse_than_parent(child, parent, selection):
+            row = child.to_dict()
+        else:
+            row = dict(parent)
+            row["selection_status"] = "selected"
+            row["selection_reason"] = (
+                "parent baseline retained: best refinement child did not beat "
+                f"parent by metrics: {_metrics_label(selection)}"
+            )
+            row["retained_parent_stage_id"] = parent_stage_id
+            row["retained_parent_candidate_id"] = parent_id
+            row["retained_parent_reason"] = "refinement_child_worse_than_parent"
+            row["suppressed_refinement_stage_id"] = stage.stage_id
+            row["suppressed_refinement_child"] = _compact_row_for_parent_retention(child)
+
+        candidate_id = str(row.get("candidate_id") or "")
+        if candidate_id and candidate_id in seen_ids:
+            continue
+        if candidate_id:
+            seen_ids.add(candidate_id)
+        out_rows.append(row)
+
+    if not out_rows:
+        return selected.head(0)
+    retained = pd.DataFrame(out_rows)
+    # Keep stable global ordering after parent replacement. A retained parent
+    # can outrank the child it replaced; surfacing it accordingly helps the
+    # Decision page tell the truth about what survived.
+    if "portfolio_score" in retained.columns:
+        retained = retained.sort_values("portfolio_score", ascending=False)
+    return retained
+
+
+def _parent_stage_id(from_ref: str | None) -> str | None:
+    if not from_ref:
+        return None
+    parent, _, suffix = str(from_ref).partition(".")
+    if parent and suffix == "selected_rows":
+        return parent
+    return None
+
+
+def _parent_rows_by_candidate_id(session: OptimizerSession, stage_id: str) -> dict[str, dict[str, Any]]:
+    rows = _load_json_rows(session.directory / PARSED_RESULTS_DIRNAME / stage_id / "selected.json")
+    if not rows:
+        rows = _load_json_rows(session.directory / PARSED_RESULTS_DIRNAME / stage_id / "scored_rows.json")
+    if not rows:
+        return {}
+    df = _add_scores(pd.DataFrame(rows))
+    out: dict[str, dict[str, Any]] = {}
+    for row in df.to_dict(orient="records"):
+        candidate_id = str(row.get("candidate_id") or "").strip()
+        if candidate_id and candidate_id not in out:
+            out[candidate_id] = row
+    return out
+
+
+def _load_json_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [dict(row) for row in payload if isinstance(row, dict)]
+
+
+def _child_is_not_worse_than_parent(
+    child: pd.Series,
+    parent: dict[str, Any],
+    selection: dict[str, Any],
+) -> bool:
+    return _comparison_key(child, selection) >= _comparison_key(parent, selection)
+
+
+def _comparison_key(row: pd.Series | dict[str, Any], selection: dict[str, Any]) -> tuple[float, ...]:
+    metrics = selection.get("fitness_metrics")
+    if not isinstance(metrics, list) or not metrics:
+        metrics = [selection.get("rank_by") or "portfolio_score"]
+    parts: list[float] = []
+    for metric in metrics:
+        sort_cols, ascending = _sort_args_for_metric(str(metric))
+        for col, asc in zip(sort_cols, ascending):
+            value = _numeric_row_value(row, col)
+            parts.append(-value if asc else value)
+    if not parts:
+        parts.append(_numeric_row_value(row, "portfolio_score"))
+    return tuple(parts)
+
+
+def _numeric_row_value(row: pd.Series | dict[str, Any], name: str) -> float:
+    value = _row_value(row, name) if isinstance(row, pd.Series) else _dict_row_value(row, name)
+    return _float_for_sort(value)
+
+
+def _dict_row_value(row: dict[str, Any], name: str) -> Any:
+    if name in row:
+        return row.get(name)
+    param_name = f"param_{name}"
+    if param_name in row:
+        return row.get(param_name)
+    wanted = _canonical_column_name(name)
+    param_wanted = _canonical_column_name(param_name)
+    for column, value in row.items():
+        canonical = _canonical_column_name(str(column))
+        if canonical in {wanted, param_wanted}:
+            return value
+    return None
+
+
+def _float_for_sort(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _metrics_label(selection: dict[str, Any]) -> str:
+    metrics = selection.get("fitness_metrics")
+    if isinstance(metrics, list) and metrics:
+        return ", ".join(str(metric) for metric in metrics)
+    return str(selection.get("rank_by") or "portfolio_score")
+
+
+def _compact_row_for_parent_retention(row: pd.Series) -> dict[str, Any]:
+    payload = _json_safe(row.to_dict())
+    keep_prefixes = ("param_",)
+    keep_keys = {
+        "candidate_id",
+        "stage_id",
+        "template_id",
+        "bucket_id",
+        "parent_candidate_id",
+        "optimizer_row_id",
+        "optimizer_target",
+        "batch_id",
+        "profit_factor",
+        "total_net_profit",
+        "max_drawdown",
+        "drawdown_abs",
+        "total_trades",
+        "portfolio_score",
+        "single_multi",
+        "selection_reason",
+    }
+    for key in (
+        "StartTimeH",
+        "StartTimeM",
+        "DurationTimeH",
+        "DurationTimeM",
+        "Reverse",
+        "averageFast",
+        "averageSlow",
+        "MaxStop",
+        "MaxTPRatio",
+        "ProfitStop",
+        "LossStop",
+        "MaxTrades",
+        "Long",
+        "Short",
+    ):
+        keep_keys.add(key)
+    return {
+        key: value
+        for key, value in payload.items()
+        if key in keep_keys or key.startswith(keep_prefixes)
+    }
 
 
 def _select_coverage_matrix_rows(df: pd.DataFrame, selection: dict[str, Any]) -> pd.DataFrame:
@@ -736,7 +939,9 @@ def _optional_int(value: Any) -> int | None:
 def _json_safe(row: dict[str, Any]) -> dict[str, Any]:
     clean: dict[str, Any] = {}
     for key, value in row.items():
-        if pd.isna(value):
+        if isinstance(value, (dict, list)):
+            clean[key] = value
+        elif pd.isna(value):
             clean[key] = None
         elif hasattr(value, "item"):
             clean[key] = value.item()

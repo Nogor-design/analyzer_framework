@@ -108,6 +108,8 @@ class DecisionDashboard:
     artifact_links: dict[str, str]   # display-name -> relative path
     template_links: dict[str, Any]
     session_report_url: str | None
+    weekly_reports_url: str | None
+    weekly_reports_zip_url: str | None
     status: str               # "ok" | "no_review" | "no_session"
     status_reason: str = ""
 
@@ -127,6 +129,8 @@ class DecisionDashboard:
             "artifact_links": dict(self.artifact_links),
             "template_links": dict(self.template_links),
             "session_report_url": self.session_report_url,
+            "weekly_reports_url": self.weekly_reports_url,
+            "weekly_reports_zip_url": self.weekly_reports_zip_url,
             "status": self.status,
             "status_reason": self.status_reason,
         }
@@ -193,6 +197,18 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
     session_report_url = (
         f"/optimizer/sessions/{session.id}/candidate-report"
         if session_candidate_report_path(session).exists() else None
+    )
+    from ta_foundation.web.optimizer_weekly_report_pack import (
+        weekly_report_pack_index_path,
+        weekly_report_pack_zip_path,
+    )
+    weekly_reports_url = (
+        f"/optimizer/sessions/{session.id}/weekly-reports"
+        if weekly_report_pack_index_path(session).exists() else None
+    )
+    weekly_reports_zip_url = (
+        f"/optimizer/sessions/{session.id}/weekly-reports.zip"
+        if weekly_report_pack_zip_path(session).exists() else None
     )
 
     unranked_rows: list[CandidateRow] = []
@@ -317,6 +333,8 @@ def build_decision_dashboard(session: OptimizerSession) -> DecisionDashboard:
         artifact_links=_collect_artifact_links(pkg),
         template_links=final_template_links(session),
         session_report_url=session_report_url,
+        weekly_reports_url=weekly_reports_url,
+        weekly_reports_zip_url=weekly_reports_zip_url,
         status="ok",
     )
 
@@ -531,6 +549,8 @@ def _empty_dashboard(
         artifact_links={},
         template_links={},
         session_report_url=None,
+        weekly_reports_url=None,
+        weekly_reports_zip_url=None,
         status="no_review",
         status_reason=reason,
     )

@@ -60,3 +60,9 @@ scratch/
 *.bak
 
 .codex_tmp/
+
+# Stray unexpanded-env-var dir from a test run
+%TEMP%/
+
+# Generated weekly report output (large PNGs) — do not track in git
+ExampleWeeklyReport/

@@ -329,6 +329,7 @@ def _generate_final_backtest_stage_templates(
             "initial_bucket_key": row.get("initial_bucket_key"),
             "initial_bucket_values": row.get("initial_bucket_values"),
             "final_selection_source_stage": row.get("stage_id"),
+            "selection_metadata": _final_selection_metadata(row),
             "deployment_package_path": str(mirror),
             "strategy_values": values,
         })
@@ -921,6 +922,22 @@ def _strategy_values_from_row(row: dict[str, Any], *, allowed_names: set[str] | 
         if isinstance(value, (str, int, float, bool)):
             values[key] = value
     return values
+
+
+def _final_selection_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "selection_reason",
+        "retained_parent_stage_id",
+        "retained_parent_candidate_id",
+        "retained_parent_reason",
+        "suppressed_refinement_stage_id",
+        "suppressed_refinement_child",
+    )
+    return {
+        key: row.get(key)
+        for key in keys
+        if row.get(key) not in (None, "")
+    }
 
 
 def _find_recipe_stage(stages: tuple[RecipeStage, ...], stage_id: str) -> RecipeStage | None:

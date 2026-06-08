@@ -75,21 +75,25 @@
               title="(Re)generate the per-candidate HTML reports linked from each row below.">
         Build per-candidate reports
       </button>
-      <button id="build-session-report-btn"
-              class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
-              title="Generate one report from all final candidate templates so comparison sections have every run.">
-        Build final report
-      </button>
       <button id="build-weekly-coverage-package-btn"
               class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
-              title="Build the weekly bucket x Reverse x slowMA package with operational diversity checks.">
-        Build weekly package
+              title="Build an ExampleWeeklyReport-style folder with separate report files and generated templates.">
+        Build weekly reports
       </button>
-      <button id="build-weekly-daily-update-btn"
-              class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold"
-              title="Build a lightweight daily progress report for the templates sent in this week's weekly package.">
-        Daily update
-      </button>
+      {% if dashboard.weekly_reports_url %}
+        <a href="{{ dashboard.weekly_reports_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+           title="Open the generated ExampleWeeklyReport-style report folder index.">
+          View weekly reports
+        </a>
+      {% endif %}
+      {% if dashboard.weekly_reports_zip_url %}
+        <a href="{{ dashboard.weekly_reports_zip_url }}"
+           class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
+           title="Download the generated ExampleWeeklyReport-style report folder.">
+          Download weekly reports
+        </a>
+      {% endif %}
       <a href="/optimizer/sessions/{{ dashboard.session_id }}/final-report-builder"
          class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline"
          title="Choose and save the sections used by the final all-template report.">
@@ -483,35 +487,35 @@
     const sid = {{ dashboard.session_id | tojson }};
     weeklyBtn.disabled = true;
     weeklyBtn.textContent = "Building...";
-    status.textContent = "Building weekly coverage package with operational diversity checks...";
+    status.textContent = "Building separate weekly reports from the generated templates...";
     try {
-      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package", {
+      const r = await fetch("/api/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-reports", {
         method: "POST", headers: {"Content-Type": "application/json"}, body: "{}",
       });
       const body = await r.json();
       if (!r.ok) {
-        status.textContent = "Weekly package failed: " + (body.error || r.status);
-        weeklyBtn.textContent = "Build weekly package";
+        status.textContent = "Weekly reports failed: " + (body.error || r.status);
+        weeklyBtn.textContent = "Build weekly reports";
         weeklyBtn.disabled = false;
         return;
       }
       const result = body.result || {};
+      const built = (result.reports || []).filter((r) => r.status === "built").length;
       const noteLines = (result.notes || []).slice(0, 4).join(" - ");
       status.innerHTML =
-        "Built weekly package: " + (result.validated_template_count || 0) +
-        " deployable template(s), " + (result.duplicate_drop_count || 0) +
-        " duplicate shape(s) dropped. " +
+        "Built weekly reports: " + built + " report(s), " + (result.template_count || 0) +
+        " template(s). " +
         (noteLines ? "Notes: " + noteLines + " " : "") +
         "<a class='text-amber-300 underline' target='_blank' rel='noopener' href='" +
-        (result.report_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package/report")) +
-        "'>View package report</a> " +
+        (result.report_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-reports")) +
+        "'>View weekly reports</a> " +
         "<a class='text-amber-300 underline ml-2' href='" +
-        (result.zip_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-coverage-package.zip")) +
+        (result.zip_url || ("/optimizer/sessions/" + encodeURIComponent(sid) + "/weekly-reports.zip")) +
         "'>Download ZIP</a>";
     } catch (e) {
-      status.textContent = "Weekly package failed: " + e;
+      status.textContent = "Weekly reports failed: " + e;
     } finally {
-      weeklyBtn.textContent = "Build weekly package";
+      weeklyBtn.textContent = "Build weekly reports";
       weeklyBtn.disabled = false;
     }
   });

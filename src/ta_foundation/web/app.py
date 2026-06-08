@@ -1100,6 +1100,14 @@ def create_app() -> "Flask":
     def optimizer_deployment_matrix_page():
         return render_template("optimizer_deployment_matrix.html")
 
+    @app.route("/pool-studio")
+    def pool_studio_page():
+        """Clean, guided, strategy-generic workflow over the existing deployment
+        engine: pick strategy -> build the weekly pool -> score the daily lineup
+        vs baselines. A thin UI; all real work reuses the deployment-matrix +
+        selection APIs."""
+        return render_template("pool_studio.html")
+
     @app.route("/optimizer/sessions/<session_id>")
     def optimizer_session_detail_page(session_id: str):
         from ta_foundation.web.optimizer_session import get_session
@@ -1736,6 +1744,39 @@ def create_app() -> "Flask":
         })
 
     @app.route(
+        "/api/optimizer/sessions/<session_id>/weekly-reports",
+        methods=["POST"],
+    )
+    def api_optimizer_weekly_reports(session_id: str):
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_report_pack import (
+            WeeklyReportPackError,
+            build_weekly_report_pack,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        payload = request.get_json(silent=True) or {}
+        raw_run_ids = payload.get("run_ids")
+        run_ids = (
+            [str(run_id) for run_id in raw_run_ids if str(run_id).strip()]
+            if isinstance(raw_run_ids, list)
+            else None
+        )
+        try:
+            result = build_weekly_report_pack(
+                session,
+                run_ids=run_ids,
+                include_all_active_templates=bool(payload.get("include_all_active_templates", False)),
+            )
+        except WeeklyReportPackError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"error": f"unexpected weekly reports build error: {exc}"}), 500
+        return jsonify({"result": result.to_dict()})
+
+    @app.route(
         "/api/optimizer/sessions/<session_id>/weekly-daily-update-report",
         methods=["POST"],
     )
@@ -2183,6 +2224,60 @@ def create_app() -> "Flask":
         if not html_path.exists():
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-reports")
+    def optimizer_weekly_reports_page(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_report_pack import (
+            weekly_report_pack_index_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        html_path = weekly_report_pack_index_path(session)
+        if not html_path.exists():
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-reports/files/<path:filename>")
+    def optimizer_weekly_reports_file(session_id: str, filename: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_report_pack import (
+            weekly_report_pack_dir,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        safe_name = Path(filename).name
+        html_path = weekly_report_pack_dir(session) / safe_name
+        if not html_path.exists() or html_path.suffix.lower() != ".html":
+            return abort(404)
+        return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-reports.zip")
+    def optimizer_weekly_reports_zip(session_id: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_report_pack import (
+            weekly_report_pack_zip_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        zip_path = weekly_report_pack_zip_path(session)
+        if not zip_path.exists():
+            return abort(404)
+        return send_file(
+            zip_path.resolve(),
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=zip_path.name,
+        )
 
     @app.route("/optimizer/sessions/<session_id>/weekly-daily-update-report")
     def optimizer_weekly_daily_update_report_page(session_id: str):
@@ -2862,6 +2957,57 @@ def create_app() -> "Flask":
             paths = write_manifest(manifest, session.directory / "deployment_matrix")
             out["written"] = {k: str(v) for k, v in paths.items()}
         return jsonify(out)
+
+    @app.route("/api/selection/replay/<session_id>", methods=["GET"])
+    def api_selection_replay(session_id: str):
+        """Score the daily-lineup selectors (baselines + composite v1) over a
+        finished deployment session's realised backtest results. The Phase-1
+        accountability view: a smarter selector must beat the best baseline OOS on
+        expectancy AND survival. See docs/designs/daily_lineup_selector.md."""
+        import os
+        from ta_foundation.analysis.selection import DEFAULT_BASELINES, compare_selectors
+        from ta_foundation.analysis.selection.loader import load_candidates_from_session
+        from ta_foundation.analysis.selection.scoring import composite_selector
+        from ta_foundation.web.optimizer_session import get_session
+
+        session = get_session(session_id)
+        if session is None:
+            return jsonify({"error": "session not found"}), 404
+        bars = (request.args.get("bars") or r"D:\MarketData\NQ 06-26.Export.txt").strip()
+        if not bars or not os.path.exists(bars):
+            bars = None  # regime_matched gracefully falls back to top_pf
+        try:
+            cands, regime_by_day = load_candidates_from_session(
+                session.directory, bars_file=bars,
+            )
+        except Exception as exc:
+            return jsonify({"error": f"could not load candidates: {exc}"}), 400
+        if not cands:
+            return jsonify({
+                "error": "no scored candidates — session has no final-backtest "
+                         "results with trades yet (run the matrix to completion first)."
+            }), 400
+
+        selectors = {**DEFAULT_BASELINES, "composite_v1": composite_selector}
+        table = compare_selectors(
+            cands, selectors, regime_by_day=regime_by_day, train_min_days=10,
+        )
+        # Trim the per-day picks/pnl detail; the page wants the summary metrics.
+        summary = {
+            name: {k: v for k, v in s.items() if k not in {"picks", "daily_pnl"}}
+            for name, s in table.items()
+        }
+        days = sorted({d for c in cands for d in c.daily_pnl})
+        return jsonify({
+            "session_id": session_id,
+            "n_candidates": len(cands),
+            "slices": sorted({c.slice_key for c in cands}),
+            "n_days": len(days),
+            "date_range": [days[0].isoformat(), days[-1].isoformat()] if days else [],
+            "regime_days": len(regime_by_day),
+            "bars_used": bars,
+            "selectors": summary,
+        })
 
     @app.route("/api/optimizer/weekly-coverage/recent", methods=["GET"])
     def api_optimizer_weekly_coverage_recent():
@@ -4554,6 +4700,82 @@ def create_app() -> "Flask":
 
         else:
             return jsonify({"error": f"Unknown override action: {action}"}), 400
+
+    # ------------------------------------------------------------------
+    # God/Monster Image Renamer Routes
+    # ------------------------------------------------------------------
+    @app.route("/image-renamer")
+    def image_renamer_page():
+        return render_template("image_renamer.html")
+
+    @app.route("/api/god-images/list", methods=["POST"])
+    def api_god_images_list():
+        body = request.get_json(silent=True) or {}
+        directory = body.get("directory", "").strip()
+        
+        # Default paths
+        if not directory:
+            # Check default paths in priority order
+            defaults = [
+                "C:/Users/Owner/Pictures/NewGodImages",
+                "D:/pdfImageExtract/Gods_images - Copy"
+            ]
+            for d in defaults:
+                if os.path.exists(d) and os.path.isdir(d):
+                    directory = d
+                    break
+            if not directory:
+                directory = "C:/Users/Owner/Pictures/NewGodImages"
+
+        from ta_foundation.web.god_image_renamer import list_god_images
+        return jsonify(list_god_images(directory))
+
+    @app.route("/api/god-images/rename", methods=["POST"])
+    def api_god_images_rename():
+        body = request.get_json(silent=True) or {}
+        old_path = body.get("old_path", "").strip()
+        new_name = body.get("new_name", "").strip()
+        if not old_path or not new_name:
+            return jsonify({"success": False, "error": "Missing old_path or new_name"}), 400
+            
+        from ta_foundation.web.god_image_renamer import rename_god_image
+        res = rename_god_image(old_path, new_name)
+        return jsonify(res)
+
+    @app.route("/api/god-images/expected-names", methods=["GET"])
+    def api_god_images_expected_names():
+        target_image_dir = request.args.get("directory", "").strip()
+        if not target_image_dir:
+            # Try defaults
+            defaults = [
+                "C:/Users/Owner/Pictures/NewGodImages",
+                "D:/pdfImageExtract/Gods_images - Copy"
+            ]
+            for d in defaults:
+                if os.path.exists(d) and os.path.isdir(d):
+                    target_image_dir = d
+                    break
+        
+        from ta_foundation.web.god_image_renamer import get_expected_image_names
+        res = get_expected_image_names(workspace_dir=str(Path.cwd()), target_image_dir=target_image_dir)
+        return jsonify(res)
+
+    @app.route("/api/god-images/file", methods=["GET"])
+    def api_god_images_file():
+        path_str = request.args.get("path", "").strip()
+        if not path_str:
+            return "Missing path parameter", 400
+        
+        p = Path(path_str).expanduser().resolve()
+        # Safety checks
+        if not p.exists() or not p.is_file():
+            return f"File not found: {path_str}", 404
+        
+        # Allow only supported image extensions
+        if p.suffix.lower() not in {".png", ".jpg", ".jpeg", ".gif"}:
+            return "Forbidden file type", 403
+        
+        return send_file(p)
 
     return app
 

@@ -63,10 +63,21 @@ def render_final_template_bundle_basket(ctx: dict) -> str:
         total_combos *= max(1, len(runs))
 
     best = ranked[0]
-    chart = _bundle_chart(matrix.pnl, best.combo.run_ids) if show_chart else ""
+    display_names = _name_map(packages)
+    ranked = _dedupe_display_equivalent_bundles(ranked, buckets, display_names)
+    chart = _bundle_chart(matrix.pnl, best.combo.run_ids, display_names) if show_chart else ""
 
     return f"""
-    <div style="padding:16px;background:#0f172a;min-height:220px;color:#cbd5e1">
+    <div class="tf-bundle-basket" style="padding:16px;background:#0f172a;min-height:220px;color:#cbd5e1">
+      <style>
+        .tf-bundle-basket table tbody tr:nth-child(even) td,
+        .tf-bundle-basket table tbody tr:hover td {{
+          background: transparent !important;
+        }}
+        .tf-bundle-basket table td {{
+          vertical-align: top;
+        }}
+      </style>
       <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px">
         <div>
           <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;font-weight:700">Runnable Bundle Basket</div>
@@ -79,8 +90,8 @@ def render_final_template_bundle_basket(ctx: dict) -> str:
         </div>
       </div>
 
-      {_coverage_table(groups)}
-      {_bundle_table(ranked[:top_n], buckets)}
+      {_coverage_table(groups, display_names)}
+      {_bundle_table(ranked[:top_n], buckets, display_names)}
       {chart}
 
       <div style="margin-top:12px;padding:8px 12px;background:#172033;border-radius:6px;font-size:11px;color:#64748b">
@@ -117,6 +128,44 @@ def _rank_one_per_bucket_bundles(
         item.combo.run_ids,
     ))
     return out
+
+
+def _dedupe_display_equivalent_bundles(
+    rows: list[BundleScore],
+    buckets: list[str],
+    display_names: dict[str, str],
+) -> list[BundleScore]:
+    seen: set[tuple[str, ...]] = set()
+    out: list[BundleScore] = []
+    for row in rows:
+        key = tuple(
+            _normalize_strategy_name_for_dedupe(
+                display_names.get(row.bucket_to_run.get(bucket, ""), row.bucket_to_run.get(bucket, ""))
+            )
+            for bucket in buckets
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
+def _normalize_strategy_name_for_dedupe(name: str) -> str:
+    words = str(name or "").strip().split()
+    if not words:
+        return ""
+    phase_aliases = {
+        "closing": "close",
+        "coiling": "coil",
+        "drifting": "drift",
+        "priming": "prime",
+        "raging": "rage",
+        "rising": "rise",
+        "dawning": "dawn",
+    }
+    words[0] = phase_aliases.get(words[0].lower(), words[0].lower())
+    return " ".join(word.lower() for word in words)
 
 
 def _group_runs_by_bucket(packages: dict[str, Any], *, bucket_param: str) -> dict[str, list[str]]:
@@ -188,6 +237,16 @@ def _run_sort_key(run_id: str) -> tuple[int, str]:
     return (int(match.group(1)) if match else 999999, run_id)
 
 
+def _display_name(packages: dict[str, Any], run_id: str) -> str:
+    pkg = packages.get(run_id)
+    derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg is not None else {}
+    return str(derived.get("display_name_spaced") or derived.get("display_name") or run_id)
+
+
+def _name_map(packages: dict[str, Any]) -> dict[str, str]:
+    return {str(run_id): _display_name(packages, str(run_id)) for run_id in packages.keys()}
+
+
 def _fmt(value: Any, *, pct: bool = False, dollars: bool = False, decimals: int = 2) -> str:
     try:
         num = float(value)
@@ -200,20 +259,21 @@ def _fmt(value: Any, *, pct: bool = False, dollars: bool = False, decimals: int 
     return f"{num:.{decimals}f}"
 
 
-def _coverage_table(groups: dict[str, list[str]]) -> str:
+def _coverage_table(groups: dict[str, list[str]], display_names: dict[str, str]) -> str:
     cells = []
     for bucket, runs in groups.items():
+        names = [display_names.get(run_id, run_id) for run_id in runs[:8]]
         cells.append(f"""
         <div style="background:#172033;border:1px solid #334155;border-radius:8px;padding:10px">
           <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">{html.escape(bucket)}</div>
           <div style="font-size:20px;font-weight:800;color:#f8fafc">{len(runs)}</div>
-          <div style="font-size:11px;color:#64748b">{html.escape(", ".join(runs[:8]))}</div>
+          <div style="font-size:11px;color:#64748b">{html.escape(", ".join(names))}</div>
         </div>
         """)
     return f"<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:16px'>{''.join(cells)}</div>"
 
 
-def _bundle_table(rows: list[BundleScore], buckets: list[str]) -> str:
+def _bundle_table(rows: list[BundleScore], buckets: list[str], display_names: dict[str, str]) -> str:
     header_cells = "".join(
         f"<th style='padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155'>{html.escape(bucket)}</th>"
         for bucket in buckets
@@ -222,9 +282,10 @@ def _bundle_table(rows: list[BundleScore], buckets: list[str]) -> str:
     for idx, row in enumerate(rows, start=1):
         combo = row.combo
         bucket_cells = "".join(
-            f"<td style='padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#e2e8f0;font-family:monospace'>{html.escape(row.bucket_to_run.get(bucket, ''))}</td>"
+            f"<td style='padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#e2e8f0'>{html.escape(display_names.get(row.bucket_to_run.get(bucket, ''), row.bucket_to_run.get(bucket, '')))}</td>"
             for bucket in buckets
         )
+        selected_names = ", ".join(display_names.get(run_id, run_id) for run_id in combo.run_ids)
         body.append(f"""
         <tr style="background:{'#1e293b' if idx % 2 else '#172033'}">
           <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8">#{idx}</td>
@@ -233,7 +294,7 @@ def _bundle_table(rows: list[BundleScore], buckets: list[str]) -> str:
           <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#cbd5e1">{_fmt(combo.all_loss_rate, pct=True)}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8">{combo.traded_days}</td>
           <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8">{_fmt(combo.combo_cum_end, dollars=True)}</td>
-          <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:11px;color:#64748b;font-family:monospace">{html.escape(','.join(combo.run_ids))}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #334155;font-size:11px;color:#94a3b8">{html.escape(selected_names)}</td>
         </tr>
         """)
     return f"""
@@ -247,7 +308,7 @@ def _bundle_table(rows: list[BundleScore], buckets: list[str]) -> str:
             <th style="padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155">All-Loss</th>
             <th style="padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155">Traded Days</th>
             <th style="padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155">Bundle P&amp;L</th>
-            <th style="padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155">Export IDs</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;color:#94a3b8;border-bottom:2px solid #334155">Template Names</th>
           </tr>
         </thead>
         <tbody>{''.join(body)}</tbody>
@@ -264,7 +325,7 @@ def _risk_color(rate: float) -> str:
     return "#ef4444"
 
 
-def _bundle_chart(pnl: pd.DataFrame, run_ids: tuple[str, ...]) -> str:
+def _bundle_chart(pnl: pd.DataFrame, run_ids: tuple[str, ...], display_names: dict[str, str]) -> str:
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -280,7 +341,14 @@ def _bundle_chart(pnl: pd.DataFrame, run_ids: tuple[str, ...]) -> str:
         ax.set_facecolor("#172033")
         colors = ["#38bdf8", "#34d399", "#fbbf24", "#a78bfa", "#fb7185", "#f97316"]
         for idx, run_id in enumerate(cols):
-            ax.plot(cum.index, cum[run_id].values, label=run_id, color=colors[idx % len(colors)], alpha=0.7, linewidth=1.1)
+            ax.plot(
+                cum.index,
+                cum[run_id].values,
+                label=display_names.get(run_id, run_id),
+                color=colors[idx % len(colors)],
+                alpha=0.7,
+                linewidth=1.1,
+            )
         ax.plot(combined.index, combined.values, label="Bundle", color="#ffffff", linewidth=2.2, linestyle="--")
         ax.axhline(0, color="#64748b", linewidth=0.8, linestyle=":")
         ax.set_title("Best Bundle: Cumulative P&L", color="#e2e8f0", fontsize=11)

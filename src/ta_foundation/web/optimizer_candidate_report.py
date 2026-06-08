@@ -476,6 +476,7 @@ def build_session_candidate_report(
     dark_shell: bool = False,
     run_ids: list[str] | tuple[str, ...] | set[str] | None = None,
     enrich_packages: bool = True,
+    enrich_detail_charts: bool = True,
 ) -> SessionCandidateReportResult:
     """Build one HTML report that ingests every final candidate together.
 
@@ -535,6 +536,7 @@ def build_session_candidate_report(
             session,
             ingest.packages,
             images_dir=images_dir,
+            attach_detail_charts=enrich_detail_charts,
         )
         notes.extend(image_notes)
     else:
@@ -733,7 +735,10 @@ def _enrich_final_template_report_packages(
     packages: dict[str, Any],
     *,
     images_dir: Path | str | None,
+    attach_detail_charts: bool = True,
 ) -> list[str]:
+    # Keep docs/runbooks/report_image_mapping.md in sync with this mapping
+    # chain; weekly reports that show portraits/charts depend on these fields.
     notes: list[str] = []
     resolved_images_dir = _resolve_images_dir(images_dir)
     if not resolved_images_dir:
@@ -756,11 +761,12 @@ def _enrich_final_template_report_packages(
         candidate_dir = _resolve_candidate_results_dir(session.directory / "deployment_package", run_id)
         if candidate_dir is not None:
             analysis_csv = candidate_dir / "Analysis.csv"
-            if analysis_csv.exists():
+            if attach_detail_charts and analysis_csv.exists():
                 derived["analysis_csv_path"] = str(analysis_csv)
                 _attach_analysis_chart_image(pkg, analysis_csv)
                 _attach_analysis_derived_metrics(pkg)
-            _attach_settings_table_image(pkg)
+            if attach_detail_charts:
+                _attach_settings_table_image(pkg)
             _attach_potential_metrics(pkg)
 
         if template_path is None:
@@ -1070,7 +1076,9 @@ def _matching_background_path(portrait: Path) -> Path | None:
 
 
 def _attach_analysis_chart_image(pkg: Any, analysis_csv: Path) -> None:
+    fig = None
     try:
+        import matplotlib.pyplot as plt
         from ta_foundation.reports.html.sections.analysis_chart_replica import (
             _build_figure,
             _fig_to_data_uri,
@@ -1088,9 +1096,16 @@ def _attach_analysis_chart_image(pkg: Any, analysis_csv: Path) -> None:
             "code": "ANALYSIS_CARD_IMAGE_FAILED",
             "message": f"Failed to generate analysis image from {analysis_csv.name}: {exc}",
         })
+    finally:
+        if fig is not None:
+            try:
+                plt.close(fig)
+            except Exception:
+                pass
 
 
 def _attach_settings_table_image(pkg: Any) -> None:
+    fig = None
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -1130,6 +1145,12 @@ def _attach_settings_table_image(pkg: Any) -> None:
             "code": "SETTINGS_CARD_IMAGE_FAILED",
             "message": f"Failed to generate settings image: {exc}",
         })
+    finally:
+        if fig is not None:
+            try:
+                plt.close(fig)
+            except Exception:
+                pass
 
 
 def _resolve_candidate_results_dir(pkg_dir: Path, run_id: str) -> Path | None:

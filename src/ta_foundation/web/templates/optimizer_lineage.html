@@ -11,6 +11,7 @@
     .node { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 14px 16px; }
     .node-root { border-left: 3px solid #6b7280; }
     .node-winner { border-left: 3px solid #34d399; }
+    .node-suppressed { border-left: 3px solid #ef4444; }
     .node-finalist { border-left: 3px solid #f59e0b; }
     .connector { width: 2px; min-height: 22px; background: #374151; margin: 0 auto; }
     .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
@@ -106,7 +107,7 @@
 
   <section class="space-y-0">
     {% for node in report.nodes %}
-      <div class="node {% if node.role == 'stage_root' %}node-root{% elif node.role == 'finalist' %}node-finalist{% else %}node-winner{% endif %}">
+      <div class="node {% if node.role == 'stage_root' %}node-root{% elif node.role == 'finalist' %}node-finalist{% elif node.role == 'suppressed_refinement' %}node-suppressed{% else %}node-winner{% endif %}">
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="pill pill-stage">{{ node.stage_id }}</span>
@@ -115,6 +116,8 @@
               <span class="text-xs text-gray-500">&middot; root</span>
             {% elif node.role == 'finalist' %}
               <span class="text-xs text-gray-500">&middot; finalist</span>
+            {% elif node.role == 'suppressed_refinement' %}
+              <span class="text-xs text-red-300">&middot; refinement attempt not retained</span>
             {% else %}
               <span class="text-xs text-gray-500">&middot; selected winner</span>
             {% endif %}

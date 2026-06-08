@@ -28,6 +28,12 @@ def _fmt_pct(value: Optional[float]) -> str:
     return f"{value * 100.0:.0f}%"
 
 
+def _display_name_for_row(row: Dict[str, Any]) -> str:
+    pkg = row.get("pkg")
+    derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg is not None else {}
+    return str(derived.get("display_name_spaced") or derived.get("display_name") or row.get("run_id") or "")
+
+
 def _summary_card(title: str, row: Optional[Dict[str, Any]], detail: str, accent: str) -> str:
     if not row:
         return (
@@ -39,11 +45,12 @@ def _summary_card(title: str, row: Optional[Dict[str, Any]], detail: str, accent
         )
 
     run_id = escape(str(row["run_id"]))
+    display_name = escape(_display_name_for_row(row))
     status = escape(str(row.get("status") or ""))
     return (
         f'<div class="tf-momo-card tf-momo-card--{accent}">'
         f'<div class="tf-momo-card-k">{escape(title)}</div>'
-        f'<div class="tf-momo-card-v">{run_id}</div>'
+        f'<div class="tf-momo-card-v">{display_name}</div>'
         f'<div class="tf-momo-card-sub">{escape(detail)} | {status}</div>'
         f"</div>"
     )
@@ -442,11 +449,13 @@ def render_strategy_momentum_board(ctx: Dict[str, Any]) -> str:
         )
 
         status = escape(str(row["status"]))
+        display_name = escape(_display_name_for_row(row))
+        run_id = escape(str(row["run_id"]))
         out.append("<tr>")
         out.append(f'<td class="tf-momo-rank">#{int(row["rank"])}</td>')
         out.append(
             '<td class="tf-momo-name">'
-            f'<div class="tf-momo-name-main">{escape(str(row["run_id"]))}</div>'
+            f'<div class="tf-momo-name-main">{display_name}</div>'
             f'<div class="tf-momo-name-sub">10D win rate {escape(_fmt_pct(recent10.win_rate))} | '
             f'Activity {escape(_fmt_days(recent10.active_days, len(recent10.days)))}</div>'
             "</td>"

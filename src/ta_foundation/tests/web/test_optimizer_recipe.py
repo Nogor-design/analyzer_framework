@@ -21,6 +21,7 @@ from ta_foundation.web.optimizer_recipe_templates import (
     RecipeTemplateWriteError,
     generate_recipe_stage_templates,
 )
+from ta_foundation.web.optimizer_lineage import build_lineage
 from ta_foundation.web.optimizer_final_templates import list_active_final_templates
 from ta_foundation.web.optimizer_recipe_results import load_recipe_stage_results
 from ta_foundation.web.optimizer_recipe_results import RecipeStageResults
@@ -901,6 +902,197 @@ def test_generate_recipe_final_backtest_builds_two_finalists_for_each_stage1_buc
     assert "stage1_start0_reversefalse_alternate" not in parents
     first_xml = Path(manifest["templates"][0]["path"]).read_text(encoding="utf-8")
     assert "<DurationTimeH>4</DurationTimeH>" in first_xml
+
+
+def test_refine_selection_retains_parent_when_child_is_worse(tmp_path: Path):
+    session = opt_session.create_session(strategy_id="FakeStrategy")
+    payload = {
+        "recipe_version": 1,
+        "mode": "matrix_sequence",
+        "recipe_id": "rec_parent_guard",
+        "recipe_name": "Parent Guard",
+        "strategy_id": "FakeStrategy",
+        "base_matrix": [{"param": "StartTimeH", "role": "matrix_axis", "values": [0]}],
+        "stages": [
+            {
+                "stage_id": "stage_1",
+                "stage_type": "optimizer",
+                "selection": {"keep_per_group": 1},
+            },
+            {
+                "stage_id": "refine_risk",
+                "stage_type": "optimizer",
+                "from": "stage_1.selected_rows",
+                "pin": ["StartTimeH", "MaxStop"],
+                "optimize_inside_template": {
+                    "ProfitStop": {"min": 1, "max": 1001, "step": 500},
+                    "LossStop": {"min": 1, "max": 1001, "step": 500},
+                    "MaxTrades": {"min": 1, "max": 9, "step": 2},
+                },
+                "selection": {
+                    "group_by": ["parent_candidate_id", "single_multi"],
+                    "keep_per_group": 1,
+                    "fitness_metrics": ["profit_factor", "total_net_profit"],
+                    "retain_parent_if_child_worse": True,
+                },
+            },
+        ],
+    }
+    save_recipe(session, payload)
+
+    parent_dir = session.directory / "parsed_results" / "stage_1"
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    parent_row = {
+        "recipe_id": "rec_parent_guard",
+        "stage_id": "stage_1",
+        "candidate_id": "stage_1__parent",
+        "bucket_id": "starttimeh_00",
+        "param_StartTimeH": 0,
+        "param_MaxStop": 300,
+        "profit_factor": 1.8,
+        "total_net_profit": 14000,
+        "drawdown_abs": 2400,
+        "max_drawdown": -2400,
+        "total_trades": 90,
+        "portfolio_score": 10000,
+    }
+    (parent_dir / "selected.json").write_text(json.dumps([parent_row]), encoding="utf-8")
+
+    child_row = {
+        "recipe_id": "rec_parent_guard",
+        "stage_id": "refine_risk",
+        "candidate_id": "refine_risk__child",
+        "template_id": "refine_risk__parent_stage_1_parent",
+        "bucket_id": "parent_stage_1_parent",
+        "parent_candidate_id": "stage_1__parent",
+        "param_StartTimeH": 0,
+        "param_MaxStop": 300,
+        "param_ProfitStop": 1,
+        "param_LossStop": 1001,
+        "param_MaxTrades": 9,
+        "profit_factor": 1.4,
+        "total_net_profit": 6700,
+        "drawdown_abs": 3165,
+        "max_drawdown": -3165,
+        "total_trades": 78,
+        "portfolio_score": 8000,
+        "single_multi": "single",
+    }
+    results = RecipeStageResults(
+        recipe_id="rec_parent_guard",
+        stage_id="refine_risk",
+        output_dir="",
+        row_count=1,
+        batch_count=1,
+        parse_warnings=0,
+        rows=[child_row],
+    )
+
+    summary = select_recipe_stage_candidates(session, stage_id="refine_risk", results=results)
+
+    assert summary.selected_count == 1
+    selected = summary.selected_rows[0]
+    assert selected["candidate_id"] == "stage_1__parent"
+    assert selected["retained_parent_reason"] == "refinement_child_worse_than_parent"
+    assert selected["suppressed_refinement_child"]["candidate_id"] == "refine_risk__child"
+    assert selected["suppressed_refinement_child"]["profit_factor"] == 1.4
+    assert summary.rejected_rows[0]["candidate_id"] == "refine_risk__child"
+
+
+def test_lineage_shows_suppressed_refinement_for_retained_parent(tmp_path: Path):
+    session = opt_session.create_session(strategy_id="FakeStrategy", label="Parent Retention")
+    save_recipe(
+        session,
+        {
+            "recipe_version": 1,
+            "mode": "matrix_sequence",
+            "recipe_id": "rec_parent_guard",
+            "recipe_name": "Parent Guard",
+            "strategy_id": "FakeStrategy",
+            "base_matrix": [{"param": "StartTimeH", "role": "matrix_axis", "values": [0]}],
+            "stages": [
+                {"stage_id": "stage_1", "stage_type": "optimizer", "description": "Broad parent"},
+                {
+                    "stage_id": "refine_risk",
+                    "stage_type": "optimizer",
+                    "from": "stage_1.selected_rows",
+                    "description": "Risk refinement",
+                },
+                {"stage_id": "final_backtest", "stage_type": "fixed_backtest"},
+            ],
+        },
+    )
+    stage_dir = session.directory / "parsed_results" / "stage_1"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    parent_row = {
+        "candidate_id": "stage_1__parent",
+        "stage_id": "stage_1",
+        "template_id": "stage_1__starttimeh_00",
+        "param_StartTimeH": 0,
+        "param_MaxStop": 300,
+        "profit_factor": 1.8,
+        "total_net_profit": 14000,
+        "max_drawdown": -2400,
+        "total_trades": 90,
+    }
+    (stage_dir / "scored_rows.json").write_text(json.dumps([parent_row]), encoding="utf-8")
+    (stage_dir / "selected.json").write_text(json.dumps([parent_row]), encoding="utf-8")
+
+    final_dir = session.directory / "generated_templates" / "final_backtest"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    (final_dir / "recipe_template_manifest.json").write_text(
+        json.dumps(
+            {
+                "templates": [
+                    {
+                        "template_id": "final_backtest__F_001",
+                        "parent_candidate_id": "stage_1__parent",
+                        "parent_stage_id": "refine_risk",
+                        "final_selection_source_stage": "stage_1",
+                        "strategy_values": {"StartTimeH": 0, "MaxStop": 300},
+                        "selection_metadata": {
+                            "retained_parent_reason": "refinement_child_worse_than_parent",
+                            "suppressed_refinement_stage_id": "refine_risk",
+                            "suppressed_refinement_child": {
+                                "candidate_id": "refine_risk__child",
+                                "template_id": "refine_risk__parent_stage_1_parent",
+                                "parent_candidate_id": "stage_1__parent",
+                                "param_StartTimeH": 0,
+                                "param_MaxStop": 300,
+                                "param_ProfitStop": 1,
+                                "param_LossStop": 1001,
+                                "param_MaxTrades": 9,
+                                "profit_factor": 1.4,
+                                "total_net_profit": 6700,
+                                "max_drawdown": -3165,
+                                "total_trades": 78,
+                            },
+                        },
+                    }
+                ]
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    review_dir = session.directory / "deployment_package" / "final_backtest_handoff" / "final_backtest_review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "evaluated_candidates.json").write_text(
+        json.dumps({"rows": [{"run_id": "F_001", "profit_factor": 1.8, "total_net_profit": 14000, "max_drawdown": -2400, "trades": 90}]}),
+        encoding="utf-8",
+    )
+    (review_dir / "recommendations.json").write_text(
+        json.dumps({"recommendations": [{"run_id": "F_001", "reason": "Passed."}], "rejected": []}),
+        encoding="utf-8",
+    )
+
+    report = build_lineage(session, "F_001")
+
+    assert [node.role for node in report.nodes] == ["stage_root", "suppressed_refinement", "finalist"]
+    assert report.nodes[1].candidate_id == "refine_risk__child"
+    assert report.nodes[1].status == "rejected"
+    assert report.nodes[1].kpis.profit_factor == 1.4
+    assert report.nodes[2].kpis.profit_factor == 1.8
 
 
 def _write_optimization_csv(path: Path, rows: list[tuple[str, float, float, float, int]]) -> None:
