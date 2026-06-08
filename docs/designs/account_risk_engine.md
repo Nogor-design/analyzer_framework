@@ -86,6 +86,13 @@ Given today's selector lineup + each account's `daily_risk_budget` + objective:
 - **All logic stays in Python.** The AddOn pushes account state to the risk engine and renders the
   returned daily plan. Built from NT's sample AddOn hooks; reuses existing NT-internals experience.
 
+> **2d API spec drafted** ([`nt_account_addon_spec.md`](nt_account_addon_spec.md), 2026-06-08): the
+> NT8 read-only surface (`Account.All`, `AccountItem.NetLiquidation` for intraday equity incl.
+> unrealized, positions, update events + Dispatcher threading) mapped to the DD-engine inputs. **Key
+> trap:** `RealizedProfitLoss` doesn't reset at our session boundary — daily P&L must be a
+> disk-persisted snapshot-baseline diff or the daily-loss limit silently mis-reads. Build deferred
+> until the engine is replay-validated (needs NT).
+
 ## Module layout (additive)
 
 ```
