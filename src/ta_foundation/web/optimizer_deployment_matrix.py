@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 DEFAULT_NAMING_RULES_PATH = Path(r"D:\templateNaming\naming_rules.json")
@@ -197,10 +197,25 @@ def build_deployment_matrix_recipe(
     loss_stop: tuple[int | float, int | float, int | float] = (1, 1001, 500),
     max_trades: tuple[int | float, ...] = (1, 3, 5, 10),
     refine_selection_min_trades: int = 0,
-    fast_param: str = "averageFast",
-    slow_param: str = "averageSlow",
+    fast_param: str | None = None,
+    slow_param: str | None = None,
     pinned_strategy_params: dict[str, Any] | None = None,
 ) -> dict:
+    # Strategy-aware overrides: an advanced strategy (e.g. PantheonMaster) supplies
+    # its own MA param names + regime/exit pins via a profile in
+    # STRATEGY_RECIPE_PROFILES. Explicit kwargs always win; otherwise the strategy's
+    # profile fills them (MA-cross falls back to averageFast/averageSlow with no extra
+    # pins). This is what makes "pick PantheonMaster in the deployment-matrix flow"
+    # auto-apply the AtrTrail exit + regime-off pins instead of silently sweeping the
+    # wrong (MA-cross) param names.
+    _profile = STRATEGY_RECIPE_PROFILES.get(strategy_id)
+    _profile_kw = _profile() if _profile else {}
+    if fast_param is None:
+        fast_param = _profile_kw.get("fast_param", "averageFast")
+    if slow_param is None:
+        slow_param = _profile_kw.get("slow_param", "averageSlow")
+    if pinned_strategy_params is None:
+        pinned_strategy_params = _profile_kw.get("pinned_strategy_params")
     _validate_rules(rules)
     safe_name = "".join(ch.lower() if ch.isalnum() else "_" for ch in recipe_name).strip("_")
     max_trades_values = sorted({1, *(int(value) for value in max_trades)})
@@ -390,6 +405,20 @@ def pantheonmaster_recipe_overrides(
             "AtrTrailMultiple": atr_trail_multiple,
         },
     }
+
+
+# strategy_id -> kwargs provider for build_deployment_matrix_recipe. Lets the
+# deployment-matrix flow (web route, launcher, any caller) drive an advanced
+# strategy correctly from just its id: choosing "PantheonMaster" auto-applies the
+# FastPeriod/SlowPeriod MA params + the regime-off / AtrTrail-exit pins. MA-cross
+# strategies are absent here and keep the averageFast/averageSlow defaults.
+# NOTE (live-parity gate): AtrTrail is a TRAILING exit — NT backtests it with
+# managed SL/TP but live uses explicit stop + ChangeOrder. Templates built via this
+# profile must pass trail-parity validation before any LIVE use (see
+# docs/designs/ma_pool_enrichment_and_pantheonmaster_migration.md §6).
+STRATEGY_RECIPE_PROFILES: dict[str, Callable[[], dict[str, Any]]] = {
+    "PantheonMaster": pantheonmaster_recipe_overrides,
+}
 
 
 def build_name(

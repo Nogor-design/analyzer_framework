@@ -389,6 +389,30 @@ def test_build_deployment_matrix_recipe_pantheonmaster_overrides() -> None:
     assert {"EnableDiscoveryFilters", "RegimeMode", "DiscoveryExitPolicy"}.issubset(set(refine_pins))
 
 
+def test_build_deployment_matrix_recipe_pantheonmaster_auto_profile() -> None:
+    # Strategy-aware: choosing PantheonMaster by id ALONE (no explicit overrides,
+    # as the web deployment-matrix route calls it) must auto-apply the profile —
+    # FastPeriod/SlowPeriod MA params + regime-off / AtrTrail-exit pins.
+    recipe = build_deployment_matrix_recipe(
+        strategy_id="PantheonMaster",
+        recipe_name="pm-auto",
+        rules=_rules(),
+    )
+    base = {e["param"]: e for e in recipe["base_matrix"]}
+    assert base["SlowPeriod"]["role"] == "matrix_axis"
+    assert base["FastPeriod"]["role"] == "fixed"
+    assert base["EnableDiscoveryFilters"]["value"] is False
+    assert base["DiscoveryExitPolicy"]["value"] == "AtrTrail"
+    # MA-cross is NOT in the profile registry -> keeps the averageFast/averageSlow
+    # defaults and adds no regime/exit pins.
+    ma = build_deployment_matrix_recipe(
+        strategy_id="PantheonMasterBotV01TesterV2", recipe_name="ma", rules=_rules(),
+    )
+    ma_base = {e["param"]: e for e in ma["base_matrix"]}
+    assert "averageSlow" in ma_base and "SlowPeriod" not in ma_base
+    assert "DiscoveryExitPolicy" not in ma_base
+
+
 def test_refine_selection_min_trades_adds_trade_floor() -> None:
     recipe = build_deployment_matrix_recipe(
         strategy_id="FakeStrategy",
