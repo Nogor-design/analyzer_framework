@@ -12,6 +12,7 @@ import sys
 
 from ta_foundation.analysis.selection import DEFAULT_BASELINES, compare_selectors
 from ta_foundation.analysis.selection.loader import load_candidates_from_session
+from ta_foundation.analysis.selection.scoring import composite_selector
 
 DEFAULT_SESSION = "opt_a09359e6b60b"
 DEFAULT_BARS = r"D:\MarketData\NQ 06-26.Export.txt"
@@ -29,11 +30,14 @@ def main() -> int:
     print(f"  {len(cands)} templates across {len(slices)} slices; "
           f"{len(days)} days {days[0]}..{days[-1]}; {len(regime_by_day)} regime-days")
 
-    table = compare_selectors(cands, DEFAULT_BASELINES, regime_by_day=regime_by_day,
+    selectors = {**DEFAULT_BASELINES, "composite_v1": composite_selector}
+    table = compare_selectors(cands, selectors, regime_by_day=regime_by_day,
                               train_min_days=10)
+    # Rank by survival-weighted risk-adjusted return (sharpe) — the Phase-1 gate
+    # weights survival, not raw net.
     hdr = f"{'selector':>20} {'net':>9} {'exp/day':>8} {'hit':>5} {'maxDD':>8} {'sharpe':>7}"
     print("\n" + hdr)
-    for name, s in sorted(table.items(), key=lambda kv: -kv[1]["net"]):
+    for name, s in sorted(table.items(), key=lambda kv: -(kv[1]["daily_sharpe"] or -9)):
         sh = s["daily_sharpe"]
         print(f"{name:>20} {s['net']:>9.0f} {s['expectancy_daily']:>8.1f} "
               f"{s['hit_rate']:>5.2f} {s['max_drawdown']:>8.0f} "
