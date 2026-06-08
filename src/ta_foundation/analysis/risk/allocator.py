@@ -24,8 +24,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from .account_state import AccountType
-from .dd_engine import RiskReadout
+from .account_state import AccountType, FirmProfile, load_firm_profile
+from .dd_engine import DdEngine, RiskReadout
 
 
 @dataclass(frozen=True)
@@ -127,3 +127,53 @@ def allocate_account(
     note = "" if allocations else "budget too small for any pick at 1 contract"
     return DailyPlan(account_size, account_type, daily_loss_cap, allocations, total,
                      skipped=skipped, note=note)
+
+
+@dataclass(frozen=True)
+class AccountSpec:
+    """One client account for the roster allocator. ``current_value`` is the live
+    equity (incl. unrealized) the DD engine trails against today; omit it to start
+    flat at ``starting_balance``."""
+
+    name: str
+    firm: str
+    account_size: str
+    account_type: AccountType
+    starting_balance: float
+    current_value: Optional[float] = None
+
+
+def allocate_roster(
+    picks: Sequence[tuple[str, str]],
+    accounts: Sequence[AccountSpec],
+    *,
+    per_contract_risk: dict[str, float],
+    expected_return: Optional[dict[str, float]] = None,
+    config: Optional[AllocatorConfig] = None,
+    profiles: Optional[dict[str, FirmProfile]] = None,
+) -> dict[str, DailyPlan]:
+    """Size the SAME selector lineup for every account in a roster, each per its
+    own firm profile, drawdown budget, and objective — the 20+-accounts reality.
+    Returns ``{account_name: DailyPlan}``. Firm profiles are cached/loaded once.
+
+    Each account's plan differs because the DD engine produces a different
+    ``daily_risk_budget`` (size, current cushion, lock state) and the allocator
+    branches on eval-vs-PA — so a challenge account presses the edge while a funded
+    account of the same size protects, from one shared lineup."""
+    cache: dict[str, FirmProfile] = dict(profiles or {})
+    out: dict[str, DailyPlan] = {}
+    for spec in accounts:
+        prof = cache.get(spec.firm) or load_firm_profile(spec.firm)
+        cache[spec.firm] = prof
+        eng = DdEngine(prof)
+        state = eng.init_account(
+            starting_balance=spec.starting_balance,
+            account_type=spec.account_type, account_size=spec.account_size)
+        value = spec.current_value if spec.current_value is not None else spec.starting_balance
+        readout = eng.on_value(state, value)
+        out[spec.name] = allocate_account(
+            picks, readout=readout, account_type=spec.account_type,
+            account_size=spec.account_size, per_contract_risk=per_contract_risk,
+            expected_return=expected_return,
+            max_contracts=prof.size_rules(spec.account_size).max_contracts, config=config)
+    return out

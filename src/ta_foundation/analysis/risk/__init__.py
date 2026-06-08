@@ -15,15 +15,18 @@ from .account_state import (
     load_firm_profile,
 )
 from .allocator import (
+    AccountSpec,
     Allocation,
     AllocatorConfig,
     DailyPlan,
     allocate_account,
+    allocate_roster,
     estimate_per_contract_risk,
 )
 from .dd_engine import DdEngine, RiskReadout
 
 __all__ = [
+    "AccountSpec",
     "AccountState",
     "Allocation",
     "AllocatorConfig",
@@ -33,6 +36,7 @@ __all__ = [
     "RiskReadout",
     "SizeRules",
     "allocate_account",
+    "allocate_roster",
     "estimate_per_contract_risk",
     "load_firm_profile",
 ]

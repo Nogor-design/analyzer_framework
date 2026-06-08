@@ -74,3 +74,22 @@ def test_budget_too_small_for_any_pick():
         account_size="50000", per_contract_risk={"A": 100.0})
     assert plan.allocations == []
     assert "too small" in plan.note
+
+
+def test_allocate_roster_branches_per_account():
+    from ta_foundation.analysis.risk import AccountSpec, allocate_roster
+    picks = [("s1", "SAFE"), ("s2", "RISKY")]
+    pcr = {"SAFE": 200.0, "RISKY": 600.0}
+    exp = {"SAFE": 50.0, "RISKY": 300.0}
+    roster = [
+        AccountSpec("eval-50k", "apex", "50000", "evaluation", 50000),   # flat -> cushion 2500
+        AccountSpec("pa-50k", "apex", "50000", "PA", 50000),
+        AccountSpec("pa-100k", "apex", "100000", "PA", 100000),          # bigger cushion (3000)
+    ]
+    plans = allocate_roster(picks, roster, per_contract_risk=pcr, expected_return=exp)
+    assert set(plans) == {"eval-50k", "pa-50k", "pa-100k"}
+    # eval presses RISKY (highest expectancy) first; PA fills SAFE first
+    assert plans["eval-50k"].allocations[0].template_id == "RISKY"
+    assert plans["pa-50k"].allocations[0].template_id == "SAFE"
+    # eval uses more of its budget than the same-size PA
+    assert plans["eval-50k"].daily_loss_cap > plans["pa-50k"].daily_loss_cap
