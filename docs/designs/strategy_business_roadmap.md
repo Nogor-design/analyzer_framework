@@ -65,10 +65,17 @@ is backed by numbers. Cheap; largely existing work.
   existing design (`ma_pool_enrichment_and_pantheonmaster_migration.md`).
 - Stand up a simple **outcome ledger**: for each weekly lineup, record what was recommended
   vs what actually happened (per template, per account). This is the raw material for both
-  the prediction-AI audit and the track record.
+  the prediction-AI audit and the track record. **✅ BUILT 2026-06-08** —
+  `analysis/selection/ledger.py` (append-only JSONL: `recommendation` + `actuals`, joined by
+  `ledger_id`), `grade.py` (`track_record` + `grade_against_baselines` on the same graded
+  days), drivers `scripts/record_lineup.py` / `scripts/grade_ledger.py`. Validated end-to-end
+  on opt_a09359e6b60b (20 backfilled days): it reproduces the honest Phase-1 verdict through
+  the *ledger* pipeline — composite v1 wins net/expectancy ($826/d) but **fails survival**
+  (maxDD −$3,035, Sharpe 0.38) vs `equal_weight` (maxDD −$361, Sharpe 1.02). Per-account
+  actuals are deferred to Phase 2 (the ledger schema already keys per template).
 
 **Reuses:** optimizer recipe pipeline, deployment matrix, exit-sim, regime recommender.
-**Exit criteria:** a repeatable weekly run that emits a manifest + an outcome ledger entry.
+**Exit criteria:** a repeatable weekly run that emits a manifest + an outcome ledger entry. ✅
 
 ## Phase 1 — Validate (or replace) the prediction AI
 

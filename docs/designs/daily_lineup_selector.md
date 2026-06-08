@@ -70,12 +70,35 @@ Replay historical sessions and compare the selector against baselines on **held-
 
 ```
 src/ta_foundation/analysis/selection/
-  scoring.py      # composite score + robustness gate + diversity constraint (pure, tested)
-  baselines.py    # top_pf / regime_matched / equal_weight / replayed_worker
-  replay.py       # historical replay over outcome ledger -> metrics table
-  selector.py     # orchestrates: manifest + regime -> ranked daily lineup
-src/ta_foundation/web/  # "Daily Lineup" view (read-only renderer of selector output)
+  model.py        # Candidate + daily-window metrics (leakage-safe)            [built]
+  scoring.py      # composite score + robustness gate (pure, tested)           [built]
+  baselines.py    # top_pf / equal_weight / most_recent_winner / regime_matched [built]
+  replay.py       # walk-forward replay over a candidate universe -> metrics    [built]
+  loader.py       # session output -> Candidate objects (only NT-file touchpoint)[built]
+  ledger.py       # append-only JSONL outcome ledger (recommendation + actuals) [built 06-08]
+  grade.py        # track_record + grade_against_baselines on graded days       [built 06-08]
+src/ta_foundation/web/  # "Daily Lineup" view (read-only renderer of ledger/selector) [TODO -> Gemini]
+scripts/record_lineup.py  # issue a lineup to the ledger (forward or backfill)  [built 06-08]
+scripts/grade_ledger.py   # print track record + baseline head-to-head         [built 06-08]
 ```
+
+## Result (2026-06-08, opt_a09359e6b60b, 20 backfilled days through the ledger)
+
+The accountable loop is live and reproduces the verdict end-to-end (issue lineup →
+journal → record actuals → grade vs baselines on the same days):
+
+| selector | net | exp/day | hit | maxDD (survival) | daily Sharpe |
+|---|--:|--:|--:|--:|--:|
+| composite v1 (as issued) | $16,510 | $826 | 65% | **−$3,035** | 0.38 |
+| equal_weight | $10,332 | $517 | 90% | **−$361** | **1.02** |
+| regime_matched | $13,760 | $688 | 60% | −$1,790 | 0.42 |
+| most_recent_winner | $12,045 | $602 | 65% | −$4,200 | 0.34 |
+| top_pf | $2,065 | $103 | 45% | −$3,700 | 0.07 |
+
+**Verdict: composite v1 wins expectancy but loses survival decisively** — `equal_weight`
+keeps accounts far safer (8× smaller drawdown, best Sharpe). Per the gate, **the diversified
+baseline stays the production selector** until a scorer beats it on *both* expectancy and
+survival. Honest negative result; documented, not papered over.
 
 ## Tests & exit criteria
 
