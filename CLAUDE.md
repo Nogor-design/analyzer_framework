@@ -111,7 +111,11 @@ prediction, and any discovery/"scout" analysis. Feed it via `--market-data`
 (CLI) or the web market-data folder. The NT optimizer AddOn backtests the same
 instrument data loaded in NinjaTrader, so a fast Python scout over
 `D:\MarketData` and an NT backtest see the same underlying bars (subject to
-ATR-definition parity — NT ATR is SMA-based, not Wilder).
+ATR-definition parity — **NT ATR is Wilder-smoothed**, empirically confirmed
+2026-06-08 by the AtrTrail parity test: a Wilder-ATR replica matched NT's
+PantheonMaster stop exits 70.8% with an exact median vs 26%/5-tick for SMA. Use
+Wilder ATR for exit pre-selection. The earlier "NT ATR is SMA-based" claim was
+wrong — see `docs/runbooks/atr_trail_parity.md`).
 
 **Gathering more data (don't make the operator hand-download).** When a needed
 window/instrument is missing or stale, NT can dump it programmatically:
