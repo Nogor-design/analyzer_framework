@@ -113,3 +113,36 @@ def make_composite_selector(config: Optional[ScoringConfig] = None):
 
 # Default-config selector for convenience.
 composite_selector = make_composite_selector()
+
+
+def make_topk_composite_selector(k: int, config: Optional[ScoringConfig] = None):
+    """Return a selector that fields the top-``k`` composite-scored templates per
+    slice (equal-weight), interpolating between the two extremes already measured:
+    ``k == 1`` is the pure composite pick; ``k >= slice size`` is ``equal_weight``.
+
+    Why this exists: the Phase-1 replay showed top-1 selection LOSES to full
+    diversification on survival (concentration costs drawdown). A basket tests
+    whether *some* selection skill survives once diversification is preserved — the
+    honest next question, run through the same harness. The robustness gate still
+    applies; the gate-survivors are ranked and the top-k taken (or the whole gated
+    pool when it has <= k survivors)."""
+    cfg = config or ScoringConfig()
+    keys = list(cfg.weights)
+
+    def selector(candidates: Sequence[Candidate], ctx: SelectionContext) -> list[Candidate]:
+        if not candidates:
+            return []
+        feats = {c.template_id: _train_features(c, ctx) for c in candidates}
+        gated = [c for c in candidates if _passes_gate(feats[c.template_id], cfg)]
+        pool = gated or list(candidates)
+        norm: dict[str, dict[str, float]] = {}
+        for key in keys:
+            ids = [c.template_id for c in pool]
+            norm[key] = dict(zip(ids, _normalize([feats[c.template_id][key] for c in pool])))
+
+        def score(c: Candidate) -> float:
+            return sum(cfg.weights[key] * norm[key][c.template_id] for key in keys)
+
+        return sorted(pool, key=score, reverse=True)[: max(1, k)]
+
+    return selector

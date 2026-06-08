@@ -8,6 +8,7 @@ from ta_foundation.analysis.selection import SelectionContext, replay_selector
 from ta_foundation.analysis.selection.scoring import (
     ScoringConfig,
     make_composite_selector,
+    make_topk_composite_selector,
     _train_features,
     _passes_gate,
 )
@@ -78,3 +79,14 @@ def test_determinism_in_replay():
     s1 = replay_selector(cands, sel, train_min_days=10)
     s2 = replay_selector(cands, sel, train_min_days=10)
     assert s1["picks"] == s2["picks"] and s1["net"] == s2["net"]
+
+
+def test_topk_interpolates_between_top1_and_all():
+    a = cand("a", "S", {i: 30.0 for i in range(10)})   # best
+    b = cand("b", "S", {i: 20.0 for i in range(10)})
+    c = cand("c", "S", {i: 10.0 for i in range(10)})
+    pool = [a, b, c]
+    assert {x.template_id for x in make_topk_composite_selector(1)(pool, ctx(10))} == {"a"}
+    top2 = {x.template_id for x in make_topk_composite_selector(2)(pool, ctx(10))}
+    assert top2 == {"a", "b"}                          # top-2 by score
+    assert len(make_topk_composite_selector(9)(pool, ctx(10))) == 3   # k>=size -> all

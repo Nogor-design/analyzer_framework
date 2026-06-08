@@ -100,6 +100,28 @@ keeps accounts far safer (8× smaller drawdown, best Sharpe). Per the gate, **th
 baseline stays the production selector** until a scorer beats it on *both* expectancy and
 survival. Honest negative result; documented, not papered over.
 
+### Top-K basket sweep (2026-06-08) — does partial diversification + selection help?
+
+The k=1 loss could be pure concentration, so `make_topk_composite_selector(k)` interpolates
+(k=1 ≡ composite, k≥slice ≡ equal_weight), evaluated on the same window:
+
+| selector | net | exp/day | maxDD | Sharpe |
+|---|--:|--:|--:|--:|
+| composite k=1 | $16,510 | $826 | −$3,035 | 0.38 |
+| composite k=2 | $14,262 | $713 | −$2,550 | 0.35 |
+| composite k=3 | $10,878 | $544 | −$2,013 | 0.37 |
+| composite k=5 | $9,923 | $496 | −$1,015 | 0.40 |
+| **equal_weight (k=all)** | $10,332 | $517 | **−$361** | **1.02** |
+
+**Finding: no intermediate K beats full diversification.** Raising K monotonically cuts drawdown
+but Sharpe stays pinned at ~0.35–0.40 right up until full `equal_weight`, which then jumps to
+1.02. The survival edge is discontinuous and lives entirely in trading the *whole* slice — the
+composite features (as weighted) add return-concentration but **no survival-predictive signal** on
+this data. This is stronger evidence than the single k=1 comparison: selection skill isn't there
+yet. **Action: `equal_weight` remains production.** To earn selection, the next lever is *better
+features* (not a better basket size) validated on *fresh* OOS windows — same caveat holds (20 days,
+1 instrument, universe chosen on this window).
+
 ## Tests & exit criteria
 
 - Unit: scorer determinism, robustness gate drops known-bad rows, diversity cap holds.
