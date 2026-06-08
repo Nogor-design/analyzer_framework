@@ -91,14 +91,81 @@ investigate only if tighter parity is needed (do not overfit the replica):
   not the entry bar's High.
 - **Fill-timing off-by-one** between bar-close stop update and intrabar touch.
 
-## Status & next
-
-Parity A is sufficient to (a) fix the ATR definition (Wilder) for exit
-pre-selection and (b) confirm the trail model is sound. **Before PantheonMaster
-trades real money, run Parity B** (NT backtest vs NT live/replay) — that is an
-NT-side run, pairing with the operator's "run it first" plan. Residual-divergence
-work is optional and should not be chased into overfitting.
-
 Code: `analysis/exits/nt_atr_trail_parity.py` (+ tests
 `tests/analysis/exits/test_nt_atr_trail_parity.py`), driver
 `scripts/atr_trail_parity.py`.
+
+---
+
+# Parity B — NT backtest ↔ NT live (the gate before real money)
+
+**Parity A validated the Python model against the NT *backtest*. Parity B asks
+whether the NT *backtest* matches NT *live* — because PantheonMaster runs two
+different stop engines** (`PantheonMaster.cs` header `[DESIGN-2]`, "correct
+architecture", do not mix the paths):
+
+| | Backtest | Live |
+|---|---|---|
+| Stop API | `SetStopLoss` / `SetProfitTarget` (managed) | `ExitLong/ShortStopMarket` + `ChangeOrder` (unmanaged) |
+| Trail reference | `highSinceEntry` = **bar** high, updated **per bar close** (`Calculate.OnBarClose`) | `liveHighestFavorablePrice` = **tick** high, updated **every tick** (`OnMarketData` → `ManageLiveDynamicStop`, L1171-1219) |
+| ATR offset | `AtrTrailMultiple · ATR(14)` bar-close | same (ATR is bar-close in both) |
+
+## The structural divergence (predict before measuring)
+
+Same ATR offset, **different favorable-price reference**: live trails off the
+intrabar **tick** high, backtest off the **bar-close** high. The tick high leads
+the bar-close high, so **the live stop ratchets up sooner and tighter** within a
+bar. Expected consequence: **live exits runners earlier than backtest** → the
+backtest likely **overstates** AtrTrail trend-trade profit (and gives back less
+on reversals). The magnitude is the empirical question; the *direction* is known.
+
+Our two Python models conveniently bracket the two NT engines:
+`nt_atr_trail_parity.py` (bar-close) ≈ NT **backtest**; `analysis/exits/simulate.py`
+(tick-continuous) ≈ NT **live**.
+
+## Step 1 (do first, no NT) — offline pre-estimate of the gap
+
+Run **both** models on the same PantheonMaster trades + the NQ tick cache
+(`D:\MarketData\NQ 06-26 Tick.Last.txt`): bar-model exit vs tick-model exit per
+trade → an offline estimate of the live-vs-backtest haircut **before** any live
+run. If the tick-model P&L is materially below the bar-model P&L, the deployed
+pool's backtested PF is optimistic and must be haircut before sizing. *(Build:
+wire `simulate.py`'s `AtrTrailPolicy` — ATR period 14, multiple 2.0, Wilder per
+Parity A — onto the same pooled trades; reuse `scripts/atr_trail_parity.py`'s
+trade loader.)*
+
+## Step 2 — live/replay capture checklist (NT-side, pairs with "run it first")
+
+1. **Run** PantheonMaster in **Market Replay** (tick replay) on the *same*
+   instrument/window as a known backtest, `EnableDebugPrint = true`, identical
+   params (AtrTrail, mult 2.0, StopTicks 60, regime off).
+2. **Capture**: the Output window (`[PantheonMaster] ChangeOrder stop -> {price}`
+   prints, L883, are the live trail moves), plus the replay `Trades.csv`
+   (entry/exit price/time, P&L).
+3. **Diff vs backtest** per trade (match on entry time): exit price Δ, exit time
+   Δ, per-trade P&L Δ, and aggregate P&L Δ.
+4. **Decision rule**: if live aggregate P&L is within tolerance of backtest
+   (say ≤ ~5-10% and no systematic worse-fill bias), the backtested pool is
+   trustworthy for sizing. If live is materially worse (expected: tighter trail
+   → earlier exits), apply the measured **haircut** to backtested PF/net before
+   promotion and account sizing — and treat the tick-model (Step 1) as the
+   planning number, not the bar backtest.
+
+## Gotchas
+
+- `[BUG-3]` (`.cs` header): `ResetDynamicTrackingOnEntry` initialised
+  `liveHighest/LowestFavorablePrice` from `Position.AveragePrice` at a point that
+  was too early — verify it is the *fixed* build before trusting live prints.
+- ATR is bar-close in **both** engines, so the offset is identical; only the
+  reference differs. Don't "fix" live to use bar ATR.
+- `ChangeOrder` can be rejected/latent live; Market Replay won't show broker
+  latency — true live may diverge a bit more than replay.
+- Two daily-risk systems can both be active (`[DESIGN-3]`); keep Legacy vs
+  Discovery risk caps from conflicting in the live config.
+
+## Status
+
+- **Parity A:** ✅ done (Wilder confirmed, model faithful).
+- **Parity B Step 1 (offline pre-estimate):** ⬜ buildable now (tick cache + both
+  models) — **recommended next**.
+- **Parity B Step 2 (live/replay diff):** ⬜ operator-side, gates real money.
