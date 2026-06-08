@@ -32,9 +32,13 @@ includes_unrealized: true     # intraday: true; eod: false
 lock_buffer: 100              # threshold locks at starting_balance + lock_buffer (APEX = $100)
 eod_recalc_time_et: "16:59:59"   # eod only
 account_sizes:                # VERIFY against current APEX rulebook before live use
-  "50000": { max_drawdown: 2500, profit_target: 3000, max_contracts: 10 }
-  # NOTE: sources conflict ($50k DD seen as $2,000 AND $2,500; 3.0 vs 4.0). DO NOT trust these
-  # numbers until verified per client account. They are placeholders to wire the schema.
+  "50000":  { max_drawdown: 2500, profit_target: 3000, max_contracts: 10 }
+  "100000": { max_drawdown: 3000, profit_target: 6000 }   # Gemini research 2026-06-08
+  "150000": { max_drawdown: 5000, profit_target: 9000 }   # Gemini research 2026-06-08
+  # NOTE: the old "$2,000 vs $2,500" 50k conflict is RESOLVED (Phase-2a research, 2026-06-08,
+  # docs/reference/prop_firm_dd_rules_catalog.md): APEX 50k DD = $2,500; the $2,000 figure was
+  # TOPSTEP contamination. Still confirm vs a primary APEX source / Eric before live (help-center
+  # 403s automated fetch); the real-account replay gate below remains mandatory regardless.
 consistency_rules: {}         # APEX PA has consistency / min-days / payout rules — capture per profile
 ```
 
