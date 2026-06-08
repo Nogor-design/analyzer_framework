@@ -20,7 +20,7 @@ A near-complete research→execution pipeline already exists, split across repos
 ONLINE RESEARCH        D:\local-deep-research  ──(already wired via ta_foundation/research_intake/ldr.py)
   → HYPOTHESIS LEDGER  ta_foundation/research_ledger + agent/roles + D:\agentic-engine (validation ledger)
   → DISCOVERY/SWEEPS   ta_foundation/analysis/* (8 families, pattern engine, walk-forward, prop_evaluation)
-  → EDGE → .cs         D:\NinjatraderDocScrapper (factory + repair + parity)  *and*  ta_foundation/nt_strategy_loop
+  → EDGE → .cs         D:\Backup\projects\PythonProject\NinjatraderDocScrapper (factory + repair + parity)  *and*  ta_foundation/nt_strategy_loop
                        *and* generic ta_foundation/strategies/TaFoundationExecutionBridge (ExecutionShell.cs)
   → BACKTEST/OPTIMIZE  ta_foundation optimizer + Deployment Matrix (252)
   → PAPER/SHADOW       ta_foundation/shadow/
@@ -48,7 +48,7 @@ between a new drawdown engine and `analysis/prop_evaluation/simulation.py`.
 - **Maturity:** production-ready (PyPI/Docker, CI, tests). **Deps:** Python 3.12+, langchain/langgraph,
   Flask, SQLCipher, playwright/trafilatura, sentence-transformers/faiss.
 
-## D:\NinjatraderDocScrapper — NinjaScript strategy FACTORY + learning RAG
+## D:\Backup\projects\PythonProject\NinjatraderDocScrapper — NinjaScript strategy FACTORY + learning RAG
 
 - **Purpose:** NOT just a scraper. Generates compilable NT8 `.cs` strategies from canonical JSON
   specs, with a learning RAG over NinjaTrader docs and a compile-error repair loop.

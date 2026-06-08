@@ -21,6 +21,16 @@ small; it is meant to be cheap to load every session.
 | Execution bridge | Send/monitor execution messages to NinjaTrader runtime/shell | `strategies/TaFoundationExecutionBridge/*`, `cli/bridge_operator.py` | Shipped | `docs/runbooks/NINJATRADER_INTEGRATION_RUNBOOK.md` |
 | Market data store / scan | Shared minute/tick bars; file freshness dashboard | `marketdata/*`, `market_data_dashboard.py` | Shipped | `CLAUDE.md` |
 
+For concrete analysis inventory and "do not rebuild this" routing, load
+`docs/ANALYSIS_CAPABILITY_GUIDE.md` after this catalog. It covers NT backtest
+analysis, optimizer CSVs, tick data, exit-policy simulation, MAE/MFE, anchors,
+large candle excursion, horizon reports, and optimizer template-quality
+features.
+
+For NinjaTrader optimizer evidence traps, Strategy Analyzer `OptimizationFitness`
+or `KeepBestResults`, local NT docs RAG, template XML, or "best template"
+ranking, load `docs/runbooks/nt_optimizer_evidence_and_rag_guide.md`.
+
 ## Analysis subsystems (used by reports/discovery)
 
 | Subsystem | Purpose | Code |
@@ -29,6 +39,8 @@ small; it is meant to be cheap to load every session.
 | Pattern engine | Template sweep, clustering, Monte Carlo | `analysis/pattern_engine/` |
 | Entry strategies | 8 families (candle/ma/bb/orb/breakout/pullback/level/lcr) | `analysis/entry_strategies/` |
 | Regime recommender | Regime classification + recommendations | `analysis/regime_recommender/` |
+
+Detailed analysis routing: `docs/ANALYSIS_CAPABILITY_GUIDE.md`.
 
 ## Web workbench section ids (`web/capabilities.py`)
 
@@ -44,7 +56,7 @@ small; it is meant to be cheap to load every session.
 | Project | Purpose | Status |
 |---|---|---|
 | `D:\local-deep-research` | Online research agent (LangGraph, 30+ engines) → edge/rules research; already wired via `research_intake/ldr.py` | Production |
-| `D:\NinjatraderDocScrapper` | NinjaScript **strategy factory** + learning RAG: discovered edge → compilable `.cs` + repair + parity | Working (likely supersedes `StrategyDiscoveryFilter.cs`) |
+| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper` | NinjaScript **strategy factory** + learning RAG: discovered edge → compilable `.cs` + repair + parity | Working (likely supersedes `StrategyDiscoveryFilter.cs`) |
 | `D:\NinjaAccountManager` | Real-time NT account monitor + order API (WebSocket bridge, not plugin); has account state, **lacks DD/prop rules** | Working, early |
 | `D:\DailyAnalysis` | Rule-based NQ daily context (bias/levels/news); no selection, no LLM | Functional |
 | `D:\agentic-engine` | Idea→hypothesis→test→decision validation ledger (overlaps internal `research_ledger/`) | Working core |

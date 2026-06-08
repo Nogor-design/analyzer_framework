@@ -8,6 +8,12 @@ This document traces the full pipeline in code and on disk: **what optimization
 files get created, with which parameters, how the results are filtered into the
 next round, and which critical settings are (or are not) set.**
 
+Before interpreting "best" rows from NinjaTrader, also read
+[`nt_optimizer_evidence_and_rag_guide.md`](nt_optimizer_evidence_and_rag_guide.md).
+It documents the local NT docs RAG, `OptimizationFitness`, `KeepBestResults`,
+PF-first one-trade traps, AddOn export quirks, and the evidence gates needed
+before trusting a final template grid.
+
 ---
 
 ## 0. Module map
@@ -272,21 +278,23 @@ predictor.
 
 ### 6.1 ⚠️ Minimum-trades floor (the PF-99-on-1-trade problem)
 
-Every selection in this pipeline ranks by **`profit_factor` first** and applies
-**no trade-count floor by default**:
+Every selection in this pipeline still ranks by **`profit_factor` first**, so a
+trade-count floor is required to avoid high-PF/low-sample winners:
 
-- `build_deployment_matrix_recipe(..., refine_selection_min_trades=0)` — default **0**.
-- `_apply_hard_filters()` only enforces `min_trades` when
-  `selection.hard_filters.min_trades` is present; with the default it is absent.
-- **The launcher UI has no input for it** — `optimizer_deployment_matrix.html`'s
-  run payload (the `Sweep ranges` block) sends `max_stop_*`, `max_tp_ratio_*`,
-  `profit_stop_*`, `loss_stop_*`, `max_trades_values` — but **not**
-  `refine_selection_min_trades`. So a UI-launched run *always* uses floor = 0.
+- `build_deployment_matrix_recipe(..., refine_selection_min_trades=0)` keeps
+  API/backward compatibility with default **0**.
+- The launcher UI now exposes **Min trades (selection floor)** in **Sweep
+  ranges** and sends `refine_selection_min_trades`; the current UI default is
+  **10**.
+- `_apply_hard_filters()` enforces `min_trades` when
+  `selection.hard_filters.min_trades` is present.
+- `optimizer_deployment_matrix.py` now threads the same hard filter into both
+  `stage_1` structural selection and `refine_risk` selection.
 
 **Consequence:** exactly your scenario — a lane whose top-PF row has 1–2 trades
 wins its cell, then dies in `final_backtest`/live → `missing`/`fallback` cells.
 
-**How to set it until the UI exposes it** — POST to the run API with the field:
+**How to set it from the API** — POST to the run API with the field:
 
 ```bash
 curl -X POST http://127.0.0.1:7739/api/optimizer/deployment-matrix/run \
@@ -298,15 +306,9 @@ curl -X POST http://127.0.0.1:7739/api/optimizer/deployment-matrix/run \
         "refine_selection_min_trades": 25 }'
 ```
 
-`api_optimizer_deployment_matrix_run()` already threads this into the recipe
-(`app.py` ~line 2757). It adds `hard_filters.min_trades` to the `refine_risk`
-selection, so any refined candidate below the floor is rejected with
-`rejection_reason = below_min_trades` instead of being promoted.
-
-> Note: as written, the floor is applied at **refine_risk** selection. Stage-1
-> structural selection still ranks by PF without a floor; if you need the floor
-> there too, that is a recipe edit (add `hard_filters` to the `stage_1`
-> `selection` block) — flagged here as a gap.
+`api_optimizer_deployment_matrix_run()` threads this into the recipe. Any
+candidate below the floor is rejected with `rejection_reason =
+below_min_trades` instead of being promoted.
 
 ### 6.2 Other settings worth a glance
 

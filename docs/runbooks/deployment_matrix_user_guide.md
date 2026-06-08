@@ -38,7 +38,7 @@ Coverage runs.
 | **Seed template** + **Generate seed** | The base `.xml` every generated optimization file is cloned from. If none exists, click **Generate seed** (no NinjaTrader UI download needed). |
 | **Instrument / Market suffix** | e.g. `NQ 06-26` / `NQ`. The suffix is appended to the final template names. |
 | **Start date / End date (OOS)** | The backtest window used for every run in the pipeline. |
-| **Sweep ranges (structural + risk knobs)** | *(collapsed by default)* The parameter ranges the optimizer searches. See §4 and the technical guide. |
+| **Sweep ranges (structural + risk knobs)** | *(collapsed by default)* The parameter ranges the optimizer searches, including **Min trades (selection floor)**. See §4 and the technical guide. |
 | **Build & preview (no NT)** | **Safe.** Creates the session, recipe, and plan on disk. Writes **nothing** to NinjaTrader. Use this to inspect what *would* run. |
 | **Build & dispatch to NinjaTrader** | Builds **and** immediately sends stage 1 to NinjaTrader. Do **not** click this while another NT optimization is running. |
 | **Coverage target grid** (bottom) | A static preview of the 7×9 layout from `naming_rules.json`. The dots are placeholders. **This never fills with results** — it only shows the shape of the target. |
@@ -68,9 +68,9 @@ the pipeline must be **advanced** to ingest results and launch the next stage.
 
 **Step by step:**
 
-1. **Pick** strategy, seed, instrument, OOS dates. (Optional: open **Sweep
-   ranges** and set a trade floor — see §4, this is the one setting people
-   forget.)
+1. **Pick** strategy, seed, instrument, OOS dates. Open **Sweep ranges** and
+   confirm **Min trades (selection floor)**. The launcher default is 10; raise
+   it for stricter evidence, lower it only for exploration.
 2. Click **Build & preview** first. Confirm the plan looks right (stage list,
    combination estimate).
 3. Click **Build & dispatch to NinjaTrader**. Stage 1 (the broad structural
@@ -98,26 +98,27 @@ the pipeline must be **advanced** to ingest results and launch the next stage.
 
 ## 4. The setting people forget — minimum trades
 
+**Current state, 2026-06-05:** the launcher now exposes **Min trades
+(selection floor)** inside **Sweep ranges** and defaults it to **10**. The
+recipe builder still accepts `0` for API/backward compatibility, but a normal
+UI-launched run should not use zero unless the operator explicitly changes it.
+The floor is threaded into structural and risk-refine selection so high-PF,
+low-trade candidates are rejected before promotion.
+
+Use 10 for broad coverage, 15-20 for stricter evidence, and 20-30 when you
+would rather see fewer real cells plus visible fallbacks than promote thin
+winners.
+
 > This is the exact trap you described: *"if you optimize and ask for the top 10
 > by PF you could get 10 results with PF 99 and 1 trade each."*
 
-By default the pipeline picks each cell's winner by **Profit Factor first, then
-Net Profit, with NO minimum trade count**. A lane whose best-PF result came from
-1–2 lucky trades will win its cell — and then usually collapses in live
-trading or gets rejected downstream, leaving the cell empty or filled by a
-borrowed "fallback" template.
+Without this floor, the pipeline would pick each cell's winner by **Profit
+Factor first, then Net Profit**. A lane whose best-PF result came from 1 or 2
+lucky trades could win its cell and then collapse in final validation or live
+trading.
 
-There **is** a guard for this — a per-cell **minimum-trades floor at selection
-time** (`refine_selection_min_trades` in the recipe). But:
-
-- It defaults to **0** (off).
-- **The launcher page does not currently expose an input for it**, so a run
-  started purely from the UI always runs with no trade floor.
-
-**What to do about it:** see the technical guide §6 for how to set it (via the
-API payload or recipe edit) until the UI field is added. As a rule of thumb,
-require enough trades over the OOS window that the Profit Factor is meaningful
-(e.g. ≥ 20–30 trades), not 1–2.
+As a rule of thumb, require enough trades over the OOS window that the Profit
+Factor is meaningful, not 1 or 2.
 
 When you inspect results, always read **Profit Factor next to the trade count**.
 A PF of 3.0 on 4 trades is noise; a PF of 1.6 on 120 trades is an edge.

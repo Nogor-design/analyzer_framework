@@ -10,6 +10,8 @@ For a new task, read only these first:
 - `docs/DOCS_INDEX.md` — single authoritative map of current vs archived docs; check here before opening any other `.md`
 - `docs/AI_REPO_INDEX.md`
 - `docs/AI_CAPABILITY_MAP.md` when the task touches web UI, RAG/docs, reports, prediction, strategy templates, or strategy discovery
+- `docs/ANALYSIS_CAPABILITY_GUIDE.md` when the task asks what analysis already exists, touches NinjaTrader backtest analysis, tick data, MAE/MFE, exits, MA anchors, large candle excursion, optimizer template quality, or report/predictor analysis surfaces
+- `docs/runbooks/nt_optimizer_evidence_and_rag_guide.md` when the task touches NinjaTrader optimizer behavior, Strategy Analyzer evidence, local NT docs RAG, `OptimizationFitness`, `KeepBestResults`, template XML, MA-cross template selection, or "best template" ranking
 - `docs/designs/real_edge_discovery_program.md` when the task touches edge discovery, probes, hardening, shadow runner, or the graveyard
 - `docs/designs/agentic_nt_strategy_knowledge_base.md` when the task touches agentic strategy research, NinjaTrader strategy generation, StrategyDiscoveryFilter, the Strategy Factory, NT optimizer loops, shadow promotion, NinjaAccountManager, or execution bridge automation
 - `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md` when the task asks to build the full autonomous loop from discovery through NT validation, shadow, and Sim101 paper trading
@@ -130,10 +132,11 @@ Generated RAG data is written under `.ta_artifacts/ai_rag/`, which is ignored by
 
 1. Read `CLAUDE.md` and `docs/AI_REPO_INDEX.md`.
 2. Read `docs/AI_CAPABILITY_MAP.md` for broad capability-routing tasks.
-3. Run `python scripts/ai_rag.py search "<task>" --top 8`.
-4. Open only the returned files and nearby tests.
-5. If the task is broad, run a second search with `--category` or `--path`.
-6. Use `context` when you want to hand a compact retrieved pack to another AI tool.
+3. Read `docs/ANALYSIS_CAPABILITY_GUIDE.md` before analysis/report/discovery/tick/optimizer-template tasks.
+4. Run `python scripts/ai_rag.py search "<task>" --top 8`.
+5. Open only the returned files and nearby tests.
+6. If the task is broad, run a second search with `--category` or `--path`.
+7. Use `context` when you want to hand a compact retrieved pack to another AI tool.
 
 ## Capability Routing For AI Agents
 
@@ -143,5 +146,6 @@ Do not flatten the project into "report generation." Route by capability first:
 - Prediction: `src/ta_foundation/prediction/`, especially `run_prediction.py`, `run_multi_agent.py`, `backtest_horizon_predictions.py`, `prediction.yaml`.
 - Strategy Templates: `analysis/strategy_composer/`, web `/api/generate`, `/api/backtest`, `/api/validate`, template schema.
 - Strategy Discovery: `analysis/strategy_discovery/`, `strategy_discovery_report.yaml`, and `strategy_discovery_*` report sections.
+- Analysis Inventory: `docs/ANALYSIS_CAPABILITY_GUIDE.md` before adding NT backtest, tick, MAE/MFE, exit-policy, anchor, LCE, or template-quality analysis.
 - Web Orchestration: `web/app.py`, `web/jobs.py`, `web/prediction_jobs.py`, `web/report_catalog.py`, `web/templates/index.html`.
 - Agentic NT Strategy Loop: start with `docs/designs/agentic_nt_strategy_knowledge_base.md`, then route to `src/ta_foundation/agent/`, `src/ta_foundation/research_ledger/`, `src/ta_foundation/shadow/`, `src/ta_foundation/nt_strategy_loop/`, `src/ta_foundation/strategies/StrategyDiscoveryFilter/`, `src/ta_foundation/strategies/TaFoundationExecutionBridge/`, or external `D:\NinjaAccountManager` as needed.

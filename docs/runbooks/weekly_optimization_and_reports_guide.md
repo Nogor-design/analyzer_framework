@@ -8,6 +8,18 @@ optimization and turning it into the deployable team package and reports. For th
 deeper reference (folder layout, package internals, lane diversity rules) see
 [`weekly_coverage_package_user_guide.md`](weekly_coverage_package_user_guide.md).
 
+If the goal is the newer **full fixed matrix of final templates** for the
+daily-prediction pool, use **Deployment Matrix** instead:
+[`deployment_matrix_user_guide.md`](deployment_matrix_user_guide.md) and
+`/optimizer/deployment-matrix`. Weekly Coverage ships a diverse weekly set.
+Deployment Matrix fills the 252-cell predictor-facing grid.
+
+When interpreting the NT optimizer rows behind either flow, read
+[`nt_optimizer_evidence_and_rag_guide.md`](nt_optimizer_evidence_and_rag_guide.md)
+first. It explains the local NT docs RAG location, `OptimizationFitness`,
+`KeepBestResults`, PF-first one-trade traps, and how MAE/MFE/tick evidence
+should shape final template selection.
+
 ---
 
 ## What this workflow does
@@ -15,6 +27,14 @@ deeper reference (folder layout, package internals, lane diversity rules) see
 One **Weekly Coverage** run sweeps a fixed grid of trading lanes and produces a
 deployable set of named NinjaTrader templates — two (or more) operationally
 distinct winners per lane.
+
+Weekly Coverage is not the same output as the 252-cell Deployment Matrix:
+
+- Weekly Coverage: session bucket x side x slow-MA lanes, multiple deployable
+  winners per lane, built for weekly shipping and team handoff.
+- Deployment Matrix: 7 sessions x 2 single/multi x 9 MA tiers x 2 god/monster,
+  one best template per cell plus explicit fallback/missing status, built for
+  the downstream daily-prediction selector.
 
 As of 2026-06-04 the run is **one launch, three automatic stages**:
 

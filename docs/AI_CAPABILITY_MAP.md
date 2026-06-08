@@ -4,6 +4,25 @@ This repo is not one monolithic report generator. It has several distinct produc
 
 Use this map before changing web UI, RAG, docs, CLI orchestration, or AI-facing prompts.
 
+For analysis-specific routing, especially questions about NinjaTrader backtest
+analysis, tick data, MAE/MFE, exit simulation, MA anchors, large candle
+excursion, or template-quality features, read
+`docs/ANALYSIS_CAPABILITY_GUIDE.md` before proposing new code. That guide is
+the concrete inventory of what analysis already exists and how to use it.
+
+Canonical local market data lives in `D:\MarketData` and includes NinjaTrader
+minute candle exports (`*.Last.txt`) plus tick exports (`*Tick.Last.txt`) for
+multiple contracts. Treat that folder as the first local source for candle,
+tick-path, MA-anchor, exit-simulation, large-candle, pattern, and prediction
+analysis before asking whether the project has market data.
+
+For NinjaTrader optimizer behavior, Strategy Analyzer result interpretation,
+local NT docs RAG, `OptimizationFitness`, `KeepBestResults`, template XML, or
+"best template" ranking, read
+`docs/runbooks/nt_optimizer_evidence_and_rag_guide.md`. It explains why raw
+PF-first results can produce misleading one-trade winners and how to combine
+NT evidence with local candle/tick analysis.
+
 ## Main Capabilities
 
 | Capability | Primary User Goal | Uses NinjaTrader Backtest Exports? | Uses Market Data? | Primary Entry Points | UI Surface |
@@ -15,6 +34,25 @@ Use this map before changing web UI, RAG, docs, CLI orchestration, or AI-facing 
 | Agentic NT strategy loop | Promote research candidates into deterministic NinjaTrader validation, optimizer runs, shadow monitoring, and supervised execution handoff | Yes, through optimizer/Strategy Analyzer evidence | Yes | `src/ta_foundation/agent/`, `src/ta_foundation/nt_strategy_loop/`, `docs/designs/agentic_nt_strategy_knowledge_base.md`, `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md`, external `D:\NinjaAccountManager` | Manager/operator workflow |
 | Execution bridge | Send/monitor execution messages for NinjaTrader shell/runtime integration | No | Runtime shell/state/log data | `strategies/TaFoundationExecutionBridge/*`, `cli/bridge_operator.py`, external `D:\NinjaAccountManager` | Separate operator/tooling surface |
 | Market data dashboard | Inspect market data file freshness and availability | No | Yes | `market_data_dashboard.py` | Separate dashboard |
+
+## Analysis Capability Inventory
+
+The broad map above intentionally stays compact. The detailed analysis surface
+is documented in `docs/ANALYSIS_CAPABILITY_GUIDE.md`, including:
+
+- NT backtest export analysis from trades, daily, summary, settings, and
+  optimization CSVs.
+- Tick data ingest, tick cache, minute-vs-tick diagnostics, tick-derived bars,
+  exit-policy simulation, and large-candle tick-path analysis.
+- Strategy discovery outputs: MAE/MFE, walk-forward, OOS/holdout evaluation,
+  slippage stress, entry/filter/exit discovery, ranking, clustering, and NT
+  template generation.
+- MA anchor interaction TP/SL recommendations and trade alignment.
+- Pattern engine and entry-strategy families.
+- Large candle excursion event studies, target curves, reversal decision
+  engine, validation, strategy construction, and blueprints.
+- Optimizer final-template reports, weekly coverage package, deployment matrix
+  manifest, and template-quality feature export.
 
 ## Backtest Reports
 

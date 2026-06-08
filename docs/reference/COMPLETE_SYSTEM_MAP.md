@@ -1348,7 +1348,7 @@ Aggregate calibration
 ### 0. **External sibling repos (the ecosystem)** — see `docs/reference/EXTERNAL_PROJECTS_MAP.md`
 This project is one repo in a multi-repo effort. Before building, check the ecosystem map:
 - `D:\local-deep-research` — online research agent; **already wired** via `research_intake/ldr.py`.
-- `D:\NinjatraderDocScrapper` — NinjaScript **strategy factory** + learning RAG (discovered edge → `.cs`).
+- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper` — NinjaScript **strategy factory** + learning RAG (discovered edge → `.cs`).
 - `D:\NinjaAccountManager` — real-time NT account monitor + order API.
 - `D:\DailyAnalysis` — rule-based NQ daily market context.
 - `D:\agentic-engine` — idea→hypothesis→decision validation ledger.
