@@ -149,7 +149,41 @@ backtested AtrTrail edge is ~24% optimistic.**
 > tail. **Action: haircut the pool's backtested AtrTrail PF/net by ≥~24% for
 > sizing/expectations until Parity B Step 2 measures the real live gap.**
 
-## Step 2 — live/replay capture sheet (operator runs NT; harness is built)
+## Step 2 — READY-MADE single-template run (use this; built 2026-06-08)
+
+The pooled "whole session" diff isn't runnable as one Market Replay (124 templates, one
+param set per run). So Parity B Step 2 runs on **one representative template, F_065** (the
+highest-trade-count final backtest: 505 trades / 244 round-trips, Overlap session, NQ 06-26).
+
+**Template installed:** `Documents/NinjaTrader 8/templates/Strategy/PantheonMaster_ParityB_F065_LIVE.xml`
+(load via PantheonMaster → **Template → Load → PantheonMaster_ParityB_F065_LIVE**). It is F_065's
+exact backtest config with **only two changes**, which are the whole point of Parity B:
+- `UseLiveStopManagement = true` — engages the LIVE tick-trail (`ChangeOrder` via `OnMarketData`)
+  instead of the backtest bar-close managed stop. **Without this the replay just reproduces the
+  backtest and measures nothing** (path switch: `UseLiveStopManagement && State==Realtime`,
+  PantheonMaster.cs L485/523/763).
+- `EnableDebugPrint = true` — emits the `[PantheonMaster] ChangeOrder stop -> {price}` trail prints.
+
+**Run it:**
+1. Ensure NT has **Market Replay data** for **NQ 06-26** over ~**2026-05-01 → 2026-06-03** (Tools →
+   Historical Data → Market Replay, download if missing).
+2. Connect via the **Playback** connection; add **PantheonMaster** to an **NQ 06-26, 1-min** chart
+   (or Strategy Analyzer on the Playback feed); load the template above. The strategy's time filter
+   (16:00 Denver +8h) gates to the Overlap session automatically — replay the full date range.
+3. Let it replay to the end; **export the replay `Trades.csv`** (e.g. `C:\temp\replay\F065_live_Trades.csv`).
+
+**Diff (the measurement):**
+```bash
+python scripts/atr_trail_live_diff.py \
+  --bt ".ta_artifacts/web_optimizer/sessions/opt_a09359e6b60b/deployment_package/final_backtest_handoff/nt8_backtest_results/F_065/Trades.csv" \
+  --live "C:\temp\replay\F065_live_Trades.csv" --trail-only
+```
+It prints matched count, both-sides P&L, the **measured haircut %**, and compares to the Step-1
+prediction (−23.9%). Expectation: live ≈ 24%+ worse (live trails tighter → exits runners earlier).
+*(Optional rigor: also replay once with `UseLiveStopManagement=false` to confirm Market Replay itself
+reproduces the backtest, isolating the stop-engine delta from any replay-fill delta.)*
+
+## Step 2 — generic capture sheet (params reference)
 
 The diff harness is ready: `scripts/atr_trail_live_diff.py` (core
 `diff_backtest_vs_live_trades` in `nt_atr_trail_parity.py`, tested). It matches
