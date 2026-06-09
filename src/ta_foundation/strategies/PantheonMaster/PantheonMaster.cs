@@ -246,6 +246,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double liveHighestFavorablePrice;
 		private double liveLowestFavorablePrice;
 		private double liveMarketPrice;           // last live tick price (stop-side guard)
+		private double entryFillPrice;            // actual entry execution price (Position.AveragePrice is stale in OnExecutionUpdate)
 		private double lastSubmittedStopPrice;
 		private bool   entryOrdersPrepared;      // true only on live path
 
@@ -587,7 +588,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				activeEntrySignal      = Position.MarketPosition == MarketPosition.Long
 				                         ? LongEntrySignal : ShortEntrySignal;
 				activeManagedDirection = Position.MarketPosition;
-				ResetDynamicTrackingOnEntry();   // position price is now valid
+				// Use the EXECUTION's fill price: Position.AveragePrice is not reliably
+				// updated yet inside OnExecutionUpdate (it settles in OnPositionUpdate),
+				// and with Reverse=true it can read the prior position — a stale avg put
+				// the initial protective stop on the wrong side of the market and the
+				// broker rejected it, terminating the strategy on entry.
+				entryFillPrice = price;
+				ResetDynamicTrackingOnEntry();   // seeds trail from entryFillPrice
 				SubmitInitialProtectiveOrders(); // live path only
 			}
 
@@ -830,7 +837,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			bool   isLong = Position.MarketPosition == MarketPosition.Long;
 			int    qty    = Position.Quantity;
-			double avg    = Position.AveragePrice;
+			double avg    = entryFillPrice > 0 ? entryFillPrice : Position.AveragePrice;
 			if (qty <= 0) return;
 
 			double initialStop = RoundToTick(GetInitialStopPrice(isLong, avg));
@@ -1270,15 +1277,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private void ResetDynamicTrackingOnEntry()
 		{
-			// Called AFTER the fill so Position.AveragePrice is the real entry price.
-			bool isLong = activeManagedDirection == MarketPosition.Long;
+			// Seed from the actual entry fill price (entryFillPrice); Position.AveragePrice
+			// is not reliably settled inside OnExecutionUpdate. A stale seed made the short
+			// trail compute a stop far below the market.
+			bool   isLong     = activeManagedDirection == MarketPosition.Long;
+			double entryPrice = entryFillPrice > 0 ? entryFillPrice : Position.AveragePrice;
 
 			highSinceEntry            = 0.0;
 			lowSinceEntry             = 0.0;
 			peakOpenProfit            = 0.0;
 			breakEvenActive           = false;
-			liveHighestFavorablePrice = isLong ? Position.AveragePrice : 0.0;
-			liveLowestFavorablePrice  = isLong ? 0.0 : Position.AveragePrice;
+			liveHighestFavorablePrice = isLong ? entryPrice : 0.0;
+			liveLowestFavorablePrice  = isLong ? 0.0 : entryPrice;
 			lastSubmittedStopPrice    = 0.0;
 		}
 
