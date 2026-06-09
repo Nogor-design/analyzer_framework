@@ -876,6 +876,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 			int qty = Position.Quantity;
 			if (qty <= 0) return;
 
+			// A live protective stop must sit on the valid side of the CURRENT market or
+			// the broker rejects it (buy-stop must be ABOVE market, sell-stop BELOW) and
+			// the strategy terminates. When price has retraced through the proposed trail
+			// level (e.g. a short ran down then ticked back up past lowSinceEntry+ATR), skip
+			// this move and keep the existing still-valid resting stop — an actual stop hit
+			// is handled by the working order, not by a fresh ChangeOrder to an illegal price.
+			double curAsk = GetCurrentAsk();
+			double curBid = GetCurrentBid();
+			if (Position.MarketPosition == MarketPosition.Long
+			    && curBid > 0 && proposedStopPrice >= curBid - TickSize * 0.5) return;
+			if (Position.MarketPosition == MarketPosition.Short
+			    && curAsk > 0 && proposedStopPrice <= curAsk + TickSize * 0.5) return;
+
 			ChangeOrder(activeStopOrder, qty, 0, proposedStopPrice);
 			lastSubmittedStopPrice = proposedStopPrice;
 

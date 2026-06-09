@@ -149,6 +149,36 @@ backtested AtrTrail edge is ~24% optimistic.**
 > tail. **Action: haircut the pool's backtested AtrTrail PF/net by ≥~24% for
 > sizing/expectations until Parity B Step 2 measures the real live gap.**
 
+## Step 2 — first-attempt findings (2026-06-09): two bugs caught before live $
+
+The first replay attempts surfaced two real problems — exactly what this gate exists for.
+**No haircut measured yet**; fix both, then re-run.
+
+1. **Template `DiscoveryExitPolicy=AtrTrail` does NOT apply on chart/playback template-load —
+   it silently falls back to the `FixedRR` default** (`PantheonMaster.cs` L373). Proof: chart runs
+   exited at clean ±$300 / +$450 with a `Profit target`, and the Output printed `Target=…`
+   (`ShouldUseTarget()` returns true only for FixedRR, L915). The **optimizer pool ran AtrTrail
+   correctly** (F_065 = 281 `Stop loss` + 224 `Close position`, no targets, 186 distinct P&Ls), so
+   the pool/analysis is valid — only chart-load drops the enum. **Workaround:** after loading the
+   template, **manually set `DiscoveryExitPolicy = AtrTrail` in the strategy dialog**, and confirm
+   via Output `Protective orders: Stop=… (no target)` and exits never named `Profit target`.
+   *(Consequence: the "slow run matched backtest" result was FixedRR↔FixedRR — trivially parity-clean,
+   measures nothing about AtrTrail.)*
+
+2. **Live AtrTrail short-stop crash — FIXED 2026-06-09 (needs recompile).** Once AtrTrail was active
+   live, the first short submitted `BuyToCover StopMarket @ 27271.75` BELOW the market → NT rejected
+   it ("buy stop … can't be placed below the market") → strategy terminated. Cause: a short trail stop
+   is `lowSinceEntry + AtrTrailMultiple·ATR`; when price retraces up past that level, `MoveStopIfImproved`
+   submitted a buy-stop below the current market without a side check. **Fix:** added a current-market
+   guard in `MoveStopIfImproved` (skip the `ChangeOrder` if the proposed stop is on the illegal side of
+   `GetCurrentBid/Ask`; the existing valid resting stop stays). Protects all live trailing policies
+   (AtrTrail/Chandelier/Giveback/BreakEven). **Recompile PantheonMaster in NinjaScript Editor (F5)
+   before re-running.**
+
+**Corrected re-run recipe:** recompile → load template → **manually set DiscoveryExitPolicy=AtrTrail** →
+confirm Output shows `(no target)` and no `Profit target` exits → run a SHORT window at MODERATE speed
+(not max) → export per-trade `Trades.csv` for BOTH the live replay and a matching backtest → diff.
+
 ## Step 2 — READY-MADE single-template run (use this; built 2026-06-08)
 
 The pooled "whole session" diff isn't runnable as one Market Replay (124 templates, one
