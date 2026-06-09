@@ -155,8 +155,10 @@ The pooled "whole session" diff isn't runnable as one Market Replay (124 templat
 param set per run). So Parity B Step 2 runs on **one representative template, F_065** (the
 highest-trade-count final backtest: 505 trades / 244 round-trips, Overlap session, NQ 06-26).
 
-**Template installed:** `Documents/NinjaTrader 8/templates/Strategy/PantheonMaster_ParityB_F065_LIVE.xml`
-(load via PantheonMaster → **Template → Load → PantheonMaster_ParityB_F065_LIVE**). It is F_065's
+**Template installed:** `Documents/NinjaTrader 8/templates/Strategy/PantheonMaster/ParityB_F065_LIVE.xml`
+(NT8 stores strategy templates as `templates/Strategy/<StrategyName>/<name>.xml` — load via
+PantheonMaster → **Template → Load → ParityB_F065_LIVE**; reopen the strategy dialog if NT was
+already running). It is F_065's
 exact backtest config with **only two changes**, which are the whole point of Parity B:
 - `UseLiveStopManagement = true` — engages the LIVE tick-trail (`ChangeOrder` via `OnMarketData`)
   instead of the backtest bar-close managed stop. **Without this the replay just reproduces the
