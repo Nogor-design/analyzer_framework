@@ -245,6 +245,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool   breakEvenActive;
 		private double liveHighestFavorablePrice;
 		private double liveLowestFavorablePrice;
+		private double liveMarketPrice;           // last live tick price (stop-side guard)
 		private double lastSubmittedStopPrice;
 		private bool   entryOrdersPrepared;      // true only on live path
 
@@ -881,13 +882,20 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// the strategy terminates. When price has retraced through the proposed trail
 			// level (e.g. a short ran down then ticked back up past lowSinceEntry+ATR), skip
 			// this move and keep the existing still-valid resting stop — an actual stop hit
-			// is handled by the working order, not by a fresh ChangeOrder to an illegal price.
-			double curAsk = GetCurrentAsk();
-			double curBid = GetCurrentBid();
-			if (Position.MarketPosition == MarketPosition.Long
-			    && curBid > 0 && proposedStopPrice >= curBid - TickSize * 0.5) return;
-			if (Position.MarketPosition == MarketPosition.Short
-			    && curAsk > 0 && proposedStopPrice <= curAsk + TickSize * 0.5) return;
+			// is handled by the working order, not a fresh ChangeOrder to an illegal price.
+			// GetCurrentBid/Ask are frequently 0 in Market Replay, so use the last live tick
+			// price (set in ManageLiveDynamicStop) with bid/ask then bar close as fallbacks.
+			double mkt = liveMarketPrice;
+			if (mkt <= 0) { double a = GetCurrentAsk(), b = GetCurrentBid();
+			                mkt = (a > 0 && b > 0) ? (a + b) * 0.5 : Math.Max(a, b); }
+			if (mkt <= 0) mkt = Close[0];
+			if (mkt > 0)
+			{
+				if (Position.MarketPosition == MarketPosition.Long
+				    && proposedStopPrice >= mkt - TickSize * 0.5) return;
+				if (Position.MarketPosition == MarketPosition.Short
+				    && proposedStopPrice <= mkt + TickSize * 0.5) return;
+			}
 
 			ChangeOrder(activeStopOrder, qty, 0, proposedStopPrice);
 			lastSubmittedStopPrice = proposedStopPrice;
@@ -1184,6 +1192,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private void ManageLiveDynamicStop(double triggerPrice)
 		{
 			if (!UseDiscoveryExitPolicy) return;
+
+			liveMarketPrice = triggerPrice;   // last live price, for the stop-side guard
 
 			bool   isLong = Position.MarketPosition == MarketPosition.Long;
 			double avg    = Position.AveragePrice;
