@@ -872,16 +872,23 @@ namespace NinjaTrader.NinjaScript.Strategies
 				Print($"[PantheonMaster] Initial stop {initialStop:F2} was on the wrong side of "
 				    + $"market {mkt:F2} (isLong={isLong}); clamped to {submitStop:F2} to avoid rejection.");
 
-			if (isLong) ExitLongStopMarket(qty,  submitStop, LongStopSignal,  fromEntry);
-			else        ExitShortStopMarket(qty, submitStop, ShortStopSignal, fromEntry);
+			// isLiveUntilCancelled=true: we submit this stop ONCE and then move it via
+			// ChangeOrder() tick-by-tick across bars. Without the flag the managed framework
+			// expires the resting stop at bar end, leaving the position unprotected and our
+			// activeStopOrder reference stale (NinjatraderDocScrapper exits/managed_dynamic_stop.md,
+			// exitshortstopmarket.md advanced overload). barsInProgressIndex=0 (primary series).
+			if (isLong) ExitLongStopMarket(0,  true, qty, submitStop, LongStopSignal,  fromEntry);
+			else        ExitShortStopMarket(0, true, qty, submitStop, ShortStopSignal, fromEntry);
 
 			lastSubmittedStopPrice = submitStop;
 
 			if (ShouldUseTarget())
 			{
 				double targetPrice = RoundToTick(GetInitialTargetPrice(isLong, avg));
-				if (isLong) ExitLongLimit(qty,  targetPrice, LongTargetSignal,  fromEntry);
-				else        ExitShortLimit(qty, targetPrice, ShortTargetSignal, fromEntry);
+				// isLiveUntilCancelled=true: OCO target sibling of the resting stop; must
+				// likewise persist across bars rather than expire at bar end.
+				if (isLong) ExitLongLimit(0,  true, qty, targetPrice, LongTargetSignal,  fromEntry);
+				else        ExitShortLimit(0, true, qty, targetPrice, ShortTargetSignal, fromEntry);
 
 				if (EnableDebugPrint)
 					Print($"[PantheonMaster] Protective orders: Stop={submitStop:F2}  Target={targetPrice:F2}");
