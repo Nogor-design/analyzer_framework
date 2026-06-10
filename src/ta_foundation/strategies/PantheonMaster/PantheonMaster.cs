@@ -843,17 +843,39 @@ namespace NinjaTrader.NinjaScript.Strategies
 			double initialStop = RoundToTick(GetInitialStopPrice(isLong, avg));
 			string fromEntry   = isLong ? LongEntrySignal : ShortEntrySignal;
 
-			// DIAGNOSTIC: dump every input to the initial protective stop so a rejection
-			// ("stop on wrong side of market") is unambiguous. isLong/avg/initialStop tell
-			// us if the stop is computed correctly; bid/ask/close/last show the live market.
-			Print($"[PantheonMaster] InitStop DBG | isLong={isLong} qty={qty} entryFill={entryFillPrice:F2} "
-			    + $"posAvg={Position.AveragePrice:F2} StopTicks={StopTicks} initialStop={initialStop:F2} | "
-			    + $"bid={GetCurrentBid():F2} ask={GetCurrentAsk():F2} close={Close[0]:F2} lastTick={liveMarketPrice:F2}");
+			// SIDE-OF-MARKET GUARD (initial stop). A protective stop must rest on the valid
+			// side of the CURRENT market or the broker rejects it (buy-stop must be ABOVE,
+			// sell-stop BELOW) and ErrorHandling terminates the strategy. In Market Replay /
+			// Playback the entry market order fills, but by the time this stop is submitted
+			// the replay feed has often already run price PAST the intended stop distance
+			// (the gap is bigger at higher replay speed — hence the crash-after-N-trades
+			// pattern). When that happens the trade is already beyond its stop, so the honest
+			// action is to exit now: clamp the stop to one tick past the live market so it is
+			// a legal resting order that triggers immediately, instead of an illegal price.
+			// Mirror the trail guard's market-price fallback chain (bid/ask are frequently 0
+			// in Replay, so prefer the last live tick, then bid/ask mid, then bar close).
+			double mkt = liveMarketPrice;
+			if (mkt <= 0) { double a = GetCurrentAsk(), b = GetCurrentBid();
+			                mkt = (a > 0 && b > 0) ? (a + b) * 0.5 : Math.Max(a, b); }
+			if (mkt <= 0) mkt = Close[0];
 
-			if (isLong) ExitLongStopMarket(qty,  initialStop, LongStopSignal,  fromEntry);
-			else        ExitShortStopMarket(qty, initialStop, ShortStopSignal, fromEntry);
+			double submitStop = initialStop;
+			if (mkt > 0)
+			{
+				if (isLong  && submitStop >= mkt - TickSize * 0.5)
+					submitStop = RoundToTick(mkt - TickSize);
+				if (!isLong && submitStop <= mkt + TickSize * 0.5)
+					submitStop = RoundToTick(mkt + TickSize);
+			}
 
-			lastSubmittedStopPrice = initialStop;
+			if (EnableDebugPrint && submitStop.ApproxCompare(initialStop) != 0)
+				Print($"[PantheonMaster] Initial stop {initialStop:F2} was on the wrong side of "
+				    + $"market {mkt:F2} (isLong={isLong}); clamped to {submitStop:F2} to avoid rejection.");
+
+			if (isLong) ExitLongStopMarket(qty,  submitStop, LongStopSignal,  fromEntry);
+			else        ExitShortStopMarket(qty, submitStop, ShortStopSignal, fromEntry);
+
+			lastSubmittedStopPrice = submitStop;
 
 			if (ShouldUseTarget())
 			{
@@ -862,10 +884,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				else        ExitShortLimit(qty, targetPrice, ShortTargetSignal, fromEntry);
 
 				if (EnableDebugPrint)
-					Print($"[PantheonMaster] Protective orders: Stop={initialStop:F2}  Target={targetPrice:F2}");
+					Print($"[PantheonMaster] Protective orders: Stop={submitStop:F2}  Target={targetPrice:F2}");
 			}
 			else if (EnableDebugPrint)
-				Print($"[PantheonMaster] Protective orders: Stop={initialStop:F2}  (no target)");
+				Print($"[PantheonMaster] Protective orders: Stop={submitStop:F2}  (no target)");
 
 			entryOrdersPrepared = false;
 		}
