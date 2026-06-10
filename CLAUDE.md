@@ -58,6 +58,13 @@ The web UI is a capability workbench, not a single-purpose report page. Keep sep
 
 **This project is part of a multi-repo ecosystem. Before proposing ANY new capability, read `docs/CAPABILITY_CATALOG.md` (load-first router) and `docs/reference/EXTERNAL_PROJECTS_MAP.md`** — five external sibling repos (`D:\local-deep-research`, `D:\Backup\projects\PythonProject\NinjatraderDocScrapper`, `D:\NinjaAccountManager`, `D:\DailyAnalysis`, `D:\agentic-engine`) already own large parts of the research→`.cs`→account→execution→prediction pipeline. Most "new" ideas already exist internally or in a sibling repo; the recurring failure mode here is rebuilding what exists. `docs/reference/COMPLETE_SYSTEM_MAP.md` maps internal capabilities but is being re-audited (2026-06) — verify claims against code before trusting them.
 
+**ALWAYS consult the local NinjaTrader docs BEFORE writing or changing ANY NinjaScript / `.cs` code** (strategies, indicators, AddOns — anything under `strategies/`, `bin/Custom/`, or the sibling `D:\ninjatraderOptimizer`). Do not reason about NT8 managed/unmanaged order APIs from memory — their rejection, precedence, and lifecycle rules are non-obvious and guessing has cost real debugging cycles (e.g. the PantheonMaster live-stop "wrong side of market" rejection saga). The full offline NT8 Help is mirrored in the `NinjatraderDocScrapper` sibling repo:
+- **`D:\Backup\projects\PythonProject\NinjatraderDocScrapper\ninjatrader_docs\pages\*.md`** — 1,152 per-method reference pages (e.g. `settrailstop.md`, `setstoploss.md`, `exitshortstopmarket.md`). Read the exact method's page before calling it.
+- **`D:\Backup\projects\PythonProject\NinjatraderDocScrapper\strategy_factory\modules\`** — distilled, opinionated build patterns. Start here for "how should I structure X"; e.g. `exits/managed_dynamic_stop.md` is the canonical moving-stop recipe.
+- **RAG:** `ninjatrader_docs/rag_index.sqlite` + `chunks.jsonl`, queried via `ollama_rag.py` / `chat_ninjascript.py` in that repo, for full-corpus semantic search.
+
+Load-bearing facts already extracted (don't relearn the hard way): a managed trailing stop must **never** be a per-bar `SetStopLoss()` — NT rejects a stop modified to the wrong side of the current market (`settrailstop.md` line 26). Use `SetTrailStop()` (pure managed, native trailing) **or** the explicit `Exit*StopMarket` + `ChangeOrder` pattern (`exits/managed_dynamic_stop.md`, what PantheonMaster's live path does). **Never mix managed (`SetStopLoss`/`SetProfitTarget`) and explicit `Exit*StopMarket` orders on the same position/signal.**
+
 **Run a single test file:**
 ```bash
 python -m pytest src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py -v
