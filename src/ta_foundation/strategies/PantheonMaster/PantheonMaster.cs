@@ -843,6 +843,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 			double initialStop = RoundToTick(GetInitialStopPrice(isLong, avg));
 			string fromEntry   = isLong ? LongEntrySignal : ShortEntrySignal;
 
+			// DIAGNOSTIC: dump every input to the initial protective stop so a rejection
+			// ("stop on wrong side of market") is unambiguous. isLong/avg/initialStop tell
+			// us if the stop is computed correctly; bid/ask/close/last show the live market.
+			Print($"[PantheonMaster] InitStop DBG | isLong={isLong} qty={qty} entryFill={entryFillPrice:F2} "
+			    + $"posAvg={Position.AveragePrice:F2} StopTicks={StopTicks} initialStop={initialStop:F2} | "
+			    + $"bid={GetCurrentBid():F2} ask={GetCurrentAsk():F2} close={Close[0]:F2} lastTick={liveMarketPrice:F2}");
+
 			if (isLong) ExitLongStopMarket(qty,  initialStop, LongStopSignal,  fromEntry);
 			else        ExitShortStopMarket(qty, initialStop, ShortStopSignal, fromEntry);
 
