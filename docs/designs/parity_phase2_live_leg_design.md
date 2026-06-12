@@ -89,10 +89,48 @@ test primitive added in 8c196c6), and a unique `StopAuditCsvPath`.
 4. Expect divergences; iterate exactly like Phase 1 (the comparator
    pinpoints first-divergence events).
 
+## EXPERIMENT RESULTS (2026-06-12, 5 iterations, live NT 8.1.7.1)
+
+**`ConnectPlayback` WORKS** (proven repeatedly): finds the configured Playback
+ConnectOptions, connects, polls to Connected in seconds. One constraint learned:
+**every NT-object call (`Connection.*`, `Account.All`, …) must run on a WPF
+dispatcher** — worker-thread calls trip NT-internal `Debug.Assert` dialogs
+(`#32770 "Assertion Failed…"`) that block until dismissed (dismissable
+headlessly via `SendMessage(hwnd, WM_COMMAND, IDIGNORE)`).
+
+**`EnableStrategy` via `SetState` is BLOCKED at Configure.** What works
+externally: `Activator` create → `SetState(SetDefaults)` → template-XML apply →
+`Category.NinjaScript` → `Workspace`/`SetUniqueId` → `Account`/`Instrument`
+bind → `SetState(Configure)` (verified by the private `doneConfigureState=True`
+— `OnStateChange(Configure)` genuinely runs). What is refused, silently, with
+no exception and no state change — `SetState(State.Active)` — under every
+combination tried:
+main-UI dispatcher / the strategy's OWN `Dispatcher` / paced retries in
+separate frames / after `account.Strategies.Add()` / with Category, Workspace,
+UniqueId set. `SetState(State.DataLoaded)` directly **kills the object**
+(→ Finalized). The Active gate sits in NT's stripped-IL `SetState`/
+`SetStatePart` internals (Core.dll metadata is readable but method bodies are
+removed — same protection family as the Gui obfuscation). Conclusion: NT 8.1.7.1
+does not honor an external Configure→Active request on a strategy it did not
+host itself; the missing wiring is not discoverable from the public surface.
+
+## Pivot (next step): drive NT's OWN Strategies grid via UIAutomation
+
+Use the exact technique that already automates the Welcome login and the
+AddOn-auth prompt (`nt_strategy_loop/nt_startup.py`):
+
+1. **One-time rig setup** — a `PantheonMaster` row in Control Center →
+   Strategies, configured with the parity pins (template `load` button in the
+   strategy dialog can import our generated XML). Manual (2 minutes, operator)
+   or UIA-scripted later; the row persists in the workspace across restarts.
+2. **Per-run headless enable/disable** — UIA toggle of the row's Enabled cell
+   (+ auto-click of any confirm `NTMessageBox`). This goes through NT's own
+   hosting path, so every internal flag is set the way NT wants.
+3. The AddOn keeps `ConnectPlayback` (works) and the audit collection; the
+   grader (`scripts/stop_audit_parity.py --ticks`) is already built and tested.
+
 ## Risks / open questions
-- `SetState` doc warning ("only after DataLoaded") is written for scripts
-  changing their OWN state; external-caller semantics are the experiment.
-- Strategy may need to be registered with the Strategies-tab grid for NT's
-  recovery/persistence logic; acceptable for a test rig if skipped.
 - Playback position/speed control may be Gui-side (obfuscated); first
   iteration tolerates manual playback start, automating only connect+enable.
+- The Strategies-grid UIA element names need one inspection pass (same
+  inspect-style scripts as `D:\ninjatraderOptimizer\inspect_*.ps1`).
