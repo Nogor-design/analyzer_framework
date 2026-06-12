@@ -503,7 +503,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				// Historical path: adjust SetStopLoss() each bar for trailing stops.
 				// Live path: ManageLiveDynamicStop() handles this tick-by-tick in OnMarketData.
-				if (!(UseLiveStopManagement && State == State.Realtime))
+				// Gate on the MODE flag, not State: a Playback session runs a historical
+				// warmup BEFORE going realtime, and SetStopLoss is "sticky" (NT reuses the
+				// last offset to auto-attach a managed "Stop loss" to the next entry). If the
+				// managed bar-close trail ran during warmup it would poison the realtime
+				// entry, so the explicit live stop gets ignored and activeStopOrder is null.
+				// UseLiveStopManagement=true => never use the managed path at all.
+				if (!UseLiveStopManagement)
 					ManageHistoricalOrBarCloseDynamicStops();
 			}
 
@@ -829,8 +835,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// Live: defer stop/target submission until after the fill (OnExecutionUpdate).
 			entryOrdersPrepared = UseLiveStopManagement && State == State.Realtime;
 
-			// Historical/Analyzer: configure managed SL and TP before entry order.
-			if (!entryOrdersPrepared)
+			// Configure managed SL/TP only in pure-managed mode. NEVER when live stop
+			// management is on: a managed SetStopLoss is sticky (NT reuses the last offset
+			// to auto-generate a "Stop loss" order on the NEXT open position — see
+			// setstoploss.md), so a warmup entry's managed stop would poison the realtime
+			// entry, NT would ignore the explicit ExitLongStopMarket the live trail controls,
+			// and activeStopOrder would stay null (the stop never trails). Run Strategy
+			// Analyzer backtests with UseLiveStopManagement=false to get the managed path.
+			if (!UseLiveStopManagement)
 				ConfigureHistoricalManagedOrders(isLong);
 		}
 
