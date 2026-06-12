@@ -103,6 +103,7 @@ using NinjaTrader.NinjaScript;
 using NinjaTrader.NinjaScript.DrawingTools;
 using NinjaTrader.NinjaScript.Indicators;
 using NinjaTrader.NinjaScript.Strategies;
+using TaFoundation.Pantheon;   // shared PantheonStopEngine (pure C#, also linked into the AddOn). Drop PantheonStopEngine.cs into bin/Custom so NinjaScript compiles it.
 #endregion
 
 namespace NinjaTrader.NinjaScript.Strategies
@@ -132,6 +133,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 	}
 
 	// ─── Static helpers ───────────────────────────────────────────────────────────
+
+	public enum PantheonForceEntry
+	{
+		None  = 0,
+		Long  = 1,
+		Short = 2
+	}
 
 	internal static class PantheonRegimeClassifier
 	{
@@ -200,7 +208,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 	[Gui.CategoryOrder("Discovery Exit",       13)]
 	[Gui.CategoryOrder("Discovery Daily Risk", 14)]
 	[Gui.CategoryOrder("Live Stop Management", 15)]
-	[Gui.CategoryOrder("Debug",                16)]
+	[Gui.CategoryOrder("Manual Test",          16)]
+	[Gui.CategoryOrder("Debug",                17)]
 	public class PantheonMaster : Strategy
 	{
 		// ── Signal name constants ────────────────────────────────────────────────
@@ -249,6 +258,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double entryFillPrice;            // actual entry execution price (Position.AveragePrice is stale in OnExecutionUpdate)
 		private double lastSubmittedStopPrice;
 		private bool   entryOrdersPrepared;      // true only on live path
+		private bool   forceEntryDone;           // manual test: force-entry fired once this run
 
 		// ── Order references (live path) ──────────────────────────────────────────
 		private Order          activeStopOrder;
@@ -390,6 +400,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				// Live stop management
 				UseLiveStopManagement = true;
 
+				// Manual test
+				ForceEntry       = PantheonForceEntry.None;
+				StopAuditCsvPath = "";
+
 				// Debug
 				EnableDebugPrint = false;
 			}
@@ -470,6 +484,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (Bars.IsFirstBarOfSession)
 				ResetSessionTracking();
+
+			// Manual test: force one entry on the first realtime bar (bypasses all filters)
+			// so the live stop/target/trail path can be exercised on demand. Routes through
+			// the strategy's own entry signal, so OnExecutionUpdate fires SubmitInitialProtectiveOrders.
+			if (TryForceEntry()) return;
 
 			if (!CheckRiskLocks())
 			{
@@ -754,6 +773,46 @@ namespace NinjaTrader.NinjaScript.Strategies
 			LogEntry(actualLong ? "Long" : "Short");
 		}
 
+		/// <summary>
+		/// Manual test harness (realtime only). When ForceEntry != None and the strategy is
+		/// flat, immediately submits one entry in the requested direction, bypassing every
+		/// signal/regime/session/time/trend filter. Routes through PrepareOrdersForNewEntry
+		/// + EnterLong/EnterShort with the canonical entry-signal names, so the fill triggers
+		/// OnExecutionUpdate -> SubmitInitialProtectiveOrders and the full live stop/target/trail
+		/// path runs. Fires once per strategy enable. Returns true if an entry was submitted.
+		/// </summary>
+		private bool TryForceEntry()
+		{
+			if (ForceEntry == PantheonForceEntry.None) return false;
+			if (forceEntryDone)                        return false;
+			if (State != State.Realtime)               return false;
+			if (Position.MarketPosition != MarketPosition.Flat) return false;
+
+			bool isLong = ForceEntry == PantheonForceEntry.Long;
+
+			PrepareOrdersForNewEntry(isLong);
+
+			if (isLong)
+			{
+				EnterLong(Contracts, LongEntrySignal);
+				Draw.VerticalLine(this, "Force Long " + CurrentBar, 0, Brushes.Lime, DashStyleHelper.Dash, 2);
+			}
+			else
+			{
+				EnterShort(Contracts, ShortEntrySignal);
+				Draw.VerticalLine(this, "Force Short " + CurrentBar, 0, Brushes.Crimson, DashStyleHelper.Dash, 2);
+			}
+
+			BarBrush       = Brushes.DeepSkyBlue;
+			forceEntryDone = true;
+			trades++;
+
+			Print($"[PantheonMaster] FORCE ENTRY {(isLong ? "Long" : "Short")} | bar={CurrentBar} "
+			    + $"| exitPolicy={DiscoveryExitPolicy} | ATR={currentAtr:F2} | close={Close[0]:F2}");
+
+			return true;
+		}
+
 		// ═════════════════════════════════════════════════════════════════════════
 		//  Order preparation
 		//  ──────────────────────────────────────────────────────────────────────
@@ -881,6 +940,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			else        ExitShortStopMarket(0, true, qty, submitStop, ShortStopSignal, fromEntry);
 
 			lastSubmittedStopPrice = submitStop;
+			AppendStopAudit("INIT", 0.0, submitStop, mkt);
 
 			if (ShouldUseTarget())
 			{
@@ -928,23 +988,60 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// is handled by the working order, not a fresh ChangeOrder to an illegal price.
 			// GetCurrentBid/Ask are frequently 0 in Market Replay, so use the last live tick
 			// price (set in ManageLiveDynamicStop) with bid/ask then bar close as fallbacks.
-			double mkt = liveMarketPrice;
-			if (mkt <= 0) { double a = GetCurrentAsk(), b = GetCurrentBid();
-			                mkt = (a > 0 && b > 0) ? (a + b) * 0.5 : Math.Max(a, b); }
-			if (mkt <= 0) mkt = Close[0];
-			if (mkt > 0)
+			// Guard against the CONSERVATIVE side of the book + a buffer: a long's sell-stop
+			// must clear the BID, a short's buy-stop the ASK. Referencing Last (liveMarketPrice)
+			// alone is too optimistic — Last sits at/above the bid, so a stop just under Last
+			// can still be above the bid and the broker rejects it ("stop can't be changed above
+			// the market"), which RealtimeErrorHandling escalates to terminating the strategy.
+			bool   guardLong = Position.MarketPosition == MarketPosition.Long;
+			double bid = GetCurrentBid(), ask = GetCurrentAsk();
+			double refMkt = guardLong ? (bid > 0 ? bid : liveMarketPrice)
+			                          : (ask > 0 ? ask : liveMarketPrice);
+			if (refMkt <= 0) refMkt = liveMarketPrice > 0 ? liveMarketPrice : Close[0];
+			double guardBuffer = TickSize * 2;
+			if (refMkt > 0)
 			{
-				if (Position.MarketPosition == MarketPosition.Long
-				    && proposedStopPrice >= mkt - TickSize * 0.5) return;
-				if (Position.MarketPosition == MarketPosition.Short
-				    && proposedStopPrice <= mkt + TickSize * 0.5) return;
+				if (guardLong  && proposedStopPrice > refMkt - guardBuffer) return;
+				if (!guardLong && proposedStopPrice < refMkt + guardBuffer) return;
 			}
 
+			double priorStop = lastSubmittedStopPrice;
 			ChangeOrder(activeStopOrder, qty, 0, proposedStopPrice);
 			lastSubmittedStopPrice = proposedStopPrice;
 
+			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, liveMarketPrice);
+
 			if (EnableDebugPrint)
 				Print($"[PantheonMaster] ChangeOrder stop -> {proposedStopPrice:F2}");
+		}
+
+		/// <summary>
+		/// Appends one row per stop event to StopAuditCsvPath when set. This is the
+		/// per-tick trail trace you diff against the Python battery's prediction: one
+		/// Playback run yields the full stop trajectory instead of one trade at a time.
+		/// </summary>
+		private void AppendStopAudit(string evt, double oldStop, double newStop, double marketPrice)
+		{
+			if (string.IsNullOrEmpty(StopAuditCsvPath)) return;
+			try
+			{
+				bool isLong = Position.MarketPosition == MarketPosition.Long;
+				double favorable = isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice;
+				if (!System.IO.File.Exists(StopAuditCsvPath))
+					System.IO.File.AppendAllText(StopAuditCsvPath,
+						"time,event,policy,dir,entry,market,favorable,atr,peakProfit,oldStop,newStop\n");
+
+				string row = string.Format(
+					"{0:yyyy-MM-ddTHH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n",
+					Time[0], evt, DiscoveryExitPolicy, isLong ? "long" : "short",
+					Position.AveragePrice, marketPrice, favorable, currentAtr,
+					peakOpenProfit, oldStop, newStop);
+				System.IO.File.AppendAllText(StopAuditCsvPath, row);
+			}
+			catch (Exception ex)
+			{
+				if (EnableDebugPrint) Print("[PantheonMaster] StopAudit write failed: " + ex.Message);
+			}
 		}
 
 		private void CancelWorkingProtectiveOrders()
@@ -1229,6 +1326,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// For a short position we care about ask (what we can buy back at).
 			if (Position.MarketPosition == MarketPosition.Long  && md.MarketDataType == MarketDataType.Bid) return md.Price;
 			if (Position.MarketPosition == MarketPosition.Short && md.MarketDataType == MarketDataType.Ask) return md.Price;
+
+			// FALLBACK — Market Replay / thin live feeds frequently stream only Last and
+			// never emit the side-specific Bid/Ask tick. Without this, ManageLiveDynamicStop
+			// is never reached in Playback: the resting initial stop is placed but the trail
+			// NEVER moves (the "I can't see it move the stop" symptom). Last is a faithful
+			// trigger for trail decisions and matches the Python tick replica's single price
+			// series, so the live trail now exercises in Playback exactly as it will live.
+			if (md.MarketDataType == MarketDataType.Last) return md.Price;
 			return 0.0;
 		}
 
@@ -1251,48 +1356,55 @@ namespace NinjaTrader.NinjaScript.Strategies
 			double liveOpenProfit = GetOpenProfitCurrencyFromPrice(triggerPrice);
 			peakOpenProfit = Math.Max(peakOpenProfit, liveOpenProfit);
 
+			// DELEGATE to the shared PantheonStopEngine — the SAME pure math the Python
+			// battery validated and the AddOn harness will drive. The strategy still owns
+			// the NinjaScript-only bits: the favorable extreme, the Chandelier bar reference
+			// (MAX/MIN series), and the actual ChangeOrder via MoveStopIfImproved.
+			int    dir       = isLong ? PantheonStopEngine.Long : PantheonStopEngine.Short;
+			double favorable = isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice;
+			double chandRef  = 0.0;
+			if (DiscoveryExitPolicy == PantheonExitPolicy.Chandelier)
+				chandRef = isLong ? MAX(High, ChandelierLookback)[0] : MIN(Low, ChandelierLookback)[0];
+
+			PantheonTrailResult res = PantheonStopEngine.ComputeTrailStop(
+				dir, avg, triggerPrice, favorable, currentAtr, peakOpenProfit,
+				Position.Quantity, chandRef, breakEvenActive, BuildStopConfig());
+
+			if (res.BreakEvenActivated) breakEvenActive = true;
+			if (res.HasProposal)        MoveStopIfImproved(res.ProposedStop);
+		}
+
+		/// <summary>Maps the NinjaScript exit-policy enum to the shared engine's policy enum.</summary>
+		private PantheonStopPolicy MapExitPolicy()
+		{
 			switch (DiscoveryExitPolicy)
 			{
-				case PantheonExitPolicy.BreakEvenOnly:
-					if (!breakEvenActive)
-					{
-						double triggerLevel = isLong
-						    ? avg + BreakEvenTriggerTicks * TickSize
-						    : avg - BreakEvenTriggerTicks * TickSize;
-
-						if (isLong ? triggerPrice >= triggerLevel : triggerPrice <= triggerLevel)
-						{
-							breakEvenActive = true;
-							MoveStopIfImproved(isLong
-							    ? avg + BreakEvenPlusTicks * TickSize
-							    : avg - BreakEvenPlusTicks * TickSize);
-						}
-					}
-					break;
-
-				case PantheonExitPolicy.AtrTrail:
-					MoveStopIfImproved(isLong
-					    ? liveHighestFavorablePrice - AtrTrailMultiple * currentAtr
-					    : liveLowestFavorablePrice  + AtrTrailMultiple * currentAtr);
-					break;
-
-				case PantheonExitPolicy.Chandelier:
-					double refPrice = isLong
-					    ? Math.Max(MAX(High, ChandelierLookback)[0], liveHighestFavorablePrice)
-					    : Math.Min(MIN(Low,  ChandelierLookback)[0], liveLowestFavorablePrice);
-					MoveStopIfImproved(isLong
-					    ? refPrice - AtrTrailMultiple * currentAtr
-					    : refPrice + AtrTrailMultiple * currentAtr);
-					break;
-
-				case PantheonExitPolicy.Giveback:
-					if (peakOpenProfit > 0)
-					{
-						double protectedProfit = peakOpenProfit * (1.0 - GivebackPct);
-						MoveStopIfImproved(GetStopPriceFromProtectedOpenProfit(isLong, protectedProfit));
-					}
-					break;
+				case PantheonExitPolicy.FixedRR:       return PantheonStopPolicy.FixedRR;
+				case PantheonExitPolicy.AtrTrail:      return PantheonStopPolicy.AtrTrail;
+				case PantheonExitPolicy.Chandelier:    return PantheonStopPolicy.Chandelier;
+				case PantheonExitPolicy.Giveback:      return PantheonStopPolicy.Giveback;
+				case PantheonExitPolicy.FixedStop:     return PantheonStopPolicy.FixedStop;
+				case PantheonExitPolicy.BreakEvenOnly: return PantheonStopPolicy.BreakEvenOnly;
+				default:                               return PantheonStopPolicy.FixedRR;
 			}
+		}
+
+		/// <summary>Builds the shared engine config from the live Discovery Exit parameters.</summary>
+		private PantheonStopConfig BuildStopConfig()
+		{
+			return new PantheonStopConfig
+			{
+				Policy                = MapExitPolicy(),
+				TickSize              = TickSize,
+				PointValue            = Instrument.MasterInstrument.PointValue,
+				StopTicks             = StopTicks,
+				TargetTicks           = TargetTicks,
+				AtrTrailMultiple      = AtrTrailMultiple,
+				ChandelierLookback    = ChandelierLookback,
+				GivebackPct           = GivebackPct,
+				BreakEvenTriggerTicks = BreakEvenTriggerTicks,
+				BreakEvenPlusTicks    = BreakEvenPlusTicks,
+			};
 		}
 
 		private double GetOpenProfitCurrencyFromPrice(double price)
@@ -1817,6 +1929,20 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Use Live Stop Management", GroupName = "Live Stop Management", Order = 1)]
 		public bool UseLiveStopManagement { get; set; }
+		#endregion
+
+		#region Manual Test
+		[NinjaScriptProperty]
+		[Display(Name = "Force Entry On Start",
+		         Description = "Realtime only: immediately enter one position (bypassing all filters) to test the live stop/target/trail path. Fires once per enable.",
+		         GroupName = "Manual Test", Order = 1)]
+		public PantheonForceEntry ForceEntry { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Stop Audit CSV Path",
+		         Description = "When set, every initial/trailed stop is appended to this CSV (one Playback run = full stop trajectory to diff against the Python battery). Leave blank to disable.",
+		         GroupName = "Manual Test", Order = 2)]
+		public string StopAuditCsvPath { get; set; }
 		#endregion
 
 		#region Debug
