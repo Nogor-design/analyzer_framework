@@ -78,6 +78,68 @@ def compute_atr(bars: pd.DataFrame, period: int, mode: AtrMode) -> pd.Series:
     return atr_wilder(bars, period=period)
 
 
+def _replay_bar_trail(
+    *,
+    entry_dt: datetime,
+    entry_price: float,
+    direction: int,
+    bars: pd.DataFrame,
+    cfg: NtAtrTrailConfig,
+    record_trajectory: bool = False,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Shared core for both the exit-only replica and the trajectory replica — ONE
+    copy of NT's bar-close AtrTrail loop so the two can never drift. Returns
+    ``(exit_record, trajectory)``; ``trajectory`` is populated only when
+    ``record_trajectory`` (one row per ratchet that actually moved the stop, plus
+    a leading INIT row), mirroring exactly which events PantheonMaster's
+    ``AppendStopAudit`` writes from ``MoveHistoricalStopIfImproved``."""
+    tick = cfg.tick_size
+    bdt = pd.to_datetime(bars["dt"])
+    entry_ts = pd.to_datetime(entry_dt)
+    horizon = entry_ts + pd.Timedelta(minutes=cfg.max_hold_minutes)
+    after = bars[(bdt > entry_ts) & (bdt <= horizon)].reset_index(drop=True)
+    initial_stop = entry_price - direction * cfg.stop_ticks * tick
+    stop = initial_stop
+    high_since = entry_price
+    low_since = entry_price
+
+    traj: list[dict[str, Any]] = []
+    if record_trajectory:
+        traj.append({"dt": entry_ts, "event": "INIT", "favorable": entry_price,
+                     "atr": float("nan"), "old_stop": 0.0, "stop": initial_stop})
+
+    exit_rec: dict[str, Any] = {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
+    for row in after.itertuples(index=False):
+        hi, lo, atr = float(row.high), float(row.low), row.atr
+        # 1) fill check against the stop active for this bar (set at prior close)
+        if direction > 0 and lo <= stop:
+            exit_rec = {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
+            break
+        if direction < 0 and hi >= stop:
+            exit_rec = {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
+            break
+        # 2) update favorable extreme with this bar, recompute trail for next bar
+        high_since = max(high_since, hi)
+        low_since = min(low_since, lo)
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            continue
+        old_stop = stop
+        if direction > 0:
+            proposed = _round_to_tick(high_since - cfg.atr_multiple * float(atr), tick)
+            if proposed > stop + tick * 0.5:   # ratchet up only
+                stop = proposed
+        else:
+            proposed = _round_to_tick(low_since + cfg.atr_multiple * float(atr), tick)
+            if proposed < stop - tick * 0.5:   # ratchet down only
+                stop = proposed
+        if record_trajectory and stop != old_stop:
+            traj.append({"dt": row.dt, "event": "TRAIL",
+                         "favorable": (high_since if direction > 0 else low_since),
+                         "atr": float(atr), "old_stop": old_stop, "stop": stop})
+
+    return exit_rec, traj
+
+
 def replicate_nt_atr_trail(
     *,
     entry_dt: datetime,
@@ -90,38 +152,31 @@ def replicate_nt_atr_trail(
     stop exit (or ``no_exit_in_window`` if the trail never fills before bars run
     out — in NT that trade exited via session-close / opposite-signal, not the
     trail, so it's excluded from trail parity)."""
-    tick = cfg.tick_size
-    bdt = pd.to_datetime(bars["dt"])
-    entry_ts = pd.to_datetime(entry_dt)
-    horizon = entry_ts + pd.Timedelta(minutes=cfg.max_hold_minutes)
-    after = bars[(bdt > entry_ts) & (bdt <= horizon)].reset_index(drop=True)
-    initial_stop = entry_price - direction * cfg.stop_ticks * tick
-    stop = initial_stop
-    high_since = entry_price
-    low_since = entry_price
+    exit_rec, _ = _replay_bar_trail(
+        entry_dt=entry_dt, entry_price=entry_price, direction=direction, bars=bars, cfg=cfg,
+    )
+    return exit_rec
 
-    for row in after.itertuples(index=False):
-        hi, lo, atr = float(row.high), float(row.low), row.atr
-        # 1) fill check against the stop active for this bar (set at prior close)
-        if direction > 0 and lo <= stop:
-            return {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
-        if direction < 0 and hi >= stop:
-            return {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
-        # 2) update favorable extreme with this bar, recompute trail for next bar
-        high_since = max(high_since, hi)
-        low_since = min(low_since, lo)
-        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
-            continue
-        if direction > 0:
-            proposed = _round_to_tick(high_since - cfg.atr_multiple * float(atr), tick)
-            if proposed > stop + tick * 0.5:   # ratchet up only
-                stop = proposed
-        else:
-            proposed = _round_to_tick(low_since + cfg.atr_multiple * float(atr), tick)
-            if proposed < stop - tick * 0.5:   # ratchet down only
-                stop = proposed
 
-    return {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
+def replicate_nt_atr_trail_trajectory(
+    *,
+    entry_dt: datetime,
+    entry_price: float,
+    direction: int,
+    bars: pd.DataFrame,             # dt-sorted; columns dt/high/low/close + 'atr'
+    cfg: NtAtrTrailConfig,
+) -> dict[str, Any]:
+    """Same bar-close replay as :func:`replicate_nt_atr_trail` but also returns the
+    full per-ratchet **stop trajectory** — the prediction you diff against a
+    PantheonMaster ``StopAuditCsvPath`` dump (backtest leg of the parity loop).
+    Returns ``{"trajectory": DataFrame[dt,event,favorable,atr,old_stop,stop],
+    "exit": <same dict as replicate_nt_atr_trail>}``."""
+    exit_rec, traj = _replay_bar_trail(
+        entry_dt=entry_dt, entry_price=entry_price, direction=direction, bars=bars, cfg=cfg,
+        record_trajectory=True,
+    )
+    cols = ["dt", "event", "favorable", "atr", "old_stop", "stop"]
+    return {"trajectory": pd.DataFrame(traj, columns=cols), "exit": exit_rec}
 
 
 def replicate_nt_atr_trail_tick(
