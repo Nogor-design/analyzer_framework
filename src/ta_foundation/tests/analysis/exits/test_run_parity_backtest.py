@@ -38,11 +38,18 @@ def test_build_parity_template_pins_managed_bar_close_trail(tmp_path):
     assert "<UseLiveStopManagement>false</UseLiveStopManagement>" in text
     assert "<UseDiscoveryExitPolicy>true</UseDiscoveryExitPolicy>" in text
     assert "<EnableDiscoveryFilters>false</EnableDiscoveryFilters>" in text
+    assert "<UseTimeFilter>false</UseTimeFilter>" in text   # legacy gate would starve the window
     assert "<DiscoveryExitPolicy>AtrTrail</DiscoveryExitPolicy>" in text
     assert "<StopTicks>60</StopTicks>" in text
     assert "<AtrPeriod>14</AtrPeriod>" in text
     assert audit in text                                   # StopAuditCsvPath pinned
     assert "<OrderFillResolution>Standard</OrderFillResolution>" in text
+    # NT's template apply ABORTS at the first empty tag (seed emits "" for enum
+    # defaults) and silently defaults everything after it — live-validated 2026-06-12.
+    assert "<ForceEntry>None</ForceEntry>" in text
+    assert "<RegimeMode>TrendingOnly</RegimeMode>" in text
+    import re as _re
+    assert not _re.findall(r"<(\w+)></\1>", text)
     # a fixed backtest has NO optimizer sections (enum params can't crash the optimizer)
     assert "OptimizationParameters" not in text
     # the intermediate seed is cleaned up

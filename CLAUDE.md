@@ -65,6 +65,22 @@ The web UI is a capability workbench, not a single-purpose report page. Keep sep
 
 Load-bearing facts already extracted (don't relearn the hard way): a managed trailing stop must **never** be a per-bar `SetStopLoss()` — NT rejects a stop modified to the wrong side of the current market (`settrailstop.md` line 26). Use `SetTrailStop()` (pure managed, native trailing) **or** the explicit `Exit*StopMarket` + `ChangeOrder` pattern (`exits/managed_dynamic_stop.md`, what PantheonMaster's live path does). **Never mix managed (`SetStopLoss`/`SetProfitTarget`) and explicit `Exit*StopMarket` orders on the same position/signal.**
 
+**Restarting / logging in to NinjaTrader (agents CAN do this — do not stall waiting for the user):**
+NT 8.1.7.1+ shows a modal Welcome login on every launch; nothing (AddOns, Strategy Analyzer,
+the `C:\temp\nt8_command.json` IPC watcher) loads until login completes. After
+`Start-Process "C:\Program Files\NinjaTrader 8\bin\NinjaTrader.exe"`, run the sanctioned
+login automation:
+```bash
+python -m ta_foundation.nt_strategy_loop.cli ensure-nt-ready --username eirwin --password-file "C:\Users\Owner\Downloads\P.txt"
+```
+(Password stays in-memory; NEVER echo/log/commit it. Full procedure:
+`docs/runbooks/NINJATRADER_INTEGRATION_RUNBOOK.md` §3.) A non-zero exit can be advisory —
+the post-login AddOn-auth scan times out when the AddOn was already authorized — so verify
+readiness directly: `(Get-Process NinjaTrader).MainWindowTitle` becomes `Control Center …`
+and RAM climbs past ~700MB. Cold start takes 1–2 minutes; do not dispatch IPC before that.
+Never WM_CLOSE the Welcome window (it's NT's main window) and avoid `Stop-Process` (unclean
+shutdown corrupts workspaces — the #1 cause of silent Strategy Analyzer failures).
+
 **Run a single test file:**
 ```bash
 python -m pytest src/ta_foundation/tests/analysis/ma_structure/test_orchestrator.py -v

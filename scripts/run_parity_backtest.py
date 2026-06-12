@@ -28,6 +28,7 @@ a running NinjaTrader — use ``--no-dispatch`` first to inspect the generated t
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import tempfile
 import time
@@ -95,6 +96,8 @@ def build_parity_backtest_template(
             "UseLiveStopManagement": False,     # managed bar-close path == what the replica models
             "UseDiscoveryExitPolicy": True,
             "EnableDiscoveryFilters": False,    # plain MA-cross entries so the window trades
+            "UseTimeFilter": False,             # legacy gate fires even with discovery filters off
+                                                # (.cs OnBarUpdate); seed default is a 00:00-01:30 window
             "EnableDebugPrint": False,
             "AtrTrailMultiple": float(cfg.atr_multiple),
             "StopTicks": int(cfg.stop_ticks),
@@ -104,11 +107,23 @@ def build_parity_backtest_template(
     )
 
     # Backslash-/enum-sensitive values: post-patch the <Strategy> section directly.
+    # The seed generator emits EMPTY tags for enum defaults (PantheonRegimeMode.X et al
+    # normalize to ""), and NT's template apply ABORTS at the first empty enum tag —
+    # every parameter after it silently keeps its .cs default (live-validated 2026-06-12:
+    # <ForceEntry></ForceEntry> killed StopAuditCsvPath, the very next element).
     text = target.read_text(encoding="utf-8")
     text = _replace_tag_text(text, "StopAuditCsvPath", str(audit_csv_path), count=1)
     text = _replace_or_insert_strategy_tag(text, "DiscoveryExitPolicy", "AtrTrail")
+    text = _replace_or_insert_strategy_tag(text, "RegimeMode", "TrendingOnly")  # .cs default; inert (filters off)
+    text = _replace_or_insert_strategy_tag(text, "ForceEntry", "None")
     text = _replace_or_insert_strategy_tag(text, "OrderFillResolution", "Standard")
     text = _replace_or_insert_strategy_tag(text, "InstrumentOrInstrumentList", instrument)
+
+    empties = sorted(set(re.findall(r"<(\w+)></\1>", text)))
+    if empties:
+        raise ValueError(
+            "parity template still has empty tags (NT template apply would abort there, "
+            f"silently defaulting every later parameter): {empties}")
     target.write_text(text, encoding="utf-8")
 
     try:

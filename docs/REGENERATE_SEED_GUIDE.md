@@ -75,6 +75,33 @@ XML.
 
 ---
 
+## Enum parameters come out EMPTY — consumers must post-patch them
+
+`_normalize_csharp_default()` (`seed_template.py`) cannot resolve enum
+right-hand sides (`PantheonRegimeMode.TrendingOnly`, `Calculate.OnBarClose`),
+so Tier-3 seeds emit **empty tags** for every enum parameter:
+
+```xml
+<RegimeMode></RegimeMode>
+<ForceEntry></ForceEntry>
+```
+
+Live-confirmed 2026-06-12: the optimizer-bridge AddOn applies the `<Strategy>`
+block per-element with a try/catch, so empty enum tags are *silently skipped*
+and the strategy runs with its `.cs` defaults for those parameters. Any
+stricter consumer (XmlSerializer-style) aborts at the first empty tag and
+loses everything after it.
+
+**Convention:** anything that builds a runnable template from a seed must
+post-patch every enum parameter to a concrete value with
+`_replace_or_insert_strategy_tag()` (`web/optimizer_template_writer.py`).
+See `scripts/run_parity_backtest.py` → `build_parity_backtest_template()` for
+the pattern — it patches `DiscoveryExitPolicy`, `RegimeMode`, and `ForceEntry`,
+then **hard-fails if any `<X></X>` empty pair remains** in the template. Copy
+that guard into new template-producing flows.
+
+---
+
 ## Optional: curating an in-repo baseline (Tier 1)
 
 You almost never need this. Use it only when you want a specific
