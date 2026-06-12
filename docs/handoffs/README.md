@@ -39,6 +39,7 @@ history. If a fact isn't in the spec, the AI can't use it.
 |---|---|---|--------|---|
 | 001 | On-demand per-candidate report picker page | `[codex]` | Done   | First real handoff — exercises the workflow |
 | 002 | Flag-adjusted rank on the decision dashboard | `[codex]` | Done   | Penalize candidates with `warn`/`fail` badges so curve-fits sink below cleaner candidates |
+| 004 | Parity-loop operator runbook (`docs/runbooks/parity_loop.md`) | `[gemini]` | Open | Consolidate the Phase-1 gate (passed 2026-06-12) + Phase-2 status into one runbook; docs only |
 
 When the queue gets long, move `Done` rows to an archive section
 below. Keep the active table short enough to scan at a glance.

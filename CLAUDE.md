@@ -80,6 +80,13 @@ readiness directly: `(Get-Process NinjaTrader).MainWindowTitle` becomes `Control
 and RAM climbs past ~700MB. Cold start takes 1–2 minutes; do not dispatch IPC before that.
 Never WM_CLOSE the Welcome window (it's NT's main window) and avoid `Stop-Process` (unclean
 shutdown corrupts workspaces — the #1 cause of silent Strategy Analyzer failures).
+**Closing NT cleanly (for AddOn DLL deploys):** `Process.CloseMainWindow()` silently does
+nothing — NT's real main window is a hidden WinForms helper. Instead use UIAutomation:
+find the NT process's top-level window with `ClassName == 'ControlCenter'`, invoke its
+`WindowPattern.Close()`, then click the exit-confirm dialog's `NTMessageBoxYesButton`
+(it appears INSIDE the ControlCenter element ~3s later). NT then exits cleanly (saves
+workspace) in well under 2 minutes; deploy DLLs into `bin\Custom` only after
+`Get-Process NinjaTrader` is empty (the running process locks them).
 
 **Run a single test file:**
 ```bash
