@@ -242,6 +242,84 @@ def replicate_nt_atr_trail_tick(
     return {"exit_dt": tick_dts[idx], "exit_price": float(stop_active[idx]), "reason": "trail_stop"}
 
 
+def replicate_nt_atr_trail_tick_trajectory(
+    *,
+    entry_price: float,
+    direction: int,
+    tick_prices: np.ndarray,
+    tick_dts: np.ndarray,
+    tick_atr: np.ndarray,
+    cfg: NtAtrTrailConfig,
+) -> dict[str, Any]:
+    """Tick-path trajectory replica for the LIVE leg (Phase 2 of the parity loop):
+    the per-ChangeOrder stop trajectory you diff against a live/Playback
+    ``StopAuditCsvPath`` dump. Mirrors PantheonMaster's live path (audited
+    2026-06-12 against the .cs):
+
+      - INIT: explicit stop at entry ∓ StopTicks; ``lastSubmittedStopPrice`` starts
+        THERE, so live ratchets are FLOORED at the initial stop (unlike the
+        backtest path's zero-sentinel, which lets the first trail widen).
+      - per tick (``ManageLiveDynamicStop``): favorable = running extreme of the
+        trigger prices since entry (Playback streams Last only); proposal =
+        favorable ∓ AtrTrailMultiple·currentAtr (bar-close ATR asof-joined by the
+        caller); submit via ``MoveStopIfImproved`` only when it improves the last
+        SUBMITTED price by > 0.5 tick AND clears the side-of-market guard: the
+        proposal must sit at least 2 ticks beyond the conservative side of the
+        market (bid for long / ask for short; replica uses the single Last series,
+        the same fallback the .cs takes in Playback where bid/ask are 0).
+      - fill: a tick at/through the RESTING stop (set by prior ticks) exits.
+
+    The initial-stop wrong-side clamp in ``SubmitInitialProtectiveOrders`` (a
+    replay-speed race) is NOT modeled; a live audit hitting it shows as an INIT
+    mismatch, which is the desired signal.
+    """
+    p = np.asarray(tick_prices, dtype=float)
+    if p.size == 0:
+        return {"trajectory": pd.DataFrame(columns=["dt", "event", "favorable", "atr", "old_stop", "stop"]),
+                "exit": {"exit_dt": None, "exit_price": None, "reason": "no_ticks"}}
+    a = np.nan_to_num(np.asarray(tick_atr, dtype=float), nan=1e9)  # NaN ATR => no trail pull
+    tick = cfg.tick_size
+    initial = entry_price - direction * cfg.stop_ticks * tick
+
+    if direction > 0:
+        ext = np.maximum.accumulate(p)
+        raw = np.round((ext - cfg.atr_multiple * a) / tick) * tick
+        guarded = np.where(raw <= p - 2 * tick, raw, -np.inf)       # side-of-market guard
+        stop_set = np.maximum(initial, np.maximum.accumulate(guarded))
+        stop_active = np.concatenate(([initial], stop_set[:-1]))
+        hit = p <= stop_active
+    else:
+        ext = np.minimum.accumulate(p)
+        raw = np.round((ext + cfg.atr_multiple * a) / tick) * tick
+        guarded = np.where(raw >= p + 2 * tick, raw, np.inf)
+        stop_set = np.minimum(initial, np.minimum.accumulate(guarded))
+        stop_active = np.concatenate(([initial], stop_set[:-1]))
+        hit = p >= stop_active
+
+    exit_idx = int(np.argmax(hit)) if hit.any() else None
+    exit_rec = (
+        {"exit_dt": tick_dts[exit_idx], "exit_price": float(stop_active[exit_idx]), "reason": "trail_stop"}
+        if exit_idx is not None
+        else {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
+    )
+
+    # ChangeOrder events = ticks where the submitted stop moved (> 0.5 tick by
+    # construction of the tick grid), before the exit tick.
+    moved = np.concatenate(([stop_set[0] != initial], np.diff(stop_set) != 0))
+    if exit_idx is not None:
+        moved[exit_idx:] = False
+    idxs = np.flatnonzero(moved)
+    rows = [{"dt": tick_dts[0], "event": "INIT", "favorable": entry_price,
+             "atr": float("nan"), "old_stop": 0.0, "stop": initial}]
+    prev = initial
+    for i in idxs:
+        rows.append({"dt": tick_dts[i], "event": "TRAIL", "favorable": float(ext[i]),
+                     "atr": float(a[i]), "old_stop": float(prev), "stop": float(stop_set[i])})
+        prev = stop_set[i]
+    cols = ["dt", "event", "favorable", "atr", "old_stop", "stop"]
+    return {"trajectory": pd.DataFrame(rows, columns=cols), "exit": exit_rec}
+
+
 # NT Trades.csv exit names that mean "the (trailed) protective stop fired".
 # Backtest (managed) reports "stop loss"; live (unmanaged) reports the explicit
 # stop SIGNAL name (PantheonMaster.cs L838-839: LongStopSignal/ShortStopSignal,

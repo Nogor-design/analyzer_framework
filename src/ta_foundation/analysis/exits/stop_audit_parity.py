@@ -204,6 +204,7 @@ def parity_report(
     atr_rel_tol: float = 0.05,
     min_stop_match_rate: float = 0.95,
     max_median_diff_ticks: float = 1.0,
+    replay=None,
 ) -> dict[str, Any]:
     """Run the full backtest-leg parity check: parse the audit, replay the Python
     bar trajectory per trade, diff, and emit an overall pass/fail.
@@ -247,9 +248,14 @@ def parity_report(
             entry_price = float(grp["entry"].iloc[0])
             direction = int(grp["direction"].iloc[0])
 
-        rep = replicate_nt_atr_trail_trajectory(
-            entry_dt=entry_dt, entry_price=entry_price, direction=direction, bars=work, cfg=cfg,
-        )
+        if replay is not None:
+            # Live leg (Phase 2): caller supplies the tick replay,
+            # replay(entry_dt, entry_price, direction) -> {"trajectory": df, "exit": rec}.
+            rep = replay(entry_dt, entry_price, direction)
+        else:
+            rep = replicate_nt_atr_trail_trajectory(
+                entry_dt=entry_dt, entry_price=entry_price, direction=direction, bars=work, cfg=cfg,
+            )
         # When Trades.csv says NT closed this trade via a NON-trail layer (daily-risk
         # flatten "Buy to cover"/"Sell", session close, opposite signal), NT legitimately
         # stops trailing one bar BEFORE the exit fill (CheckRiskLocks returns ahead of the

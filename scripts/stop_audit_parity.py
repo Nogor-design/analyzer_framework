@@ -103,11 +103,65 @@ def build_cfg(args) -> NtAtrTrailConfig:
     )
 
 
+def load_ticks(ticks_file: str) -> pd.DataFrame:
+    """Tick series as naive-Denver dt + last price. Prefers the sibling parquet
+    cache (``<file>.parquet``) when present — the raw NQ tick file is ~1.3GB."""
+    from ta_foundation.marketdata.tick_cache import TickCacheConfig, load_tick_cache_parquet
+    from ta_foundation.parsers.ninjatrader.tick_last_txt import TickLastTxtParser
+
+    path = Path(ticks_file)
+    df = None
+    pq = path if path.suffix == ".parquet" else path.with_name(path.name + ".parquet")
+    if pq.is_file():
+        df = load_tick_cache_parquet(pq, cfg=TickCacheConfig())
+    if df is None:
+        df = TickLastTxtParser().parse(path, run_id=None).df
+    df = df.copy()
+    df["dt"] = pd.to_datetime(df["dt"])
+    try:
+        df["dt"] = df["dt"].dt.tz_localize(None)
+    except TypeError:
+        pass  # already naive
+    return df.sort_values("dt").reset_index(drop=True)
+
+
+def make_tick_replay(ticks: pd.DataFrame, bars_with_atr: pd.DataFrame, cfg: NtAtrTrailConfig):
+    """Build the live-leg replay callable for ``parity_report(replay=...)``: per
+    trade, slice the Last-tick series from entry over the hold window, asof-join
+    the bar-close ATR (NT updates currentAtr at bar close in BOTH paths), and run
+    the tick trajectory replica."""
+    from ta_foundation.analysis.exits.nt_atr_trail_parity import (
+        replicate_nt_atr_trail_tick_trajectory,
+    )
+    t = ticks.sort_values("dt").reset_index(drop=True)
+    tdt = pd.to_datetime(t["dt"]).astype("datetime64[ns]")
+    atr_frame = (bars_with_atr[["dt", "atr"]].copy()
+                 .assign(dt=lambda d: pd.to_datetime(d["dt"]).astype("datetime64[ns]"))
+                 .sort_values("dt").reset_index(drop=True))
+
+    def replay(entry_dt, entry_price: float, direction: int) -> dict:
+        start = pd.to_datetime(entry_dt)
+        end = start + pd.Timedelta(minutes=cfg.max_hold_minutes)
+        sel = t[(tdt >= start) & (tdt <= end)]
+        sel_dt = pd.to_datetime(sel["dt"]).astype("datetime64[ns]").to_frame(name="dt")
+        atr = pd.merge_asof(sel_dt, atr_frame, on="dt", direction="backward")["atr"].to_numpy()
+        return replicate_nt_atr_trail_tick_trajectory(
+            entry_price=float(entry_price), direction=int(direction),
+            tick_prices=sel["last"].to_numpy(dtype=float),
+            tick_dts=sel["dt"].to_numpy(), tick_atr=atr, cfg=cfg,
+        )
+
+    return replay
+
+
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Stop-audit trajectory parity (backtest leg).")
+    p = argparse.ArgumentParser(description="Stop-audit trajectory parity (backtest or live leg).")
     p.add_argument("--audit", required=True, help="StopAuditCsvPath dump from the NT run")
     p.add_argument("--bars", required=True, help="instrument minute bars (.Last/.Export/.Full .txt)")
     p.add_argument("--trades", default=None, help="NT Trades.csv for entry anchors (recommended)")
+    p.add_argument("--ticks", default=None,
+                   help="instrument tick file (.txt or .parquet cache) — switches to the LIVE-leg "
+                        "tick replica (Playback/live audit vs ManageLiveDynamicStop model)")
     p.add_argument("--atr-mode", default="wilder", choices=["wilder", "sma"])
     p.add_argument("--policy", default="AtrTrail")
     p.add_argument("--stop-tol-ticks", type=float, default=1.0)
@@ -123,7 +177,16 @@ def main(argv: list[str] | None = None) -> int:
     bars = load_minute_bars(args.bars)
     entries = load_nt_trades_entries(args.trades) if args.trades else None
 
-    print(f"=== Stop-Audit Trajectory Parity ({args.policy}) ===")
+    replay = None
+    if args.ticks:
+        from ta_foundation.analysis.exits.nt_atr_trail_parity import compute_atr
+        ticks = load_ticks(args.ticks)
+        work = bars.copy()
+        work["atr"] = compute_atr(work, cfg.atr_period, cfg.atr_mode).values
+        replay = make_tick_replay(ticks, work, cfg)
+
+    leg = "live-tick leg" if replay else "backtest leg"
+    print(f"=== Stop-Audit Trajectory Parity ({args.policy}, {leg}) ===")
     print(f"  audit: {args.audit}")
     print(f"  bars : {bars['dt'].min()}..{bars['dt'].max()} ({len(bars)})"
           + (f"   entries: {len(entries)}" if entries is not None else "   entries: from audit"))
@@ -133,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         stop_tol_ticks=args.stop_tol_ticks,
         min_stop_match_rate=args.min_stop_match_rate,
         max_median_diff_ticks=args.max_median_diff_ticks,
+        replay=replay,
     )
     print_report(report)
     return 0 if report.get("passed") else 1
