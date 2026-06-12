@@ -116,9 +116,15 @@ D:\NinjatraderAddons\PantheonTestHarness\deploy_and_check.ps1 -Strategy  # also 
 ```
 Targets `…\Documents\NinjaTrader 8\bin\Custom\AddOns\` (and `\Strategies\`).
 
-### 2. Compile (NT does NOT auto-compile on copy alone)
-A NinjaScript Editor **must be open**. Trigger a compile via the optimizer AddOn's
-global `ObserveCompile` IPC:
+### 2. Compile
+
+**NT auto-compiles whenever a source file is added or changed under `bin\Custom`**
+(operator-confirmed 2026-06-12) — just copy/move the `.cs` into place and NinjaTrader
+recompiles it on its own; **no F5 / manual compile needed.** Confirm with the DLL-mtime
+check in step 3.
+
+For a FULLY HEADLESS run where NT may not pick it up (no window focus / agent-driven,
+no editor open), force a compile via the optimizer AddOn's global `ObserveCompile` IPC:
 ```powershell
 # unique runId each time (it dedups on exact content)
 @{ action='ObserveCompile'; runId=("pmh_"+(Get-Date -Format HHmmss));
@@ -170,9 +176,11 @@ without submitting.
    instances self-stop), but **pre-guard leaked timers are immortal until a full NT
    process restart.** Always confirm exactly-once with a dry-run `configure` (count
    the `Configured:` lines) **before** firing a real `testlong`.
-3. **Auto-compile needs an open editor.** Pure file copy and app-focus do **not**
-   trigger compilation; the `ObserveCompile` force-compile is a no-op with no
-   NinjaScript Editor open.
+3. **NT auto-compiles on a file change under `bin\Custom`** (operator-confirmed
+   2026-06-12): dropping/moving a `.cs` into place is enough — NinjaTrader recompiles
+   it on its own, **no F5 needed.** The `ObserveCompile` IPC is only a fallback to
+   *force* a compile in a fully headless run where NT might not notice (no window
+   focus / no editor); it is a no-op if it can't reach an open NinjaScript Editor.
 
 ---
 

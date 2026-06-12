@@ -952,7 +952,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 			else        ExitShortStopMarket(0, true, qty, submitStop, ShortStopSignal, fromEntry);
 
 			lastSubmittedStopPrice = submitStop;
-			AppendStopAudit("INIT", 0.0, submitStop, mkt);
+			AppendStopAudit("INIT", 0.0, submitStop, mkt,
+			    isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice, peakOpenProfit);
 
 			if (ShouldUseTarget())
 			{
@@ -1021,24 +1022,30 @@ namespace NinjaTrader.NinjaScript.Strategies
 			ChangeOrder(activeStopOrder, qty, 0, proposedStopPrice);
 			lastSubmittedStopPrice = proposedStopPrice;
 
-			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, liveMarketPrice);
+			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, liveMarketPrice,
+			    guardLong ? liveHighestFavorablePrice : liveLowestFavorablePrice, peakOpenProfit);
 
 			if (EnableDebugPrint)
 				Print($"[PantheonMaster] ChangeOrder stop -> {proposedStopPrice:F2}");
 		}
 
 		/// <summary>
-		/// Appends one row per stop event to StopAuditCsvPath when set. This is the
-		/// per-tick trail trace you diff against the Python battery's prediction: one
-		/// Playback run yields the full stop trajectory instead of one trade at a time.
+		/// Appends one row per stop event to StopAuditCsvPath when set. The per-event trail
+		/// trace you diff against the Python battery's prediction: one run yields the full
+		/// stop trajectory instead of one trade at a time. Written by BOTH the live tick
+		/// path (INIT/TRAIL via ExitLongStopMarket+ChangeOrder) and the historical/bar-close
+		/// path (TRAIL via SetStopLoss) — so a Strategy Analyzer backtest and a Playback/live
+		/// run produce diffable CSVs. The caller passes the favorable extreme + peak open
+		/// profit because the two paths track them in different fields (live*FavorablePrice
+		/// tick-by-tick vs high/lowSinceEntry bar-by-bar).
 		/// </summary>
-		private void AppendStopAudit(string evt, double oldStop, double newStop, double marketPrice)
+		private void AppendStopAudit(string evt, double oldStop, double newStop, double marketPrice,
+		                             double favorable, double peakProfit)
 		{
 			if (string.IsNullOrEmpty(StopAuditCsvPath)) return;
 			try
 			{
 				bool isLong = Position.MarketPosition == MarketPosition.Long;
-				double favorable = isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice;
 				if (!System.IO.File.Exists(StopAuditCsvPath))
 					System.IO.File.AppendAllText(StopAuditCsvPath,
 						"time,event,policy,dir,entry,market,favorable,atr,peakProfit,oldStop,newStop\n");
@@ -1047,7 +1054,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 					"{0:yyyy-MM-ddTHH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n",
 					Time[0], evt, DiscoveryExitPolicy, isLong ? "long" : "short",
 					Position.AveragePrice, marketPrice, favorable, currentAtr,
-					peakOpenProfit, oldStop, newStop);
+					peakProfit, oldStop, newStop);
 				System.IO.File.AppendAllText(StopAuditCsvPath, row);
 			}
 			catch (Exception ex)
@@ -1263,8 +1270,17 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (!improveLong && !improveShort) return;
 
+			double priorStop = lastSubmittedStopPrice;
 			SetStopLoss(activeEntrySignal, CalculationMode.Price, proposedStopPrice, false);
 			lastSubmittedStopPrice = proposedStopPrice;
+
+			// Mirror the live path's StopAuditCsvPath trace from the bar-close trail, so a
+			// Strategy Analyzer backtest also dumps a stop trajectory diffable against the
+			// live one. The bar-close path tracks the favorable extreme in high/lowSinceEntry
+			// (not the live*FavorablePrice tick fields); the market reference is the bar close.
+			bool isLong = Position.MarketPosition == MarketPosition.Long;
+			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, Close[0],
+			    isLong ? highSinceEntry : lowSinceEntry, peakOpenProfit);
 
 			if (EnableDebugPrint)
 				Print($"[PantheonMaster] Historical stop -> {proposedStopPrice:F2}");
