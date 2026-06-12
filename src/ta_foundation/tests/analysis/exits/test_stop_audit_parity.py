@@ -145,6 +145,64 @@ def test_atr_parity_flags_wrong_smoothing():
     assert bad["atr_match_rate"] == 0.0
 
 
+def test_entries_with_non_ratcheting_trade_do_not_shift_anchors():
+    # Live-observed 2026-06-12: trades that never ratchet write NO audit rows, so
+    # Trades.csv has more entries than the audit has segments. Index pairing shifted
+    # every later trade onto the wrong entry (match collapsed to ~0%); anchors must
+    # be matched by time+direction instead.
+    rep = replicate_nt_atr_trail_trajectory(entry_dt=T0, entry_price=100.0, direction=1,
+                                            bars=RISING, cfg=CFG)
+    a = _audit_from_trajectory(rep["trajectory"], entry_price=100.0, direction=1)
+
+    later = RISING.copy()
+    later["dt"] = later["dt"] + timedelta(hours=4)
+    rep_b = replicate_nt_atr_trail_trajectory(entry_dt=T0 + timedelta(hours=4),
+                                              entry_price=100.0, direction=1,
+                                              bars=later, cfg=CFG)
+    b = _audit_from_trajectory(rep_b["trajectory"], entry_price=100.0, direction=1)
+    b["entry"] = 100.0
+
+    audit = pd.concat([a, b], ignore_index=True)
+    # 3 entries, but the MIDDLE one (a short) never ratcheted -> no audit segment.
+    entries = pd.DataFrame([
+        {"entry_dt": T0, "entry_price": 100.0, "direction": 1},
+        {"entry_dt": T0 + timedelta(hours=2), "entry_price": 150.0, "direction": -1},
+        {"entry_dt": T0 + timedelta(hours=4), "entry_price": 100.0, "direction": 1},
+    ])
+    out = parity_report(audit, pd.concat([RISING, later], ignore_index=True), CFG,
+                        entries=entries)
+    assert out["passed"] is True, out["summary"]
+    assert out["n_trades"] == 2
+    assert out["overall_stop_match_rate"] == 1.0
+    # The second audit segment anchored on the THIRD entry, not the skipped short.
+    assert out["summary"]["entry_dt"].iloc[1] == T0 + timedelta(hours=4)
+
+
+def test_non_trail_exit_bounds_diff_but_trail_exit_does_not():
+    # Live-observed 2026-06-12: NT's daily-risk flatten ("Buy to cover") closes the
+    # position while the trail-only replica keeps ratcheting — those post-exit replica
+    # events are out of scope. But when NT says the exit WAS the trail stop, replica
+    # events after NT's last ratchet must stay divergences (frozen-C#-trail guard).
+    rep = replicate_nt_atr_trail_trajectory(entry_dt=T0, entry_price=100.0, direction=1,
+                                            bars=RISING, cfg=CFG)
+    audit = _audit_from_trajectory(rep["trajectory"], entry_price=100.0, direction=1)
+    audit = audit.iloc[:1]  # NT flattened after the first ratchet -> audit ends there
+
+    entries_risk = _entries(T0, 100.0, 1)
+    entries_risk["exit_name"] = "Buy to cover"
+    out = parity_report(audit, RISING, CFG, entries=entries_risk)
+    assert out["passed"] is True
+    assert out["summary"]["non_trail_exit"].iloc[0]
+    assert out["summary"]["n_events"].iloc[0] == 1  # bounded at NT's last audit event
+
+    entries_trail = _entries(T0, 100.0, 1)
+    entries_trail["exit_name"] = "Stop loss"
+    out2 = parity_report(audit, RISING, CFG, entries=entries_trail)
+    assert out2["passed"] is False  # replica's later ratchets count against NT
+    assert not out2["summary"]["non_trail_exit"].iloc[0]
+    assert out2["summary"]["n_events"].iloc[0] == 3
+
+
 def test_replica_silent_when_nt_moved_is_divergence():
     # NT logged a TRAIL the replica never proposed (empty replica trajectory).
     audit = pd.DataFrame([

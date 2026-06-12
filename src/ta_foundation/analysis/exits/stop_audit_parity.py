@@ -25,6 +25,7 @@ from typing import Any, Optional, Union
 import pandas as pd
 
 from ta_foundation.analysis.exits.nt_atr_trail_parity import (
+    NT_TRAIL_EXIT_NAMES,
     NtAtrTrailConfig,
     compute_atr,
     replicate_nt_atr_trail_trajectory,
@@ -162,6 +163,36 @@ def diff_trade_atr(
     }
 
 
+def _match_entry_anchor(
+    grp: pd.DataFrame,
+    anchors: Optional[pd.DataFrame],
+    *,
+    tick_size: float,
+    max_entry_diff_ticks: float = 2.0,
+) -> Optional[pd.Series]:
+    """Pick the Trades.csv entry this audit trade belongs to: the LATEST entry at or
+    before the trade's first audit event with the same direction. Prefer a candidate
+    whose entry price agrees with the audit's own ``entry`` (Position.AveragePrice);
+    a no-agreement asof match is still returned (slippage/rounding), but only from
+    same-direction entries. Returns None when no candidate exists (caller falls back
+    to the audit's own first event)."""
+    if anchors is None or not len(anchors):
+        return None
+    first_dt = grp["time"].iloc[0]
+    direction = int(grp["direction"].iloc[0])
+    audit_entry = float(grp["entry"].iloc[0])
+
+    cand = anchors[(anchors["entry_dt"] <= first_dt) & (anchors["direction"] == direction)]
+    if cand.empty:
+        return None
+    # Exact-price candidate wins (handles back-to-back same-direction trades where
+    # the previous position's entry is also <= first_dt).
+    close = cand[(cand["entry_price"] - audit_entry).abs() / tick_size <= max_entry_diff_ticks]
+    if not close.empty:
+        return close.iloc[-1]
+    return cand.iloc[-1]
+
+
 def parity_report(
     audit: Union[str, "pd.DataFrame"],
     bars: pd.DataFrame,
@@ -180,10 +211,15 @@ def parity_report(
     ``bars``: dt-sorted OHLC frame (``dt/high/low/close``) — ATR is computed here via
     ``cfg.atr_mode``; must share the audit's timezone/naive-ness and bar timestamping.
     ``entries`` (optional): one row per trade with ``entry_dt``/``entry_price``/
-    ``direction``, matched to audit trades by time order — the orchestrator sources
-    these from the authoritative Trades.csv so the replay anchors on the true entry
-    bar. If omitted, the anchor is taken from each trade's first audit event (exact
-    for the live INIT row; approximate for the INIT-less bar-close path)."""
+    ``direction`` — the orchestrator sources these from the authoritative Trades.csv
+    so the replay anchors on the true entry bar. Each audit trade is matched to the
+    LATEST same-direction entry at/before its first event (validated against the
+    audit's own entry price): trades that never ratchet write NO audit rows, so
+    Trades.csv routinely has MORE entries than the audit has segments and index
+    pairing would shift every trade after the first gap (live-observed 2026-06-12:
+    33 entries vs 29 segments -> 0% match from the first gap on). If omitted, the
+    anchor is taken from each trade's first audit event (exact for the live INIT
+    row; approximate for the INIT-less bar-close path)."""
     audit_df = parse_stop_audit(audit)
     if policy:
         audit_df = audit_df[audit_df["policy"].str.lower() == policy.lower()].copy()
@@ -199,12 +235,13 @@ def parity_report(
         anchors = anchors.sort_values("entry_dt").reset_index(drop=True)
 
     rows: list[dict[str, Any]] = []
-    for i, (tid, grp) in enumerate(audit_df.groupby("trade_id", sort=True)):
+    for tid, grp in audit_df.groupby("trade_id", sort=True):
         grp = grp.sort_values("time")
-        if anchors is not None and i < len(anchors):
-            entry_dt = anchors["entry_dt"].iloc[i]
-            entry_price = float(anchors["entry_price"].iloc[i])
-            direction = int(anchors["direction"].iloc[i])
+        anchor = _match_entry_anchor(grp, anchors, tick_size=cfg.tick_size)
+        if anchor is not None:
+            entry_dt = anchor["entry_dt"]
+            entry_price = float(anchor["entry_price"])
+            direction = int(anchor["direction"])
         else:
             entry_dt = grp["time"].iloc[0]
             entry_price = float(grp["entry"].iloc[0])
@@ -213,13 +250,31 @@ def parity_report(
         rep = replicate_nt_atr_trail_trajectory(
             entry_dt=entry_dt, entry_price=entry_price, direction=direction, bars=work, cfg=cfg,
         )
+        # When Trades.csv says NT closed this trade via a NON-trail layer (daily-risk
+        # flatten "Buy to cover"/"Sell", session close, opposite signal), NT legitimately
+        # stops trailing one bar BEFORE the exit fill (CheckRiskLocks returns ahead of the
+        # trail block in OnBarUpdate), while the replica — which models ONLY the trail —
+        # keeps ratcheting. Trail parity is defined over the window NT actually managed
+        # the trail, so bound the replica at NT's last audit event. Trades NT exited via
+        # the trail stop keep the FULL window: there, replica events after NT's last
+        # ratchet are real divergence (e.g. a frozen C# trail).
+        rep_traj = rep["trajectory"]
+        non_trail_exit = False
+        if anchor is not None:
+            exit_name = str(anchor.get("exit_name") or "").strip().lower()
+            non_trail_exit = bool(exit_name) and exit_name not in NT_TRAIL_EXIT_NAMES
+        if non_trail_exit and len(rep_traj):
+            trail_times = grp.loc[grp["event"] == "TRAIL", "time"]
+            if len(trail_times):
+                rep_traj = rep_traj[pd.to_datetime(rep_traj["dt"]) <= trail_times.max()]
         sd = diff_trade_stop_trajectory(
-            grp, rep["trajectory"], tick_size=cfg.tick_size, stop_tol_ticks=stop_tol_ticks,
+            grp, rep_traj, tick_size=cfg.tick_size, stop_tol_ticks=stop_tol_ticks,
         )
         ad = diff_trade_atr(grp, work, rel_tol=atr_rel_tol)
         rows.append({
             "trade_id": int(tid), "direction": direction,
             "entry_dt": entry_dt, "entry_price": entry_price,
+            "non_trail_exit": non_trail_exit,
             "n_events": sd["n_events"], "stop_match_rate": sd["stop_match_rate"],
             "median_diff_ticks": sd["median_diff_ticks"], "max_diff_ticks": sd["max_diff_ticks"],
             "first_divergence_dt": sd["first_divergence_dt"],

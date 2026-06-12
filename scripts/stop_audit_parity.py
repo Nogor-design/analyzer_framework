@@ -44,24 +44,34 @@ def load_minute_bars(bars_file: str) -> pd.DataFrame:
     return bars.sort_values("dt").reset_index(drop=True)
 
 
+def _parse_nt_dt(raw: str | None):
+    s = (raw or "").strip()
+    if not s:
+        return None
+    dt = pd.to_datetime(s, format="%m/%d/%Y %I:%M:%S %p", errors="coerce")
+    if pd.isna(dt):
+        dt = pd.to_datetime(s, errors="coerce")
+    return None if pd.isna(dt) else dt.to_pydatetime()
+
+
 def load_nt_trades_entries(trades_csv: str) -> pd.DataFrame:
-    """Entry anchors (entry_dt/entry_price/direction) from an NT Trades.csv, time-sorted."""
+    """Per-trade anchors from an NT Trades.csv, time-sorted: entry_dt/entry_price/
+    direction plus exit_dt/exit_name (the exit name tells the comparator whether NT
+    closed via the trail stop or some other layer — daily-risk flatten, session
+    close, opposite signal — which bounds the trajectory diff)."""
     rows: list[dict] = []
     with Path(trades_csv).open("r", encoding="utf-8-sig", newline="") as fh:
         for r in csv.DictReader(fh):
-            et = (r.get("Entry time") or "").strip()
             pos = (r.get("Market pos.") or "").strip().lower()
-            if not et or pos not in {"long", "short"}:
-                continue
-            dt = pd.to_datetime(et, format="%m/%d/%Y %I:%M:%S %p", errors="coerce")
-            if pd.isna(dt):
-                dt = pd.to_datetime(et, errors="coerce")
-            if pd.isna(dt):
+            dt = _parse_nt_dt(r.get("Entry time"))
+            if dt is None or pos not in {"long", "short"}:
                 continue
             rows.append({
-                "entry_dt": dt.to_pydatetime(),
+                "entry_dt": dt,
                 "entry_price": _num(r.get("Entry price")),
                 "direction": 1 if pos == "long" else -1,
+                "exit_dt": _parse_nt_dt(r.get("Exit time")),
+                "exit_name": (r.get("Exit name") or "").strip(),
             })
     return pd.DataFrame(rows).sort_values("entry_dt").reset_index(drop=True)
 

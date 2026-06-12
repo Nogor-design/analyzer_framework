@@ -29,10 +29,12 @@ def test_load_nt_trades_entries(tmp_path):
     p = tmp_path / "Trades.csv"
     p.write_text(TRADES_CSV, encoding="utf-8")
     out = CLI.load_nt_trades_entries(str(p))
-    assert list(out.columns) == ["entry_dt", "entry_price", "direction"]
+    assert list(out.columns) == ["entry_dt", "entry_price", "direction", "exit_dt", "exit_name"]
     assert len(out) == 2                       # blank row dropped
     assert list(out["direction"]) == [1, -1]   # Long -> +1, Short -> -1
     assert out["entry_price"].iloc[0] == 30125.25
+    # exit metadata flows through (bounds the trajectory diff on non-trail exits)
+    assert list(out["exit_name"]) == ["PantheonLongStop", "Stop loss"]
     # 12-hr clock parsed correctly: 2:05:00 PM -> 14:05
     assert out["entry_dt"].iloc[1].hour == 14 and out["entry_dt"].iloc[1].minute == 5
     # time-sorted

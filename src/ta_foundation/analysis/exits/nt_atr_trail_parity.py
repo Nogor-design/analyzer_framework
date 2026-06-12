@@ -13,14 +13,19 @@ then fills intrabar on touch. Different mechanics → different model. This modu
 mirrors the NT bar-close logic exactly so a per-trade price comparison is
 meaningful; ``simulate.py`` would diverge by construction.
 
-NT mechanics replicated (PantheonMaster.cs, audited 2026-06-08):
-  - SetupBacktestExit (L792-811): initial protective stop = StopTicks below/above
-    entry (default StopTicks=60); trailing policies start there.
-  - ManageHistoricalOrBarCloseDynamicStops / AtrTrail (L1128-1132): each bar close
-    proposed stop = highSinceEntry − AtrTrailMultiple·currentAtr (long) /
-    lowSinceEntry + AtrTrailMultiple·currentAtr (short).
-  - MoveHistoricalStopIfImproved (L1076-1098): RoundToTick, then move ONLY if it
-    improves (ratchet) by > 0.5·TickSize.
+NT mechanics replicated (PantheonMaster.cs, audited 2026-06-08; entry-bar semantics
+corrected from the first live stop-audit trajectory 2026-06-12):
+  - ConfigureHistoricalManagedOrders: initial protective stop = StopTicks below/above
+    entry (default StopTicks=60), active from the entry bar.
+  - ManageHistoricalOrBarCloseDynamicStops / AtrTrail: each bar close — INCLUDING the
+    entry bar (its close timestamp == the entry fill time) — proposed stop =
+    highSinceEntry − AtrTrailMultiple·currentAtr (long) / lowSinceEntry +
+    AtrTrailMultiple·currentAtr (short), where high/lowSinceEntry are seeded from the
+    ENTRY BAR's extremes (TrackBarBasedOpenPosition).
+  - MoveHistoricalStopIfImproved: RoundToTick, then move only if it improves the
+    LAST SUBMITTED price by > 0.5·TickSize — and lastSubmittedStopPrice is ZERO right
+    after entry, so the FIRST proposal always submits and REPLACES the initial
+    StopTicks stop even when wider.
   - currentAtr = ATR(AtrPeriod)[0] (L990,400; AtrPeriod default 14). NT's ATR
     smoothing is the open parity question — we run the replica under BOTH Wilder
     and SMA ATR and report which matches (the documented "NT ATR Wilder-vs-SMA"
@@ -97,9 +102,13 @@ def _replay_bar_trail(
     bdt = pd.to_datetime(bars["dt"])
     entry_ts = pd.to_datetime(entry_dt)
     horizon = entry_ts + pd.Timedelta(minutes=cfg.max_hold_minutes)
-    after = bars[(bdt > entry_ts) & (bdt <= horizon)].reset_index(drop=True)
+    # INCLUSIVE of the entry bar: the C# bar-close loop already runs on the bar whose
+    # close timestamp == the entry fill time (live-audit-confirmed 2026-06-12 — the
+    # first audit TRAIL row carries the Trades.csv entry timestamp).
+    after = bars[(bdt >= entry_ts) & (bdt <= horizon)].reset_index(drop=True)
     initial_stop = entry_price - direction * cfg.stop_ticks * tick
-    stop = initial_stop
+    stop = initial_stop          # the ACTIVE stop a bar can fill against
+    last_submitted: Optional[float] = None  # C# lastSubmittedStopPrice (0-sentinel)
     high_since = entry_price
     low_since = entry_price
 
@@ -111,31 +120,44 @@ def _replay_bar_trail(
     exit_rec: dict[str, Any] = {"exit_dt": None, "exit_price": None, "reason": "no_exit_in_window"}
     for row in after.itertuples(index=False):
         hi, lo, atr = float(row.high), float(row.low), row.atr
-        # 1) fill check against the stop active for this bar (set at prior close)
+        # 1) fill check against the stop active for this bar (set at prior close;
+        #    the entry bar fills against the initial StopTicks stop)
         if direction > 0 and lo <= stop:
             exit_rec = {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
             break
         if direction < 0 and hi >= stop:
             exit_rec = {"exit_dt": row.dt, "exit_price": stop, "reason": "trail_stop"}
             break
-        # 2) update favorable extreme with this bar, recompute trail for next bar
+        # 2) update favorable extreme with this bar, recompute trail for next bar.
+        #    C# seeds high/lowSinceEntry from the ENTRY BAR's extremes
+        #    (TrackBarBasedOpenPosition), which this max/min reproduces because the
+        #    entry fill is inside the entry bar's range.
         high_since = max(high_since, hi)
         low_since = min(low_since, lo)
         if atr is None or (isinstance(atr, float) and np.isnan(atr)):
             continue
-        old_stop = stop
-        if direction > 0:
-            proposed = _round_to_tick(high_since - cfg.atr_multiple * float(atr), tick)
-            if proposed > stop + tick * 0.5:   # ratchet up only
-                stop = proposed
+        proposed = _round_to_tick(
+            (high_since - cfg.atr_multiple * float(atr)) if direction > 0
+            else (low_since + cfg.atr_multiple * float(atr)), tick)
+        # C# MoveHistoricalStopIfImproved ratchets vs lastSubmittedStopPrice, which is
+        # ZERO right after entry — so the FIRST proposal always submits and REPLACES
+        # the initial StopTicks stop, even when it is WIDER (live-audit-confirmed
+        # 2026-06-12: NT's first trail sat below the initial stop and the position
+        # survived a dip that a floored replica called a stop-out).
+        if last_submitted is None:
+            improved = True
+        elif direction > 0:
+            improved = proposed > last_submitted + tick * 0.5
         else:
-            proposed = _round_to_tick(low_since + cfg.atr_multiple * float(atr), tick)
-            if proposed < stop - tick * 0.5:   # ratchet down only
-                stop = proposed
-        if record_trajectory and stop != old_stop:
-            traj.append({"dt": row.dt, "event": "TRAIL",
-                         "favorable": (high_since if direction > 0 else low_since),
-                         "atr": float(atr), "old_stop": old_stop, "stop": stop})
+            improved = proposed < last_submitted - tick * 0.5
+        if improved:
+            old_stop = 0.0 if last_submitted is None else last_submitted
+            stop = proposed
+            last_submitted = proposed
+            if record_trajectory:
+                traj.append({"dt": row.dt, "event": "TRAIL",
+                             "favorable": (high_since if direction > 0 else low_since),
+                             "atr": float(atr), "old_stop": old_stop, "stop": stop})
 
     return exit_rec, traj
 
