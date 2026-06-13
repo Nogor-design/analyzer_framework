@@ -111,3 +111,35 @@ def load_candidates_from_session(
 
     regime_by_day = _regime_by_day(Path(bars_file)) if bars_file else {}
     return candidates, regime_by_day
+
+
+def survivable_template_ids(
+    session_dir: str | Path,
+    *,
+    firm: str = "APEX",
+    account_size: str = "50000",
+    starting_balance: Optional[float] = None,
+    contracts: int = 1,
+    dollar_scale: float = 1.0,
+    require_pass: bool = False,
+) -> set[str]:
+    """Template ids whose own trades keep a fresh prop account ALIVE under trailing
+    drawdown (the survival gate the candidate universe should clear before the
+    selector ranks it — see ``analysis/risk/survival.py``). ``require_pass`` keeps
+    only templates that also clear the profit target alive. Local import keeps the
+    selection spine free of a load-time dependency on the risk layer."""
+    from ta_foundation.analysis.risk.account_state import load_firm_profile
+    from ta_foundation.analysis.risk.survival import per_template_survival
+    from ta_foundation.analysis.risk.trade_loader import load_template_trades
+
+    profile = load_firm_profile(firm)
+    start = starting_balance if starting_balance is not None else float(account_size)
+    sweep = per_template_survival(
+        load_template_trades(session_dir), profile=profile, account_type="evaluation",
+        account_size=account_size, starting_balance=start,
+        contracts=contracts, dollar_scale=dollar_scale,
+    )
+    return {
+        tid for tid, r in sweep.results.items()
+        if r.survived and (r.passed or not require_pass)
+    }
