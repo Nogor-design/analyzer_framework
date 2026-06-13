@@ -25,6 +25,15 @@ account_sizes:
 # APEX intraday plan has NO daily-loss limit. (EOD-trailing firms do — see catalog.)
 daily_loss_limit: null
 
-# PA accounts have consistency / min-days / payout rules; capture per profile as we verify them.
+# PA / evaluation consistency, min-days and payout rules.
+# SOURCE: Gemini secondary research 2026-06-13 (docs/handoffs/005-apex-eval-rules-verification.md).
+# Sourcing is WEAK (generic apextraderfunding.com / support URLs, not primary-page-cited) —
+# treat every value here as UNVERIFIED until confirmed against a primary APEX page or Eric.
 consistency_rules:
-  payout_consistency_pct: 0.30        # 30% rule on funded payout requests (UNVERIFIED detail)
+  eval_consistency_pct: null          # APEX 4.0: NO consistency rule on the EVALUATION phase
+                                      # (may hit target in one day, subject to min_trading_days_eval)
+  payout_consistency_pct: 0.50        # APEX 4.0 PA payouts (accounts opened post-2026-03-01): 50% rule
+  payout_consistency_pct_legacy: 0.30 # pre-2026-03-01 accounts: 30% rule
+  min_trading_days_eval: 7            # 7 separate trading days to pass eval (1-day-pass promos waive)
+  min_qualifying_days_payout: 5       # qualifying days between PA payouts
+  pa_safety_net: "starting_balance + max_drawdown + 100"   # first-payout gate (= $52,600 for 50k)
