@@ -169,28 +169,48 @@ def _match_entry_anchor(
     *,
     tick_size: float,
     max_entry_diff_ticks: float = 2.0,
+    time_tol_seconds: float = 5.0,
 ) -> Optional[pd.Series]:
-    """Pick the Trades.csv entry this audit trade belongs to: the LATEST entry at or
-    before the trade's first audit event with the same direction. Prefer a candidate
-    whose entry price agrees with the audit's own ``entry`` (Position.AveragePrice);
-    a no-agreement asof match is still returned (slippage/rounding), but only from
-    same-direction entries. Returns None when no candidate exists (caller falls back
-    to the audit's own first event)."""
+    """Pick the Trades.csv entry this audit trade belongs to. Match by direction +
+    entry PRICE (the audit's ``entry`` is Position.AveragePrice, the strong key),
+    disambiguating by nearest entry time. The time relationship is NOT a hard
+    ``entry_dt <= first_dt`` gate: the live audit INIT fires at the real fill tick
+    (sub-second) while NT's Trades.csv rounds the entry time to the whole second, so
+    the correct anchor is routinely a fraction of a second AFTER the first audit
+    event. A strict ``<=`` gate excluded it and mis-paired the trade with an earlier
+    entry (the 0%-match-with-652-tick-diff symptom). Falls back to a time-window
+    match (then the latest prior entry) when no price agrees; returns None only when
+    no same-direction candidate exists at all (caller uses the audit's own first
+    event)."""
     if anchors is None or not len(anchors):
         return None
     first_dt = grp["time"].iloc[0]
     direction = int(grp["direction"].iloc[0])
     audit_entry = float(grp["entry"].iloc[0])
 
-    cand = anchors[(anchors["entry_dt"] <= first_dt) & (anchors["direction"] == direction)]
+    cand = anchors[anchors["direction"] == direction]
     if cand.empty:
         return None
-    # Exact-price candidate wins (handles back-to-back same-direction trades where
-    # the previous position's entry is also <= first_dt).
+
+    # Strong key: same direction AND entry price within tolerance. Among those, the
+    # one whose entry time is nearest the first audit event wins (handles back-to-back
+    # same-direction same-price trades).
     close = cand[(cand["entry_price"] - audit_entry).abs() / tick_size <= max_entry_diff_ticks]
     if not close.empty:
-        return close.iloc[-1]
-    return cand.iloc[-1]
+        idx = (close["entry_dt"] - first_dt).abs().idxmin()
+        return close.loc[idx]
+
+    # No price agreement: prefer an entry within a small time window around the first
+    # audit event (covers Trades.csv second-rounding); else the latest prior entry.
+    tol = pd.Timedelta(seconds=time_tol_seconds)
+    near = cand[(cand["entry_dt"] - first_dt).abs() <= tol]
+    if not near.empty:
+        idx = (near["entry_dt"] - first_dt).abs().idxmin()
+        return near.loc[idx]
+    prior = cand[cand["entry_dt"] <= first_dt]
+    if not prior.empty:
+        return prior.iloc[-1]
+    return None
 
 
 def parity_report(

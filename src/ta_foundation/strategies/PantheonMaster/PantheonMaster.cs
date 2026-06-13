@@ -255,6 +255,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private double liveHighestFavorablePrice;
 		private double liveLowestFavorablePrice;
 		private double liveMarketPrice;           // last live tick price (stop-side guard)
+		private DateTime lastLiveTickTime = DateTime.MinValue; // last tick time, for tick-resolution stop-audit rows (Time[0] is only bar-resolution)
 		private double entryFillPrice;            // actual entry execution price (Position.AveragePrice is stale in OnExecutionUpdate)
 		private double lastSubmittedStopPrice;
 		private bool   entryOrdersPrepared;      // true only on live path
@@ -297,7 +298,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 				StartBehavior                             = StartBehavior.WaitUntilFlat;
 				TimeInForce                               = TimeInForce.Gtc;
 				TraceOrders                               = false;
-				RealtimeErrorHandling                     = RealtimeErrorHandling.StopCancelClose;
+				// Live stop management submits/amends explicit stop orders tick-by-tick. The
+				// side-of-market guards in SubmitInitialProtectiveOrders + MoveStopIfImproved are
+				// the PRIMARY defense against a wrong-side ("buy-stop below market") rejection, but
+				// no client-side guard can fully close the race between the guard check and the
+				// order reaching the matching engine in a fast/Playback feed. The default
+				// StopCancelClose turns any such reject into a strategy KILL — it cancels orders,
+				// force-closes via a market "Buy to cover", and terminates (the ATRError saga:
+				// docs/samples/ATRError*.png). IgnoreRejects instead leaves the prior valid resting
+				// stop working and keeps the strategy alive, so a rare reject can't blow up live
+				// risk or C#<->Python parity with a spurious liquidation. Non-rejection errors
+				// (e.g. connection loss) still get the safe default StopCancelClose behavior.
+				// Our OnOrderUpdate already tracks/clears the stop reference on terminal states.
+				RealtimeErrorHandling                     = RealtimeErrorHandling.StopCancelCloseIgnoreRejects;
 				StopTargetHandling                        = StopTargetHandling.PerEntryExecution;
 				BarsRequiredToTrade                       = 20;
 				IsInstantiatedOnEachOptimizationIteration = false;
@@ -535,6 +548,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 		protected override void OnMarketData(MarketDataEventArgs marketDataUpdate)
 		{
 			if (State == State.Historical) return;
+
+			// Capture the real tick timestamp for tick-resolution stop-audit rows. Time[0] is
+			// only the current bar's time, so per-tick live trail moves would otherwise all
+			// collapse onto one minute and the parity comparator could not align them to the
+			// Python tick replica (85% of trail events were colliding on a single minute).
+			lastLiveTickTime = marketDataUpdate.Time;
 
 			UpdateCurrentPnLDisplay();
 
@@ -1050,9 +1069,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 					System.IO.File.AppendAllText(StopAuditCsvPath,
 						"time,event,policy,dir,entry,market,favorable,atr,peakProfit,oldStop,newStop\n");
 
+				// Live path (per-tick, called from OnMarketData) must stamp with the real tick
+				// time, not Time[0] (bar resolution). The historical/bar-close path keeps Time[0].
+				DateTime stamp = (UseLiveStopManagement && State != State.Historical
+				                  && lastLiveTickTime != DateTime.MinValue)
+				                 ? lastLiveTickTime : Time[0];
+
 				string row = string.Format(
 					"{0:yyyy-MM-ddTHH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n",
-					Time[0], evt, DiscoveryExitPolicy, isLong ? "long" : "short",
+					stamp, evt, DiscoveryExitPolicy, isLong ? "long" : "short",
 					Position.AveragePrice, marketPrice, favorable, currentAtr,
 					peakProfit, oldStop, newStop);
 				System.IO.File.AppendAllText(StopAuditCsvPath, row);
