@@ -140,6 +140,25 @@ def main() -> int:
         print("NO trades mapped — check output-dir naming above vs run_id (F_NNN).")
         return 1
 
+    # WINDOW GUARD — the bare RunBatch bridge applies a template's strategy PARAMS but
+    # NOT its <From>/<To> date range: NT uses its sticky/default Strategy Analyzer window
+    # (confirmed 2026-06-13: a 04-06..04-10 request produced a 05-04 trade). So a result
+    # here is only a valid OOS test if the realized trades actually fall in the window.
+    from datetime import date as _date
+    fy, fm, fd = map(int, args.from_date.split("-"))
+    ty, tm, td = map(int, args.to_date.split("-"))
+    lo, hi = _date(fy, fm, fd), _date(ty, tm, td)
+    all_days = [t.entry_dt.date() for ts in template_trades.values() for t in ts]
+    in_win = sum(1 for d in all_days if lo <= d <= hi)
+    frac = in_win / len(all_days) if all_days else 0.0
+    print(f"window guard: {frac*100:.0f}% of trades fall in {args.from_date}..{args.to_date} "
+          f"(realized range {min(all_days)}..{max(all_days)})")
+    if frac < 0.80:
+        print("!! WINDOW NOT HONORED — NT ignored the template date range (sticky SA window). "
+              "This is NOT a valid OOS test; survival numbers below are over NT's default "
+              "range, not the requested window. Fix: inject the analyzer date range the way "
+              "the deployment-matrix orchestrator does before trusting a holdout result.")
+
     profile = load_firm_profile(args.firm)
     sweep = per_template_survival(
         template_trades, profile=profile, account_type="evaluation",
