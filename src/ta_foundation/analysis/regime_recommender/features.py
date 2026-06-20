@@ -82,9 +82,17 @@ def build_multitf_features(
         contract=contract,
     )
 
-    tf15 = market.get_bars(instrument, contract, timeframe="15m", start=asof - pd.Timedelta(days=1), end=asof)
-    tf60 = market.get_bars(instrument, contract, timeframe="1h", start=asof - pd.Timedelta(days=5), end=asof)
-    tf240 = market.get_bars(instrument, contract, timeframe="4h", start=asof - pd.Timedelta(days=5), end=asof)
+    # Each frame feeds ema(period=50) (min_periods=50) -> ema_slope(lookback=3),
+    # so a usable trend_slope needs >= ~53 bars of THAT timeframe, else the EMA is
+    # all-NaN and _last_value falls back to 0.0. The old 5-day window on 4h yields
+    # only ~30 bars (~6 4h-bars/trading-day), so tf240m_trend_slope was always 0 and
+    # the classifier was stuck on `range`. Widen each window with margin:
+    #   15m: ~53 bars ~= 13h trading -> 4 calendar days covers gaps/holidays
+    #   1h : ~53 bars ~= 3 trading days -> 15 calendar days
+    #   4h : ~53 bars ~= 9-10 trading days -> 45 calendar days
+    tf15 = market.get_bars(instrument, contract, timeframe="15m", start=asof - pd.Timedelta(days=4), end=asof)
+    tf60 = market.get_bars(instrument, contract, timeframe="1h", start=asof - pd.Timedelta(days=15), end=asof)
+    tf240 = market.get_bars(instrument, contract, timeframe="4h", start=asof - pd.Timedelta(days=45), end=asof)
 
     frames = {"tf15m": tf15, "tf60m": tf60, "tf240m": tf240}
 
