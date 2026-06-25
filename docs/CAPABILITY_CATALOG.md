@@ -19,6 +19,7 @@ small; it is meant to be cheap to load every session.
 | Deployment Matrix (252) | Fixed 252 named templates (7 session × 2 single/multi × 9 tier × 2 god/monster) for the daily-prediction pool | web `/optimizer/deployment-matrix`, `web/optimizer_deployment_matrix*.py` (+ bundle-axis in `optimizer_recipe*.py`) | **Engine + manifest + launcher done; validated live on NT (smoke); names via canonical `template_naming`** | `docs/designs/deployment_matrix_252_capability.md` |
 | Agentic NT strategy loop | Promote research → deterministic NT validation, optimizer runs, shadow, supervised execution | `agent/`, `nt_strategy_loop/` | Partial | `docs/designs/agentic_nt_strategy_knowledge_base.md` |
 | Execution bridge | Send/monitor execution messages to NinjaTrader runtime/shell | `strategies/TaFoundationExecutionBridge/*`, `cli/bridge_operator.py` | Shipped | `docs/runbooks/NINJATRADER_INTEGRATION_RUNBOOK.md` |
+| Pantheon stop engine + test harness | Shared pure-C# stop/trail engine for PantheonMaster's exits; Python battery (logic, ~1s) + NT AddOn (live Sim plumbing) + headless file-driven deploy/compile/run loop | `strategies/shared/PantheonStopEngine.cs`, `analysis/exits/pantheon_trail_battery.py`, `D:\NinjatraderAddons\PantheonTestHarness\` | **Live-validated 2026-06-11 (all 6 policies, no rejections)** | `docs/runbooks/pantheon_stop_engine_and_test_harness.md` |
 | Market data store / scan | Shared minute/tick bars; file freshness dashboard | `marketdata/*`, `market_data_dashboard.py` | Shipped | `CLAUDE.md` |
 
 For concrete analysis inventory and "do not rebuild this" routing, load
@@ -60,6 +61,25 @@ Detailed analysis routing: `docs/ANALYSIS_CAPABILITY_GUIDE.md`.
 | `D:\NinjaAccountManager` | Real-time NT account monitor + order API (WebSocket bridge, not plugin); has account state, **lacks DD/prop rules** | Working, early |
 | `D:\DailyAnalysis` | Rule-based NQ daily context (bias/levels/news); no selection, no LLM | Functional |
 | `D:\agentic-engine` | Idea→hypothesis→test→decision validation ledger (overlaps internal `research_ledger/`) | Working core |
+
+## Capability workbenches (D:\strategy-analysis — import ta_foundation, don't rebuild)
+
+Thin Flask "Explore→Discover→Prove" UIs over one capability each, on the shared
+`strategy-workbench-kit`. **Wrappers only** — they reimplement no analysis. This is
+the chosen decomposition path (NOT the shelved `D:\phase1-services` microservices).
+Plan: `docs/designs/capability_workbenches_plan.md`.
+
+| Workbench | Port | Wraps | Status |
+|---|---|---|---|
+| `workbench-kit` (shared shell) | — | bar loading, cross-instrument proof, Flask chrome | Shipped |
+| `ma-cross` | 7780 | `entry_strategies/ma` discovery + cross-instrument | Shipped (retrofit on kit) |
+| `exit-policy-lab` | 7790 | `analysis/exits` (pantheon battery, replay_trail) | Shipped |
+| `prop-survival-lab` | 7791 | `analysis/risk` survival (APEX trailing DD) | Shipped |
+| `regime-monitor` | 7792 | `analysis/regime_recommender` | Shipped |
+| `pattern-discovery` | 7793 | `analysis/pattern_engine` (sweep/cluster/CV) | Shipped |
+| `cross-asset-scout` | 7794 | daily TSMOM scout (scripts/) — the OOS-validated edge | Shipped |
+| `entry-discovery` | 7795 | all 8 entry families (generalizes ma-cross); Discover + cross-instrument Prove now wired for ALL 8 (candle/orb/lcr emitters added 2026-06-24) | Shipped & verified 2026-06-24 (discover 8/8, prove 8/8; all reuse real engines, gate rejects on current data) |
+| `large-candle` | 7796 | `analysis/large_candle_excursion` — Sweep (`run_large_candle_excursion`) → Findings (`build_large_candle_excursion_findings`) → Validate (engine IS/OOS `edge_validation_engine`) | Shipped & verified 2026-06-25 (retrofitted onto kit from an off-pattern subprocess app; NQ 06-26 smoke: 8/8 combos, 1,006 ranked, 1 stable_edge survives OOS) |
 
 ## PM working docs
 
