@@ -48,6 +48,12 @@ set From/To → set `ExportTicks=true` if ticks needed → Backtest. Output land
 
 ## Automation plan (the deliverable) — "gather data" via the optimizer bridge
 
+> **Shipped:** the one-time gather is `scripts/gather_market_data.py` (engine:
+> `web/market_data_export.py`). The scan-and-refresh *routine* built on top of it
+> — "what's stale/missing, pull it, skip expired" — is
+> [`market_data_refresh_routine.md`](market_data_refresh_routine.md)
+> (`scripts/refresh_market_data.py`). Start there for day-to-day upkeep.
+
 The strategy's own header notes it can be *"triggered via the existing
 optimizer-bridge with a 1-combo seed template."* That is the automation: reuse
 the machinery we already have (catalog → seed-gen → bridge dispatch → status
