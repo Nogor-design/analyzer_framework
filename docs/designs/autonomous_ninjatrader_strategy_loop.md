@@ -604,7 +604,6 @@ Human gate required:
 
 - overwrite an existing non-loop-owned strategy
 - accept a major behavioral rewrite after optimization analysis
-- copy final templates into a deployment folder
 - enable real-time/paper/live trading
 - mark a strategy as approved
 

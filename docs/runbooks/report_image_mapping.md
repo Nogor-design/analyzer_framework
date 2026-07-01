@@ -15,6 +15,12 @@ Reports that need portraits/cards but not generated detail charts should also
 pass `enrich_detail_charts=False`. This keeps image mapping enabled without
 generating the heavier `Analysis.csv` and settings-table chart images.
 
+For online publishing, the report builders now also accept
+`report_asset_mode="external"`. That keeps the same report sections and image
+mapping, but writes image files into a sibling `<report>_assets/` directory
+instead of embedding all PNG bytes directly into the HTML. Use `embedded` for a
+single portable file and `external` for lighter web-hosted reports.
+
 The enriched path attaches these fields to `pkg.metadata["derived"]`:
 
 - `display_name` and `display_name_spaced`

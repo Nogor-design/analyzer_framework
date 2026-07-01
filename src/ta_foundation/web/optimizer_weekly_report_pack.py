@@ -117,6 +117,7 @@ def build_weekly_report_pack(
     *,
     run_ids: list[str] | None = None,
     include_all_active_templates: bool = False,
+    report_asset_mode: str = "embedded",
 ) -> WeeklyReportPackResult:
     """Build separate weekly reports for the selected generated templates.
 
@@ -270,6 +271,7 @@ def build_weekly_report_pack(
                 run_ids=selected_run_ids,
                 enrich_packages=needs_enrichment,
                 enrich_detail_charts=needs_detail_charts,
+                report_asset_mode=report_asset_mode,
             )
         except Exception as exc:
             reports.append(

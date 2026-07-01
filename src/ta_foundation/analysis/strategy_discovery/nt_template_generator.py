@@ -725,7 +725,32 @@ _STRUCTURE_TO_ENTRY_SIGNAL = {
     # breakout family
     "n_bar_breakout":      "NbarBreakout",
     "nbar_breakout":       "NbarBreakout",
+    # MA family — default to SmaCross (the on-disk PantheonMasterBotV01TesterV2 results
+    # are SMA crosses). 'ma_cross' is refined to Ema/SmaCross by ma_type in
+    # _extract_entry_signal; the explicit aliases pin directly.
+    "ma_cross":            "SmaCross",
+    "sma_cross":           "SmaCross",
+    "ema_cross":           "EmaCross",
 }
+
+# Structures whose Ema-vs-Sma resolution depends on the discovered ma_type param.
+_MA_FAMILY_STRUCTURES = {"ma_cross"}
+
+
+def _refine_ma_cross_signal(struct: str, options: Dict[str, Any]) -> Optional[str]:
+    """
+    For the ambiguous 'ma_cross' structure, choose the C# entry enum from the
+    discovered ma_type: 'ema' -> EmaCross, anything else (incl. unset) -> SmaCross.
+
+    NOTE: discovery's detect_ma_cross is a PRICE×MA crossover, whereas the C#
+    Ema/SmaCross is a FAST×SLOW MA crossover — structurally similar (a MA-cross
+    entry) but not identical. The operator opted to pin SmaCross for the SMA-cross
+    workflow; verify entry parity with scripts/parity_signal_export.py if it matters.
+    """
+    if struct not in _MA_FAMILY_STRUCTURES:
+        return None
+    ma_type = str(((options or {}).get("entry_params") or {}).get("ma_type", "")).lower()
+    return "EmaCross" if ma_type == "ema" else "SmaCross"
 
 # Discovery timing-mode string → C# SdfTimingMode enum name.
 _TIMING_TO_ENUM = {
@@ -756,12 +781,15 @@ def _extract_entry_signal(sd: Dict[str, Any], options: Dict[str, Any], warnings:
                 struct = str(cond.get("value"))
                 sig = _STRUCTURE_TO_ENTRY_SIGNAL.get(struct)
                 if sig:
+                    sig = _refine_ma_cross_signal(struct, options) or sig
                     return sig, f"structure condition '{struct}' in top signal rule"
 
     sig_insights = _extract_signal_insights(sd, warnings)
     for struct in (sig_insights.get("top_structures") or []):
-        sig = _STRUCTURE_TO_ENTRY_SIGNAL.get(str(struct))
+        struct = str(struct)
+        sig = _STRUCTURE_TO_ENTRY_SIGNAL.get(struct)
         if sig:
+            sig = _refine_ma_cross_signal(struct, options) or sig
             return sig, f"top structure '{struct}' from signal corpus"
 
     warnings.append(

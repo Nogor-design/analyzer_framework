@@ -126,14 +126,17 @@ LOC = real, measured 2026-06-19 (non-`__init__` Python lines).
 | # | Project | Pulls from | Why later |
 |---|---|---|---|
 | 7 | **Large-Candle Excursion Lab** | `analysis/large_candle_excursion/` | ~~defer~~ **BUILT 2026-06-25** (port 7796, retrofitted onto kit): Sweep→Findings→Validate over the LCE engine. Focused slice (sweep + findings + IS/OOS validation), not the full 45-section report. |
-| 8 | **Prediction Workbench** | `prediction/` (daily + horizon) | **DEFERRED — not workbench-shaped (verified 2026-06-25).** 9,187 LOC is a full app: inference agents (`claude_agent`/`ollama_agent`/statistical/analogue), ensembles, calibrators, abstention/tradable-zone, cost models, persistence stores, prompts, its own `prediction.yaml`/`run_prediction.py` CLI. A shell over it would own model state + LLM calls + calibration artifacts — that's a 2nd app, not a thin wrapper. If it ever gets a UI, give it its OWN dedicated app; do NOT force it into the kit pattern. Stays in monolith/own CLI for now. |
-| 9 | **MA Anchor Analyzer** | `analysis/ma_structure/` | **DEFERRED, not built (rationale corrected 2026-06-25).** Earlier "fold into #4 / overlaps ma-cross" was WRONG: verified neither ma-cross nor entry-discovery imports `ma_structure` — they wrap `entry_strategies/ma` (MA *crossover entries*), a different thing. `ma_structure` is a DISTINCT, uncovered capability (anchor detection → segment detection → `tp_sl_engine` scoring → `trade_alignment` → `regime_context`) and the cleanest remaining kit candidate (~2,261 LOC, clean Explore[detect anchors]→Discover[score anchor-relative TP/SL]→Prove[validate alignment]). Not a gap — anchor analysis already runs in the report pipeline. Build a standalone workbench only on demand (~1 day kit clone); low priority given cost-walled-intraday findings. |
+| 8 | **Prediction Workbench** | `prediction/` (daily + horizon) | **BUILT 2026-06-26 — own app, NOT kit-shaped** (Phases 0–7). 9,187 LOC backend (LLM agents, ensembles, calibrators, abstention/tradable-zone, cost models, JSONL stores, `prediction.yaml`). Standalone operational app at `D:\prediction` (port 7798): Daily / Horizon / Reports / Deploy surfaces, wrappers-only over `ta_foundation.prediction`, no-cost paths by default, env-only API key. `smoke_test.py` 47/47 with no key/cost. Honest read: baseline agents ~0.39–0.46 dir-acc at coarse strides — an instrument panel for tradability-after-costs, not a signal generator. Full phased plan: **`D:\prediction\DEVELOPMENT_PLAN.md`**. |
+| 9 | **MA Anchor Analyzer** | `analysis/ma_structure/` | **IN DEVELOPMENT 2026-06-25 — distinct, uncovered capability** (verified: neither ma-cross nor entry-discovery imports `ma_structure`; they wrap `entry_strategies/ma` = MA *crossover entries*). Covers anchor **structure**: detect anchors → segment detection → `tp_sl_engine` scoring → `trade_alignment` → `regime_context`. Building a kit-based app at `D:\ma-anchor` (port 7797): Explore[anchors+segments]→Discover[anchor-relative TP/SL]→Prove[walk-forward + cross-instrument]. Full phased plan: **`D:\ma-anchor\DEVELOPMENT_PLAN.md`** (~4–4.5 days, Phase 0–5). |
 | — | NT Optimizer / Strategy Loop / Execution Bridge | `optimization/`, `nt_strategy_loop/`, bridge `.cs` | Hard NT-license + IPC coupling; stay in the monolith — not workbench-shaped |
 
 **Realistic count:** ~6 useful standalone workbenches (Tiers A+B) + ma-cross
 already built = 7, plus Tier C #7 (Large-Candle Excursion Lab) retrofitted onto
-the kit 2026-06-25 = 8 shipped. Tier C #8 (Prediction) and #9 (MA Anchor) remain
-deferred.
+the kit 2026-06-25 and Tier C #8 (Prediction Workbench, `D:\prediction`, port 7798)
+built 2026-06-26 = **9 shipped**. Tier C #9 (MA Anchor, `D:\ma-anchor`, port 7797)
+remains **in active development** with a per-project plan (`DEVELOPMENT_PLAN.md` in
+its dir) — see the Tier C table for scope. Tier C — (NT Optimizer / Strategy Loop /
+Execution Bridge) stays in the monolith.
 
 ## Recommended sequence
 

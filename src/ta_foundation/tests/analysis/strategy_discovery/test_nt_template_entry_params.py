@@ -110,6 +110,31 @@ def test_explicit_entry_signal_override():
     assert tmpl.parameters["EntrySignal"] == "NbarBreakout"
 
 
+def test_ma_cross_structure_defaults_to_sma_cross():
+    """A discovered 'ma_cross' structure auto-pins SmaCross (the on-disk
+    PantheonMasterBotV01TesterV2 results are SMA crosses)."""
+    sd = _sd_with_structure("ma_cross")
+    tmpl = generate_nt_template(sd, run_id="t")
+    assert tmpl.parameters["EntrySignal"] == "SmaCross"
+    assert "<EntrySignal>SmaCross</EntrySignal>" in tmpl.xml_str
+
+
+def test_ma_cross_with_ema_ma_type_pins_ema_cross():
+    sd = _sd_with_structure("ma_cross")
+    tmpl = generate_nt_template(
+        sd, run_id="t", options={"entry_params": {"ma_type": "ema"}}
+    )
+    assert tmpl.parameters["EntrySignal"] == "EmaCross"
+
+
+def test_ma_cross_with_sma_ma_type_pins_sma_cross():
+    sd = _sd_with_structure("ma_cross")
+    tmpl = generate_nt_template(
+        sd, run_id="t", options={"entry_params": {"ma_type": "sma"}}
+    )
+    assert tmpl.parameters["EntrySignal"] == "SmaCross"
+
+
 def test_no_structure_falls_back_to_ema_cross_with_warning():
     sd = {"signal_entry_discovery": {"top_signal_rules": [], "baseline": {}}}
     tmpl = generate_nt_template(sd, run_id="t")

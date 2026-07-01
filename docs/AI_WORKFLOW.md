@@ -15,6 +15,7 @@ For a new task, read only these first:
 - `docs/designs/real_edge_discovery_program.md` when the task touches edge discovery, probes, hardening, shadow runner, or the graveyard
 - `docs/designs/agentic_nt_strategy_knowledge_base.md` when the task touches agentic strategy research, NinjaTrader strategy generation, StrategyDiscoveryFilter, the Strategy Factory, NT optimizer loops, shadow promotion, NinjaAccountManager, or execution bridge automation
 - `docs/designs/autonomous_research_to_paper_trade_loop_build_plan.md` when the task asks to build the full autonomous loop from discovery through NT validation, shadow, and Sim101 paper trading
+- `docs/runbooks/pantheon_stop_engine_and_test_harness.md` when the task touches PantheonMaster's stop/trail/breakeven exits, the shared `PantheonStopEngine`, the Python trail battery, the NinjaTrader test-harness AddOn, or the headless deploy/compile/drive loop into NT
 - The specific source and tests identified from the relevant category
 
 Avoid opening the entire repository tree or large generated output folders.
@@ -149,3 +150,4 @@ Do not flatten the project into "report generation." Route by capability first:
 - Analysis Inventory: `docs/ANALYSIS_CAPABILITY_GUIDE.md` before adding NT backtest, tick, MAE/MFE, exit-policy, anchor, LCE, or template-quality analysis.
 - Web Orchestration: `web/app.py`, `web/jobs.py`, `web/prediction_jobs.py`, `web/report_catalog.py`, `web/templates/index.html`.
 - Agentic NT Strategy Loop: start with `docs/designs/agentic_nt_strategy_knowledge_base.md`, then route to `src/ta_foundation/agent/`, `src/ta_foundation/research_ledger/`, `src/ta_foundation/shadow/`, `src/ta_foundation/nt_strategy_loop/`, `src/ta_foundation/strategies/StrategyDiscoveryFilter/`, `src/ta_foundation/strategies/TaFoundationExecutionBridge/`, or external `D:\NinjaAccountManager` as needed.
+- Pantheon Exits / Stop-Trail Testing: start with `docs/runbooks/pantheon_stop_engine_and_test_harness.md`. Engine `src/ta_foundation/strategies/shared/PantheonStopEngine.cs` (pure C#, shared by Strategy + AddOn + Python); logic battery `src/ta_foundation/analysis/exits/pantheon_trail_battery.py` + `pantheon_stop_engine.py` + tests; live AddOn rig `D:\NinjatraderAddons\PantheonTestHarness\` (headless drive via `C:\temp\pantheon_cmd.txt`). Change a stop branch in all three (C#, Python, tests) and re-run the battery.

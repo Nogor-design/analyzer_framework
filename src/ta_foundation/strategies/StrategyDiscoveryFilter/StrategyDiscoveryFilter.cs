@@ -23,8 +23,9 @@
 //  [B] Session Filter     → AllowRTH, AllowONH, AllowETH,
 //                           RthStartH, RthStartM, RthEndH, RthEndM
 //  [C] Direction Filter   → AllowLong, AllowShort
-//  [D] Entry Signal       → EntryEmaPeriod (crossover), RequireEntryConfirmation,
-//                           ConfirmAtrMultiple
+//  [D] Entry Signal       → EntryEmaPeriod (fast leg), SlowEmaPeriod (slow leg),
+//                           EntrySignal = EmaCross | SmaCross | candle/breakout family,
+//                           RequireEmaConfirmation, RequireMinAtrMultiple
 //  [E] Exit Policy        → ExitPolicy, StopTicks, TargetTicks,
 //                           AtrTrailMultiple, ChandelierLookback,
 //                           GivebackPct, BreakEvenTriggerTicks, BreakEvenPlusTicks
@@ -74,11 +75,13 @@ namespace NinjaTrader.NinjaScript.Strategies
     public enum SdfExitPolicy
     {
         FixedRR         = 0,   // Fixed stop + fixed target (ticks)
-        AtrTrail        = 1,   // ATR-multiple trailing stop
-        Chandelier      = 2,   // Highest-high / lowest-low trailing stop
-        Giveback        = 3,   // Exit when GivebackPct% of open profit is given back
+        AtrTrail        = 1,   // explicit working stop (ExitLong/ShortStopMarket + ChangeOrder),
+                               // trails watermark - AtrTrailMultiple × ATR(at entry), monotone
+        Chandelier      = 2,   // same watermark trail as AtrTrail (discovery exit-sim models
+                               // both identically); ChandelierLookback is NOT used
+        Giveback        = 3,   // Exit when GivebackPct% of open profit is given back (no hard stop)
         FixedStop       = 4,   // Fixed stop only; let session close handle target
-        BreakEvenOnly   = 5,   // Move stop to breakeven after trigger, no trail
+        BreakEvenOnly   = 5,   // Initial StopTicks stop, then move to breakeven after trigger
     }
 
     /// <summary>
@@ -94,7 +97,7 @@ namespace NinjaTrader.NinjaScript.Strategies
     /// </summary>
     public enum SdfEntrySignal
     {
-        EmaCross          = 0,   // legacy: CrossAbove(fastEma, slowEma)
+        EmaCross          = 0,   // legacy: CrossAbove(fastEma, slowEma) on EMAs
         LargeBody         = 1,   // detect_large_body
         PinBarBullish     = 2,   // detect_pin_bar_bullish  (long only)
         PinBarBearish     = 3,   // detect_pin_bar_bearish  (short only)
@@ -105,6 +108,9 @@ namespace NinjaTrader.NinjaScript.Strategies
         Doji              = 8,   // detect_doji (both directions)
         CleanBreakoutBar  = 9,   // detect_clean_breakout_bar
         NbarBreakout      = 10,  // breakout family: close beyond prior N-bar high/low
+        SmaCross          = 11,  // SMA cross: CrossAbove(fastSma, slowSma); mirrors
+                                 // PantheonMasterBotV01TesterV2 (SMA 50/200) so its
+                                 // on-disk optimizer results can be replayed here.
     }
 
     /// <summary>
@@ -395,8 +401,11 @@ namespace NinjaTrader.NinjaScript.Strategies
         // Indicators
         private ADX  adxIndicator;
         private ATR  atrPrimary;
-        private EMA  entryEma;
-        private EMA  regimeEma;
+        private EMA  entryEma;     // EmaCross fast leg  = EMA(EntryEmaPeriod)
+        private EMA  slowEma;      // EmaCross slow leg  = EMA(SlowEmaPeriod)
+        private SMA  fastSma;      // SmaCross fast leg  = SMA(EntryEmaPeriod)
+        private SMA  slowSma;      // SmaCross slow leg  = SMA(SlowEmaPeriod)
+        private EMA  regimeEma;    // regime direction check only = EMA(RegimeEmaPeriod)
 
         // Rolling ATR percentile
         private SdfRollingPercentile atrPercentile;
@@ -408,17 +417,32 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         // Cached ATR
         private double currentAtr = 1.0;
-
-        // Chandelier tracking
-        private double highSinceEntry = 0.0;
-        private double lowSinceEntry  = double.MaxValue;
+        // ATR frozen at entry. The trail distance for AtrTrail/Chandelier uses this
+        // constant value for the whole trade, matching the discovery exit-sim's
+        // atr_entry (analysis/exits/simulate.py) rather than a per-bar ATR.
+        private double atrAtEntry  = 1.0;
 
         // Giveback / break-even tracking
         private double peakOpenProfit  = 0.0;
         private bool   breakEvenActive = false;
 
-        // Dynamic stop order reference
-        private Order dynamicStopOrder = null;
+        // ── Explicit trailing-stop machinery (AtrTrail / Chandelier) ─────────
+        // Bit-parity path with analysis/exits/simulate.py: a real working stop
+        // order (ExitLong/ShortStopMarket) that fills intrabar at the stop price
+        // and is ratcheted via ChangeOrder to max(initial, watermark - dist).
+        // Used in BOTH backtest and live so the two share one mechanism — unlike
+        // PantheonMaster's managed-backtest / explicit-live split (the trail trap).
+        private Order  activeStopOrder        = null;
+        private double entryFillPrice         = 0.0;
+        private double lastSubmittedStopPrice = 0.0;
+        private double highSinceEntry         = 0.0;          // long watermark (bar high)
+        private double lowSinceEntry          = double.MaxValue; // short watermark (bar low)
+
+        // Stable order signal names (entry names match PlaceEntry's "Long"/"Short").
+        private const string LongEntrySig  = "Long";
+        private const string ShortEntrySig = "Short";
+        private const string LongStopSig   = "SdfLongStop";
+        private const string ShortStopSig  = "SdfShortStop";
 
         // Daily risk limits
         private bool   allowTrading         = true;
@@ -459,6 +483,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                 StartBehavior                           = StartBehavior.WaitUntilFlat;
                 StopTargetHandling                      = StopTargetHandling.PerEntryExecution;
                 TraceOrders                             = false;
+                // Explicit live stops can momentarily compute a wrong-side price when a
+                // fast feed (Market Replay) gaps through the stop distance; ignore those
+                // rejects rather than terminating the strategy. The side-of-market guards
+                // in SubmitInitialStop / MoveStopIfImproved already clamp the price.
+                RealtimeErrorHandling                   = RealtimeErrorHandling.StopCancelCloseIgnoreRejects;
 
                 // ── A: Regime Filter ─────────────────────────────────────────
                 RegimeMode              = SdfMarketRegimeMode.TrendingOnly;
@@ -544,6 +573,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                 adxIndicator  = ADX(AdxPeriod);
                 atrPrimary    = ATR(AtrPeriod);
                 entryEma      = EMA(EntryEmaPeriod);
+                slowEma       = EMA(SlowEmaPeriod);
+                fastSma       = SMA(EntryEmaPeriod);
+                slowSma       = SMA(SlowEmaPeriod);
                 regimeEma     = EMA(RegimeEmaPeriod);
                 atrPercentile = new SdfRollingPercentile(AtrLookbackBars);
 
@@ -555,6 +587,12 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
             else if (State == State.Realtime)
             {
+                // Swap any backtest stop-order reference for its realtime equivalent
+                // before flattening (exits/managed_dynamic_stop.md): a historical Order
+                // ref must not be ChangeOrder'd live.
+                if (activeStopOrder != null)
+                    activeStopOrder = GetRealtimeOrder(activeStopOrder);
+
                 // Flatten any open position from historical replay on realtime start
                 ExitLong();
                 ExitShort();
@@ -562,6 +600,66 @@ namespace NinjaTrader.NinjaScript.Strategies
                 sessionOpenCumProfit  = SystemPerformance.AllTrades.TradesPerformance.Currency.CumProfit;
                 sessionOpenTradeCount = SystemPerformance.AllTrades.Count;
             }
+        }
+
+        // =====================================================================
+        // Order / execution callbacks — explicit trailing-stop lifecycle
+        // (AtrTrail / Chandelier only; managed policies don't use these)
+        // =====================================================================
+
+        protected override void OnExecutionUpdate(Execution execution, string executionId,
+            double price, int quantity, MarketPosition marketPosition,
+            string orderId, DateTime time)
+        {
+            if (execution == null || execution.Order == null)
+                return;
+
+            string n = execution.Order.Name;
+            bool isEntryFill = n == LongEntrySig || n == ShortEntrySig;
+            bool isStopFill  = n == LongStopSig  || n == ShortStopSig;
+
+            // Entry filled → seed the trade's watermark/ATR from the REAL fill price and
+            // submit the working stop (explicit trail policies only). entryFillPrice is the
+            // execution price because Position.AveragePrice is not settled here yet.
+            if (isEntryFill && Position.MarketPosition != MarketPosition.Flat)
+            {
+                entryFillPrice = price;
+                highSinceEntry = price;
+                lowSinceEntry  = price;
+                peakOpenProfit = 0.0;
+                breakEvenActive = false;
+
+                if (IsExplicitTrailPolicy)
+                    SubmitInitialStop();
+            }
+
+            // Working stop filled → position closed; drop the reference.
+            if (isStopFill && Position.MarketPosition == MarketPosition.Flat)
+            {
+                activeStopOrder        = null;
+                lastSubmittedStopPrice = 0.0;
+            }
+        }
+
+        protected override void OnOrderUpdate(Order order, double limitPrice, double stopPrice,
+            int quantity, int filled, double averageFillPrice,
+            OrderState orderState, DateTime time, ErrorCode error, string comment)
+        {
+            if (order == null)
+                return;
+            if (order.Name != LongStopSig && order.Name != ShortStopSig)
+                return;
+
+            bool isTerminal = orderState == OrderState.Cancelled
+                           || orderState == OrderState.Filled
+                           || orderState == OrderState.Rejected;
+
+            // Keep the latest live reference; null it on any terminal state so a stale
+            // historical/closed ref is never ChangeOrder'd (exits/managed_dynamic_stop.md).
+            if (isTerminal)
+                activeStopOrder = null;
+            else
+                activeStopOrder = order;
         }
 
         // =====================================================================
@@ -653,6 +751,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (!allowTrading)
             {
+                // Cancel the working trail stop first so it can't outlive the flatten as
+                // an orphan order, then close any open position.
+                CancelStopIfActive();
                 ExitLong("DailyLimit");
                 ExitShort("DailyLimit");
                 return;
@@ -712,9 +813,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (EntrySignal == SdfEntrySignal.EmaCross)
             {
-                // Legacy baseline entry.
-                longSignal  = CrossAbove(entryEma, regimeEma, 1);
-                shortSignal = CrossBelow(entryEma, regimeEma, 1);
+                // Legacy baseline entry: fast EMA crossing the slow EMA.
+                // Slow leg is SlowEmaPeriod (group D), NOT the regime EMA — the
+                // regime EMA (RegimeEmaPeriod, group A) is reserved for the
+                // trending_up/down direction check in the regime classifier.
+                longSignal  = CrossAbove(entryEma, slowEma, 1);
+                shortSignal = CrossBelow(entryEma, slowEma, 1);
+                return;
+            }
+
+            if (EntrySignal == SdfEntrySignal.SmaCross)
+            {
+                // SMA cross — mirrors PantheonMasterBotV01TesterV2's fast/slow SMA
+                // crossover so its on-disk optimizer results can be replayed.
+                longSignal  = CrossAbove(fastSma, slowSma, 1);
+                shortSignal = CrossBelow(fastSma, slowSma, 1);
                 return;
             }
 
@@ -861,14 +974,20 @@ namespace NinjaTrader.NinjaScript.Strategies
             string signalName = isLong ? "Long" : "Short";
             ResetEntryTracking(isLong);
 
+            // Freeze ATR for the trade. ApplyEntryExits arms the MANAGED protective
+            // orders (FixedRR/FixedStop/BreakEvenOnly) here, before entry. The EXPLICIT
+            // trail policies (AtrTrail/Chandelier) submit their working stop on the fill
+            // instead (OnExecutionUpdate → SubmitInitialStop), so ApplyEntryExits is a
+            // no-op for them.
+            atrAtEntry = currentAtr > 0 ? currentAtr : atrAtEntry;
+            ApplyEntryExits(signalName);
+
             switch (TimingMode)
             {
                 case SdfTimingMode.NextOpen:
                     // Market on bar close → fills at the next bar's open.
                     if (isLong) EnterLong(Contracts, signalName);
                     else        EnterShort(Contracts, signalName);
-                    ApplyFixedExits(signalName);
-                    LogEntry(signalName);
                     break;
 
                 case SdfTimingMode.BreakExtreme:
@@ -882,8 +1001,6 @@ namespace NinjaTrader.NinjaScript.Strategies
                         ? EnterLongStopMarket(0, true, Contracts, trigger, signalName)
                         : EnterShortStopMarket(0, true, Contracts, trigger, signalName);
                     pendingEntryBar = CurrentBar;
-                    ApplyFixedExits(signalName);
-                    LogEntry(signalName);
                     break;
                 }
 
@@ -895,26 +1012,58 @@ namespace NinjaTrader.NinjaScript.Strategies
                         ? EnterLongLimit(0, true, Contracts, mid, signalName)
                         : EnterShortLimit(0, true, Contracts, mid, signalName);
                     pendingEntryBar = CurrentBar;
-                    ApplyFixedExits(signalName);
-                    LogEntry(signalName);
                     break;
                 }
             }
+
+            LogEntry(signalName);
         }
 
         /// <summary>
-        /// Attach fixed stop/target for FixedRR / FixedStop policies. For named
-        /// entry signals NinjaTrader applies these on fill, so it is safe to set
-        /// them alongside a stop/limit entry submission.
+        /// Arm the protective exit order(s) for the active ExitPolicy.
+        ///
+        /// Two mechanisms, never mixed on the same position (CLAUDE.md NT order rule):
+        ///   * MANAGED (FixedRR / FixedStop / BreakEvenOnly) — SetStopLoss / SetProfitTarget,
+        ///     armed here BEFORE entry. BreakEvenOnly gets an initial StopTicks stop so the
+        ///     position is never naked before the break-even trigger (ManageBreakEven moves it).
+        ///   * EXPLICIT (AtrTrail / Chandelier) — a working ExitLong/ShortStopMarket submitted
+        ///     on the entry fill in OnExecutionUpdate and ratcheted via ChangeOrder. Nothing is
+        ///     armed here; IsExplicitTrailPolicy gates the fill-time submission. This is the
+        ///     bit-parity path with analysis/exits/simulate.py (intrabar stop fill at the stop
+        ///     price; monotone stop = max(initial, watermark - mult*atr_entry)).
+        ///   * Giveback — no hard stop, matching the sim's GivebackAfterMfePolicy.
         /// </summary>
-        private void ApplyFixedExits(string signalName)
+        private void ApplyEntryExits(string signalName)
         {
-            if (ExitPolicy == SdfExitPolicy.FixedRR || ExitPolicy == SdfExitPolicy.FixedStop)
-                SetStopLoss(signalName, CalculationMode.Ticks, StopTicks, false);
+            switch (ExitPolicy)
+            {
+                case SdfExitPolicy.FixedRR:
+                    SetStopLoss(signalName, CalculationMode.Ticks, StopTicks, false);
+                    SetProfitTarget(signalName, CalculationMode.Ticks, TargetTicks);
+                    break;
 
-            if (ExitPolicy == SdfExitPolicy.FixedRR)
-                SetProfitTarget(signalName, CalculationMode.Ticks, TargetTicks);
+                case SdfExitPolicy.FixedStop:
+                    SetStopLoss(signalName, CalculationMode.Ticks, StopTicks, false);
+                    break;
+
+                case SdfExitPolicy.AtrTrail:
+                case SdfExitPolicy.Chandelier:
+                    // Explicit stop submitted on fill (OnExecutionUpdate → SubmitInitialStop).
+                    break;
+
+                case SdfExitPolicy.BreakEvenOnly:
+                    SetStopLoss(signalName, CalculationMode.Ticks, StopTicks, false);
+                    break;
+
+                case SdfExitPolicy.Giveback:
+                    // No protective stop — matches discovery GivebackAfterMfePolicy.
+                    break;
+            }
         }
+
+        // True for the explicit working-stop trailing policies.
+        private bool IsExplicitTrailPolicy =>
+            ExitPolicy == SdfExitPolicy.AtrTrail || ExitPolicy == SdfExitPolicy.Chandelier;
 
         // =====================================================================
         // Filter evaluation — mirrors Strategy Discovery condition logic
@@ -1036,12 +1185,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             bool isLong = Position.MarketPosition == MarketPosition.Long;
 
-            // Track high/low since entry for Chandelier
-            if (isLong)
-                highSinceEntry = Math.Max(highSinceEntry, High[0]);
-            else
-                lowSinceEntry  = Math.Min(lowSinceEntry, Low[0]);
-
             // Track peak open profit for Giveback
             double openProfit = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
             peakOpenProfit = Math.Max(peakOpenProfit, openProfit);
@@ -1049,11 +1192,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             switch (ExitPolicy)
             {
                 case SdfExitPolicy.AtrTrail:
-                    ManageAtrTrail(isLong);
-                    break;
-
                 case SdfExitPolicy.Chandelier:
-                    ManageChandelier(isLong);
+                    ManageExplicitTrail(isLong);
                     break;
 
                 case SdfExitPolicy.Giveback:
@@ -1064,59 +1204,130 @@ namespace NinjaTrader.NinjaScript.Strategies
                     ManageBreakEven(isLong, openProfit);
                     break;
 
-                // FixedRR and FixedStop are managed by SetStopLoss / SetProfitTarget
-                // called at entry time — nothing to do here.
+                // FixedRR / FixedStop use SetStopLoss / SetProfitTarget armed at entry.
             }
         }
 
-        // ATR trail: stop trails at entryPrice ± (AtrTrailMultiple × ATR)
-        private void ManageAtrTrail(bool isLong)
-        {
-            double trailDist = AtrTrailMultiple * currentAtr;
-            if (isLong)
-            {
-                double stopPrice = High[0] - trailDist;
-                if (Close[0] <= stopPrice)
-                {
-                    ExitLong("AtrTrail");
-                    LogExit("Long", "ATR trail hit");
-                }
-            }
-            else
-            {
-                double stopPrice = Low[0] + trailDist;
-                if (Close[0] >= stopPrice)
-                {
-                    ExitShort("AtrTrail");
-                    LogExit("Short", "ATR trail hit");
-                }
-            }
-        }
+        // =====================================================================
+        // Explicit working-stop trailing (AtrTrail / Chandelier) — bit-parity
+        // with analysis/exits/simulate.py. One mechanism in backtest AND live.
+        // =====================================================================
 
-        // Chandelier: stop at highest-high (for longs) or lowest-low (for shorts)
-        // over ChandelierLookback bars, minus/plus ATR multiple
-        private void ManageChandelier(bool isLong)
+        /// <summary>
+        /// Ratchet the working stop each bar: watermark = bar extreme since entry,
+        /// proposed stop = watermark -/+ AtrTrailMultiple*atrAtEntry (frozen ATR),
+        /// only ever tightened (MoveStopIfImproved). The initial StopTicks stop is
+        /// submitted on fill in SubmitInitialStop; the effective stop is therefore
+        /// max(initial, watermark - dist), exactly as the sim's AtrTrail/Chandelier.
+        /// </summary>
+        private void ManageExplicitTrail(bool isLong)
         {
-            if (CurrentBar < ChandelierLookback)
+            if (activeStopOrder == null)
                 return;
 
-            double ref_price  = isLong
-                ? MAX(High, ChandelierLookback)[0]
-                : MIN(Low,  ChandelierLookback)[0];
-            double stopPrice  = isLong
-                ? ref_price - AtrTrailMultiple * currentAtr
-                : ref_price + AtrTrailMultiple * currentAtr;
+            if (isLong) highSinceEntry = Math.Max(highSinceEntry, High[0]);
+            else        lowSinceEntry  = Math.Min(lowSinceEntry,  Low[0]);
 
-            if (isLong && Close[0] <= stopPrice)
-            {
-                ExitLong("Chandelier");
-                LogExit("Long", $"Chandelier {stopPrice:F2}");
-            }
-            else if (!isLong && Close[0] >= stopPrice)
-            {
-                ExitShort("Chandelier");
-                LogExit("Short", $"Chandelier {stopPrice:F2}");
-            }
+            double dist     = AtrTrailMultiple * atrAtEntry;
+            double proposed = isLong ? highSinceEntry - dist : lowSinceEntry + dist;
+            MoveStopIfImproved(RoundToTick(proposed), isLong);
+        }
+
+        /// <summary>
+        /// Submit the initial working protective stop right after the entry fill.
+        /// Called from OnExecutionUpdate for AtrTrail / Chandelier only.
+        /// </summary>
+        private void SubmitInitialStop()
+        {
+            bool isLong = Position.MarketPosition == MarketPosition.Long;
+            int  qty    = Position.Quantity;
+            if (qty <= 0 || entryFillPrice <= 0)
+                return;
+
+            double dist = StopTicks * TickSize;
+            double stop = RoundToTick(isLong ? entryFillPrice - dist : entryFillPrice + dist);
+            string fromEntry = isLong ? LongEntrySig : ShortEntrySig;
+
+            stop = GuardStopSide(stop, isLong);
+
+            // isLiveUntilCancelled=true: submitted once, then moved via ChangeOrder
+            // across bars; without it the framework expires the resting stop at bar end.
+            if (isLong) ExitLongStopMarket(0,  true, qty, stop, LongStopSig,  fromEntry);
+            else        ExitShortStopMarket(0, true, qty, stop, ShortStopSig, fromEntry);
+
+            lastSubmittedStopPrice = stop;
+
+            if (EnableDebugPrint)
+                Print($"[SDF] INIT stop {stop:F2} dir={(isLong ? "L" : "S")} entry={entryFillPrice:F2}");
+        }
+
+        /// <summary>
+        /// Move the working stop via ChangeOrder only when the proposed price is strictly
+        /// tighter (never wider — a trail must not loosen). Live side-of-market guarded.
+        /// </summary>
+        private void MoveStopIfImproved(double proposed, bool isLong)
+        {
+            if (activeStopOrder == null || Position.MarketPosition == MarketPosition.Flat)
+                return;
+
+            bool improve = isLong
+                ? proposed > lastSubmittedStopPrice + TickSize * 0.5
+                : proposed < lastSubmittedStopPrice - TickSize * 0.5;
+            if (!improve)
+                return;
+
+            int qty = Position.Quantity;
+            if (qty <= 0)
+                return;
+
+            proposed = GuardStopSide(proposed, isLong);
+            // After guarding, re-check it is still an improvement (guard may have pulled
+            // it back to the market on a retrace — skip rather than loosen the stop).
+            bool stillImprove = isLong
+                ? proposed > lastSubmittedStopPrice + TickSize * 0.5
+                : proposed < lastSubmittedStopPrice - TickSize * 0.5;
+            if (!stillImprove)
+                return;
+
+            ChangeOrder(activeStopOrder, qty, 0, proposed);
+            lastSubmittedStopPrice = proposed;
+
+            if (EnableDebugPrint)
+                Print($"[SDF] TRAIL stop -> {proposed:F2}");
+        }
+
+        /// <summary>
+        /// Clamp a stop price to the legal side of the CURRENT market so the broker does
+        /// not reject it (buy-stop above market, sell-stop below). Only meaningful live;
+        /// in backtest Strategy Analyzer fills the resting stop intrabar without this risk,
+        /// so we leave the computed price untouched (State != Realtime).
+        /// </summary>
+        private double GuardStopSide(double stop, bool isLong)
+        {
+            if (State != State.Realtime)
+                return stop;
+
+            double bid = GetCurrentBid(), ask = GetCurrentAsk();
+            double refMkt = isLong ? (bid > 0 ? bid : 0.0) : (ask > 0 ? ask : 0.0);
+            if (refMkt <= 0)
+                refMkt = (bid > 0 && ask > 0) ? (bid + ask) * 0.5 : Close[0];
+            if (refMkt <= 0)
+                return stop;
+
+            if (isLong  && stop >= refMkt - TickSize) return RoundToTick(refMkt - TickSize);
+            if (!isLong && stop <= refMkt + TickSize) return RoundToTick(refMkt + TickSize);
+            return stop;
+        }
+
+        private double RoundToTick(double price) =>
+            Instrument.MasterInstrument.RoundToTickSize(price);
+
+        private void CancelStopIfActive()
+        {
+            if (activeStopOrder != null)
+                CancelOrder(activeStopOrder);
+            activeStopOrder        = null;
+            lastSubmittedStopPrice = 0.0;
         }
 
         // Giveback: exit when we give back GivebackPct% of peak open profit
@@ -1210,8 +1421,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         private void ResetEntryTracking(bool isLong)
         {
-            highSinceEntry  = isLong ? Close[0] : double.MinValue;
-            lowSinceEntry   = isLong ? double.MaxValue : Close[0];
             peakOpenProfit  = 0.0;
             breakEvenActive = false;
         }
@@ -1224,7 +1433,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             Print($"[SDF] ENTRY {direction} | bar={CurrentBar} " +
                   $"regime={cachedAdxRegime} vol={cachedVolRegime} session={cachedSession} " +
                   $"ADX={adxIndicator[0]:F1} ATR={currentAtr:F2} " +
-                  $"EMA(fast)={entryEma[0]:F2} EMA(slow)={regimeEma[0]:F2} " +
+                  $"sig={EntrySignal} fast={entryEma[0]:F2}/{fastSma[0]:F2} " +
+                  $"slow={slowEma[0]:F2}/{slowSma[0]:F2} regimeEMA={regimeEma[0]:F2} " +
                   $"stop={StopTicks}t target={TargetTicks}t exit={ExitPolicy}");
         }
 
@@ -1394,8 +1604,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         [NinjaScriptProperty]
         [Range(10, 500)]
-        [Display(Name = "Slow EMA Period (Regime)",
-                 Description = "Slow EMA used for both trend direction and entry confirmation.",
+        [Display(Name = "Slow MA Period",
+                 Description = "Slow leg of the entry crossover. EmaCross uses EMA(SlowMaPeriod); " +
+                               "SmaCross uses SMA(SlowMaPeriod). Independent of the Regime EMA (group A).",
                  GroupName = "D: Entry Signal", Order = 2)]
         public int SlowEmaPeriod { get; set; }
 
@@ -1571,15 +1782,18 @@ namespace NinjaTrader.NinjaScript.Strategies
         [NinjaScriptProperty]
         [Range(0.5, 6.0)]
         [Display(Name = "ATR Trail Multiple",
-                 Description = "Stop trails at High - (multiple × ATR) for longs. " +
-                               "Also used as Chandelier ATR offset.",
+                 Description = "Trail distance = multiple × ATR (frozen at entry). The working stop " +
+                               "trails the watermark by this, never wider; initial stop is StopTicks. " +
+                               "Used by both AtrTrail and Chandelier (same watermark trail).",
                  GroupName = "E: Exit Policy", Order = 4)]
         public double AtrTrailMultiple { get; set; }
 
         [NinjaScriptProperty]
         [Range(3, 100)]
         [Display(Name = "Chandelier Lookback",
-                 Description = "Bars to look back for highest-high (long) / lowest-low (short).",
+                 Description = "Vestigial — the discovery exit-sim models Chandelier as the same " +
+                               "watermark ATR trail as AtrTrail, so this is not used. Kept for " +
+                               "template/XML compatibility.",
                  GroupName = "E: Exit Policy", Order = 5)]
         public int ChandelierLookback { get; set; }
 

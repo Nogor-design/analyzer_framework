@@ -33,6 +33,7 @@ except ImportError:
     _FLASK_OK = False
 
 import pandas as pd
+from ta_foundation.web.report_assets import resolve_path_under_root, resolve_report_asset_path
 
 # ---------------------------------------------------------------------------
 # Global state (populated on startup)
@@ -1620,6 +1621,7 @@ def create_app() -> "Flask":
             batch = build_all_candidate_reports(
                 session,
                 images_dir=doc.god_images_dir or None,
+                report_asset_mode=str((request.get_json(silent=True) or {}).get("report_asset_mode") or "embedded"),
             )
         except Exception as exc:
             return jsonify({"error": f"unexpected report build error: {exc}"}), 500
@@ -1696,6 +1698,7 @@ def create_app() -> "Flask":
                 sections=sections_from_final_report_config(config),
                 output_path=output_path,
                 run_ids=run_ids,
+                report_asset_mode=str(payload.get("report_asset_mode") or "embedded"),
             )
         except OptimizerReportConfigError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -1712,6 +1715,9 @@ def create_app() -> "Flask":
         methods=["POST"],
     )
     def api_optimizer_weekly_coverage_package(session_id: str):
+        from ta_foundation.web.optimizer_candidate_report import (
+            build_session_candidate_report,
+        )
         from ta_foundation.web.optimizer_session import get_session
         from ta_foundation.web.optimizer_weekly_coverage_package import (
             WeeklyCoverageConfig,
@@ -1723,10 +1729,16 @@ def create_app() -> "Flask":
         if session is None:
             return jsonify({"error": "session not found"}), 404
         payload = request.get_json(silent=True) or {}
+        report_asset_mode = str(payload.get("report_asset_mode") or "embedded")
         try:
             result = build_weekly_coverage_package(
                 session,
                 config=WeeklyCoverageConfig.from_session(session, payload),
+            )
+            build_session_candidate_report(
+                session,
+                images_dir=session.load_document().god_images_dir or None,
+                report_asset_mode=report_asset_mode,
             )
         except WeeklyCoveragePackageError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -1769,6 +1781,7 @@ def create_app() -> "Flask":
                 session,
                 run_ids=run_ids,
                 include_all_active_templates=bool(payload.get("include_all_active_templates", False)),
+                report_asset_mode=str(payload.get("report_asset_mode") or "embedded"),
             )
         except WeeklyReportPackError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -1798,6 +1811,7 @@ def create_app() -> "Flask":
                 config=WeeklyCoverageConfig.from_session(session, payload),
                 include_fallbacks=bool(payload.get("include_fallbacks", False)),
                 target_date=payload.get("target_date") or None,
+                report_asset_mode=str(payload.get("report_asset_mode") or "embedded"),
             )
         except WeeklyCoveragePackageError as exc:
             return jsonify({"error": str(exc)}), 400
@@ -2193,6 +2207,22 @@ def create_app() -> "Flask":
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
 
+    @app.route("/optimizer/sessions/<session_id>/candidate-report_assets/<path:filename>")
+    def optimizer_session_candidate_report_asset(session_id: str, filename: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            session_candidate_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        asset_path = resolve_report_asset_path(session_candidate_report_path(session), filename)
+        if asset_path is None:
+            return abort(404)
+        return send_file(asset_path.resolve())
+
     @app.route("/optimizer/sessions/<session_id>/candidate-report-selected")
     def optimizer_selected_session_candidate_report_page(session_id: str):
         from flask import abort, send_file
@@ -2209,6 +2239,22 @@ def create_app() -> "Flask":
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
 
+    @app.route("/optimizer/sessions/<session_id>/candidate-report-selected_assets/<path:filename>")
+    def optimizer_selected_session_candidate_report_asset(session_id: str, filename: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_candidate_report import (
+            selected_session_candidate_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        asset_path = resolve_report_asset_path(selected_session_candidate_report_path(session), filename)
+        if asset_path is None:
+            return abort(404)
+        return send_file(asset_path.resolve())
+
     @app.route("/optimizer/sessions/<session_id>/weekly-coverage-package/report")
     def optimizer_weekly_coverage_package_report_page(session_id: str):
         from flask import abort, send_file
@@ -2224,6 +2270,22 @@ def create_app() -> "Flask":
         if not html_path.exists():
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-coverage-package/report_assets/<path:filename>")
+    def optimizer_weekly_coverage_package_report_asset(session_id: str, filename: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_coverage_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        asset_path = resolve_report_asset_path(weekly_coverage_report_path(session), filename)
+        if asset_path is None:
+            return abort(404)
+        return send_file(asset_path.resolve())
 
     @app.route("/optimizer/sessions/<session_id>/weekly-reports")
     def optimizer_weekly_reports_page(session_id: str):
@@ -2252,11 +2314,12 @@ def create_app() -> "Flask":
         session = get_session(session_id)
         if session is None:
             return abort(404)
-        safe_name = Path(filename).name
-        html_path = weekly_report_pack_dir(session) / safe_name
-        if not html_path.exists() or html_path.suffix.lower() != ".html":
+        target = resolve_path_under_root(weekly_report_pack_dir(session), filename)
+        if target is None:
             return abort(404)
-        return send_file(html_path.resolve(), mimetype="text/html")
+        if target.suffix.lower() == ".html":
+            return send_file(target.resolve(), mimetype="text/html")
+        return send_file(target.resolve())
 
     @app.route("/optimizer/sessions/<session_id>/weekly-reports.zip")
     def optimizer_weekly_reports_zip(session_id: str):
@@ -2294,6 +2357,22 @@ def create_app() -> "Flask":
         if not html_path.exists():
             return abort(404)
         return send_file(html_path.resolve(), mimetype="text/html")
+
+    @app.route("/optimizer/sessions/<session_id>/weekly-daily-update-report_assets/<path:filename>")
+    def optimizer_weekly_daily_update_report_asset(session_id: str, filename: str):
+        from flask import abort, send_file
+        from ta_foundation.web.optimizer_session import get_session
+        from ta_foundation.web.optimizer_weekly_coverage_package import (
+            weekly_daily_update_report_path,
+        )
+
+        session = get_session(session_id)
+        if session is None:
+            return abort(404)
+        asset_path = resolve_report_asset_path(weekly_daily_update_report_path(session), filename)
+        if asset_path is None:
+            return abort(404)
+        return send_file(asset_path.resolve())
 
     @app.route("/optimizer/sessions/<session_id>/weekly-coverage-package.zip")
     def optimizer_weekly_coverage_package_zip(session_id: str):
@@ -3131,6 +3210,7 @@ def create_app() -> "Flask":
         structural_pins = [
             "StartTimeH", "DurationTimeH", "Reverse", "averageSlow",
             "averageFast", "MaxStop", "MaxTPRatio", "Long", "Short",
+            "UseTrend", "UseTrendReverse",
         ]
         # Risk pass: from each lane winner, sweep only ProfitStop/LossStop/MaxTrades
         # and keep exactly ONE tuned variant per winner (group_by parent_candidate_id,
@@ -3173,6 +3253,8 @@ def create_app() -> "Flask":
                 {"param": "DurationTimeH", "role": "fixed", "value": duration_hours},
                 {"param": "Reverse", "role": "matrix_axis", "values": [False, True]},
                 {"param": "averageSlow", "role": "matrix_axis", "values": list(slow_ma_values)},
+                {"param": "UseTrend", "role": "fixed", "value": False},
+                {"param": "UseTrendReverse", "role": "fixed", "value": False},
             ],
             "stages": [
                 {

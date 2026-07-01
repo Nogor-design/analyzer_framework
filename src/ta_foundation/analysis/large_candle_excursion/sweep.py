@@ -570,7 +570,7 @@ def run_large_candle_excursion(
     # Build target curves from trade combo results (requires trade_analysis + enabled)
     target_curves_result: Dict = {"enabled": False}
     if run_target_curves and isinstance(trade_analysis_result, dict):
-        raw_combos = trade_analysis_result.get("combo_results", [])
+        raw_combos = trade_analysis_result.get("combo_results") or trade_analysis_result.get("trade_combo_results", [])
         if raw_combos:
             curves = build_target_curves(raw_combos, config=tc_cfg)
             target_curves_result = {

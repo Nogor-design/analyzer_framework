@@ -274,6 +274,13 @@
           Build package &amp; reports
         </button>
       </div>
+      <div class="flex items-center gap-3 flex-wrap mt-3">
+        <label for="report-asset-mode" class="text-xs text-slate-400">Report image mode</label>
+        <select id="report-asset-mode" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200">
+          <option value="external" selected>External files (best for online viewing)</option>
+          <option value="embedded">Embedded in HTML (single portable file)</option>
+        </select>
+      </div>
       <div id="package-status" class="text-xs text-slate-500 mt-2"></div>
       <div id="package-links" class="flex flex-wrap gap-2 mt-3 hidden">
         <a id="standard-report-link" href="#" target="_blank" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open standard report</a>
@@ -308,6 +315,7 @@ function intListFrom(id, lo, hi) {
 
 function slowMaValues() { return intListFrom("slow-ma-values", 0, 100000); }
 function startHours() { return intListFrom("start-hours", 0, 23); }
+function selectedReportAssetMode() { return $("report-asset-mode")?.value || "external"; }
 
 function updateScope() {
   const fast = stepCount(numberValue("fast-min"), numberValue("fast-max"), numberValue("fast-step"));
@@ -729,7 +737,7 @@ async function buildWeeklyPackage() {
   $("package-status").textContent = "Building weekly coverage package...";
   try {
     const data = await fetchJSON(`/api/optimizer/sessions/${sid}/weekly-coverage-package`, {
-      method: "POST", body: JSON.stringify({}),
+      method: "POST", body: JSON.stringify({ report_asset_mode: selectedReportAssetMode() }),
     });
     const r = data.result || {};
     $("report-link").href = r.report_url || `/optimizer/sessions/${info.session_id}/weekly-coverage-package/report`;
@@ -776,7 +784,7 @@ async function buildWeeklyDailyUpdate() {
   $("package-status").textContent = "Building daily update from the shipped weekly package...";
   try {
     const data = await fetchJSON(`/api/optimizer/sessions/${sid}/weekly-daily-update-report`, {
-      method: "POST", body: JSON.stringify({}),
+      method: "POST", body: JSON.stringify({ report_asset_mode: selectedReportAssetMode() }),
     });
     const r = data.result || {};
     const url = data.report_url || `/optimizer/sessions/${info.session_id}/weekly-daily-update-report`;

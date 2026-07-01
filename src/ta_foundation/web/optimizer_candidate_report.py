@@ -49,6 +49,7 @@ from ta_foundation.reports.html.builder import HtmlReportBuilder, HtmlSection
 from ta_foundation.reports.html.embed import file_to_data_uri
 from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
+from ta_foundation.web.report_assets import finalize_report_html, normalize_report_asset_mode
 from ta_foundation.web.optimizer_session import OptimizerSession
 
 
@@ -267,6 +268,7 @@ def build_candidate_report(
     sections: list[str | dict[str, Any]] | None = None,
     images_dir: Path | str | None = None,
     output_dir: Path | None = None,
+    report_asset_mode: str = "embedded",
 ) -> CandidateReportResult:
     """Build a single per-candidate HTML report.
 
@@ -286,7 +288,11 @@ def build_candidate_report(
     output_dir : Path | None
         Where to write the HTML. Defaults to
         ``<session>/deployment_package/per_candidate_reports/``.
+    report_asset_mode : str
+        ``embedded`` keeps self-contained HTML; ``external`` writes sibling
+        image files for lighter online viewing.
     """
+    report_asset_mode = normalize_report_asset_mode(report_asset_mode)
     pkg_dir = session.directory / "deployment_package"
     candidate_dir = _resolve_candidate_results_dir(pkg_dir, run_id)
     if candidate_dir is None:
@@ -386,7 +392,13 @@ def build_candidate_report(
     html = builder.build(context)
 
     out_path = out_dir / f"{run_id}.html"
+    html, asset_notes = finalize_report_html(
+        html,
+        out_path,
+        asset_mode=report_asset_mode,
+    )
     out_path.write_text(html, encoding="utf-8")
+    notes.extend(asset_notes)
 
     return CandidateReportResult(
         run_id=run_id,
@@ -402,6 +414,7 @@ def build_all_candidate_reports(
     sections: list[str | dict[str, Any]] | None = None,
     images_dir: Path | str | None = None,
     purge_existing: bool = True,
+    report_asset_mode: str = "embedded",
 ) -> CandidateReportBatchResult:
     """Build a report for every candidate in the final + promoted result dirs.
 
@@ -414,6 +427,7 @@ def build_all_candidate_reports(
     HTML so stale reports don't survive a rebuild. The output directory
     itself is preserved.
     """
+    report_asset_mode = normalize_report_asset_mode(report_asset_mode)
     pkg_dir = session.directory / "deployment_package"
     final_results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
     promoted_results_dir = pkg_dir / "promoted_handoff" / "nt8_backtest_results"
@@ -449,7 +463,11 @@ def build_all_candidate_reports(
         run_id = cand.name
         try:
             result = build_candidate_report(
-                session, run_id, sections=sections, images_dir=images_dir,
+                session,
+                run_id,
+                sections=sections,
+                images_dir=images_dir,
+                report_asset_mode=report_asset_mode,
             )
             per.append(result)
         except CandidateReportError as exc:
@@ -477,6 +495,7 @@ def build_session_candidate_report(
     run_ids: list[str] | tuple[str, ...] | set[str] | None = None,
     enrich_packages: bool = True,
     enrich_detail_charts: bool = True,
+    report_asset_mode: str = "embedded",
 ) -> SessionCandidateReportResult:
     """Build one HTML report that ingests every final candidate together.
 
@@ -484,6 +503,7 @@ def build_session_candidate_report(
     ``ctx["packages"]`` instead of the single-package context used by
     per-candidate reports.
     """
+    report_asset_mode = normalize_report_asset_mode(report_asset_mode)
     pkg_dir = session.directory / "deployment_package"
     results_dir = pkg_dir / "final_backtest_handoff" / "nt8_backtest_results"
     out_path = output_path or (pkg_dir / SESSION_CANDIDATE_REPORT_FILENAME)
@@ -577,7 +597,13 @@ def build_session_candidate_report(
         html = _apply_dark_report_shell(html)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    html, asset_notes = finalize_report_html(
+        html,
+        out_path,
+        asset_mode=report_asset_mode,
+    )
     out_path.write_text(html, encoding="utf-8")
+    notes.extend(asset_notes)
 
     cards_dir: Path | None = None
     cards_exported = 0
@@ -611,6 +637,7 @@ def build_final_template_card_report(
     export_exec_cards_png: bool = True,
     exec_cards_dir: Path | None = None,
     week_ending: str | None = None,
+    report_asset_mode: str = "embedded",
 ) -> SessionCandidateReportResult:
     sections = [
         DAILY_WINNER_SECTION,
@@ -630,6 +657,7 @@ def build_final_template_card_report(
         export_exec_cards_png=export_exec_cards_png,
         exec_cards_dir=exec_cards_dir or (pkg_dir / "cards"),
         dark_shell=True,
+        report_asset_mode=report_asset_mode,
     )
 
 

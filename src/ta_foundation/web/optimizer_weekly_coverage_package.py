@@ -152,6 +152,7 @@ def build_weekly_daily_update_report(
     config: WeeklyCoverageConfig | None = None,
     include_fallbacks: bool = False,
     target_date: str | None = None,
+    report_asset_mode: str = "embedded",
 ):
     """Build a lightweight progress report for this week's shipped templates.
 
@@ -222,6 +223,7 @@ def build_weekly_daily_update_report(
         dark_shell=True,
         run_ids=run_ids,
         enrich_packages=False,
+        report_asset_mode=report_asset_mode,
     )
     return result.__class__(
         **{
