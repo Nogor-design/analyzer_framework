@@ -1,0 +1,56 @@
+{
+  "template_name": "hybrid_reversal_template",
+  "allow_entry": true,
+  "stop_mode": "signal_extreme_capped",
+  "hard_stop_ticks_cap": 48,
+  "initial_target_mode": "branch_after_two_bars",
+  "classification_rules": {
+    "lookahead_bars": 2,
+    "explosive_start": {
+      "max_adverse_move_2bar_pct": 10,
+      "min_favorable_move_2bar_pct": 60,
+      "branch": "runner_reversal_template"
+    },
+    "orderly_start": {
+      "max_adverse_move_2bar_pct": 15,
+      "min_favorable_move_2bar_pct": 45,
+      "branch": "expansion_reversal_template"
+    },
+    "weak_start": {
+      "max_adverse_move_2bar_pct": 30,
+      "min_favorable_move_2bar_pct": 20,
+      "branch": "scalp_reversal_template",
+      "no_midpoint_reclaim_action": "SCRATCH"
+    }
+  },
+  "partial_rules": {
+    "enabled": true,
+    "partial_size_pct": 50,
+    "partial_target_ticks": 16
+  },
+  "runner_rules": {
+    "enabled": true,
+    "trail_mode": "branch_defined"
+  },
+  "downgrade_rules": {
+    "enabled": true,
+    "rebreak_within_bars": 2,
+    "action": "DOWNGRADE_TO_SCALP"
+  },
+  "scratch_rules": {
+    "enabled": true,
+    "weak_start_without_midpoint_reclaim": true,
+    "action": "SCRATCH"
+  },
+  "session_rules": {
+    "enabled": true,
+    "allowed_sessions": ["RTH_OPEN", "RTH_MID"],
+    "session_start": "08:30:00",
+    "session_end": "15:00:00",
+    "timezone": "America/Denver"
+  },
+  "max_hold_bars": 20,
+  "max_adds": 0,
+  "allow_scale_in": false,
+  "flatten_on_session_end": true
+}

@@ -199,14 +199,16 @@ def render_ma_discovery_overview(ctx: dict) -> str:
 
     if "ma_discovery" in ctx:
         md_data = ctx["ma_discovery"]
-    elif ctx.get("all_options", {}).get("ma_discovery"):
-        md_data = ctx["all_options"]["ma_discovery"]
     else:
-        for pkg in (ctx.get("packages") or {}).values():
-            derived = getattr(pkg, "metadata", {}).get("derived", {})
-            if "ma_discovery" in derived:
-                md_data = derived["ma_discovery"]
-                break
+        ao_md = ctx.get("all_options", {}).get("ma_discovery")
+        if ao_md and isinstance(ao_md, dict) and "sweep_results" in ao_md:
+            md_data = ao_md
+        else:
+            for pkg in (ctx.get("packages") or {}).values():
+                derived = getattr(pkg, "metadata", {}).get("derived", {})
+                if "ma_discovery" in derived:
+                    md_data = derived["ma_discovery"]
+                    break
 
     if not md_data:
         return (

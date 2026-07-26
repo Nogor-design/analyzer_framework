@@ -170,20 +170,22 @@ def build_daily_matrix(packages: Dict[str, object]) -> DailyMatrix:
         )
 
     all_dates = pd.DatetimeIndex(sorted(set().union(*[set(df["date"]) for df in per_run.values()])))
-    pnl = pd.DataFrame(index=all_dates)
-    traded = pd.DataFrame(index=all_dates)
+    pnl_cols: dict[str, pd.Series] = {}
+    traded_cols: dict[str, pd.Series] = {}
 
     for run_id, df in per_run.items():
         s = df.set_index("date")["net_profit"].reindex(all_dates)
-        pnl[run_id] = s
+        pnl_cols[run_id] = s
 
         if "trades" in df.columns:
             t = df.set_index("date")["trades"].reindex(all_dates).fillna(0).astype(int)
-            traded[run_id] = t > 0
+            traded_cols[run_id] = t > 0
         else:
             # If we have a net_profit row for the date, treat it as traded
-            traded[run_id] = s.notna()
+            traded_cols[run_id] = s.notna()
 
+    pnl = pd.DataFrame(pnl_cols, index=all_dates)
+    traded = pd.DataFrame(traded_cols, index=all_dates).astype(bool)
     cum = pnl.fillna(0.0).cumsum()
     combined_pnl = pnl.fillna(0.0).sum(axis=1)
     combined_cum = combined_pnl.cumsum()

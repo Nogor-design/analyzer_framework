@@ -1,7 +1,17 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Tuple
+from zoneinfo import ZoneInfo
+
+TZ_DENVER = ZoneInfo("America/Denver")
+
+
+def _parse_iso_day(value: str) -> date | None:
+    try:
+        return datetime.fromisoformat(str(value)).date()
+    except Exception:
+        return None
 
 
 def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> List[str]:
@@ -10,22 +20,36 @@ def compute_shared_trading_days(packages: Dict[str, Any], days_back: int) -> Lis
 
     Strategy:
       - collect all dates present in pkg.metadata["derived"]["daily_outcomes"]["by_date"]
-      - sort
-      - take last N
+      - anchor the strip to the latest date present in the report data
+      - return the most recent N weekdays ending on that date
 
-    This avoids injecting weekends/holidays by default and matches "days with data".
+    Anchoring to the data, not the wall clock, keeps regenerated historical
+    reports from showing extra no-trade boxes for days after the backtest ended.
     """
-    all_days: List[str] = []
+    all_days: List[datetime.date] = []
     for pkg in packages.values():
         derived = (getattr(pkg, "metadata", {}) or {}).get("derived", {}) or {}
         outcomes = (derived.get("daily_outcomes") or {}).get("by_date", {}) or {}
-        all_days.extend(outcomes.keys())
+        all_days.extend(d for d in (_parse_iso_day(key) for key in outcomes.keys()) if d is not None)
 
-    # De-dupe + sort lexicographically works for ISO dates.
-    unique_sorted = sorted(set(all_days))
+    today = max(all_days) if all_days else datetime.now(TZ_DENVER).date()
     if days_back <= 0:
-        return unique_sorted
-    return unique_sorted[-days_back:]
+        start_day = min(all_days) if all_days else today
+        total_days = max(0, (today - start_day).days) + 1
+        return [
+            (start_day + timedelta(days=i)).isoformat()
+            for i in range(total_days)
+            if (start_day + timedelta(days=i)).weekday() < 5
+        ]
+
+    out: List[date] = []
+    cursor = today
+    while len(out) < days_back:
+        if cursor.weekday() < 5:
+            out.append(cursor)
+        cursor -= timedelta(days=1)
+    out.reverse()
+    return [day.isoformat() for day in out]
 
 
 def render_wlr_strip(

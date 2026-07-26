@@ -1,0 +1,80 @@
+group: "D"
+label: "Conflict / Sequencing"
+
+tests:
+
+  - test_id: "P2-D01"
+    title: "ENTER_SHORT while Long position is live is gate-rejected"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: any_required
+    required_events:
+      - id: conflicting_entry_rejected
+        source: outbox
+        status: REJECTED
+        proof_weight: strong
+      - id: conflicting_entry_gate_log
+        source: log
+        event_type: GATE
+        proof_weight: moderate
+    notes: >
+      A conflicting-direction entry must be blocked. REJECTED outbox event is
+      strong evidence; GATE log record is moderate. any_required: one is enough.
+      This is blocking_for_sim_readiness — a live account could double-size
+      if this gate fails.
+
+  - test_id: "P2-D02"
+    title: "EXIT_ALL then new ENTER_LONG: second entry accepted after flat"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: second_entry_accepted
+        source: outbox
+        status: ACCEPTED
+        proof_weight: strong
+      - id: second_accept_log
+        source: log
+        event_type: ACCEPT
+        proof_weight: moderate
+    notes: >
+      The test case collects the evidence bundle from lb3/ob3 — baselines
+      captured AFTER the exit flat was confirmed and BEFORE the second
+      ENTER_LONG was injected. This prevents the first entry's ACCEPT event
+      from satisfying the matcher. The flat confirmation is proved by the
+      test case's own wait_for_flat() call (fallback logic); it is not
+      included in the spec window to avoid baseline ambiguity.
+
+  - test_id: "P2-D03"
+    title: "MOVE_STOP before fill is gated or rejected by shell"
+    severity: normal
+    automation_level: SEMI_AUTOMATED
+    blocking_for_sim_readiness: false
+    pass_mode: any_required
+    required_events:
+      - id: premature_move_rejected
+        source: outbox
+        status: REJECTED
+        proof_weight: strong
+      - id: premature_move_gate
+        source: log
+        event_type: GATE
+        proof_weight: moderate
+    checkpoint_rules:
+      - checkpoint_label: "MOVE_STOP before fill outcome"
+        required: true
+        if_missing: pass_unverified
+    downgrade_rules:
+      - condition_type: checkpoint_missing
+        ref: "MOVE_STOP before fill outcome"
+        action: pass_unverified
+        reason: >
+          Operator confirmation of premature MOVE_STOP outcome not obtained.
+          File evidence may be ambiguous without human NT8 context.
+    notes: >
+      Timing-sensitive: MOVE_STOP injected 200ms after ENTER_LONG, before fill.
+      If the fill arrives before the MOVE_STOP is processed, the move may be
+      accepted (not a bug). The checkpoint asks the operator to adjudicate.
+      Not blocking_for_sim_readiness due to inherent timing ambiguity.

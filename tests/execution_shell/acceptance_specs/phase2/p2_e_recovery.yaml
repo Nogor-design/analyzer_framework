@@ -1,0 +1,82 @@
+group: "E"
+label: "Restart & Recovery"
+
+tests:
+
+  - test_id: "P2-E01"
+    title: "SHELL_READY outbox event written when strategy initializes"
+    severity: critical
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: shell_ready_event
+        source: outbox
+        status: SHELL_READY
+        proof_weight: strong
+    notes: >
+      Requires Phase 2 shell change: SHELL_READY event emitted in DataLoaded.
+      The test searches ALL outbox events (since_count=0) so this passes if any
+      SHELL_READY event exists from the current NT8 session.
+      Blocking: without SHELL_READY, recovery observability is completely absent.
+
+  - test_id: "P2-E02"
+    title: "SHELL_READY detail shows mode=Idle after clean restart with no position"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: shell_ready_idle
+        source: outbox
+        status: SHELL_READY
+        field: detail
+        op: contains
+        value: "mode=Idle"
+        proof_weight: strong
+    notes: >
+      Checks that the SHELL_READY detail field contains mode=Idle.
+      This uses the detail field directly (string containment check).
+      If the shell loaded while already in a position, the mode would be
+      InPosition or Recovery — the test case returns SKIP in that case.
+
+  - test_id: "P2-E03"
+    title: "Restart NT8 while in position: shell recovers state and re-attaches stop"
+    severity: critical
+    automation_level: MANUAL_REQUIRED
+    blocking_for_sim_readiness: true
+    pass_mode: manual_only
+    notes: >
+      Cannot be automated without the ability to restart NT8 programmatically.
+      The operator follows the printed procedure and records the result manually.
+      BLOCKING: this scenario is core to safe live trading.
+
+  - test_id: "P2-E04"
+    title: "After restart in-position, new ENTER_LONG is blocked until existing position exits"
+    severity: critical
+    automation_level: MANUAL_REQUIRED
+    blocking_for_sim_readiness: true
+    pass_mode: manual_only
+    notes: >
+      Depends on P2-E03 recovery setup. Cannot be automated.
+      BLOCKING: a double-position entry on recovery would be dangerous on live.
+
+  - test_id: "P2-E05"
+    title: "After clean restart with no position, new ENTER_LONG is accepted"
+    severity: high
+    automation_level: FULLY_AUTOMATED
+    blocking_for_sim_readiness: true
+    pass_mode: all_required
+    required_events:
+      - id: entry_accepted_after_restart
+        source: outbox
+        status: ACCEPTED
+        proof_weight: strong
+      - id: accept_log_after_restart
+        source: log
+        event_type: ACCEPT
+        proof_weight: moderate
+    notes: >
+      Validates that a clean restart (SHELL_READY seen, no recovered position)
+      correctly returns to Idle and accepts new entries. Both outbox ACCEPTED
+      (strong) and log ACCEPT (moderate) are required for all_required proof.

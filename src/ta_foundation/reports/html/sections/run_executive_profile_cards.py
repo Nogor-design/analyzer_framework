@@ -79,6 +79,21 @@ def _fmt_number(x: Any, decimals: int = 2) -> str:
         return str(x)
 
 
+def _float_or_none(value: Any) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        text = str(value).replace("$", "").replace(",", "").strip()
+        if text.startswith("(") and text.endswith(")"):
+            text = "-" + text[1:-1]
+        out = float(text)
+    except Exception:
+        return None
+    if out != out:
+        return None
+    return out
+
+
 def _to_bool(x: Any) -> Optional[bool]:
     if x is None:
         return None
@@ -446,6 +461,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
     detail_chart_width_px = int(options.get("detail_chart_width_px", 540))
     detail_chart_gap_px = int(options.get("detail_chart_gap_px", 16))
     detail_chart_layout = options.get("detail_chart_layout", "two-up")  # "two-up" or "stack"
+    responsive_breakpoint_px = int(options.get("responsive_breakpoint_px", 1080))
 
     days_back = int(options.get("wlr_days_back", 20))
     box_px = int(options.get("wlr_box_px", 10))
@@ -519,7 +535,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             direction_bias = "—"
 
         label = sm.get("label","-")
-        chart_values = f" {sm.get("value", "-")}  {sm.get("type","-")} "
+        chart_values = f" {sm.get('value', '-')}  {sm.get('type', '-')} "
         chart_type = sm.get("type","-")
         chart_value = sm.get("value", "-")
         max_trades = sm.get("maxtrades", "—")
@@ -562,24 +578,37 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         pf = _kpi_lookup(pkg, "profit factor")
 
+        derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
+        display_name = str(derived.get("display_name_spaced") or derived.get("display_name") or run_id)
+
         avg_win = _kpi_lookup(pkg, "avg. winning trade", "average winning trade")
         avg_loss = _kpi_lookup(pkg, "avg. losing trade", "average losing trade")
 
         avg_mae = _kpi_lookup(pkg, "avg. mae", "average mae")
         avg_mfe = _kpi_lookup(pkg, "avg. mfe", "average mfe")
         avg_etd = _kpi_lookup(pkg, "avg. etd", "average etd")
+        if avg_mae in (None, ""):
+            avg_mae = derived.get("avg_mae_usd")
+        if avg_mfe in (None, ""):
+            avg_mfe = derived.get("avg_mfe_usd")
+        if avg_etd in (None, ""):
+            avg_etd = derived.get("avg_etd_usd")
 
         mae_mfe = None
         mfe_etd = None
         try:
-            if avg_mae not in (None, "") and avg_mfe not in (None, "") and float(avg_mfe) != 0:
-                mae_mfe = float(avg_mae) / float(avg_mfe)
+            mae = _float_or_none(avg_mae)
+            mfe = _float_or_none(avg_mfe)
+            if mae is not None and mfe not in (None, 0):
+                mae_mfe = mae / mfe
         except Exception:
             mae_mfe = None
 
         try:
-            if avg_mfe not in (None, "") and avg_etd not in (None, "") and float(avg_etd) != 0:
-                mfe_etd = float(avg_mfe) / float(avg_etd)
+            mfe = _float_or_none(avg_mfe)
+            etd = _float_or_none(avg_etd)
+            if mfe is not None and etd not in (None, 0):
+                mfe_etd = mfe / etd
         except Exception:
             mfe_etd = None
 
@@ -641,6 +670,16 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append(
             """
         <style>
+        .ta-exec-card {
+          width: min(100%, CARD_WIDTH_PX) !important;
+          max-width: CARD_WIDTH_PX !important;
+          margin-left: auto;
+          margin-right: auto;
+        }
+        .ta-exec-card img {
+          max-width: 100%;
+          height: auto;
+        }
         .ta-wlr-strip-wrap { margin-top: 6px; margin-bottom: 8px; }
         .ta-wlr-strip { border-collapse: collapse; }
         .ta-wlr-box { border-radius: 0; }
@@ -793,13 +832,88 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
           font-weight:700;
         }
 
+        /* ── Reset global theme rules that bleed into exec card layout tables ── */
+
+        /* The outer .card wrapper (from builder.py) must be transparent for
+           exec cards because the card itself provides its own dark background. */
+        section#run_executive_profile_cards.card {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        section#run_executive_profile_cards.card > h2 {
+          color: #e0e6ef;
+          padding: 10px 24px 10px;
+          background: #1a2030;
+          border-bottom: 1px solid rgba(255,255,255,0.10);
+          border-radius: 12px 12px 0 0;
+          margin: 0;
+          font-size: 15px;
+        }
+
+        /* The global theme adds borders and padding to every td.
+           Reset these for exec card layout tables.
+           :not(.ta-wlr-box):not(.ta-wlr-gap) preserves WLR strip cells
+           which set their own inline padding:0 already. */
+        .ta-exec-card td:not(.ta-wlr-box):not(.ta-wlr-gap) {
+          border: none !important;
+          border-bottom: none !important;
+          border-left: none !important;
+          padding: 0 !important;
+        }
+
+        /* The global theme stripes even rows and highlights hover rows.
+           These wash out the dark background panel colours.
+           WLR boxes set their colour via inline style — exclude them so
+           win/loss/no-trade colours are preserved. */
+        .ta-exec-card tbody tr:nth-child(even) td:not(.ta-wlr-box) {
+          background: transparent;
+        }
+        .ta-exec-card tbody tr:hover td:not(.ta-wlr-box) {
+          background: transparent !important;
+          transition: none !important;
+        }
+
+        .ta-exec-detail-chart {
+          width: min(100%, DETAIL_CHART_WIDTH_PX) !important;
+          max-width: 100%;
+          height: auto;
+        }
+
+        @media (max-width: RESPONSIVE_BREAKPOINT_PX) {
+          .ta-exec-card {
+            padding: 18px !important;
+          }
+          .ta-exec-layout,
+          .ta-exec-layout tbody,
+          .ta-exec-layout tr,
+          .ta-exec-layout td.ta-exec-col {
+            display: block;
+            width: 100% !important;
+          }
+          .ta-exec-layout td.ta-exec-col {
+            padding-right: 0 !important;
+            padding-bottom: 18px !important;
+          }
+          .ta-exec-layout td.ta-exec-col:last-child {
+            padding-bottom: 0 !important;
+          }
+          .ta-exec-col-image img {
+            width: min(100%, IMAGE_WIDTH_PX) !important;
+          }
+        }
 
         </style>
-        """.strip()
+        """.replace("CARD_WIDTH_PX", f"{card_width}px")
+           .replace("DETAIL_CHART_WIDTH_PX", f"{detail_chart_width_px}px")
+           .replace("IMAGE_WIDTH_PX", f"{img_w}px")
+           .replace("RESPONSIVE_BREAKPOINT_PX", f"{responsive_breakpoint_px}px")
+           .strip()
         )
 
         # Outer 3-column table (OPEN)
-        card_parts.append('<table style="width:100%; border-collapse:collapse;">')
+        card_parts.append('<table class="ta-exec-layout" style="width:100%; border-collapse:collapse;">')
 
         # ------------------------------------------------------------
         # Row 1: Full-width W/L/NT strip + timeline
@@ -820,6 +934,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
             cell_h_px=int(options.get("timeline_cell_h_px", 10)),
             show_hour_labels=bool(options.get("timeline_show_hours", True)),
             show_summary=bool(options.get("timeline_show_summary", True)),
+            prefer_settings_window=True,
         )
 
         card_parts.append("<tr>")
@@ -844,26 +959,28 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append("<tr>")
 
         # Column 1: image (OPEN td)
-        card_parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
+        card_parts.append(
+            f'<td class="ta-exec-col ta-exec-col-image" style="width:{img_w}px; vertical-align:top; padding-right:22px;">'
+        )
         if img_uri:
             card_parts.append(
-                f'<img src="{img_uri}" style="width:{img_w}px; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
+                f'<img src="{img_uri}" style="width:min(100%, {img_w}px); max-width:100%; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
             )
         else:
-            card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(run_id)}</div>')
+            card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(display_name)}</div>')
         card_parts.append("</td>")  # Column 1 (CLOSE td)
 
 
         # Column 2: strategy + logic blocks (OPEN td)
         # card_parts.append('<td style="vertical-align:top; padding-right:26px; width:52%;">')
-        card_parts.append('<td style="vertical-align:top; padding-right:26px; width:33%;">')
+        card_parts.append('<td class="ta-exec-col ta-exec-col-profile" style="vertical-align:top; padding-right:26px; width:33%;">')
 
         # card_parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
         card_parts.append(f'<div style="{h2}">Pantheon Bot Profile</div>')
 
         # Strategy Profile block
         card_parts.append(f'<div style="{body}">')
-        card_parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(run_id)}</div>')
+        card_parts.append(f'<div><span style="font-weight:800;">Bot Profile:</span> {_esc(display_name)}</div>')
         card_parts.append(f'<div><span style="font-weight:800;">Timeframe:</span> {_esc(timeframe)}</div>')
         if instrument and tick_value:
             card_parts.append(f'<div"><span style="font-weight:800;">Instrument:</span> {_esc(instrument)} 'f'(<span style="font-weight:800;">Tick:</span> ${_esc(tick_value)})</div>')
@@ -904,7 +1021,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append("</td>")  # Column 2 (CLOSE td)
 
         # Column 3: performance blocks (OPEN td)
-        card_parts.append('<td style="vertical-align:top; width:30%;">')
+        card_parts.append('<td class="ta-exec-col ta-exec-col-metrics" style="vertical-align:top; width:30%;">')
 
         card_parts.append(f'<div style="{h2}">Performance</div>')
         card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
@@ -960,14 +1077,14 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
                 if analysis_chart_uri:
                     card_parts.append(
                         f'<div style="margin-bottom:{detail_chart_gap_px}px;">'
-                        f'<img src="{analysis_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'<img class="ta-exec-detail-chart" src="{analysis_chart_uri}" style="width:min(100%, {detail_chart_width_px}px); max-width:100%; height:auto; '
                         f'border-radius:12px; display:block;" />'
                         f"</div>"
                     )
                 if summery_chart_uri:
                     card_parts.append(
                         f'<div>'
-                        f'<img src="{summery_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'<img class="ta-exec-detail-chart" src="{summery_chart_uri}" style="width:min(100%, {detail_chart_width_px}px); max-width:100%; height:auto; '
                         f'border-radius:12px; display:block;" />'
                         f"</div>"
                     )

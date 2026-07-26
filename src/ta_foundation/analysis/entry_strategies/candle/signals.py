@@ -97,43 +97,44 @@ def emit_next_open(
         return pd.DataFrame()
 
     lookup = _build_lookup(bars[["dt", "open"]].copy())
-    dt_to_idx = {row["dt"]: i for i, row in lookup.iterrows()}
+
+    # Vectorized: build a shifted lookup so each bar dt maps to the NEXT bar's open/dt
+    lookup_with_next = lookup.copy()
+    lookup_with_next["_next_open"] = lookup["open"].shift(-1)
+    lookup_with_next["_next_dt"]   = lookup["dt"].shift(-1)
+    # Drop last bar (no next bar)
+    lookup_with_next = lookup_with_next.dropna(subset=["_next_open"])
 
     out = _add_standard_cols(signals_df.copy())
     sig_dt_col = "signal_dt" if "signal_dt" in out.columns else "dt"
 
-    entry_prices: list = []
-    entry_times:  list = []
-    valid_rows:   list = []
+    # Merge signals onto lookup by exact dt match
+    merged = pd.merge(
+        out,
+        lookup_with_next[["dt", "_next_open", "_next_dt"]],
+        left_on=sig_dt_col,
+        right_on="dt",
+        how="inner",
+        suffixes=("", "_bar"),
+    )
 
-    for _, row in out.iterrows():
-        sig_dt = row[sig_dt_col]
-        idx = dt_to_idx.get(sig_dt)
-        if idx is None:
-            # Try fuzzy match: nearest bar at-or-before signal dt
-            bar_dts = lookup["dt"]
-            candidates = bar_dts[bar_dts <= sig_dt]
-            if candidates.empty:
-                continue
-            idx = candidates.index[-1]
-        next_idx = idx + 1
-        if next_idx >= len(lookup):
-            continue  # no next bar (signal at end of data)
-        next_bar = lookup.iloc[next_idx]
-        entry_prices.append(float(next_bar["open"]))
-        entry_times.append(next_bar["dt"])
-        valid_rows.append(row)
+    # Drop the duplicate 'dt' column added by merge if signal already had 'dt'
+    if "dt_bar" in merged.columns:
+        merged = merged.drop(columns=["dt_bar"])
+    elif "dt" in merged.columns and sig_dt_col == "signal_dt":
+        merged = merged.drop(columns=["dt"])
 
-    if not valid_rows:
+    if merged.empty:
         return pd.DataFrame()
 
-    result = pd.DataFrame(valid_rows).reset_index(drop=True)
-    result["entry_price"]  = entry_prices
-    result["entry_time"]   = entry_times
-    result["limit_price"]  = np.nan
-    result["timing_mode"]  = "next_open"
-    result["fill_bars"]    = 0
-    return result
+    merged["entry_price"]  = merged["_next_open"].astype(float)
+    merged["entry_time"]   = merged["_next_dt"]
+    merged["limit_price"]  = np.nan
+    merged["timing_mode"]  = "next_open"
+    merged["fill_bars"]    = 0
+
+    merged = merged.drop(columns=["_next_open", "_next_dt"])
+    return merged.reset_index(drop=True)
 
 
 def emit_break_extreme(

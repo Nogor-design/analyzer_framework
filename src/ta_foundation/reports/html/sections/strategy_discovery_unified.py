@@ -147,9 +147,11 @@ def _collect_all_results(ctx: dict) -> List[Dict]:
         if key in ctx:
             _pull(ctx[key], stype)
             continue
-        # all_options
-        if ctx.get("all_options", {}).get(key):
-            _pull(ctx["all_options"][key], stype)
+        # all_options — only use if it looks like actual results (has sweep_results),
+        # not just a YAML config block
+        ao_val = ctx.get("all_options", {}).get(key)
+        if ao_val and isinstance(ao_val, dict) and "sweep_results" in ao_val:
+            _pull(ao_val, stype)
             continue
         # packages metadata
         for pkg in packages.values():

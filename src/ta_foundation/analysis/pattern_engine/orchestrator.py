@@ -11,7 +11,7 @@ from .cluster import build_pattern_clusters
 from .discovery import compute_market_discovery
 from .engine import run_pattern_sweep
 from .io import attach_artifact_ref, deep_copy_json_safe, df_to_parquet, pattern_engine_run_dir
-from .monte_carlo import run_prop_monte_carlo, run_prop_monte_carlo_regime
+from ta_foundation.analysis.prop_evaluation.simulation import run_prop_monte_carlo, run_prop_monte_carlo_regime
 from .robustness_cv import compute_purged_walkforward_cv
 from .trade_pattern_audit import compute_trade_pattern_audit
 
@@ -234,7 +234,8 @@ def compute_and_attach_pattern_engine(
 
                 # Optional: clusters
                 try:
-                    clusters = build_pattern_clusters(pattern_stats_df=pattern_stats_df, options=options)
+                    clusters = build_pattern_clusters(signals_df=signals_df, outcomes_df=outcomes_df,
+                                                      pattern_stats_df=pattern_stats_df, options=options)
                     if isinstance(clusters, dict):
                         _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=asset_store,
                                             artifact_key="clusters", filename="clusters.parquet",
@@ -292,7 +293,6 @@ def compute_and_attach_pattern_engine(
                     "n_signals": int(len(signals_df)) if isinstance(signals_df, pd.DataFrame) else 0,
                     "n_outcomes": int(len(outcomes_df)) if isinstance(outcomes_df, pd.DataFrame) else 0,
                     "n_events": int(len(events_df)) if isinstance(events_df, pd.DataFrame) else 0,
-                "n_events_exec": int(len(events_exec_df)) if isinstance(events_exec_df, pd.DataFrame) else 0,
                     "n_events_exec": int(len(events_exec_df)) if isinstance(events_exec_df, pd.DataFrame) else 0,
                     "n_mc": int(len(mc_summary_df)) if isinstance(mc_summary_df, pd.DataFrame) else 0,
                     "n_mc_regime": int(len(mc_regime_summary_df)) if isinstance(mc_regime_summary_df, pd.DataFrame) else 0,
@@ -376,6 +376,10 @@ def compute_and_attach_pattern_engine(
             outcomes_df = res.get("outcomes_df", pd.DataFrame())
             pattern_stats_df = res.get("pattern_stats_df", pd.DataFrame())
             events_df = res.get("events_df", pd.DataFrame())
+            # Mirror run_attached: fall back to events_df when the sweep did not
+            # apply trade intake. Without this, events_exec_df is unbound in this
+            # scope and the events_exec / MC writes below raise NameError.
+            events_exec_df = res.get("events_exec_df", events_df)
 
             # Persist core sweep artifacts (same order as run_attached)
             _write_and_cache_df(run_dir=run_dir, artifacts_meta=artifacts_meta, asset_store=synth_assets,

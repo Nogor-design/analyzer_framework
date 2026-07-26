@@ -61,6 +61,129 @@ report:
 
 
 # ============================================================
+# PRE-MARKET DIRECTION PREDICTOR
+# ============================================================
+# Answers: "Do patterns in the 06:00–07:29 premarket window
+# predict which direction the NY open (07:30) will move?"
+#
+# CRITICAL DIFFERENCE FROM candle_discovery:
+#   • Signal detection is LOCKED to the premarket window (06:00–07:29)
+#   • Outcome simulation uses the FULL bar set so it scans forward
+#     into RTH bars starting at 07:30 — the actual trade period.
+#   • next_open timing = enter at the 07:30 bar's open (NY bell).
+#
+# Added premarket session features (merged onto each signal bar):
+#   pm_session_direction  1=PM bullish, -1=PM bearish
+#   pm_range_ticks        full PM range in ticks
+#   pm_range_vs_atr       PM range vs ATR (>1 = already moved)
+#   pm_close_vs_range     0=closed at PM low, 1=at PM high
+#   pm_bull_bars_pct      fraction of PM bars that were bullish
+#   pm_momentum_bars      consecutive same-direction bars at PM end
+#   pm_compression        1 if range < ATR (coiled, explosive potential)
+#
+# HOW TO READ THE OUTPUT:
+#   PM-Aligned PF > 1.2  → the open CONTINUES the premarket trend
+#   PM-Counter PF > 1.2  → the open REVERSES the premarket trend
+#   Both near 1.0        → premarket has no predictive value; trade ORB
+# ============================================================
+premarket_discovery:
+  enabled: true
+  min_trades: 15
+  timeframes: [1, 5]
+
+  # Pre-market signal window (America/Denver).
+  # Bars in this window generate signals; outcomes start at 07:30.
+  signal_window:
+    hour_from:   6
+    minute_from: 0
+    hour_to:     7
+    minute_to:   29    # 07:29 = last 1m bar before 07:30 NY open
+
+  candle_features:
+    size_lookbacks: [5, 10, 20]
+    atr_period: 14
+    tick_size: 0.25
+    min_body_ticks: 1
+
+  patterns:
+
+    large_body:
+      enabled: true
+      body_multiplier: [1.5, 2.0, 2.5]
+      wick_to_body_max: [0.3, 0.5]
+      lookback: [5, 10]
+      min_size_ticks: 4
+      max_size_ticks: 100
+
+    clean_breakout_bar:
+      enabled: true
+      atr_mult: [1.5, 2.0]
+      body_to_range_min: [0.60, 0.70]
+
+    pin_bar_bullish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]
+      body_to_range_max: [0.30, 0.35]
+
+    pin_bar_bearish:
+      enabled: true
+      wick_to_body_min: [1.5, 2.0]
+      body_to_range_max: [0.30, 0.35]
+
+    engulfing_bullish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+
+    engulfing_bearish:
+      enabled: true
+      engulf_ratio: [1.0, 1.2]
+
+    inside_bar:
+      enabled: true
+
+    outside_bar:
+      enabled: true
+
+    doji:
+      enabled: true
+      body_to_range_max: [0.10, 0.15]
+
+  direction: both
+
+  entry_timing:
+    # next_open: enters at 07:30 bar open = NY open bell.
+    # This is the PRIMARY timing mode for this strategy.
+    next_open:
+      enabled: true
+
+    # break_extreme: 1 tick beyond signal bar's high/low.
+    # Models "I wait for confirmation that the PM direction is continuing
+    # into the open before entering."
+    break_extreme:
+      enabled: true
+      buffer_ticks: 1
+      fill_timeout_bars: 3
+
+    # body_midpoint: "I want a better price entry if the open
+    # retraces to the middle of the PM signal bar."
+    body_midpoint:
+      enabled: true
+      fill_timeout_bars: 5
+
+  outcome:
+    atr:   {enabled: true, target_mult: 1.5, stop_mult: 1.0}
+    ticks: {enabled: true, take_profit: [10, 15, 20, 30], stop: [8, 10, 12, 15]}
+    max_bars_timeout: 10        # 10 minutes max hold (1m bars)
+    timeout_result: loss
+    tick_size: 0.25
+    tick_value: 5.00
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: true, top_n: 10}
+
+
+# ============================================================
 # CANDLE PATTERN DISCOVERY
 # Detects patterns on the PREMARKET bars (06:00–07:29 Denver).
 # The key signal: what does the last bar before 07:30 look like,
@@ -361,7 +484,14 @@ ma_discovery:
 # ============================================================
 sections:
 
-  # ---- FIRST: The combined cross-strategy top-25 ----
+  # ---- FIRST: Pre-Market Predictor ----
+  # THE KEY QUESTION: does anything in the 06:00-07:29 premarket tell you
+  # which direction to trade at the 07:30 NY open bell?
+  # PM-Aligned PF > 1.2 = PM trend CONTINUES into the open (trade with PM).
+  # PM-Counter PF > 1.2 = open REVERSES PM trend (fade the PM).
+  - id: premarket_discovery_overview
+
+  # ---- SECOND: The combined cross-strategy top-25 ----
   # This is your answer to "what is the single best signal to trade?"
   # If candle patterns dominate: trade patterns.
   # If ORB dominates: trade the opening range.

@@ -80,10 +80,17 @@ from ta_foundation.analysis.entry_strategies.ma.signals import (
     detect_ma_signal,
 )
 from ta_foundation.analysis.entry_strategies.candle.signals import emit_entries
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
+)
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
 )
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
@@ -222,6 +229,7 @@ def _run_single_combo(
     tf_minutes: int,
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
 ) -> Optional[List[Dict[str, Any]]]:
 
     # 1. Detect signals
@@ -300,7 +308,7 @@ def _run_single_combo(
         direction_val = int(params.get("direction", 0))
         dir_label     = {1: "long", -1: "short", 0: "both"}.get(direction_val, str(direction_val))
 
-        all_results.append({
+        result = {
             "strategy_type":    "ma",
             "signal_id":        signal_id,
             "tf":               tf_minutes,
@@ -318,7 +326,12 @@ def _run_single_combo(
             "session_breakdown": session_bk,
             "filter_results":   filter_results,
             "is_oos_degradation": compute_is_oos_degradation(group),
-        })
+        }
+        attach_hardening_metadata(
+            result, group, outcome_cfg, hardening_cfg,
+            bars_with_regime=bars_with_regime,
+        )
+        all_results.append(result)
 
     return all_results if all_results else None
 
@@ -326,6 +339,23 @@ def _run_single_combo(
 # ---------------------------------------------------------------------------
 # Main sweep
 # ---------------------------------------------------------------------------
+
+def _compute_trial_grid_size(cfg: Dict[str, Any]) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    tf × signal-param-combos × entry-timings × outcome modes.
+    """
+    timeframes = [int(tf) for tf in cfg.get("timeframes", [1])]
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_param = sum(
+        len(_expand_params(sc))
+        for sid, sc in (cfg.get("signals", {}) or {}).items()
+        if sc.get("enabled", True) and sid in MA_SIGNAL_REGISTRY
+    )
+    n_combos = len(timeframes) * n_param * n_timings
+    return max(1, n_combos * count_outcome_modes(cfg.get("outcome", {}) or {}))
+
 
 def run_ma_discovery(
     bars_1m: pd.DataFrame,
@@ -359,8 +389,14 @@ def run_ma_discovery(
     timing_cfgs   = cfg.get("entry_timing", {})
     outcome_cfg   = cfg.get("outcome", {})
     filter_cfg    = cfg.get("filter_discovery", {})
+    hardening_cfg = cfg.get("hardening", {})
 
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
+
+    # Auto-populate the trial budget from the sweep's own grid size so the
+    # hardening selection-bias correction is live instead of inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(cfg)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
 
     sweep_results:      List[Dict[str, Any]] = []
     n_combinations_run: int = 0
@@ -424,6 +460,7 @@ def run_ma_discovery(
                         tf_minutes=tf,
                         min_trades=min_trades,
                         filter_cfg=filter_cfg,
+                        hardening_cfg=hardening_cfg,
                     )
                     if results:
                         sweep_results.extend(results)
@@ -432,4 +469,5 @@ def run_ma_discovery(
         "sweep_results":      sweep_results,
         "n_combinations_run": n_combinations_run,
         "n_results":          len(sweep_results),
+        "trial_grid_size":    trial_grid_size,
     }

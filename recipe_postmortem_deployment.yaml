@@ -1,0 +1,57 @@
+# Recipe Post-Mortem — GOAL B: "Which templates should the end user run?"
+#
+# Ingest the FINAL BACKTEST FINALISTS (one folder per F_NNN, each a full NT
+# backtest export: Trades/Summary/Settings). These are the validated, deployable
+# candidates.
+#
+# Run:
+#   python -m ta_foundation.cli.main \
+#     --input ".ta_artifacts/web_optimizer/sessions/opt_627e6fa4eb51/deployment_package/final_backtest_handoff/nt8_backtest_results" \
+#     --output ".ta_artifacts/web_optimizer/sessions/opt_627e6fa4eb51/postmortem_reports/deployment" \
+#     --report-config ./recipe_postmortem_deployment.yaml \
+#     --recursive --no-tick-data
+report:
+  title: "Recipe Post-Mortem — Deployment Finalists (opt_627e6fa4eb51)"
+  output_filename: "recipe_deployment.html"
+  timezone: "America/Denver"
+
+sections:
+  # 1. Rank every finalist by net profit / PF / drawdown / win rate.
+  - id: comparison_overview
+
+  # 2. THE DEPLOY ANSWER: build runnable bundles with exactly one template per
+  #    StartTimeH time bucket, ranked by shared losing-day risk then combined
+  #    P&L. This is the bucketed non-co-losing portfolio for the operator.
+  #    bucket_param must match the NT Settings "Item" string exactly.
+  - id: final_template_bundle_basket
+    options:
+      bucket_param: "Start_Time_(HH)"
+      top_n: 12
+      max_per_bucket: 12
+      show_chart: true
+
+  # 3. Prop-firm survival: net-profit ranking != survivability. Monte-Carlo the
+  #    finalists against an Apex 50K trailing drawdown before trusting them.
+  - id: apex_drawdown_survival_profile
+    options:
+      portfolio_mc:
+        n_paths: 2000
+        seed: 123
+        mode: correlated
+      apex:
+        starting_balance: 50000
+        trailing_drawdown: 2500
+        lock_profit: 2600
+      instruments:
+        NQ:  { tick_size: 0.25, tick_value: 5.0 }
+        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+
+  # 4. Weekly prop dashboard — buffer decay under the same 50K/2500 rules.
+  - id: weekly_leaderboard_cards
+    options:
+      top_n: 50
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week
+      compact_noimg: true
+      show_chart: false

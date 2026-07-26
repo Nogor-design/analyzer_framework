@@ -1,0 +1,78 @@
+now for the Max Trades per Session, Max Potential Profit and Max Potential Loss these need to be calculated.  Read this file:///C:/Users/Owner/Downloads/Pantheon_Full_Professional%20(1).pdf and see if you can figure out what those numbers should be calculated as.  If you have questions I will answer them.  A tricky one is number of trades could be 1 even if that number is very high because it will stop if it losses or wins based on the LossStop and ProfitStop since it checks that after each trade so if it takes 1 trade and it is above or below those and will always be that way it will only take 1 trade even if maxtrades is a larger number
+Saturday 7:31 PM
+
+Worked for 4m 22s
+Done. I updated the report calculations to use the Pantheon guardrail behavior from the PDF:
+
+Profit target ticks = floor(MaxStop * MaxTPRatio)
+Per-trade profit = target ticks * tick value * contracts
+Per-trade loss = MaxStop * tick value * contracts
+Effective trade count uses the earliest stop among:
+MaxTrades, ceil(ProfitStop / per-trade profit), ceil(LossStop / per-trade loss)
+So if one target/stop already crosses the session guardrail, the report shows 1 even when raw MaxTrades is much higher.
+
+Regenerated the report and 18 card PNGs:
+final_template_cards_report.html
+
+Sample now:
+
+RisingHermesFireL: Max Trades 7, Max Potential Profit $10,220, Max Potential Loss $11,375
+DriftingHydraInfernoB: Max Trades 9, Max Potential Profit $10,980, Max Potential Loss $10,500
+Verified:
+python -m pytest src/ta_foundation/tests/web/test_optimizer_candidate_report.py
+python -m pytest src/ta_foundation/tests/web/test_optimizer_final_templates.py src/ta_foundation/tests/web/test_optimizer_image_lookup.py
+
+
+Edited 3 files
++130
+-29
+
+src/ta_foundation/web/optimizer_candidate_report.py
++58
+-6
+
+src/ta_foundation/reports/html/sections/run_executive_profile_cards.py
++6
+-5
+
+src/ta_foundation/tests/web/test_optimizer_candidate_report.py
++66
+-18
+Saturday 7:36 PM
+Max Potential Profit need to be calculated as well since it could take possibly a trade that is just below the ProfitStop and take another one and hit max take profit and same with the loss
+Saturday 7:36 PM
+
+Worked for 2m 26s
+Fixed. Max Potential Profit/Loss now uses the “just under the guardrail, then one more full trade” calculation:
+
+min(MaxTrades * per_trade_amount, guardrail - 1 + per_trade_amount)
+
+So the regenerated report now shows, for example:
+
+RisingHermesFireL: Profit $11,459, Loss $11,624
+DriftingHydraInfernoB: Profit $11,219, Loss $10,874
+Tests are passing, and I regenerated the HTML plus 18 card PNGs again.
+
+
+Edited 2 files
++30
+-5
+
+src/ta_foundation/web/optimizer_candidate_report.py
++27
+-2
+
+src/ta_foundation/tests/web/test_optimizer_candidate_report.py
++3
+-3
+Saturday 7:39 PM
+can we style the report to have a black background instead of white?
+Saturday 8:07 PM
+
+Worked for 3m 26s
+Done. The final template card report now gets a black/dark shell: black page background, dark section containers, light headings, and darker nav/pills.
+
+Regenerated:
+final_template_cards_report.html
+
+All 18 card PNGs re-exported. Refresh the open tab to see it.

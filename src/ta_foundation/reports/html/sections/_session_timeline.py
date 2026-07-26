@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from ta_foundation.core.market_time_profile import (
     DEFAULT_SESSIONS,
@@ -8,6 +10,75 @@ from ta_foundation.core.market_time_profile import (
     sessions_as_denver_bins,
     summarize_overlap,
 )
+
+TZ_DENVER = ZoneInfo("America/Denver")
+
+
+def _settings_map(pkg: Any) -> dict[str, Any]:
+    df = getattr(pkg, "settings", None)
+    if df is None or getattr(df, "empty", True):
+        return {}
+
+    out: dict[str, Any] = {}
+    for _, row in df.iterrows():
+        item = str(row.get("item", "")).strip().lower()
+        if item:
+            out[item] = row.get("value", "")
+    return out
+
+
+def _int_setting(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(float(str(value).strip()))
+    except Exception:
+        return None
+
+
+def _build_settings_window_profile(pkg: Any, *, bin_minutes: int) -> dict[str, Any] | None:
+    settings = _settings_map(pkg)
+    start_h = _int_setting(settings.get("start_time_(hh)"))
+    start_m = _int_setting(settings.get("start_time_(mm)"))
+    duration_h = _int_setting(settings.get("duration_time_(hh)"))
+    duration_m = _int_setting(settings.get("duration_time_(mm)"))
+
+    if None in (start_h, start_m, duration_h, duration_m):
+        return None
+
+    bins = 1440 // bin_minutes
+    active = [0] * bins
+
+    start_total = (start_h * 60 + start_m) % 1440
+    duration_total = max(0, duration_h * 60 + duration_m)
+    end_total = start_total + duration_total
+
+    for idx in range(bins):
+        bin_start = idx * bin_minutes
+        bin_end = bin_start + bin_minutes
+
+        if duration_total == 0:
+            overlap = bin_start <= start_total < bin_end
+        elif end_total <= 1440:
+            overlap = start_total < bin_end and end_total > bin_start
+        else:
+            wrapped_end = end_total - 1440
+            overlap = (
+                (start_total < bin_end and 1440 > bin_start)
+                or (0 < bin_end and wrapped_end > bin_start)
+            )
+
+        if overlap:
+            active[idx] = 1
+
+    return {
+        "tz": "America/Denver",
+        "bin_minutes": bin_minutes,
+        "bins": bins,
+        "active": active,
+        "anchor_date": datetime.now(TZ_DENVER).date().isoformat(),
+        "source": "settings",
+    }
 
 
 def _downsample_or(arr: List[int], factor: int, bins: int) -> List[int]:
@@ -59,7 +130,6 @@ def _format_time_label(minutes_of_day: int, mode: str) -> str:
             return f":{mm:02d}"
         return "&nbsp;"
 
-    # default "hour"
     if mm == 0:
         return f"{hh:02d}"
     return "&nbsp;"
@@ -69,12 +139,13 @@ def render_session_timeline(
     run_id: str,
     pkg: Any,
     *,
-    render_bin_minutes: int = 60,        # 24 columns when 60; 48 when 30; 96 when 15
+    render_bin_minutes: int = 60,
     cell_h_px: int = 12,
     show_hour_labels: bool = True,
     show_summary: bool = True,
-    label_mode: str = "hour",            # ✅ new: "hour" | "smart" | "hm"
+    label_mode: str = "hour",
     sessions: Optional[List[SessionDef]] = None,
+    prefer_settings_window: bool = True,
 ) -> str:
     """
     Single-table session timeline sharing one column grid:
@@ -87,18 +158,27 @@ def render_session_timeline(
     derived = (getattr(pkg, "metadata", {}) or {}).get("derived", {}) or {}
     prof = derived.get("trade_time_profile") or {}
 
-    base_bin = int(prof.get("bin_minutes", 15))
-    base_active = prof.get("active") or []
-    anchor_date = prof.get("anchor_date")
-
     if render_bin_minutes <= 0 or 1440 % render_bin_minutes != 0:
         raise ValueError(f"render_bin_minutes must divide 1440; got {render_bin_minutes}")
+
+    settings_profile = None
+    if prefer_settings_window:
+        settings_profile = _build_settings_window_profile(pkg, bin_minutes=render_bin_minutes)
+
+    if settings_profile is not None:
+        base_bin = int(settings_profile.get("bin_minutes", render_bin_minutes))
+        base_active = settings_profile.get("active") or []
+        anchor_date = settings_profile.get("anchor_date")
+    else:
+        base_bin = int(prof.get("bin_minutes", 15))
+        base_active = prof.get("active") or []
+        anchor_date = prof.get("anchor_date") or datetime.now(TZ_DENVER).date().isoformat()
+
     if base_bin <= 0 or 1440 % base_bin != 0:
         raise ValueError(f"trade_time_profile.bin_minutes must divide 1440; got {base_bin}")
 
     bins = 1440 // render_bin_minutes
 
-    # Do not upsample (avoid fake precision)
     if render_bin_minutes < base_bin:
         render_bin_minutes = base_bin
         bins = 1440 // render_bin_minutes

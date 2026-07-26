@@ -1,6 +1,6 @@
 report:
   title: "Strategy Comparison Report"
-  output_filename: "Executive-3-30.html"
+  output_filename: "Executive-4-11.html"
   embedded_images: true   # enforced by builder; kept for clarity
   timezone: "America/Denver"
 
@@ -49,7 +49,7 @@ sections:
 #
 #  - id: run_kpi_cards
 #    title: "Run KPI Cards"
-
+#
 #  - id: run_snapshot_clipboard
 #    title: "Run Snapshot (Copy/Paste)"
 #    options:
@@ -176,25 +176,37 @@ sections:
 #      wlr_gap_px: 2
 #      wlr_show_legend: false
 #####Exec cards ####################################################
-#  - id: run_executive_profile_cards
-#    options:
-#      show_hint: true
-#      show_run_image: true
-#      background_style: image-dark-overlay   # options below
-#      card_width_px: 1180
-#      card_padding_px: 24
-#      image_width_px: 420
-#      wlr_days_back: 30
-#      wlr_gap_px: 2
-#      show_detail_charts: true
-#      detail_chart_layout: stack    # two-up | stack
-#      detail_chart_width_px: 1080  #540  | 1080
-#      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
-#      timeline_cell_h_px: 10
-#      timeline_show_hours: true
-#      timeline_show_summary: true
+  - id: run_executive_profile_cards
+    options:
+      show_hint: true
+      show_run_image: true
+      background_style: image-dark-overlay   # options below
+      card_width_px: 1180
+      card_padding_px: 24
+      image_width_px: 420
+      wlr_days_back: 30
+      wlr_gap_px: 2
+      show_detail_charts: true
+      detail_chart_layout: stack    # two-up | stack
+      detail_chart_width_px: 1080  #540  | 1080
+      timeline_render_bin_minutes: 15   # 60 is clean; try 30 if you want more detail
+      timeline_cell_h_px: 10
+      timeline_show_hours: true
+      timeline_show_summary: true
 #####Exec cards ####################################################
 #
+####PREDICTION
+#  - id: horizon_overview
+#    options:
+#      store_dir: .ta_artifacts/horizon
+#      instrument: NQ
+#      contract: "06-26"
+#      min_samples_cell: 5
+#      min_samples_edge: 20
+#      min_samples_calibration: 20
+#      drift_recent_n: 50
+#      top_n_edge: 20
+
 #profit_factor
 #total_net_profit
 #  - id: run_card_catalog
@@ -291,21 +303,37 @@ sections:
 #      trailing_dd: 2500
 #      hide_missing_cards: true
 #####Weely Leaderboard ####################################################
-  - id: weekly_leaderboard_cards
-    title: "Weekly Prop Dashboard"
-    options:
-      week_ending: "2026-03-27"   # optional
-      top_n: 200
-      starting_balance: 50000
-      trailing_dd: 2500
-      baseline_mode: fresh_week      # fresh_week or: continuous
-      show_card_image: true          # or: false
-      show_chart: false
-      show_debug_table: false
-      warn_buffer: 500
-      compact_noimg: true
-      bot_columns: 1
+#  - id: weekly_leaderboard_cards
+#    title: "Weekly Prop Dashboard"
+#    options:
+#      week_ending: "2026-05-02"   # optional
+#      top_n: 200
+#      starting_balance: 50000
+#      trailing_dd: 2500
+#      baseline_mode: fresh_week      # fresh_week or: continuous
+#      show_card_image: false          # or: false
+#      show_chart: false
+#      show_debug_table: false
+#      warn_buffer: 500
+#      compact_noimg: true
+#      bot_columns: 1
 #####Weely Leaderboard ####################################################
+#  - id: strategy_momentum_board
+#    title: "Strategy Momentum Board"
+#    options:
+#      top_n: 40
+#      strip_days: 5
+#  - id: strategy_session_momentum_board
+#    title: "Strategy Session Momentum Board"
+#    options:
+#      overall_top_n: 5
+#      top_n_per_session: 5
+#      strip_days: 5
+#  - id: daily_winner_spotlight
+#    title: "Daily Winner Insight"
+#    options:
+#      top_n: 10
+#      strip_days: 5
 #  - id: trades_intraday_pnl_by_day
 #    title: "Trades — Intraday PnL Bars (with MFE)"
 #    options:
@@ -1027,6 +1055,11 @@ sections:
 #          lookback: 20         # number of prior candles used to compute avg body
 #          min_body_ratio: 1.1  # body must exceed avg_body * 1.1
 #
+
+#  - id: optimization_overview
+#    options:
+#      top_n: 10
+#      min_trades: 1
 ## =============================================================================
 ## Strategy Discovery Engine
 ## =============================================================================

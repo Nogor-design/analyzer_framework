@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Strategy Lab {{ session.session_id }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .panel { background: #111827; border: 1px solid #1f2937; border-radius: 8px; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-running, .pill-optimizer_running, .pill-observing_compile, .pill-repairing { background: #1e3a8a; color: #93c5fd; }
+    .pill-candidate, .pill-compile_clean, .pill-ready { background: #064e3b; color: #34d399; }
+    .pill-archive, .pill-incomplete, .pill-needs_review { background: #78350f; color: #fcd34d; }
+    .pill-halted, .pill-blocked { background: #7f1d1d; color: #fecaca; }
+    .pill-empty, .pill-none, .pill-done, .pill-not_applicable { background: #1f2937; color: #9ca3af; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    th { color: #6b7280; text-align: left; font-weight: 500; }
+    td { padding: 4px 8px; border-top: 1px solid #1f2937; vertical-align: top; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/strategy-lab" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Strategy Lab</a>
+    <span class="text-amber-400 font-bold text-lg">{{ session.strategy_name or "Strategy" }}</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <button id="refresh-btn" class="btn-ghost px-3 py-1.5 rounded">Refresh</button>
+    {% if session.optimizer_session_id %}
+      <a href="/optimizer/sessions/{{ session.optimizer_session_id }}" class="btn-ghost px-3 py-1.5 rounded no-underline">Optimizer detail</a>
+      <a href="/optimizer/sessions/{{ session.optimizer_session_id }}/decision" class="btn-ghost px-3 py-1.5 rounded no-underline">Optimizer decision</a>
+    {% endif %}
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+
+  <section class="panel p-4">
+    <div class="flex items-baseline gap-3 flex-wrap">
+      <h1 class="text-xl font-bold">{{ session.strategy_name or session.session_id }}</h1>
+      <span class="pill pill-{{ session.decision or 'none' }}">{{ session.decision or "no decision" }}</span>
+      <span class="pill pill-{{ session.stage }}">{{ session.stage }}</span>
+      {% if session.family %}<span class="pill pill-none">{{ session.family }}</span>{% endif %}
+    </div>
+    <div class="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1 mt-3">
+      <span>Compile mode: <span class="text-gray-200">{{ session.compile_mode or "?" }}</span></span>
+      <span>Attempts: <span class="text-gray-200">{{ session.attempt_count }}</span></span>
+      <span>Compile: <span class="text-gray-200">{{ session.compile_state or "?" }}</span></span>
+      <span>Compile clean: <span class="text-gray-200">{{ "yes" if session.compile_clean else "no" }}</span></span>
+      <span>Updated: <span class="text-gray-200">{{ session.updated_at }}</span></span>
+    </div>
+    {% if session.intent %}
+      <div class="text-sm text-gray-300 mt-3">{{ session.intent }}</div>
+    {% endif %}
+    <div class="text-xs text-gray-600 mt-3 pathish">{{ session.session_dir }}</div>
+  </section>
+
+  <section class="grid grid-cols-3 gap-4">
+    <div class="panel p-4">
+      <h2 class="text-amber-400 font-semibold text-sm mb-3">Stage Timeline</h2>
+      {% set stages = [
+        ("authoring", "Author"),
+        ("observing_compile", "ObserveCompile"),
+        ("repairing", "Repair"),
+        ("compile_clean", "Compile clean"),
+        ("optimizer_running", "Optimize"),
+        ("analyzing", "Analyze"),
+        ("done", "Decision")
+      ] %}
+      <div class="space-y-2 text-xs">
+        {% for key, label in stages %}
+          {% set active = key == session.stage %}
+          {% set done = session.stage == "done" or (key == "compile_clean" and session.compile_clean) or (key == "optimizer_running" and session.optimizer_session_id) or (key == "analyzing" and session.optimizer_analysis.row_count) %}
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full {{ 'bg-amber-400' if active else ('bg-green-500' if done else 'bg-gray-700') }}"></span>
+            <span class="{{ 'text-amber-300' if active else ('text-gray-200' if done else 'text-gray-500') }}">{{ label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel p-4 col-span-2">
+      <h2 class="text-amber-400 font-semibold text-sm mb-3">Human Gates</h2>
+      <div class="grid grid-cols-2 gap-3">
+        {% for gate in session.gates %}
+          <div class="border border-gray-800 rounded p-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-semibold">{{ gate.name }}</div>
+              <span class="pill pill-{{ gate.state }}">{{ gate.state }}</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">{{ gate.message }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel p-4">
+    <h2 class="text-amber-400 font-semibold text-sm mb-3">Attempts</h2>
+    {% if not session.attempts %}
+      <div class="text-sm text-gray-500">No compile attempts recorded yet.</div>
+    {% else %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr>
+              <th class="py-1 pr-2">Attempt</th>
+              <th class="py-1 pr-2">State</th>
+              <th class="py-1 pr-2">Compiled</th>
+              <th class="py-1 pr-2">Errors</th>
+              <th class="py-1 pr-2">Block reason</th>
+              <th class="py-1 pr-2">Last error</th>
+              <th class="py-1 pr-2">Artifacts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in session.attempts %}
+              <tr>
+                <td class="pathish">{{ a.attempt }}</td>
+                <td>{{ a.compile_state or "?" }}</td>
+                <td>{{ a.compiled }}</td>
+                <td>{{ a.error_count if a.error_count is not none else "?" }}</td>
+                <td>{{ a.compile_block_reason or "" }}</td>
+                <td class="text-red-300">{{ a.last_error }}</td>
+                <td class="pathish">
+                  {% if a.source_file %}<div>source: {{ a.source_file }}</div>{% endif %}
+                  {% if a.errors_csv %}<div>csv: {{ a.errors_csv }}</div>{% endif %}
+                  {% if a.errors_text %}<div>text: {{ a.errors_text }}</div>{% endif %}
+                  {% if a.has_repair_prompt %}<div>repair_prompt.md</div>{% endif %}
+                  {% if a.has_repair_summary %}<div>repair_summary.md</div>{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="panel p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-amber-400 font-semibold text-sm">Optimizer Child Session</h2>
+      <div class="flex items-center gap-2 text-xs">
+        {% if session.optimizer_session_id %}
+          <a href="/optimizer/sessions/{{ session.optimizer_session_id }}" class="btn-primary px-3 py-1.5 rounded font-semibold no-underline">Open optimizer</a>
+          <a href="/optimizer/sessions/{{ session.optimizer_session_id }}/decision" class="btn-ghost px-3 py-1.5 rounded no-underline">Decision</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if not session.optimizer_session_id %}
+      <div class="text-sm text-gray-500">No optimizer session has been linked yet.</div>
+    {% else %}
+      <div class="grid grid-cols-3 gap-3 text-xs">
+        <div><span class="text-gray-500">Session</span><div class="pathish text-gray-200">{{ session.optimizer_session_id }}</div></div>
+        <div><span class="text-gray-500">State</span><div class="text-gray-200">{{ session.optimizer_state }}</div></div>
+        <div><span class="text-gray-500">Rows / passing</span><div class="text-gray-200">{{ session.optimizer_analysis.row_count }} / {{ session.optimizer_analysis.passing_rows }}</div></div>
+        <div class="col-span-3"><span class="text-gray-500">Directory</span><div class="pathish text-gray-400">{{ session.optimizer_session_dir }}</div></div>
+        {% if session.optimizer_csv %}
+          <div class="col-span-3"><span class="text-gray-500">CSV</span><div class="pathish text-gray-400">{{ session.optimizer_csv }}</div></div>
+        {% endif %}
+        {% if session.seed_template %}
+          <div class="col-span-3"><span class="text-gray-500">Seed</span><div class="pathish text-gray-400">{{ session.seed_template }}</div></div>
+        {% endif %}
+      </div>
+      {% if session.optimizer_analysis.reject_reasons %}
+        <div class="mt-3 text-xs text-amber-300">
+          {{ session.optimizer_analysis.reject_reasons|join("; ") }}
+        </div>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="grid grid-cols-2 gap-4">
+    <div class="panel p-4">
+      <h2 class="text-amber-400 font-semibold text-sm mb-3">Decision Summary</h2>
+      {% if session.summary_markdown %}
+        <pre class="text-xs text-gray-300 whitespace-pre-wrap max-h-96 overflow-auto">{{ session.summary_markdown }}</pre>
+      {% else %}
+        <div class="text-sm text-gray-500">No decision summary yet.</div>
+      {% endif %}
+    </div>
+    <div class="panel p-4">
+      <h2 class="text-amber-400 font-semibold text-sm mb-3">Next Action</h2>
+      {% if session.next_action_markdown %}
+        <pre class="text-xs text-gray-300 whitespace-pre-wrap max-h-96 overflow-auto">{{ session.next_action_markdown }}</pre>
+      {% else %}
+        <div class="text-sm text-gray-500">No next action yet.</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel p-4">
+    <h2 class="text-amber-400 font-semibold text-sm mb-3">Artifacts</h2>
+    {% if not session.artifacts %}
+      <div class="text-sm text-gray-500">No artifact index yet.</div>
+    {% else %}
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        {% for artifact in session.artifacts %}
+          <div class="border border-gray-800 rounded p-2">
+            <div class="text-gray-300">{{ artifact.label }}</div>
+            <div class="pathish text-gray-600 mt-1">{{ artifact.path }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+</main>
+
+<script>
+document.getElementById("refresh-btn").addEventListener("click", () => window.location.reload());
+</script>
+
+</body>
+</html>

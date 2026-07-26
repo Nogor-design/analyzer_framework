@@ -1,0 +1,200 @@
+# =====================================================================
+# Horizon prediction system — operator config
+# =====================================================================
+#
+# Loaded by `ta_foundation.prediction.horizon_config.load_horizon_config()`.
+#
+# Three sections, all optional. Missing sections fall back to dataclass
+# defaults; unknown keys are ignored so adding fields here will never
+# break older code.
+#
+# Tune per-instrument by copying this file and pointing the loader at
+# the copy:
+#
+#     from ta_foundation.prediction import load_horizon_config
+#     cfg = load_horizon_config("path/to/your/prediction.yaml")
+#     result = cfg.apply(my_prediction)
+#     # result.prediction is the post-abstention prediction
+#     # result.verdict   is the tradable-zone verdict
+#
+# Quick mental model of how the three sections interact:
+#
+#     Agent emits CandleHorizonPrediction
+#                 │
+#                 ▼
+#     abstention.apply()    ◄── operator-level vetoes (not tradable rules)
+#                 │
+#                 ▼
+#     evaluate_tradable_zone(pred, cost_model, tradable_zone_config)
+#                 │
+#                 ▼
+#     TradableZoneVerdict(is_tradable, recommended_*, rejection_reasons)
+#
+# =====================================================================
+
+horizon:
+
+  # =====================================================================
+  # cost_model — round-trip trading friction in instrument points
+  # =====================================================================
+  #
+  # The tradable-zone filter subtracts this round-trip cost from the
+  # prediction's expected return before deciding whether the trade has
+  # positive net edge. Without a cost model the system would happily
+  # trade every 0.001-ATR opportunity it sees.
+  #
+  # Round-trip cost (entry + exit) is:
+  #
+  #     2 × (fixed_points_per_side
+  #          + spread_points
+  #          + slippage_atr_per_side × prior_atr)
+  #
+  # i.e. fixed costs apply to *every* fill (twice, once per side), and
+  # the slippage component scales with the asof bar's prior ATR.
+  #
+  cost_model:
+
+    # Commission + the half-spread you cross on entry.
+    # NQ futures (per-side) typical ranges:
+    #   - retail/IB-style:     0.25 – 0.75 points
+    #   - professional/colo:   0.10 – 0.30 points
+    # Set to 0.0 only when you are explicitly modeling a frictionless
+    # backtest (rare — almost always misleading).
+    fixed_points_per_side: 0.50
+
+    # Volatility-scaled slippage as a fraction of the asof prior_atr.
+    # 0.05 means each fill bleeds ~5% of the prior bar's ATR. This
+    # captures the realistic intuition that fast markets cost more.
+    # Typical ranges:
+    #   - liquid index futures, slow regimes:    0.02 – 0.05
+    #   - high-vol windows, news, illiquid TFs:  0.05 – 0.15
+    slippage_atr_per_side: 0.05
+
+    # Volatility-INDEPENDENT spread tracked separately. Useful for
+    # instruments where spread is constant in points (e.g. NQ minimum
+    # tick = 0.25 points). Most users fold this into
+    # `fixed_points_per_side` — only set this when you need to vary
+    # commission and spread independently in reports.
+    spread_points: 0.0
+
+  # =====================================================================
+  # abstention — operator vetoes applied AFTER the agent emits
+  # =====================================================================
+  #
+  # Each agent already self-abstains when its internal confidence is
+  # too low (e.g. fewer than min_samples_global analogues). This
+  # section adds a SECOND layer of vetoes the operator controls — so
+  # you can ban predictions in regimes / sessions you don't trust,
+  # tighten the sample-size floor for live trading, or globally raise
+  # the confidence bar without modifying agent code.
+  #
+  # When any rule fires, the prediction is replaced with a
+  # zero-probability abstain clone whose `abstain_reason` reflects
+  # which rule triggered. Downstream consumers can never accidentally
+  # trade a vetoed prediction.
+  #
+  abstention:
+
+    # Raw analogue count floor. The agent emits its own
+    # `sample_size`; we abstain when that count is below this number.
+    # Higher = more conservative. For 5m NQ, 20 analogues is a
+    # reasonable lower bound; bump to 50+ for live trading.
+    min_sample_size: 20
+
+    # Post-smoothing effective sample size (count + Dirichlet alpha
+    # for the statistical agent, sum of Gaussian weights for the
+    # analogue / KNN agents). A small `min_sample_size` paired with a
+    # large smoothing alpha can produce predictions that look
+    # well-supported but are actually heavily prior-driven; this
+    # field is the back-stop.
+    min_effective_sample_size: 8.0
+
+    # Cap on the agent's reported fallback_level:
+    #   0 = full conditioning (session ∩ regime match, the goal)
+    #   1 = session-only OR regime-only (fallback when L0 is sparse)
+    #   2 = unfiltered (last resort — the agent gave up matching)
+    # Set to 1 in live trading to refuse "fall-back" predictions.
+    # Set to 0 only when you have a LOT of history per bucket.
+    max_fallback_level: 2
+
+    # max(p_bull, p_bear, p_neu) must be at least this. 0.40 is a
+    # very weak floor; raise to 0.55+ for live trading.
+    min_confidence: 0.40
+
+    # Block predictions in any of these regimes. Typical values from
+    # the existing regime classifier:
+    #   - "trend_up"
+    #   - "trend_down"
+    #   - "range"
+    # E.g. set to ["range"] when you only want to take trend trades.
+    regime_blacklist: []
+
+    # Block predictions in any of these sessions. Valid values:
+    #   - "asia", "london", "ny_open", "ny_midday", "ny_close",
+    #     "ny_full", "overnight"
+    # E.g. ["overnight", "asia"] to skip thin-liquidity windows.
+    session_blacklist: []
+
+    # If true (default), an agent's own self-abstain decision is
+    # final: this section never tries to "rescue" an abstaining
+    # prediction. Set to false only when you want operator policy to
+    # override, e.g. a stricter confidence floor that still admits
+    # an agent's high-confidence abstain.
+    honor_agent_abstain: true
+
+  # =====================================================================
+  # tradable_zone — "should we actually trade this" decision rules
+  # =====================================================================
+  #
+  # Where `abstention` answers "is this prediction trustworthy at all?",
+  # `tradable_zone` answers "given a trustworthy prediction and the
+  # cost_model above, does the trade carry enough net edge to be worth
+  # taking, and at what size?"
+  #
+  # The output of this section is a `TradableZoneVerdict` with:
+  #   - is_tradable          bool
+  #   - recommended_direction
+  #   - recommended_stop_points  / recommended_target_points
+  #   - recommended_size_fraction
+  #   - rejection_reasons    (e.g. ["confidence<0.55", "edge_atr<0.05"])
+  # The verdict is informational — it never mutates the prediction.
+  #
+  tradable_zone:
+
+    # argmax(p_bull, p_bear, p_neu) confidence floor. Should usually
+    # be >= the abstention.min_confidence so the two layers don't
+    # disagree about borderline predictions.
+    min_confidence: 0.55
+
+    # Net (post-cost) expected edge in ATR units. 0.05 means we need
+    # at least 5% of an ATR of expected return AFTER costs to take
+    # the trade. For high-frequency / scalping setups this floor is
+    # often 0.0 – 0.03; for swing setups 0.10 – 0.30 is reasonable.
+    min_expected_edge_atr: 0.05
+
+    # Same as abstention's, but checked at decision-time — useful
+    # when you want abstention to be permissive (tracks data) and
+    # tradable-zone to be strict (executes nothing).
+    min_effective_sample_size: 8.0
+
+    # If true, a neutral argmax (max p is on the "neutral" class)
+    # is still considered tradable. Almost always false — trading
+    # the neutral case generally just pays cost without an edge.
+    allow_neutral_argmax: false
+
+    # Upper bound on the recommended position-size fraction. The
+    # filter computes a Kelly-lite fraction (`net_edge / variance`)
+    # and clamps it to this cap. Quarter-Kelly (0.25) is the
+    # convention — Kelly is mathematically optimal but assumes the
+    # forecast is exactly right, so practitioners cut to a fraction
+    # to absorb model error. Reasonable values:
+    #   - very conservative:   0.05 – 0.10
+    #   - typical:             0.20 – 0.25
+    #   - aggressive (don't):  0.50+
+    kelly_cap: 0.25
+
+    # Reject any trade whose computed Kelly fraction falls below
+    # this. Useful when you have a fixed-cost-per-trade overlay
+    # (slippage, mental energy, opportunity cost) that makes very
+    # tiny size pointless. 0.0 disables the floor.
+    min_size_fraction: 0.0

@@ -17,10 +17,17 @@ import pandas as pd
 
 from ta_foundation.marketdata.resample import ohlcv_resample_from_bars
 from ta_foundation.analysis.entry_strategies.candle.signals import emit_entries
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
+)
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
 )
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
@@ -47,6 +54,27 @@ def _expand_params(signal_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [{**scalar_keys, **dict(zip(keys, combo))} for combo in product(*values)]
 
 
+def _compute_trial_grid_size(
+    cfg: Dict[str, Any], signal_registry: Dict[str, Callable]
+) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    tf × signal-param-combos × entry-timings × outcome modes. All terms are
+    config-derivable; data-dependent skips (an empty resample) only shrink it,
+    so this is a safe upper bound for the selection-bias correction.
+    """
+    timeframes = [int(tf) for tf in cfg.get("timeframes", [1])]
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_param = sum(
+        len(_expand_params(sc))
+        for sid, sc in (cfg.get("signals", {}) or {}).items()
+        if sc.get("enabled", True) and sid in signal_registry
+    )
+    n_combos = len(timeframes) * n_param * n_timings
+    return max(1, n_combos * count_outcome_modes(cfg.get("outcome", {}) or {}))
+
+
 def _try_filter_discovery(trades_df: pd.DataFrame, filter_cfg: Dict) -> List[Dict]:
     if not filter_cfg.get("enabled", False):
         return []
@@ -59,6 +87,23 @@ def _try_filter_discovery(trades_df: pd.DataFrame, filter_cfg: Dict) -> List[Dic
         return []
 
 
+def _try_entry_discovery(trades_df: pd.DataFrame, entry_cfg: Dict) -> Dict[str, Any]:
+    if not entry_cfg.get("enabled", False):
+        return {}
+    try:
+        from ta_foundation.analysis.strategy_discovery.entry_discovery import run_entry_discovery
+
+        class _Pkg:
+            trades = trades_df
+            assets: dict = {}
+
+        opts = dict(entry_cfg)
+        opts.setdefault("profit_col", "profit_net")
+        return run_entry_discovery(_Pkg(), opts, feature_df=trades_df)
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _session_label(entry_time: pd.Series) -> pd.Series:
     try:
         from ta_foundation.analysis.session_constants import session_label_from_hour
@@ -67,6 +112,88 @@ def _session_label(entry_time: pd.Series) -> pd.Series:
         return local.dt.hour.map(session_label_from_hour)
     except Exception:
         return pd.Series("unknown", index=entry_time.index)
+
+
+def _apply_session_filter(signals_df: pd.DataFrame, session_cfg: Dict[str, Any]) -> pd.DataFrame:
+    if signals_df.empty or not session_cfg or "dt" not in signals_df.columns:
+        return signals_df
+
+    hour_from = session_cfg.get("hour_from")
+    hour_to = session_cfg.get("hour_to")
+    if hour_from is None or hour_to is None:
+        return signals_df
+
+    minute_from = int(session_cfg.get("minute_from", 0) or 0)
+    minute_to = int(session_cfg.get("minute_to", 0) or 0)
+    start = int(hour_from) * 60 + minute_from
+    end = int(hour_to) * 60 + minute_to
+
+    dt = pd.to_datetime(signals_df["dt"])
+    if dt.dt.tz is not None:
+        dt = dt.dt.tz_convert("America/Denver")
+    minute = dt.dt.hour * 60 + dt.dt.minute
+    if start <= end:
+        mask = (minute >= start) & (minute < end)
+    else:
+        mask = (minute >= start) | (minute < end)
+    return signals_df.loc[mask].reset_index(drop=True)
+
+
+def _apply_regime_filter(
+    signals_df: pd.DataFrame,
+    regime_cfg: Dict[str, Any],
+    bars_with_regime: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """
+    Apply regime filters (e.g. vol_regime_tertile: ["high"]) to signals.
+    Joins signals to bars_with_regime via backward merge_asof on 'dt'.
+    """
+    if signals_df.empty or not regime_cfg or bars_with_regime is None or "dt" not in signals_df.columns:
+        return signals_df
+
+    if "dt" not in bars_with_regime.columns:
+        return signals_df
+
+    try:
+        from ta_foundation.analysis.strategy_discovery.features import _tz_to_naive_utc
+        
+        # Sort and normalize for merge_asof
+        sig_work = signals_df.copy()
+        sig_work["_sig_dt_utc"] = _tz_to_naive_utc(pd.to_datetime(sig_work["dt"]))
+        sig_work = sig_work.sort_values("_sig_dt_utc").reset_index(drop=True)
+
+        bars_work = bars_with_regime.copy()
+        bars_work["_bar_dt_utc"] = _tz_to_naive_utc(pd.to_datetime(bars_work["dt"]))
+        bars_work = bars_work.sort_values("_bar_dt_utc").reset_index(drop=True)
+
+        # Carry over required columns from bars
+        desired_cols = [c for c in regime_cfg.keys() if c in bars_with_regime.columns]
+        if not desired_cols:
+            return signals_df
+
+        merged = pd.merge_asof(
+            sig_work,
+            bars_work[["_bar_dt_utc"] + desired_cols],
+            left_on="_sig_dt_utc",
+            right_on="_bar_dt_utc",
+            direction="backward",
+        )
+
+        mask = pd.Series(True, index=merged.index)
+        for col, allowed_vals in regime_cfg.items():
+            if col not in merged.columns:
+                continue
+            if not isinstance(allowed_vals, list):
+                allowed_vals = [allowed_vals]
+            
+            # Map values if needed (e.g. users might use "high" for vol_regime_tertile)
+            mask = mask & merged[col].astype(str).isin([str(v) for v in allowed_vals])
+
+        filtered = merged.loc[mask].drop(columns=["_sig_dt_utc", "_bar_dt_utc"]).reset_index(drop=True)
+        return filtered
+
+    except Exception:
+        return signals_df
 
 
 def _run_single_combo(
@@ -82,11 +209,29 @@ def _run_single_combo(
     bars_with_regime: Optional[pd.DataFrame],
     tf_minutes: int,
     min_trades: int,
+    session_cfg: Dict[str, Any],
     filter_cfg: Dict[str, Any],
+    entry_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
+    regime_filter_cfg: Dict[str, Any] = {},
 ) -> Optional[List[Dict[str, Any]]]:
 
     signals_df = signal_fn(bars_tf, params)
     if signals_df is None or signals_df.empty:
+        return None
+    if bool(params.get("invert_direction", False)) and "direction" in signals_df.columns:
+        signals_df = signals_df.copy()
+        signals_df["direction"] = -pd.to_numeric(signals_df["direction"], errors="coerce").fillna(0).astype(int)
+        signals_df = signals_df[signals_df["direction"] != 0].reset_index(drop=True)
+        if signals_df.empty:
+            return None
+    
+    signals_df = _apply_session_filter(signals_df, session_cfg)
+    if signals_df.empty:
+        return None
+
+    signals_df = _apply_regime_filter(signals_df, regime_filter_cfg, bars_with_regime)
+    if signals_df.empty:
         return None
 
     n_signals     = len(signals_df)
@@ -112,8 +257,10 @@ def _run_single_combo(
             continue
 
         group = group.copy()
-        if "entry_time" in group.columns and "session_label" not in group.columns:
-            group["session_label"] = _session_label(group["entry_time"])
+        
+        # Enrich with market context features (regime, session, etc.) before discovery
+        from ta_foundation.analysis.strategy_discovery.features import build_feature_matrix
+        group = build_feature_matrix(group, bars_with_regime=bars_with_regime)
 
         try:
             metrics = compute_evaluation_metrics(group, profit_col="profit_net")
@@ -147,10 +294,12 @@ def _run_single_combo(
                 pass
 
         direction_val = int(params.get("direction", 0))
+        if bool(params.get("invert_direction", False)):
+            direction_val = -direction_val if direction_val else 0
         dir_label     = {1: "long", -1: "short", 0: "both"}.get(direction_val, str(direction_val))
         params_key    = "|".join(f"{k}={v}" for k, v in sorted(params.items()))
 
-        all_results.append({
+        result = {
             "strategy_type":     strategy_type,
             "signal_id":         signal_id,
             "pattern_id":        signal_id,
@@ -167,9 +316,13 @@ def _run_single_combo(
             "metrics":           metrics,
             "regime_breakdown":  regime_bk,
             "session_breakdown": session_bk,
+            "session_filter":    dict(session_cfg or {}),
             "filter_results":    _try_filter_discovery(group, filter_cfg),
+            "entry_discovery":    _try_entry_discovery(group, entry_cfg),
             "is_oos_degradation": compute_is_oos_degradation(group),
-        })
+        }
+        attach_hardening_metadata(result, group, outcome_cfg, hardening_cfg, bars_with_regime=bars_with_regime)
+        all_results.append(result)
 
     return all_results if all_results else None
 
@@ -205,8 +358,17 @@ def run_generic_sweep(
     signal_cfgs     = cfg.get("signals", {})
     timing_cfgs     = cfg.get("entry_timing", {})
     outcome_cfg     = cfg.get("outcome", {})
+    session_cfg     = cfg.get("session_filter", {})
+    regime_filter_cfg = cfg.get("regime_filter", {})
     filter_cfg      = cfg.get("filter_discovery", {})
+    entry_cfg       = cfg.get("entry_discovery", {})
+    hardening_cfg   = cfg.get("hardening", {})
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
+
+    # Auto-populate the trial budget from the sweep's own grid size so the
+    # hardening selection-bias correction is live instead of inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(cfg, signal_registry)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
 
     sweep_results:      List[Dict[str, Any]] = []
     n_combinations_run: int = 0
@@ -245,7 +407,11 @@ def run_generic_sweep(
                         bars_with_regime=bars_with_regime,
                         tf_minutes=tf,
                         min_trades=min_trades,
+                        session_cfg=session_cfg,
                         filter_cfg=filter_cfg,
+                        entry_cfg=entry_cfg,
+                        hardening_cfg=hardening_cfg,
+                        regime_filter_cfg=regime_filter_cfg,
                     )
                     if results:
                         sweep_results.extend(results)
@@ -254,4 +420,5 @@ def run_generic_sweep(
         "sweep_results":      sweep_results,
         "n_combinations_run": n_combinations_run,
         "n_results":          len(sweep_results),
+        "trial_grid_size":    trial_grid_size,
     }

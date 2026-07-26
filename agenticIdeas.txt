@@ -1,0 +1,236 @@
+1) Target outcome (what “done” looks like)
+Goal: An agentic system that can (a) plan and iterate on multi-step analysis, (b) call your market-analysis “tools” reliably, (c) persist state/results, and (d) run locally to minimize token costs. [docs.langchain.com], [github.com], [docs.langchain.com], [docs.langchain.com]
+Success criteria (editable):
+
+Repeatable runs: Given the same inputs/config, the workflow produces consistent artifacts (reports, metrics, logs).(Recommendation — customize to your tolerance for stochasticity.)
+Tool-call reliability: The model consistently chooses and executes the right analysis tools (or routes to a fallback). Deep Agents explicitly requires a model that supports tool calling. [docs.langchain.com]
+Persistence & recoverability: Long-running workflows can resume after failure (a LangGraph core benefit). [docs.langchain.com]
+Local-first execution: Uses Ollama-backed models through LangChain integration. [docs.langchain.com]
+
+
+2) Reference architecture options (choose the level of control you want)
+Option A — “Fast start”: Deep Agents harness + your domain tools
+Use Deep Agents as the outer harness (planning + filesystem + subagents), and plug in your market-analysis tools. Deep Agents advertises built-ins like a planning todo tool, filesystem tools, optional shell execution, and a sub-agent delegation tool. [github.com], [deepwiki.com]
+
+Pros: Quick to get an agent working; batteries included. [github.com], [deepwiki.com]
+Cons: Slightly more opinionated; you’ll still want to wrap domain logic carefully.
+
+Option B — “Maximum control”: Native LangGraph StateGraph with your tools
+Build a custom StateGraph and nodes for each step of analysis, evaluation, reporting, and routing. LangGraph is positioned as low-level orchestration for long-running, stateful workflows with durable execution and memory. [github.com], [docs.langchain.com]
+
+Pros: Best for complex branching, retries, human-in-loop checkpoints, and custom state. [docs.langchain.com], [deepwiki.com]
+Cons: More wiring up front.
+
+Option C — Hybrid (often best): Deep Agents for “agent loop”, LangGraph subgraphs for “pipelines”
+Use Deep Agents for planning / context management / delegation, and implement your core market pipeline as a LangGraph subgraph (clean separation between “agentic decisions” and “deterministic computation”). This mirrors the “hybrid architecture pattern” separation you used in PROJECT_PLAN (decouple search/heuristics from evaluation/scoring). [onedrive.live.com], [github.com], [github.com]
+
+3) Tooling inventory (what you get “for free” vs what you build)
+Built-in tools you can leverage immediately (Deep Agents)
+Deep Agents’ built-in tool set is described as:
+
+Planning: write_todos, read_todos [github.com], [deepwiki.com]
+Filesystem: ls, read_file, write_file, edit_file, glob, grep [deepwiki.com], [github.com]
+Shell access (conditional): execute (availability depends on backend support) [deepwiki.com], [github.com]
+Delegation: task for spawning subagents [deepwiki.com], [github.com]
+
+This maps nicely to agentic market workflows where you want the agent to:
+
+Plan a sequence of experiments/backtests
+Save intermediate results to files (avoids context bloat)
+Delegate specialized subtasks (e.g., “feature engineering”, “risk summary”, “regime detection”) to subagents
+
+Your custom “market analysis tools” (you build these)
+You’ll wrap your existing code into tool-callable functions (e.g., load_data, compute_features, fit_model, backtest, risk_metrics, plot_equity_curve, export_report).(Recommendation — your exact functions depend on your codebase.)
+
+4) Local model strategy (Ollama-first, tool-calling-aware)
+You can run local models via LangChain’s Ollama integration (docs show installing langchain-ollama and using an Ollama model locally). 
+Deep Agents’ quickstart emphasizes you need a model that supports tool calling. [docs.langchain.com] [docs.langchain.com]
+Practical plan (refine later):
+
+Baseline model: pick one of your already-downloaded models that behaves well with tool calls.
+Fallback model (optional): a “smaller/faster” model for planning steps, and a “stronger” model for synthesis/report writing.(Recommendation — not mandated by docs.)
+Determinism controls: keep temperature low for tool routing steps; allow higher temperature for narrative output.(Recommendation.)
+
+
+5) High-level phases (modeled after your existing plan structure)
+I’ll mirror the crisp phase breakdown style from PROJECT_PLAN (scaffold → integrate → automate → validate). [onedrive.live.com]
+Phase 0 — Foundation & scaffolding (agent runtime skeleton)
+Deliverables
+
+Project skeleton (Python package + config)
+Local Ollama model connectivity validated via LangChain integration [docs.langchain.com]
+Minimal “hello graph/hello agent” to prove orchestration:
+
+LangGraph overview shows a minimal StateGraph with START/END nodes. [docs.langchain.com]
+Or Deep Agents quickstart: create a deep agent with a tool list and system prompt. [docs.langchain.com]
+
+
+
+Exit criteria
+
+You can invoke the agent locally and see a successful tool call + response.
+
+
+Phase 1 — Toolification of your market analysis code (make your code callable + testable)
+Key work
+
+Identify the “atomic operations” in your pipeline and wrap each as a tool/function:
+
+Data ingestion (feeds/files), cleaning, feature computation
+Modeling/forecasting
+Backtest/simulation
+Metrics and exports
+(Recommendation — choose atoms that are deterministic, quick to run, and easy to validate.)
+
+
+
+Deliverables
+
+A tool registry (single place listing tools, schemas, and guardrails)
+Unit tests for each tool (fast, deterministic)
+A “golden dataset” (tiny fixture) for regression tests(Recommendation.)
+
+Exit criteria
+
+Tools run standalone without the agent and produce expected outputs.
+
+
+Phase 2 — Orchestration graph (agentic workflow design)
+This is where you decide Option A/B/C (Deep Agents, LangGraph, or hybrid).
+If using LangGraph core:
+LangGraph is designed for stateful workflows with durable execution, memory, and human-in-the-loop capabilities. 
+DeepWiki’s LangGraph framework summary explains graphs in terms of State, Nodes, Edges, plus persistence via checkpointers/savers. [docs.langchain.com], [github.com] [deepwiki.com]
+Suggested node layout (refineable):
+
+Intake / task framing node (normalize user intent → analysis objective)
+Planner node (writes/updates todos)
+Router node (decides which analysis tools to call next)
+Executor node (runs tools; appends results to state)
+Evaluator node (checks metrics/constraints; decides iterate vs finalize)
+Reporter node (writes outputs to filesystem; summarizes results)
+
+Deliverables
+
+A graph definition (or Deep Agents config) with:
+
+Clear state schema (messages + analysis artifacts)
+A controlled loop for tool use and iteration
+
+
+Logging hooks and structured event traces(Recommendation — helps debugging.)
+
+Exit criteria
+
+You can run an end-to-end “analysis request” (even on dummy data) and get a saved artifact.
+
+
+Phase 3 — Persistence, memory, and artifact management
+LangGraph highlights “comprehensive memory” and durable execution as core benefits. 
+Deep Agents provides filesystem tools specifically to offload context into files. [docs.langchain.com] [deepwiki.com], [github.com]
+Deliverables
+
+Artifact conventions:
+
+/runs/<run_id>/inputs.json
+/runs/<run_id>/metrics.json
+/runs/<run_id>/report.md
+/runs/<run_id>/plots/*(Recommendation — adapt to your workflow.)
+
+
+State persistence strategy:
+
+“short-term” in messages/state
+“long-term” in saved files (and optionally a database)(Recommendation.)
+
+
+
+Exit criteria
+
+You can resume/inspect a prior run from stored artifacts.
+
+
+Phase 4 — Reliability engineering (guardrails, retries, and correctness checks)
+Your PROJECT_PLAN emphasizes error handling, logging, and automation of validation loops. 
+LangGraph positions itself as suitable for “long-running, stateful workflows” and debugging with LangSmith. [onedrive.live.com] [docs.langchain.com], [github.com]
+Deliverables
+
+Tool-call validation layer:
+
+schema validation
+input constraints (e.g., date ranges, symbol lists)
+timeouts and retries
+(Recommendation.)
+
+
+“Stop conditions” for loops (max steps, max runtime, confidence thresholds)(Recommendation.)
+Test suite:
+
+unit tests for tools
+integration tests for graph paths
+regression tests for a handful of representative scenarios(Recommendation.)
+
+
+
+Exit criteria
+
+Known failure modes are handled gracefully (and logged with enough context to debug).
+
+
+Phase 5 — Packaging & operator experience (CLI/API/UI)
+Deep Agents includes a “ready-to-run agent out of the box” framing and emphasizes context management and saving large outputs to files. 
+LangGraph docs discuss production-ready deployment concepts and debugging visibility. [github.com] [docs.langchain.com]
+Deliverables
+
+A CLI entrypoint:
+
+analyze --config config.yaml --request "…" --out runs/...(Recommendation.)
+
+
+A simple local API (FastAPI) or notebook interface(Recommendation.)
+A “runbook” documenting how to:
+
+start Ollama
+select models
+execute typical workflows
+interpret outputs
+
+
+
+Exit criteria
+
+You can run it repeatedly without hand-editing code, and outputs are consistent and organized.
+
+
+6) Proposed repo structure (simple, scalable)
+(Recommendation — adapt to your preferences.)
+Plain Textmarket-agent/  pyproject.toml  README.md  src/market_agent/    agent/                  # Deep Agents config OR LangGraph graph      graph.py      prompts.py      state.py    tools/                  # Your tool-wrapped market analysis code      data.py      features.py      models.py      backtest.py      metrics.py      reporting.py    runtime/      config.py      logging.py  tests/    unit/    integration/  runs/                     # generated artifacts (gitignored)  configs/    default.yamlShow more lines
+This cleanly separates agent orchestration from deterministic analytics, echoing the “hybrid architecture” separation pattern in PROJECT_PLAN. [onedrive.live.com]
+
+7) Risk log (the big things that typically bite)
+
+
+Tool calling fragility
+Deep Agents requires a tool-calling-capable model. If your local model sometimes “refuses” to call tools or hallucinates arguments, you’ll need stricter schemas and guardrails. [docs.langchain.com]
+
+
+Context bloat (slow + confused agent)
+Deep Agents explicitly includes filesystem tools and auto-summarization/context management, which is a strong hint to offload bulky outputs to files. [github.com], [deepwiki.com]
+
+
+Long-running workflow failures
+LangGraph emphasizes durable execution and resumption for long-running stateful workflows—lean into that if your backtests take time. [docs.langchain.com]
+
+
+Non-determinism in analysis decisions
+Even if tools are deterministic, the agent’s routing may not be. Use evaluation nodes and explicit stop rules.(Recommendation.)
+
+
+
+8) “Starter milestone plan” you can refine immediately
+Here’s a concise milestone checklist you can adapt to your specific pipeline:
+
+M1: Local Ollama model responds via LangChain integration [docs.langchain.com]
+M2: A Deep Agent runs with at least one custom market tool + writes artifacts to disk using built-in filesystem tools [github.com], [deepwiki.com]
+M3: End-to-end run: request → plan → tool calls → metrics → report artifact (single scenario) [github.com], [docs.langchain.com]
+M4: Add LangGraph durable/persistent execution for multi-step runs (if needed) [docs.langchain.com], [deepwiki.com]
+M5: Expand to multiple scenarios + regression suite (stability baseline)(Recommendation.)

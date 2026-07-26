@@ -1,0 +1,169 @@
+{
+  "_doc": "Strategy template for Python-native backtesting in ta_foundation. Copy this file, fill in your values, and remove all _doc/_note/_available fields before use. The LLM will do this for you automatically.",
+
+  "template_name": "my_strategy",
+  "hypothesis": "One clear sentence: what is the edge and why should it exist structurally in this market?",
+  "version": "1.0",
+
+  "instrument": "NQ",
+  "contract": "H25",
+  "timeframe": "5m",
+  "_note_timeframe": "Supported: 1m 3m 5m 10m 15m 30m 1h",
+
+  "direction": "long",
+  "_note_direction": "long | short | both",
+
+  "entry_signal": {
+    "type": "ma_cross",
+    "_available_types": [
+      "candle_pattern",
+      "ma_cross",
+      "ma_touch",
+      "breakout",
+      "orb",
+      "rsi_threshold",
+      "price_level"
+    ],
+
+    "_candle_pattern_fields": {
+      "_note": "Use when type=candle_pattern",
+      "pattern": "engulfing_bullish",
+      "_available_patterns": [
+        "large_body",
+        "pin_bar_bullish",
+        "pin_bar_bearish",
+        "inside_bar",
+        "outside_bar",
+        "engulfing_bullish",
+        "engulfing_bearish",
+        "doji",
+        "clean_breakout_bar"
+      ]
+    },
+
+    "_ma_cross_fields": {
+      "_note": "Use when type=ma_cross. Signals when fast MA crosses slow MA.",
+      "fast_type": "ema",
+      "fast_period": 9,
+      "slow_type": "sma",
+      "slow_period": 21,
+      "_available_ma_types": ["sma", "ema"]
+    },
+
+    "_ma_touch_fields": {
+      "_note": "Use when type=ma_touch. Signals when price dips to MA then closes back above (long) or below (short).",
+      "ma_type": "ema",
+      "period": 20,
+      "touch_tolerance_pct": 0.1,
+      "_note_touch_tolerance": "How close price must come to the MA as a % of bar range"
+    },
+
+    "_breakout_fields": {
+      "_note": "Use when type=breakout. Signals when close breaks above N-bar high (long) or below N-bar low (short).",
+      "lookback_bars": 20,
+      "confirmation_bars": 1,
+      "_note_confirmation": "Number of bars close must be beyond the level"
+    },
+
+    "_orb_fields": {
+      "_note": "Use when type=orb. Opening Range Breakout — break above/below the first N minutes of the session.",
+      "orb_minutes": 15,
+      "session_start": "07:30",
+      "retest_bars": 3,
+      "_note_retest": "Allow a retest of the OR level before signalling (0 = immediate break only)"
+    },
+
+    "_rsi_threshold_fields": {
+      "_note": "Use when type=rsi_threshold. Signals when RSI crosses a level.",
+      "period": 14,
+      "threshold": 30,
+      "cross_direction": "cross_above",
+      "_available_cross_directions": ["cross_above", "cross_below"]
+    },
+
+    "_price_level_fields": {
+      "_note": "Use when type=price_level. Signals when price touches a key level and bounces.",
+      "level_type": "vwap",
+      "_available_levels": [
+        "vwap",
+        "or_high",
+        "or_low",
+        "pd_high",
+        "pd_low",
+        "overnight_high",
+        "overnight_low"
+      ],
+      "touch_direction": "bounce_up",
+      "_available_touch_directions": ["bounce_up", "bounce_down"],
+      "touch_tolerance_ticks": 4,
+      "orb_minutes": 15
+    },
+
+    "timing": "next_open",
+    "_available_timing": ["next_open", "break_extreme", "body_midpoint"]
+  },
+
+  "entry_filters": [
+    {
+      "type": "trend",
+      "_note": "Only trade when price is on the correct side of a moving average.",
+      "indicator": "sma",
+      "_available_indicators": ["sma", "ema"],
+      "period": 50,
+      "condition": "price_above",
+      "_available_conditions": ["price_above", "price_below"],
+      "description": "Only long when price is above 50 SMA"
+    },
+    {
+      "type": "volatility",
+      "_note": "Only trade when ATR is above or below a rolling percentile.",
+      "period": 14,
+      "condition": "above_median",
+      "_available_conditions": ["above_median", "below_median", "above_percentile", "below_percentile"],
+      "lookback": 20,
+      "description": "Only trade when ATR is above its 20-bar median"
+    },
+    {
+      "type": "rsi",
+      "_note": "Only trade when RSI is in a specific zone.",
+      "period": 14,
+      "condition": "below",
+      "threshold": 60,
+      "_available_conditions": ["above", "below"],
+      "description": "Only long when RSI is not overbought"
+    }
+  ],
+  "_note_entry_filters": "entry_filters is a list. Include only the filters you want — remove the ones you don't need.",
+
+  "stop_mode": "signal_extreme_capped",
+  "_available_stop_modes": ["signal_extreme_capped", "atr_based", "fixed_ticks"],
+
+  "hard_stop_ticks_cap": 44,
+  "_note_hard_stop_ticks_cap": "For signal_extreme_capped: max ticks from entry to stop. For fixed_ticks: exact stop size.",
+
+  "initial_target_ticks": 30,
+
+  "partial_rules": {
+    "enabled": true,
+    "partial_size_pct": 50,
+    "partial_target_ticks": 18,
+    "move_stop_to_break_even_after_partial": true
+  },
+
+  "runner_rules": {
+    "enabled": false,
+    "trail_mode": "atr_or_structure",
+    "atr_multiple": 1.8,
+    "runner_size_pct": 50
+  },
+
+  "session_rules": {
+    "enabled": true,
+    "session_start": "08:30:00",
+    "session_end": "15:00:00",
+    "timezone": "America/Denver"
+  },
+
+  "max_hold_bars": 20,
+  "flatten_on_session_end": true
+}

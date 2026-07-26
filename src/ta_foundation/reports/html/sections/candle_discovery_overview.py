@@ -300,15 +300,18 @@ def render_candle_discovery_overview(ctx: dict) -> str:
 
     if "candle_discovery" in ctx:
         cd_data = ctx["candle_discovery"]
-    elif ctx.get("all_options", {}).get("candle_discovery"):
-        cd_data = ctx["all_options"]["candle_discovery"]
     else:
-        packages = ctx.get("packages") or {}
-        for pkg in packages.values():
-            derived = getattr(pkg, "metadata", {}).get("derived", {})
-            if "candle_discovery" in derived:
-                cd_data = derived["candle_discovery"]
-                break
+        # Only use all_options if it has actual results, not just a YAML config block
+        ao_cd = ctx.get("all_options", {}).get("candle_discovery")
+        if ao_cd and isinstance(ao_cd, dict) and "sweep_results" in ao_cd:
+            cd_data = ao_cd
+        else:
+            packages = ctx.get("packages") or {}
+            for pkg in packages.values():
+                derived = getattr(pkg, "metadata", {}).get("derived", {})
+                if "candle_discovery" in derived:
+                    cd_data = derived["candle_discovery"]
+                    break
 
     if not cd_data:
         return (

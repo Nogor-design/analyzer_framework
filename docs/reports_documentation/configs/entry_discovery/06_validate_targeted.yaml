@@ -1,0 +1,100 @@
+# ============================================================
+# STAGE 6 - TARGETED VALIDATION (Swing Levels & Breakouts)
+# ============================================================
+# Stricter walk-forward and Monte Carlo validation of the elite
+# high-expectancy candidates promoted from the continuous NQ scans.
+# This uses the exact ATR-based outcomes that captured the edges.
+# ============================================================
+
+report:
+  title: "Stage 6 - Targeted Validation (Elite Candidates)"
+  output_filename: "06_validate_targeted.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+_validation_defaults: &validation_defaults
+  min_trades: 30
+  hardening:
+    enabled: true
+    n_mc_simulations: 250
+    n_hypotheses_tested: 3
+    min_t_stat_abs: 1.0
+    require_slippage_stress_passed: true
+    wf_config:
+      wf_type: rolling
+      n_folds: 6
+      min_is_trades: 50
+      min_oos_trades: 20
+      degradation_threshold: 0.20
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      stress_cell: [2, 1]
+      max_expectancy_loss_pct: 40.0
+  filter_discovery: {enabled: false}
+
+_entry_timing_next_open: &entry_timing_next_open
+  next_open: {enabled: true}
+  break_extreme: {enabled: false}
+  body_midpoint: {enabled: false}
+
+_outcome_atr: &outcome_atr
+  atr:
+    enabled: true
+    target_mult: 1.5
+    stop_mult: 1.0
+  ticks: {enabled: false}
+  max_bars_timeout: 20
+  timeout_result: loss
+  tick_size: 0.25
+  tick_value: 5.00
+  commission_per_side: 2.09
+  slippage_ticks: 1
+
+breakout_discovery:
+  <<: *validation_defaults
+  enabled: true
+  timeframes: [1]
+  atr_period: 14
+  signals:
+    volatility_breakout:
+      enabled: true
+      atr_mult: [2.0]
+      body_zone_pct: [0.0, 0.3]
+      min_atr_ticks: [4.0]
+      direction: [0]
+  entry_timing: *entry_timing_next_open
+  outcome: *outcome_atr
+
+level_discovery:
+  <<: *validation_defaults
+  enabled: true
+  timeframes: [1]
+  atr_period: 14
+  signals:
+    swing_level_test:
+      enabled: true
+      pivot_lookback: [5, 8]
+      touch_atr_mult: [0.5]
+      max_pivots: [5]
+      direction: [0]
+  entry_timing:
+    next_open: {enabled: false}
+    break_extreme: {enabled: true}
+    body_midpoint: {enabled: false}
+  outcome: *outcome_atr
+
+sections:
+  - id: strategy_discovery_validation
+  - id: strategy_discovery_cohort
+  - id: strategy_discovery_ranked_table
+    options: {top_n: 20}
+  - id: breakout_discovery_overview
+    options: {top_n: 10}
+  - id: level_discovery_overview
+    options: {top_n: 10}
+  - id: strategy_discovery_drawdown

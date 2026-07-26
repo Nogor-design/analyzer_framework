@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Pool Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    input, select { background:#0f172a; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:7px 10px; font-size:13px; width:100%; }
+    input:focus, select:focus { outline:none; border-color:#f59e0b; box-shadow:0 0 0 2px rgba(245,158,11,.18); }
+    .btn-primary { background:#f59e0b; color:#0f172a; transition:all .15s; font-weight:600; }
+    .btn-primary:hover { background:#fbbf24; }
+    .btn-ghost { border:1px solid #334155; color:#cbd5e1; transition:all .15s; }
+    .btn-ghost:hover { border-color:#f59e0b; color:#fcd34d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .lbl { font-size:11px; color:#94a3b8; margin-bottom:3px; display:block; }
+    .pathish { overflow-wrap:anywhere; word-break:break-word; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; }
+    .step-num { width:22px; height:22px; border-radius:9999px; background:#f59e0b; color:#0f172a; font-weight:700; font-size:12px; display:inline-flex; align-items:center; justify-content:center; }
+    table { border-collapse:collapse; width:100%; font-size:12px; }
+    th, td { padding:6px 8px; text-align:right; border-bottom:1px solid rgba(51,65,85,.5); }
+    th:first-child, td:first-child { text-align:left; }
+    .win { color:#34d399; font-weight:700; }
+    .bad { color:#f87171; }
+    .badge { font-size:10px; padding:1px 6px; border-radius:9999px; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer" class="text-slate-400 hover:text-amber-400 text-xs no-underline">&larr; Optimizer</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Pool Studio</span>
+    <span class="text-slate-500 text-sm">/ build a weekly pool &middot; score the daily lineup</span>
+  </div>
+  <a href="/optimizer/deployment-matrix" class="btn-ghost px-3 py-1.5 rounded text-xs no-underline">Advanced matrix editor</a>
+</header>
+
+<main class="max-w-4xl mx-auto p-6 space-y-5">
+
+  <!-- STEP 1: build -->
+  <section class="panel p-5">
+    <h1 class="text-lg font-bold flex items-center gap-2"><span class="step-num">1</span> Build a weekly pool</h1>
+    <p class="text-slate-400 text-xs mt-1 mb-4">Pick a strategy and window. The engine builds the full deployment matrix; advanced strategies auto-apply their exit/regime profile. Nothing is dispatched to NinjaTrader here &mdash; this previews the plan.</p>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="lbl">Strategy</label><select id="strategy"></select><div id="profileHint" class="text-amber-300/80 text-[11px] mt-1"></div></div>
+      <div><label class="lbl">Seed template</label><select id="seed"><option value="">— pick a strategy first —</option></select></div>
+      <div><label class="lbl">Instrument</label><input id="instrument" value="NQ 06-26" /></div>
+      <div><label class="lbl">Min trades floor (selection)</label><input id="floor" type="number" value="10" /></div>
+      <div><label class="lbl">OOS start (YYYY-MM-DD)</label><input id="start" placeholder="2026-05-01" /></div>
+      <div><label class="lbl">OOS end (YYYY-MM-DD)</label><input id="end" placeholder="2026-06-03" /></div>
+    </div>
+    <div class="mt-4 flex items-center gap-3">
+      <button id="buildBtn" class="btn-primary px-4 py-2 rounded text-sm">Build pool (preview)</button>
+      <span id="buildMsg" class="text-xs text-slate-400"></span>
+    </div>
+    <div id="buildResult" class="mt-4 hidden"></div>
+  </section>
+
+  <!-- STEP 2: scorecard -->
+  <section class="panel p-5">
+    <h1 class="text-lg font-bold flex items-center gap-2"><span class="step-num">2</span> Lineup Scorecard</h1>
+    <p class="text-slate-400 text-xs mt-1 mb-4">Once a pool has run to completion, score the daily-lineup selectors against baselines on realised out-of-sample results &mdash; with a strict train/test split. <span class="text-amber-300/80">Survival (max drawdown) is weighted, not just net.</span></p>
+    <div class="flex items-end gap-3">
+      <div class="flex-1"><label class="lbl">Session ID</label><input id="scoreSession" placeholder="opt_..." /></div>
+      <button id="scoreBtn" class="btn-primary px-4 py-2 rounded text-sm">Score selectors</button>
+    </div>
+    <div id="scoreMsg" class="text-xs text-slate-400 mt-2"></div>
+    <div id="scoreResult" class="mt-4 hidden"></div>
+  </section>
+
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PROFILE_HINTS = {
+  "PantheonMaster": "Advanced: auto-applies AtrTrail exit + regime-off (full coverage). Trailing exit → validate live-fill parity before trading real money.",
+};
+const money = (v) => (v==null ? "n/a" : "$" + Math.round(v).toLocaleString());
+const num = (v, d=2) => (v==null ? "n/a" : Number(v).toFixed(d));
+
+async function loadStrategies() {
+  const r = await fetch("/api/optimizer/strategies");
+  const j = await r.json();
+  const sel = $("strategy");
+  sel.innerHTML = "";
+  (j.strategies || []).forEach(s => {
+    const o = document.createElement("option");
+    o.value = s.strategy_id; o.textContent = s.strategy_id + " (" + (s.seed_template_count||0) + " seeds)";
+    sel.appendChild(o);
+  });
+  // Prefer PantheonMaster if present.
+  if ([...sel.options].some(o => o.value === "PantheonMaster")) sel.value = "PantheonMaster";
+  onStrategyChange();
+}
+
+async function onStrategyChange() {
+  const sid = $("strategy").value;
+  $("profileHint").textContent = PROFILE_HINTS[sid] || "";
+  const seedSel = $("seed");
+  seedSel.innerHTML = "<option value=''>loading seeds…</option>";
+  try {
+    const r = await fetch("/api/optimizer/strategies/" + encodeURIComponent(sid));
+    const j = await r.json();
+    const seeds = j.seed_templates || [];
+    seedSel.innerHTML = seeds.length ? "" : "<option value=''>— no seeds found (regenerate in matrix editor) —</option>";
+    seeds.forEach(s => {
+      const o = document.createElement("option");
+      o.value = s.path; o.textContent = s.name;
+      seedSel.appendChild(o);
+    });
+  } catch (e) { seedSel.innerHTML = "<option value=''>error loading seeds</option>"; }
+}
+
+async function buildPool() {
+  const btn = $("buildBtn"); btn.disabled = true;
+  $("buildMsg").textContent = "Building plan…";
+  const body = {
+    strategy_id: $("strategy").value,
+    seed_template_path: $("seed").value,
+    instrument: $("instrument").value,
+    market_suffix: ($("instrument").value.split(" ")[0] || "NQ"),
+    label: "Pool Studio " + $("strategy").value,
+    start_date: $("start").value,
+    end_date: $("end").value,
+    refine_selection_min_trades: Number($("floor").value || 10),
+    start: false,
+  };
+  try {
+    const r = await fetch("/api/optimizer/deployment-matrix/run", {
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok) { $("buildMsg").textContent = "Error: " + (j.error || r.status); btn.disabled = false; return; }
+    const sid = (j.session && j.session.session_id) || (j.session && j.session.id) || "";
+    const plan = j.plan || {};
+    $("buildMsg").textContent = "Plan built (not dispatched).";
+    $("buildResult").classList.remove("hidden");
+    $("buildResult").innerHTML = `
+      <div class="panel p-4 bg-slate-900/40">
+        <div class="text-sm">Session <span class="pathish text-amber-300">${sid}</span></div>
+        <div class="text-xs text-slate-400 mt-1">Stage-1 root jobs: <b class="text-slate-200">${plan.template_count ?? "?"}</b> &middot; stages: ${(plan.stages||[]).map(s=>s.stage_id||s).join(" → ") || "stage_1 → refine_risk → final_backtest"}</div>
+        <div class="flex gap-2 mt-3 flex-wrap">
+          <a class="btn-ghost px-3 py-1.5 rounded text-xs no-underline" href="/optimizer/sessions/${sid}/deployment-matrix/coverage">Coverage</a>
+          <a class="btn-ghost px-3 py-1.5 rounded text-xs no-underline" href="/optimizer/sessions/${sid}">Session detail / dispatch</a>
+        </div>
+        <div class="text-[11px] text-slate-500 mt-2">Dispatch the run from the session page (or the advanced editor). When it completes, score it in step 2 — the id is prefilled below.</div>
+      </div>`;
+    if (sid) $("scoreSession").value = sid;
+  } catch (e) { $("buildMsg").textContent = "Error: " + e; }
+  btn.disabled = false;
+}
+
+function verdict(sels) {
+  // Best baseline by sharpe (survival-weighted), and whether composite beats it on BOTH net and sharpe.
+  const names = Object.keys(sels).filter(n => n !== "composite_v1");
+  const bySharpe = (a,b) => (sels[b].daily_sharpe ?? -9) - (sels[a].daily_sharpe ?? -9);
+  const bestBase = names.sort(bySharpe)[0];
+  const c = sels.composite_v1, b = sels[bestBase];
+  if (!c) return {text:`No composite selector in result. Survival-best baseline: <b>${bestBase}</b>.`, ok:null};
+  const beatsNet = c.net > b.net, beatsSharpe = (c.daily_sharpe ?? -9) > (b.daily_sharpe ?? -9);
+  if (beatsNet && beatsSharpe)
+    return {text:`composite_v1 beats <b>${bestBase}</b> on BOTH expectancy and survival — it clears the Phase-1 gate (validate on more OOS windows before production).`, ok:true};
+  return {text:`composite_v1 does NOT clear the gate (needs to beat on expectancy AND survival). <b>${bestBase}</b> is the survival-weighted winner — it is the accountable production selector until a scorer beats it OOS.`, ok:false};
+}
+
+async function scoreSession() {
+  const sid = $("scoreSession").value.trim();
+  if (!sid) { $("scoreMsg").textContent = "Enter a session id."; return; }
+  const btn = $("scoreBtn"); btn.disabled = true;
+  $("scoreMsg").textContent = "Replaying selectors (walk-forward)…";
+  try {
+    const r = await fetch("/api/selection/replay/" + encodeURIComponent(sid));
+    const j = await r.json();
+    if (!r.ok) { $("scoreMsg").textContent = "Error: " + (j.error || r.status); btn.disabled=false; return; }
+    const sels = j.selectors || {};
+    const order = Object.keys(sels).sort((a,b) => (sels[b].daily_sharpe ?? -9) - (sels[a].daily_sharpe ?? -9));
+    const bestSharpe = Math.max(...order.map(n => sels[n].daily_sharpe ?? -9));
+    let rows = order.map(n => {
+      const s = sels[n];
+      const isWin = (s.daily_sharpe ?? -9) === bestSharpe;
+      const tag = n === "composite_v1" ? " <span class='badge bg-amber-500/20 text-amber-300'>v1</span>" : "";
+      return `<tr class="${isWin?'win':''}">
+        <td>${n}${tag}</td><td>${money(s.net)}</td><td>${money(s.expectancy_daily)}</td>
+        <td>${(s.hit_rate*100||0).toFixed(0)}%</td><td class="${s.max_drawdown<-1500?'bad':''}">${money(s.max_drawdown)}</td>
+        <td>${num(s.daily_sharpe)}</td></tr>`;
+    }).join("");
+    const v = verdict(sels);
+    $("scoreResult").classList.remove("hidden");
+    $("scoreResult").innerHTML = `
+      <div class="text-xs text-slate-400 mb-2">${j.n_candidates} templates &middot; ${j.slices.length} slices &middot; ${j.n_days} days (${(j.date_range||[]).join(" → ")}) &middot; ${j.regime_days} regime-days${j.bars_used? "" : " — <span class='text-amber-300'>no bars file: regime_matched fell back to top_pf</span>"}</div>
+      <table>
+        <thead><tr><th>selector</th><th>net</th><th>exp/day</th><th>hit</th><th>max DD</th><th>sharpe</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="mt-3 p-3 rounded text-xs ${v.ok===true?'bg-emerald-500/10 text-emerald-200':v.ok===false?'bg-slate-800/60 text-slate-200':'bg-slate-800/60 text-slate-300'}">
+        <b>Verdict:</b> ${v.text}
+      </div>
+      <div class="text-[11px] text-slate-500 mt-2">Sorted by daily Sharpe (survival-weighted). Green = best risk-adjusted. Selection is leakage-free: each day's picks use only prior days.</div>`;
+    $("scoreMsg").textContent = "";
+  } catch (e) { $("scoreMsg").textContent = "Error: " + e; }
+  btn.disabled = false;
+}
+
+$("strategy").addEventListener("change", onStrategyChange);
+$("buildBtn").addEventListener("click", buildPool);
+$("scoreBtn").addEventListener("click", scoreSession);
+loadStrategies();
+</script>
+</body>
+</html>

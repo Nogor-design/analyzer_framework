@@ -1,0 +1,24 @@
+# 07_weekly_leaderboard.yaml
+# Weekly Prop Dashboard
+# Renders a prop-firm simulation dashboard ranking bots with safety buffers and consistency windows.
+
+report:
+  title: "weekly_leaderboard_cards"
+  output_filename: "weekly_leaderboard_cards_3_14.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: weekly_leaderboard_cards
+    title: "Weekly Prop Dashboard"
+    options:
+      top_n: 299
+      starting_balance: 50000
+      trailing_dd: 2500
+      baseline_mode: fresh_week
+      show_card_image: true
+      show_chart: false
+      show_debug_table: false
+      warn_buffer: 500
+      compact_noimg: true
+      bot_columns: 1

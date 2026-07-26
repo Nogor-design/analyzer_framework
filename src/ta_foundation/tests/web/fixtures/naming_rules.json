@@ -1,0 +1,136 @@
+{
+  "tick_value": 5.0,
+  "session_windows": [
+    {
+      "session": "London Early",
+      "single": "Rise",
+      "multi": "Rising",
+      "start_minute": 0,
+      "end_minute": 239
+    },
+    {
+      "session": "London Late",
+      "single": "Prime",
+      "multi": "Priming",
+      "start_minute": 240,
+      "end_minute": 419
+    },
+    {
+      "session": "Pre-Market",
+      "single": "Coil",
+      "multi": "Coiling",
+      "start_minute": 420,
+      "end_minute": 449
+    },
+    {
+      "session": "NY Open",
+      "single": "Rage",
+      "multi": "Raging",
+      "start_minute": 450,
+      "end_minute": 479
+    },
+    {
+      "session": "Midday",
+      "single": "Drift",
+      "multi": "Drifting",
+      "start_minute": 480,
+      "end_minute": 719
+    },
+    {
+      "session": "Power Hour",
+      "single": "Close",
+      "multi": "Closing",
+      "start_minute": 720,
+      "end_minute": 959
+    },
+    {
+      "session": "Asia",
+      "single": "Dawn",
+      "multi": "Dawning",
+      "start_minute": 960,
+      "end_minute": 1439
+    }
+  ],
+  "ma_tiers": [
+    {
+      "minimum": 2,
+      "maximum": 75,
+      "god": "Hermes",
+      "monster": "Harpy"
+    },
+    {
+      "minimum": 76,
+      "maximum": 125,
+      "god": "Artemis",
+      "monster": "Griffin"
+    },
+    {
+      "minimum": 126,
+      "maximum": 175,
+      "god": "Poseidon",
+      "monster": "Medusa"
+    },
+    {
+      "minimum": 176,
+      "maximum": 225,
+      "god": "Apollo",
+      "monster": "Hydra"
+    },
+    {
+      "minimum": 226,
+      "maximum": 275,
+      "god": "Zeus",
+      "monster": "Chimera"
+    },
+    {
+      "minimum": 276,
+      "maximum": 325,
+      "god": "Ares",
+      "monster": "Cerberus"
+    },
+    {
+      "minimum": 326,
+      "maximum": 375,
+      "god": "Athena",
+      "monster": "Sphinx"
+    },
+    {
+      "minimum": 376,
+      "maximum": 425,
+      "god": "Aphrodite",
+      "monster": "Siren"
+    },
+    {
+      "minimum": 426,
+      "maximum": 500,
+      "god": "Dionysus",
+      "monster": "Typhon"
+    }
+  ],
+  "descriptor_tiers": [
+    {
+      "minimum": 100,
+      "maximum": 300,
+      "rr_leq_1": "Serenity",
+      "rr_gt_1": "Balance"
+    },
+    {
+      "minimum": 301,
+      "maximum": 600,
+      "rr_leq_1": "Ember",
+      "rr_gt_1": "Bolt"
+    },
+    {
+      "minimum": 601,
+      "maximum": 1000,
+      "rr_leq_1": "Cosmos",
+      "rr_gt_1": "Hunter"
+    },
+    {
+      "minimum": 1001,
+      "maximum": null,
+      "rr_leq_1": "Fire",
+      "rr_gt_1": "Inferno"
+    }
+  ]
+}

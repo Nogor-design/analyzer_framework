@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 """
-Opening Range Breakout (ORB) Signal Detector
-=============================================
-Defines the opening range for each trading session and emits a signal when
-price breaks above (bullish) or below (bearish) that range.
+Opening Range Signal Detector
+=============================
+Defines the opening range for each trading session and emits either classic
+breakout signals or failed-breakout reclaim signals.
 
 ALGORITHM
 ---------
 For each trading day:
   1. Define the opening range as the high/low of the first `orb_minutes`
      minutes after `session_open_hour:session_open_minute` (Denver time).
-  2. After the range is set:
+  2. For ``signal_type: breakout`` after the range is set:
      - Bull breakout: bar closes above orb_high (direction = 1)
      - Bear breakout: bar closes below orb_low  (direction = -1)
+  3. For ``signal_type: failure_reclaim``:
+     - Bearish fade: price sweeps above orb_high, then closes back inside
+       the range within `max_reclaim_bars` (direction = -1)
+     - Bullish fade: price sweeps below orb_low, then closes back inside
+       the range within `max_reclaim_bars` (direction = 1)
   3. Only one signal per side per day (first breakout wins).
   4. Optional: require range to be at least `min_range_ticks` wide.
   5. Optional: require price to have not already exceeded the range before
@@ -54,6 +59,10 @@ DEFAULT_ORB_CONFIG: Dict[str, Any] = {
     "atr_period":           14,       # for range normalisation
     "require_close_beyond": True,     # bar close must exceed range (not just wick)
     "one_signal_per_side":  True,     # only first breakout per direction per day
+    "signal_type":          "breakout",  # breakout | failure_reclaim
+    "min_sweep_ticks":      1.0,      # failure_reclaim: minimum pierce outside OR
+    "close_back_ticks":     0.0,      # failure_reclaim: close this far back inside
+    "max_reclaim_bars":     3,        # failure_reclaim: bars allowed after sweep
 }
 
 
@@ -85,6 +94,10 @@ def detect_orb(
     atr_period     = int(cfg["atr_period"])
     req_close      = bool(cfg["require_close_beyond"])
     one_per_side   = bool(cfg["one_signal_per_side"])
+    signal_type    = str(cfg.get("signal_type", "breakout")).lower()
+    min_sweep_t    = float(cfg.get("min_sweep_ticks", 1.0))
+    close_back_t   = float(cfg.get("close_back_ticks", 0.0))
+    max_reclaim    = int(cfg.get("max_reclaim_bars", 3))
 
     # Normalise timestamps to Denver-local tz-naive for grouping
     dt_series = pd.to_datetime(bars_1m["dt"])
@@ -139,42 +152,150 @@ def detect_orb(
         orb_range_ticks    = round(orb_range / tick_sz, 2)
         orb_range_atr_pct  = round(orb_range / atr_val, 4) if atr_val and atr_val > 0 else np.nan
 
-        # ---- Scan for breakout bars ----
+        # ---- Scan for signal bars ----
         signal_bars = day_bars[
             (day_bars["_local_dt"] > range_end_dt) &
             (day_bars["_hour"] < close_h)
-        ]
+        ].reset_index(drop=True)
 
         fired: Dict[int, bool] = {1: False, -1: False}
 
-        for _, bar in signal_bars.iterrows():
-            for d in directions_to_check:
-                if one_per_side and fired[d]:
-                    continue
+        if signal_type == "breakout":
+            for _, bar in signal_bars.iterrows():
+                for d in directions_to_check:
+                    if one_per_side and fired[d]:
+                        continue
 
-                if d == 1:
-                    # Bullish breakout
-                    breached = bar["close"] > orb_high if req_close else bar["high"] > orb_high
-                else:
-                    # Bearish breakout
-                    breached = bar["close"] < orb_low if req_close else bar["low"] < orb_low
+                    if d == 1:
+                        # Bullish breakout
+                        breached = bar["close"] > orb_high if req_close else bar["high"] > orb_high
+                    else:
+                        # Bearish breakout
+                        breached = bar["close"] < orb_low if req_close else bar["low"] < orb_low
 
-                if breached:
-                    rows.append({
-                        "dt":               bar["dt"],
-                        "direction":        d,
-                        "open":             bar["open"],
-                        "high":             bar["high"],
-                        "low":              bar["low"],
-                        "close":            bar["close"],
-                        "orb_high":         orb_high,
-                        "orb_low":          orb_low,
-                        "orb_range_ticks":  orb_range_ticks,
-                        "orb_range_atr_pct": orb_range_atr_pct,
-                        "day_label":        str(date),
-                    })
-                    fired[d] = True
+                    if breached:
+                        rows.append(_orb_row(
+                            bar, d, orb_high, orb_low, orb_range_ticks,
+                            orb_range_atr_pct, str(date), signal_type,
+                        ))
+                        fired[d] = True
+        elif signal_type == "failure_reclaim":
+            rows.extend(_detect_failure_reclaims(
+                signal_bars=signal_bars,
+                directions_to_check=directions_to_check,
+                fired=fired,
+                one_per_side=one_per_side,
+                orb_high=orb_high,
+                orb_low=orb_low,
+                orb_range_ticks=orb_range_ticks,
+                orb_range_atr_pct=orb_range_atr_pct,
+                day_label=str(date),
+                tick_size=tick_sz,
+                min_sweep_ticks=min_sweep_t,
+                close_back_ticks=close_back_t,
+                max_reclaim_bars=max_reclaim,
+                signal_type=signal_type,
+            ))
+        else:
+            raise ValueError(f"Unknown ORB signal_type: {signal_type!r}")
 
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame(rows).reset_index(drop=True)
+
+
+def _orb_row(
+    bar: pd.Series,
+    direction: int,
+    orb_high: float,
+    orb_low: float,
+    orb_range_ticks: float,
+    orb_range_atr_pct: float,
+    day_label: str,
+    signal_type: str,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    row = {
+        "dt":                bar["dt"],
+        "direction":         direction,
+        "open":              bar["open"],
+        "high":              bar["high"],
+        "low":               bar["low"],
+        "close":             bar["close"],
+        "orb_high":          orb_high,
+        "orb_low":           orb_low,
+        "orb_range_ticks":   orb_range_ticks,
+        "orb_range_atr_pct": orb_range_atr_pct,
+        "day_label":         day_label,
+        "signal_type":       signal_type,
+    }
+    if extra:
+        row.update(extra)
+    return row
+
+
+def _detect_failure_reclaims(
+    *,
+    signal_bars: pd.DataFrame,
+    directions_to_check: List[int],
+    fired: Dict[int, bool],
+    one_per_side: bool,
+    orb_high: float,
+    orb_low: float,
+    orb_range_ticks: float,
+    orb_range_atr_pct: float,
+    day_label: str,
+    tick_size: float,
+    min_sweep_ticks: float,
+    close_back_ticks: float,
+    max_reclaim_bars: int,
+    signal_type: str,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    sweep_dist = min_sweep_ticks * tick_size
+    close_back = close_back_ticks * tick_size
+
+    for i, bar in signal_bars.iterrows():
+        possible: List[tuple[int, str, float]] = []
+        if -1 in directions_to_check and not (one_per_side and fired[-1]):
+            if float(bar["high"]) >= orb_high + sweep_dist:
+                possible.append((-1, "orb_high", orb_high))
+        if 1 in directions_to_check and not (one_per_side and fired[1]):
+            if float(bar["low"]) <= orb_low - sweep_dist:
+                possible.append((1, "orb_low", orb_low))
+
+        for direction, swept_side, level in possible:
+            end_i = min(i + max_reclaim_bars, len(signal_bars) - 1)
+            for j in range(i, end_i + 1):
+                reclaim_bar = signal_bars.iloc[j]
+                close = float(reclaim_bar["close"])
+                reclaimed = (
+                    close <= orb_high - close_back
+                    if direction == -1
+                    else close >= orb_low + close_back
+                )
+                if not reclaimed:
+                    continue
+
+                rows.append(_orb_row(
+                    reclaim_bar,
+                    direction,
+                    orb_high,
+                    orb_low,
+                    orb_range_ticks,
+                    orb_range_atr_pct,
+                    day_label,
+                    signal_type,
+                    {
+                        "swept_side": swept_side,
+                        "swept_level": level,
+                        "bars_to_reclaim": int(j - i),
+                    },
+                ))
+                fired[direction] = True
+                break
+
+            if one_per_side and fired[direction]:
+                continue
+
+    return rows

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from ta_foundation.reports.html.sections.analysis_chart_replica import render_analysis_chart_replica
+from ta_foundation.reports.html.sections.exec_card_god_banner import render_exec_card_god_banner
 from ta_foundation.reports.html.sections.daily_scoreboard import render_daily_scoreboard
 from ta_foundation.reports.html.sections.comparison_overview import render_comparison_overview
 from ta_foundation.reports.html.sections.equity_curve import render_equity_curve_all_runs
@@ -17,7 +19,15 @@ from ta_foundation.reports.html.sections.run_executive_profile_cards import (
 )
 from ta_foundation.reports.html.sections.run_card_catalog import render_run_card_catalog
 from ta_foundation.reports.html.sections.daily_leaderboard_cards import render_daily_leaderboard_cards
+from ta_foundation.reports.html.sections.daily_winner_spotlight import render_daily_winner_spotlight
+from ta_foundation.reports.html.sections.deployment_board_insight import render_deployment_board_insight
+from ta_foundation.reports.html.sections.deployment_board_gods import render_deployment_board_gods
+from ta_foundation.reports.html.sections.deployment_board_poster import render_deployment_board_poster
+from ta_foundation.reports.html.sections.strategy_parameter_matrix import render_strategy_parameter_matrix
 from ta_foundation.reports.html.sections.weekly_leaderboard_cards import render_weekly_leaderboard_cards
+from ta_foundation.reports.html.sections.strategy_momentum_board import render_strategy_momentum_board
+from ta_foundation.reports.html.sections.strategy_lifecycle_board import render_strategy_lifecycle_board
+from ta_foundation.reports.html.sections.strategy_session_momentum_board import render_strategy_session_momentum_board
 from ta_foundation.reports.html.sections.trades_intraday_pnl_by_day import (
     render_trades_intraday_pnl_by_day,
 )
@@ -147,6 +157,9 @@ from ta_foundation.reports.html.sections.strategy_discovery_decision_ledger impo
 from ta_foundation.reports.html.sections.strategy_discovery_combo_basket import (
     render_strategy_discovery_combo_basket,
 )
+from ta_foundation.reports.html.sections.final_template_bundle_basket import (
+    render_final_template_bundle_basket,
+)
 from ta_foundation.reports.html.sections.candle_discovery_overview import (
     render_candle_discovery_overview,
 )
@@ -159,6 +172,9 @@ from ta_foundation.reports.html.sections.ma_discovery_overview import (
 from ta_foundation.reports.html.sections.orb_discovery_overview import (
     render_orb_discovery_overview,
 )
+from ta_foundation.reports.html.sections.premarket_discovery_overview import (
+    render_premarket_discovery_overview,
+)
 from ta_foundation.reports.html.sections.bb_discovery_overview import (
     render_bb_discovery_overview,
 )
@@ -168,6 +184,150 @@ from ta_foundation.reports.html.sections.strategy_discovery_unified import (
 from ta_foundation.reports.html.sections.lcr_discovery_overview import (
     render_lcr_discovery_overview,
 )
+from ta_foundation.reports.html.sections.optimization_overview import (
+    render_optimization_overview,
+)
+from ta_foundation.reports.html.sections.recipe_parameter_trend import (
+    render_recipe_parameter_trend,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_summary import (
+    render_large_candle_excursion_summary,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_distributions import (
+    render_large_candle_excursion_distributions,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_threshold_hits import (
+    render_large_candle_excursion_threshold_hits,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_event_table import (
+    render_large_candle_excursion_event_table,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_methodology import (
+    render_large_candle_excursion_methodology,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_trade_summary import (
+    render_large_candle_excursion_trade_summary,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_trade_comparison import (
+    render_large_candle_excursion_trade_comparison,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_trade_event_table import (
+    render_large_candle_excursion_trade_event_table,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_volume_context import (
+    render_large_candle_excursion_volume_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_structure_context import (
+    render_large_candle_excursion_structure_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_volatility_context import (
+    render_large_candle_excursion_volatility_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_interactions import (
+    render_large_candle_excursion_interactions,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_executive_summary import (
+    render_large_candle_excursion_findings_executive_summary,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_top_discoveries import (
+    render_large_candle_excursion_findings_top_discoveries,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_interactions import (
+    render_large_candle_excursion_findings_interactions,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_fragility import (
+    render_large_candle_excursion_findings_fragility,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_next_tests import (
+    render_large_candle_excursion_findings_next_tests,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_methodology import (
+    render_large_candle_excursion_findings_methodology,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_interpretation import (
+    render_large_candle_excursion_findings_interpretation,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_families import (
+    render_large_candle_excursion_findings_families,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_findings_decision_engine import (
+    render_large_candle_excursion_findings_decision_engine,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_elite_reversal_setup_extractor import (
+    render_large_candle_excursion_elite_reversal_setup_extractor,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_recursive_edge_search import (
+    render_large_candle_excursion_recursive_edge_search,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_edge_validation_engine import (
+    render_large_candle_excursion_edge_validation_engine,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_construction_engine import (
+    render_large_candle_excursion_strategy_construction_engine,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_blueprints import (
+    render_large_candle_excursion_strategy_blueprints,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_signal_context import (
+    render_large_candle_excursion_signal_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_context_diagnostics import (
+    render_large_candle_excursion_context_diagnostics,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_context_families import (
+    render_large_candle_excursion_context_families,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_reversal_leaders import (
+    render_large_candle_excursion_reversal_leaders,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_session_large_moves import (
+    render_large_candle_excursion_session_large_moves,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_target_curves import (
+    render_large_candle_excursion_target_curves,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_session_context import (
+    render_large_candle_excursion_session_context,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_time_segments import (
+    render_large_candle_excursion_time_segments,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_strategy_cards import (
+    render_large_candle_excursion_strategy_cards,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_regime_discovery import (
+    render_large_candle_excursion_regime_discovery,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_regime_findings_explainer import (
+    render_large_candle_excursion_regime_findings_explainer,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_summary import (
+    render_large_candle_excursion_discovery_summary,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_broad_scan import (
+    render_large_candle_excursion_discovery_broad_scan,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_refinement import (
+    render_large_candle_excursion_discovery_refinement,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_chains import (
+    render_large_candle_excursion_discovery_chains,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_robustness import (
+    render_large_candle_excursion_discovery_robustness,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_diagnostics import (
+    render_large_candle_excursion_discovery_diagnostics,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_next_steps import (
+    render_large_candle_excursion_discovery_next_steps,
+)
+from ta_foundation.reports.html.sections.large_candle_excursion_discovery_methodology import (
+    render_large_candle_excursion_discovery_methodology,
+)
+from ta_foundation.reports.html.sections.horizon_overview import (
+    render_horizon_overview,
+)
 
 # Shared overview renderer reused for breakout, pullback, level
 def _make_generic_overview(discovery_key: str, title_label: str, accent: str):
@@ -176,7 +336,10 @@ def _make_generic_overview(discovery_key: str, title_label: str, accent: str):
         data = None
         if discovery_key in ctx:
             data = ctx[discovery_key]
-        elif ctx.get("all_options", {}).get(discovery_key):
+        elif (
+            isinstance(ctx.get("all_options", {}).get(discovery_key), dict)
+            and "sweep_results" in ctx["all_options"][discovery_key]
+        ):
             data = ctx["all_options"][discovery_key]
         else:
             for pkg in (ctx.get("packages") or {}).values():
@@ -284,6 +447,17 @@ class SectionDef:
 
 
 SECTION_REGISTRY: dict[str, SectionDef] = {
+    # --- optimizer-finalist sections (auto-generated per candidate) ---
+    "exec_card_god_banner": SectionDef(
+        id="exec_card_god_banner",
+        default_title="",
+        render_fn=render_exec_card_god_banner,
+    ),
+    "analysis_chart_replica": SectionDef(
+        id="analysis_chart_replica",
+        default_title="Analysis (replicated from CSV)",
+        render_fn=render_analysis_chart_replica,
+    ),
     # --- existing sections ---
     "comparison_overview": SectionDef(
         id="comparison_overview",
@@ -335,10 +509,50 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Daily Leaders (Session Winners)",
         render_fn=render_daily_leaderboard_cards,
     ),
+    "daily_winner_spotlight": SectionDef(
+        id="daily_winner_spotlight",
+        default_title="Daily Winner Insight",
+        render_fn=render_daily_winner_spotlight,
+    ),
+    "deployment_board_insight": SectionDef(
+        id="deployment_board_insight",
+        default_title="Deployment Board Insight",
+        render_fn=render_deployment_board_insight,
+    ),
+    "deployment_board_gods": SectionDef(
+        id="deployment_board_gods",
+        default_title="Deployment Board Pantheon",
+        render_fn=render_deployment_board_gods,
+    ),
+    "deployment_board_poster": SectionDef(
+        id="deployment_board_poster",
+        default_title="Ares Deployment Card",
+        render_fn=render_deployment_board_poster,
+    ),
+    "strategy_parameter_matrix": SectionDef(
+        id="strategy_parameter_matrix",
+        default_title="Executive Parameter Matrix",
+        render_fn=render_strategy_parameter_matrix,
+    ),
     "weekly_leaderboard_cards": SectionDef(
         id="weekly_leaderboard_cards",
         default_title="Weekly Leaders",
         render_fn=render_weekly_leaderboard_cards,
+    ),
+    "strategy_momentum_board": SectionDef(
+        id="strategy_momentum_board",
+        default_title="Strategy Momentum Board",
+        render_fn=render_strategy_momentum_board,
+    ),
+    "strategy_lifecycle_board": SectionDef(
+        id="strategy_lifecycle_board",
+        default_title="Strategy Lifecycle Board",
+        render_fn=render_strategy_lifecycle_board,
+    ),
+    "strategy_session_momentum_board": SectionDef(
+        id="strategy_session_momentum_board",
+        default_title="Strategy Session Momentum Board",
+        render_fn=render_strategy_session_momentum_board,
     ),
     "trades_intraday_pnl_by_day": SectionDef(
         id="trades_intraday_pnl_by_day",
@@ -591,6 +805,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         default_title="Strategy Discovery — Combo Basket",
         render_fn=render_strategy_discovery_combo_basket,
     ),
+    "final_template_bundle_basket": SectionDef(
+        id="final_template_bundle_basket",
+        default_title="Final Template Bundle Basket",
+        render_fn=render_final_template_bundle_basket,
+    ),
     "candle_discovery_overview": SectionDef(
         id="candle_discovery_overview",
         default_title="Candle Discovery — Pattern × TF × Regime Overview",
@@ -610,6 +829,11 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="orb_discovery_overview",
         default_title="ORB Discovery — Opening Range Breakout Overview",
         render_fn=render_orb_discovery_overview,
+    ),
+    "premarket_discovery_overview": SectionDef(
+        id="premarket_discovery_overview",
+        default_title="Pre-Market Predictor — Does the Premarket Signal the Open Direction?",
+        render_fn=render_premarket_discovery_overview,
     ),
     "bb_discovery_overview": SectionDef(
         id="bb_discovery_overview",
@@ -640,6 +864,250 @@ SECTION_REGISTRY: dict[str, SectionDef] = {
         id="lcr_discovery_overview",
         default_title="LCR Discovery — Large Candle Region Analysis",
         render_fn=render_lcr_discovery_overview,
+    ),
+
+    # --- Optimization ---
+    "optimization_overview": SectionDef(
+        id="optimization_overview",
+        default_title="Optimization Results Overview",
+        render_fn=render_optimization_overview,
+    ),
+    "recipe_parameter_trend": SectionDef(
+        id="recipe_parameter_trend",
+        default_title="Recipe Parameter Trend — Next Runs",
+        render_fn=render_recipe_parameter_trend,
+    ),
+
+    # --- Large Candle Forward Excursion ---
+    "large_candle_excursion_summary": SectionDef(
+        id="large_candle_excursion_summary",
+        default_title="Large Candle Excursion — Summary",
+        render_fn=render_large_candle_excursion_summary,
+    ),
+    "large_candle_excursion_distributions": SectionDef(
+        id="large_candle_excursion_distributions",
+        default_title="Large Candle Excursion — Distributions & Breakdowns",
+        render_fn=render_large_candle_excursion_distributions,
+    ),
+    "large_candle_excursion_threshold_hits": SectionDef(
+        id="large_candle_excursion_threshold_hits",
+        default_title="Large Candle Excursion — Threshold Hit Rates",
+        render_fn=render_large_candle_excursion_threshold_hits,
+    ),
+    "large_candle_excursion_event_table": SectionDef(
+        id="large_candle_excursion_event_table",
+        default_title="Large Candle Excursion — Event Detail Table",
+        render_fn=render_large_candle_excursion_event_table,
+    ),
+    "large_candle_excursion_methodology": SectionDef(
+        id="large_candle_excursion_methodology",
+        default_title="Large Candle Excursion — Methodology",
+        render_fn=render_large_candle_excursion_methodology,
+    ),
+    "large_candle_excursion_trade_summary": SectionDef(
+        id="large_candle_excursion_trade_summary",
+        default_title="Large Candle Excursion — Trade Analysis Summary",
+        render_fn=render_large_candle_excursion_trade_summary,
+    ),
+    "large_candle_excursion_trade_comparison": SectionDef(
+        id="large_candle_excursion_trade_comparison",
+        default_title="Large Candle Excursion — Continuation vs Reverse Comparison",
+        render_fn=render_large_candle_excursion_trade_comparison,
+    ),
+    "large_candle_excursion_trade_event_table": SectionDef(
+        id="large_candle_excursion_trade_event_table",
+        default_title="Large Candle Excursion — Trade Event Detail Table",
+        render_fn=render_large_candle_excursion_trade_event_table,
+    ),
+    "large_candle_excursion_volume_context": SectionDef(
+        id="large_candle_excursion_volume_context",
+        default_title="Large Candle Excursion — Volume Context",
+        render_fn=render_large_candle_excursion_volume_context,
+    ),
+    "large_candle_excursion_structure_context": SectionDef(
+        id="large_candle_excursion_structure_context",
+        default_title="Large Candle Excursion — Candle Structure Context",
+        render_fn=render_large_candle_excursion_structure_context,
+    ),
+    "large_candle_excursion_volatility_context": SectionDef(
+        id="large_candle_excursion_volatility_context",
+        default_title="Large Candle Excursion — Volatility Context",
+        render_fn=render_large_candle_excursion_volatility_context,
+    ),
+    "large_candle_excursion_interactions": SectionDef(
+        id="large_candle_excursion_interactions",
+        default_title="Large Candle Excursion — Context Interaction Tables",
+        render_fn=render_large_candle_excursion_interactions,
+    ),
+    "large_candle_excursion_findings_executive_summary": SectionDef(
+        id="large_candle_excursion_findings_executive_summary",
+        default_title="Large Candle Excursion Findings — Executive Summary",
+        render_fn=render_large_candle_excursion_findings_executive_summary,
+    ),
+    "large_candle_excursion_findings_top_discoveries": SectionDef(
+        id="large_candle_excursion_findings_top_discoveries",
+        default_title="Large Candle Excursion Findings — Top Discoveries",
+        render_fn=render_large_candle_excursion_findings_top_discoveries,
+    ),
+    "large_candle_excursion_findings_interactions": SectionDef(
+        id="large_candle_excursion_findings_interactions",
+        default_title="Large Candle Excursion Findings — Strongest Interaction Effects",
+        render_fn=render_large_candle_excursion_findings_interactions,
+    ),
+    "large_candle_excursion_findings_fragility": SectionDef(
+        id="large_candle_excursion_findings_fragility",
+        default_title="Large Candle Excursion Findings — Fragility Warnings",
+        render_fn=render_large_candle_excursion_findings_fragility,
+    ),
+    "large_candle_excursion_findings_next_tests": SectionDef(
+        id="large_candle_excursion_findings_next_tests",
+        default_title="Large Candle Excursion Findings — Suggested Next Tests",
+        render_fn=render_large_candle_excursion_findings_next_tests,
+    ),
+    "large_candle_excursion_findings_methodology": SectionDef(
+        id="large_candle_excursion_findings_methodology",
+        default_title="Large Candle Excursion Findings — Methodology",
+        render_fn=render_large_candle_excursion_findings_methodology,
+    ),
+    "large_candle_excursion_findings_interpretation": SectionDef(
+        id="large_candle_excursion_findings_interpretation",
+        default_title="Large Candle Excursion Findings — Research Interpretation Guide",
+        render_fn=render_large_candle_excursion_findings_interpretation,
+    ),
+    "large_candle_excursion_findings_families": SectionDef(
+        id="large_candle_excursion_findings_families",
+        default_title="Large Candle Excursion — Top Setup Families",
+        render_fn=render_large_candle_excursion_findings_families,
+    ),
+    "large_candle_excursion_findings_decision_engine": SectionDef(
+        id="large_candle_excursion_findings_decision_engine",
+        default_title="Large Candle Excursion Findings — Reversal Decision Engine",
+        render_fn=render_large_candle_excursion_findings_decision_engine,
+    ),
+    "large_candle_excursion_elite_reversal_setup_extractor": SectionDef(
+        id="large_candle_excursion_elite_reversal_setup_extractor",
+        default_title="Large Candle Excursion Findings — Elite Reversal Setup Extractor",
+        render_fn=render_large_candle_excursion_elite_reversal_setup_extractor,
+    ),
+    "large_candle_excursion_recursive_edge_search": SectionDef(
+        id="large_candle_excursion_recursive_edge_search",
+        default_title="Large Candle Excursion Findings — Recursive Edge Search",
+        render_fn=render_large_candle_excursion_recursive_edge_search,
+    ),
+    "large_candle_excursion_edge_validation_engine": SectionDef(
+        id="large_candle_excursion_edge_validation_engine",
+        default_title="Large Candle Excursion Findings — Edge Validation Engine",
+        render_fn=render_large_candle_excursion_edge_validation_engine,
+    ),
+    "large_candle_excursion_strategy_construction_engine": SectionDef(
+        id="large_candle_excursion_strategy_construction_engine",
+        default_title="Large Candle Excursion Findings — Strategy Construction Engine",
+        render_fn=render_large_candle_excursion_strategy_construction_engine,
+    ),
+    "large_candle_excursion_strategy_blueprints": SectionDef(
+        id="large_candle_excursion_strategy_blueprints",
+        default_title="Large Candle Excursion Findings — Strategy Blueprints",
+        render_fn=render_large_candle_excursion_strategy_blueprints,
+    ),
+    "large_candle_excursion_target_curves": SectionDef(
+        id="large_candle_excursion_target_curves",
+        default_title="Large Candle Excursion — Target Curve Analysis",
+        render_fn=render_large_candle_excursion_target_curves,
+    ),
+    "large_candle_excursion_session_context": SectionDef(
+        id="large_candle_excursion_session_context",
+        default_title="Large Candle Excursion — Session Context",
+        render_fn=render_large_candle_excursion_session_context,
+    ),
+    "large_candle_excursion_time_segments": SectionDef(
+        id="large_candle_excursion_time_segments",
+        default_title="Large Candle Excursion — Time Segment Analysis",
+        render_fn=render_large_candle_excursion_time_segments,
+    ),
+    "large_candle_excursion_signal_context": SectionDef(
+        id="large_candle_excursion_signal_context",
+        default_title="Large Candle Excursion — Signal Candle Context Intelligence",
+        render_fn=render_large_candle_excursion_signal_context,
+    ),
+    "large_candle_excursion_context_diagnostics": SectionDef(
+        id="large_candle_excursion_context_diagnostics",
+        default_title="Large Candle Excursion — Signal Context Coverage Diagnostics",
+        render_fn=render_large_candle_excursion_context_diagnostics,
+    ),
+    "large_candle_excursion_context_families": SectionDef(
+        id="large_candle_excursion_context_families",
+        default_title="Large Candle Excursion — Top Context-Conditioned Setup Families",
+        render_fn=render_large_candle_excursion_context_families,
+    ),
+    "large_candle_excursion_reversal_leaders": SectionDef(
+        id="large_candle_excursion_reversal_leaders",
+        default_title="Large Candle Excursion — Large Reversal Move Leaders",
+        render_fn=render_large_candle_excursion_reversal_leaders,
+    ),
+    "large_candle_excursion_session_large_moves": SectionDef(
+        id="large_candle_excursion_session_large_moves",
+        default_title="Large Candle Excursion — Large Move Probability by Session",
+        render_fn=render_large_candle_excursion_session_large_moves,
+    ),
+    "large_candle_excursion_strategy_cards": SectionDef(
+        id="large_candle_excursion_strategy_cards",
+        default_title="Large Candle Excursion — Strategy Cards",
+        render_fn=render_large_candle_excursion_strategy_cards,
+    ),
+    "large_candle_excursion_regime_discovery": SectionDef(
+        id="large_candle_excursion_regime_discovery",
+        default_title="Large Candle Excursion Findings - Regime Discovery",
+        render_fn=render_large_candle_excursion_regime_discovery,
+    ),
+    "large_candle_excursion_regime_findings_explainer": SectionDef(
+        id="large_candle_excursion_regime_findings_explainer",
+        default_title="Large Candle Excursion - Regime Findings Explainer",
+        render_fn=render_large_candle_excursion_regime_findings_explainer,
+    ),
+    "large_candle_excursion_discovery_summary": SectionDef(
+        id="large_candle_excursion_discovery_summary",
+        default_title="Large Candle Excursion Discovery — Executive Summary",
+        render_fn=render_large_candle_excursion_discovery_summary,
+    ),
+    "large_candle_excursion_discovery_broad_scan": SectionDef(
+        id="large_candle_excursion_discovery_broad_scan",
+        default_title="Large Candle Excursion Discovery — Broad Scan Results",
+        render_fn=render_large_candle_excursion_discovery_broad_scan,
+    ),
+    "large_candle_excursion_discovery_refinement": SectionDef(
+        id="large_candle_excursion_discovery_refinement",
+        default_title="Large Candle Excursion Discovery — Refinement Results",
+        render_fn=render_large_candle_excursion_discovery_refinement,
+    ),
+    "large_candle_excursion_discovery_chains": SectionDef(
+        id="large_candle_excursion_discovery_chains",
+        default_title="Large Candle Excursion Discovery — Chained Discoveries",
+        render_fn=render_large_candle_excursion_discovery_chains,
+    ),
+    "large_candle_excursion_discovery_robustness": SectionDef(
+        id="large_candle_excursion_discovery_robustness",
+        default_title="Large Candle Excursion Discovery — Robustness Validation",
+        render_fn=render_large_candle_excursion_discovery_robustness,
+    ),
+    "large_candle_excursion_discovery_diagnostics": SectionDef(
+        id="large_candle_excursion_discovery_diagnostics",
+        default_title="Large Candle Excursion Discovery — Diagnostics",
+        render_fn=render_large_candle_excursion_discovery_diagnostics,
+    ),
+    "large_candle_excursion_discovery_next_steps": SectionDef(
+        id="large_candle_excursion_discovery_next_steps",
+        default_title="Large Candle Excursion Discovery — Suggested Next Steps",
+        render_fn=render_large_candle_excursion_discovery_next_steps,
+    ),
+    "large_candle_excursion_discovery_methodology": SectionDef(
+        id="large_candle_excursion_discovery_methodology",
+        default_title="Large Candle Excursion Discovery — Methodology",
+        render_fn=render_large_candle_excursion_discovery_methodology,
+    ),
+    "horizon_overview": SectionDef(
+        id="horizon_overview",
+        default_title="Horizon Prediction Overview",
+        render_fn=render_horizon_overview,
     ),
 # render_pattern_engine_diagnostics
 }

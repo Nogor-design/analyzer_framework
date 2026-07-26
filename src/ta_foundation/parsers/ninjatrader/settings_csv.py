@@ -29,7 +29,7 @@ class NinjaTraderSettingsCsvParser:
     kind = "settings"
 
     def can_parse(self, path: Path, header: str) -> bool:
-        name_ok = path.name.endswith("_Settings.csv")
+        name_ok = path.name.endswith("_Settings.csv") or path.name == "Settings.csv"
         sig_ok = ("Item" in header and "Value" in header)
         return name_ok and sig_ok
 

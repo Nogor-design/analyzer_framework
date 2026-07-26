@@ -1,0 +1,12 @@
+report:
+  title: "Strategy Momentum Board"
+  output_filename: "Strategy-Momentum-Board.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: strategy_momentum_board
+    title: "Strategy Momentum Board"
+    options:
+      top_n: 40
+      strip_days: 5

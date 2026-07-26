@@ -1,0 +1,43 @@
+{
+  "template_name": "expansion_reversal_template",
+  "allow_entry": true,
+  "stop_mode": "signal_extreme_capped",
+  "hard_stop_ticks_cap": 44,
+  "initial_target_mode": "partial_then_extension",
+  "initial_target_ticks": 24,
+  "partial_rules": {
+    "enabled": true,
+    "partial_size_pct": 50,
+    "partial_target_ticks": 18,
+    "move_stop_to_break_even_after_partial": true
+  },
+  "runner_rules": {
+    "enabled": true,
+    "trail_mode": "atr_or_structure",
+    "atr_multiple": 1.8,
+    "runner_size_pct": 50,
+    "disable_on_rebreak_within_bars": 2
+  },
+  "downgrade_rules": {
+    "enabled": true,
+    "bars_without_follow_through": 3,
+    "min_favorable_move_ticks": 10,
+    "action": "DOWNGRADE_TO_SCALP"
+  },
+  "scratch_rules": {
+    "enabled": true,
+    "max_adverse_move_2bar_pct": 18,
+    "weak_start_without_midpoint_reclaim_action": "SCRATCH"
+  },
+  "session_rules": {
+    "enabled": true,
+    "allowed_sessions": ["RTH_OPEN", "RTH_MID"],
+    "session_start": "08:30:00",
+    "session_end": "15:00:00",
+    "timezone": "America/Denver"
+  },
+  "max_hold_bars": 18,
+  "max_adds": 0,
+  "allow_scale_in": false,
+  "flatten_on_session_end": true
+}

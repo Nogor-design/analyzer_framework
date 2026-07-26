@@ -1,0 +1,150 @@
+# multi_agent.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Multi-agent prediction runner.
+# Run after NY close:
+#   python -m ta_foundation.prediction.run_multi_agent --config multi_agent.yaml
+#
+# Score a past date and see the leaderboard:
+#   python -m ta_foundation.prediction.run_multi_agent --config multi_agent.yaml --score-date 2026-04-04
+#
+# Historical leaderboard only (no new predictions):
+#   python -m ta_foundation.prediction.run_multi_agent --config multi_agent.yaml --leaderboard-only
+#
+# Pull any Ollama model before running:
+#   ollama pull deepseek-r1:70b
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Shared settings ───────────────────────────────────────────────────────────
+instrument:  NQ
+contract:    "06-26"
+market_data: D:/MarketData
+output_dir:  .ta_artifacts/predictions
+n_similar:   5
+prior_atr:   85.0      # prior day ATR in points — used when --score-date is passed
+
+# Only load market data for these instruments (default: primary instrument only).
+# Add entries here if your session context uses correlated instruments.
+# load_instruments:
+#   - instrument: NQ
+#     contract: "06-26"
+#   - instrument: ES
+#     contract: "06-26"
+
+# Optional ForexFactory calendar
+# calendar: D:/economicCalendar/ff_calendar_thisweek.csv
+
+# ── Agents ────────────────────────────────────────────────────────────────────
+# Comment out any agent you haven't pulled / don't want to run.
+# Scores are tracked independently per agent_id — rename agent_id only if
+# you want to reset that agent's history.
+
+agents:
+
+  # ── Claude (cloud) ────────────────────────────────────────────────────────
+  # Best overall quality. Requires ANTHROPIC_API_KEY env var.
+#  - type:     claude
+#    model:    claude-opus-4-7
+#    agent_id: claude-opus-4-7
+
+  # ── GPT-OSS (your local models) ───────────────────────────────────────────
+  # ollama pull gpt-oss:120b
+#  - type:        ollama
+#    model:       gpt-oss:120b
+#    agent_id:    gpt-oss-120b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     16384    # 120b models benefit from more context
+
+  # ollama pull gpt-oss:20b
+  - type:        ollama
+    model:       gpt-oss:20b
+    agent_id:    gpt-oss-20b
+    base_url:    http://localhost:11434
+    temperature: 0.2
+    num_ctx:     8192
+
+  # ── DeepSeek R1 (reasoning models — highly recommended for this task) ─────
+  # DeepSeek R1 uses chain-of-thought reasoning before answering,
+  # making it well-suited to multi-factor market analysis.
+  #
+  # ollama pull deepseek-r1:70b
+  - type:        ollama
+    model:       deepseek-r1:7b
+    agent_id:    deepseek-r1-7b
+    base_url:    http://localhost:11434
+    temperature: 0.2
+    num_ctx:     16384
+
+  # ollama pull deepseek-r1:32b
+#  - type:        ollama
+#    model:       deepseek-r1:32b
+#    agent_id:    deepseek-r1-32b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     16384
+
+  # ollama pull deepseek-r1:14b
+  - type:        ollama
+    model:       deepseek-r1:8b
+    agent_id:    deepseek-r1-8b
+    base_url:    http://localhost:11434
+    temperature: 0.2
+    num_ctx:     8192
+
+  # ── Qwen 2.5 (strong analytical reasoning, good JSON compliance) ──────────
+  # Alibaba's Qwen 2.5 series scores well on structured output tasks.
+  #
+  # ollama pull qwen2.5:72b
+#  - type:        ollama
+#    model:       qwen2.5:72b
+#    agent_id:    qwen2.5-72b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     16384
+  - type:        ollama
+    model:       qwen3-coder:30b
+    agent_id:    qwen3-coder:30b
+    base_url:    http://localhost:11434
+    temperature: 0.2
+    num_ctx:     16384
+
+  # ollama pull qwen2.5:32b
+#  - type:        ollama
+#    model:       qwen2.5:32b
+#    agent_id:    qwen2.5-32b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     8192
+
+  # ── Llama 3.3 (Meta, strong instruction following) ────────────────────────
+  # ollama pull llama3.3:70b
+#  - type:        ollama
+#    model:       llama3.3:70b
+#    agent_id:    llama3.3-70b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     8192
+
+  # ── Mixtral 8x22B (mixture of experts — fast inference for size) ──────────
+  # ollama pull mixtral:8x22b
+#  - type:        ollama
+#    model:       mixtral:8x22b
+#    agent_id:    mixtral-8x22b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     8192
+
+  # ── Phi-4 (Microsoft, surprisingly strong for 14B) ────────────────────────
+  # ollama pull phi4:14b
+#  - type:        ollama
+#    model:       phi4:14b
+#    agent_id:    phi4-14b
+#    base_url:    http://localhost:11434
+#    temperature: 0.2
+#    num_ctx:     8192
+
+  # ── Statistical baseline (no AI — plurality vote from analogues) ──────────
+  # Always worth including as a floor. If a model scores below this,
+  # it's adding noise not signal.
+  - type:     stub
+    agent_id: statistical_stub

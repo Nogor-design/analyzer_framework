@@ -1,0 +1,23 @@
+# 08_apex_drawdown_survival.yaml
+# Apex Drawdown Survival Profile
+# Simulates trade equity paths using Monte Carlo models to compute the probability of surviving trailing drawdown rules.
+
+report:
+  title: "apex_drawdown_survival_profile"
+  output_filename: "apex_drawdown_survival_profile_3_14.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: apex_drawdown_survival_profile
+    title: "Apex 50K Drawdown Survival"
+    options:
+      apex:
+        starting_balance: 50000
+        trailing_drawdown: 2500
+        lock_profit: 2600
+      instruments:
+        NQ: { tick_size: 0.25, tick_value: 5.0 }
+        ES: { tick_size: 0.25, tick_value: 12.5 }
+        MNQ: { tick_size: 0.25, tick_value: 0.5 }
+        MES: { tick_size: 0.25, tick_value: 1.25 }

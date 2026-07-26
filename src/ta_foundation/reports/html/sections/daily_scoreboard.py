@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
 import base64
 import io
+import warnings
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -32,6 +33,16 @@ def _render_img_card(data_uri: str, caption: str) -> str:
     """
 
 
+def _safe_tight_layout(fig: plt.Figure) -> None:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Tight layout not applied.*",
+            category=UserWarning,
+        )
+        fig.tight_layout()
+
+
 def _assign_bot_numbers(run_ids: List[str]) -> Tuple[List[str], Dict[str, int], Dict[int, str]]:
     sorted_ids = sorted(run_ids)
     to_num = {rid: i + 1 for i, rid in enumerate(sorted_ids)}
@@ -49,14 +60,25 @@ def _outcome_color(pnl: float, traded: bool) -> str:
     return "0.4"
 
 
-def _render_bot_number_key(run_ids: List[str], bot_no: Dict[str, int]) -> str:
+def _display_name(packages: Dict[str, Any], run_id: str) -> str:
+    pkg = packages.get(run_id)
+    derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) if pkg is not None else {}
+    return str(derived.get("display_name_spaced") or derived.get("display_name") or run_id)
+
+
+def _name_map(packages: Dict[str, Any]) -> Dict[str, str]:
+    return {str(run_id): _display_name(packages, str(run_id)) for run_id in packages.keys()}
+
+
+def _render_bot_number_key(run_ids: List[str], bot_no: Dict[str, int], display_names: Dict[str, str]) -> str:
     items = []
     for rid in run_ids:
         n = bot_no[rid]
+        display = display_names.get(rid, rid)
         items.append(
             f"<div style='display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px dashed #eee;'>"
             f"<div style='min-width:34px; font-weight:900;'>{n}</div>"
-            f"<div style='color:#333;'>{rid}</div>"
+            f"<div style='color:#333;'>{display}</div>"
             f"</div>"
         )
     return f"""
@@ -92,7 +114,13 @@ def _subset_daily_matrix(dm: DailyMatrix, run_ids: List[str]) -> DailyMatrix:
 # -----------------------------
 # Core charts (bundle)
 # -----------------------------
-def _make_dot_scoreboard(dm: DailyMatrix, run_ids: List[str], bot_no: Dict[str, int], title: str) -> plt.Figure:
+def _make_dot_scoreboard(
+    dm: DailyMatrix,
+    run_ids: List[str],
+    bot_no: Dict[str, int],
+    title: str,
+    display_names: Dict[str, str] | None = None,
+) -> plt.Figure:
     fig = plt.figure(figsize=(max(10, len(dm.dates) * 0.35), max(4, len(run_ids) * 0.55)))
     ax = fig.add_subplot(1, 1, 1)
 
@@ -111,7 +139,7 @@ def _make_dot_scoreboard(dm: DailyMatrix, run_ids: List[str], bot_no: Dict[str, 
             cs.append(_outcome_color(pnl_val, traded))
 
         ax.scatter(xs, ys, s=60, c=cs, marker="o")
-        y_labels.append(f"{bot_no[run_id]}  ({run_id})")
+        y_labels.append(f"{bot_no[run_id]}  {(display_names or {}).get(run_id, run_id)}")
 
     ax.set_yticks(range(len(run_ids)))
     ax.set_yticklabels(y_labels)
@@ -119,7 +147,7 @@ def _make_dot_scoreboard(dm: DailyMatrix, run_ids: List[str], bot_no: Dict[str, 
     ax.set_title(title)
     ax.grid(True, axis="x", alpha=0.2)
     fig.autofmt_xdate(rotation=45)
-    fig.tight_layout()
+    _safe_tight_layout(fig)
     return fig
 
 
@@ -132,17 +160,27 @@ def _make_combined_daily_pnl(dm: DailyMatrix, title: str) -> plt.Figure:
     ax.set_ylabel("Net PnL")
     ax.grid(True, axis="y", alpha=0.2)
     fig.autofmt_xdate(rotation=45)
-    fig.tight_layout()
+    _safe_tight_layout(fig)
     return fig
 
 
-def _make_equity_curves(dm: DailyMatrix, show_individual: bool, title: str) -> plt.Figure:
+def _make_equity_curves(
+    dm: DailyMatrix,
+    show_individual: bool,
+    title: str,
+    display_names: Dict[str, str] | None = None,
+) -> plt.Figure:
     fig = plt.figure(figsize=(12, 5))
     ax = fig.add_subplot(1, 1, 1)
 
     if show_individual:
         for run_id in dm.cum.columns:
-            ax.plot(dm.dates, dm.cum[run_id].values, linewidth=1.5, label=run_id)
+            ax.plot(
+                dm.dates,
+                dm.cum[run_id].values,
+                linewidth=1.5,
+                label=(display_names or {}).get(run_id, run_id),
+            )
 
     ax.plot(dm.dates, dm.combined_cum.values, linewidth=3.0, label="COMBINED")
     ax.set_title(title)
@@ -151,7 +189,7 @@ def _make_equity_curves(dm: DailyMatrix, show_individual: bool, title: str) -> p
     ax.grid(True, alpha=0.2)
     ax.legend(loc="best", fontsize=9)
     fig.autofmt_xdate(rotation=45)
-    fig.tight_layout()
+    _safe_tight_layout(fig)
     return fig
 
 
@@ -164,17 +202,18 @@ def _make_active_count(dm: DailyMatrix, title: str) -> plt.Figure:
     ax.set_ylabel("Active bots")
     ax.grid(True, alpha=0.2)
     fig.autofmt_xdate(rotation=45)
-    fig.tight_layout()
+    _safe_tight_layout(fig)
     return fig
 
 
-def _render_combo_metrics(cs: ComboScore, bot_no: Dict[str, int]) -> str:
+def _render_combo_metrics(cs: ComboScore, bot_no: Dict[str, int], display_names: Dict[str, str]) -> str:
     nums = [bot_no[r] for r in cs.run_ids]
+    names = [display_names.get(r, r) for r in cs.run_ids]
     return f"""
     <div style="margin: 10px 0; border:1px solid #eee; border-radius:12px; padding:10px 12px;">
       <div style="font-weight:900; margin-bottom:6px;">
         Combo: {', '.join(map(str, nums))}
-        <span style="color:#666; font-weight:600;">({', '.join(cs.run_ids)})</span>
+        <span style="color:#666; font-weight:600;">({', '.join(names)})</span>
       </div>
       <div style="display:flex; gap:18px; flex-wrap:wrap; font-size:13px; color:#222;">
         <div><b>Any Co-Loss (≥2 losers)</b>: {cs.any_coloss_rate*100:.1f}%</div>
@@ -186,17 +225,23 @@ def _render_combo_metrics(cs: ComboScore, bot_no: Dict[str, int]) -> str:
     """
 
 
-def _render_combo_block(dm_all: DailyMatrix, cs: ComboScore, bot_no: Dict[str, int], show_individual_equity: bool) -> str:
+def _render_combo_block(
+    dm_all: DailyMatrix,
+    cs: ComboScore,
+    bot_no: Dict[str, int],
+    show_individual_equity: bool,
+    display_names: Dict[str, str],
+) -> str:
     run_ids = list(cs.run_ids)
     dm = _subset_daily_matrix(dm_all, run_ids)
 
-    fig_dot = _make_dot_scoreboard(dm, run_ids, bot_no, title="Daily Win/Loss Scoreboard (Combo)")
+    fig_dot = _make_dot_scoreboard(dm, run_ids, bot_no, title="Daily Win/Loss Scoreboard (Combo)", display_names=display_names)
     fig_pnl = _make_combined_daily_pnl(dm, title="Combined Daily Net PnL (Combo)")
-    fig_eq = _make_equity_curves(dm, show_individual=show_individual_equity, title="Running Net PnL (Combo)")
+    fig_eq = _make_equity_curves(dm, show_individual=show_individual_equity, title="Running Net PnL (Combo)", display_names=display_names)
     fig_act = _make_active_count(dm, title="Bots Active Per Day (Combo)")
 
     html = []
-    html.append(_render_combo_metrics(cs, bot_no))
+    html.append(_render_combo_metrics(cs, bot_no, display_names))
     html.append(_render_img_card(_fig_to_data_uri_png(fig_dot), "Per-bot daily outcomes (combo)"))
     html.append(_render_img_card(_fig_to_data_uri_png(fig_pnl), "Combined daily PnL (combo)"))
     html.append(_render_img_card(_fig_to_data_uri_png(fig_eq), "Running PnL (combo)"))
@@ -299,6 +344,7 @@ def _render_combo_set(
     botnum_to_runid: Dict[int, str],
     spec: Dict[str, Any],
     show_individual_equity: bool,
+    display_names: Dict[str, str],
 ) -> str:
     """
     spec fields (all optional):
@@ -399,7 +445,7 @@ def _render_combo_set(
 
     # Full chart blocks for each ranked combo (capped)
     for cs in ranked[: max_render]:
-        html.append(_render_combo_block(dm_all, cs, bot_no, show_individual_equity))
+        html.append(_render_combo_block(dm_all, cs, bot_no, show_individual_equity, display_names))
 
     return "\n".join(html)
 
@@ -407,7 +453,7 @@ def _render_combo_set(
 # -----------------------------
 # Summary table (same as your earlier working one)
 # -----------------------------
-def _render_summary_table(dm: DailyMatrix) -> str:
+def _render_summary_table(dm: DailyMatrix, display_names: Dict[str, str]) -> str:
     rows = []
     for run_id in dm.pnl.columns:
         pnl_s = dm.pnl[run_id]
@@ -438,9 +484,10 @@ def _render_summary_table(dm: DailyMatrix) -> str:
 
     html_rows = []
     for run_id, total, traded_days, wins, losses, flats, no_trade, win_rate in rows:
+        label = "COMBINED" if run_id == "COMBINED" else display_names.get(run_id, run_id)
         html_rows.append(
             f"<tr>"
-            f"<td style='text-align:left; font-weight:600;'>{run_id}</td>"
+            f"<td style='text-align:left; font-weight:600;'>{label}</td>"
             f"<td style='text-align:right;'>{fmt_money(total)}</td>"
             f"<td style='text-align:right;'>{traded_days}</td>"
             f"<td style='text-align:right;'>{wins}</td>"
@@ -520,15 +567,16 @@ def render_daily_scoreboard(ctx: Dict[str, Any]) -> str:
             pass
 
     run_ids_sorted, bot_no, botnum_to_runid = _assign_bot_numbers(run_ids)
+    display_names = _name_map(packages)
 
     parts: List[str] = []
-    parts.append(_render_bot_number_key(run_ids_sorted, bot_no))
+    parts.append(_render_bot_number_key(run_ids_sorted, bot_no, display_names))
 
     # Baseline “all-bots” charts
     if include_all_bot_charts:
-        fig_dot = _make_dot_scoreboard(dm, run_ids_sorted, bot_no, title="Daily Win/Loss Scoreboard (All bots)")
+        fig_dot = _make_dot_scoreboard(dm, run_ids_sorted, bot_no, title="Daily Win/Loss Scoreboard (All bots)", display_names=display_names)
         fig_pnl = _make_combined_daily_pnl(dm, title="Combined Daily Net PnL (All bots)")
-        fig_eq = _make_equity_curves(dm, show_individual=show_individual_equity, title="Running Net PnL (All bots)")
+        fig_eq = _make_equity_curves(dm, show_individual=show_individual_equity, title="Running Net PnL (All bots)", display_names=display_names)
         fig_act = _make_active_count(dm, title="Bots Active Per Day (All bots)")
 
         parts.append(_render_img_card(_fig_to_data_uri_png(fig_dot), "All bots: Per-bot daily outcomes"))
@@ -558,9 +606,10 @@ def render_daily_scoreboard(ctx: Dict[str, Any]) -> str:
                 botnum_to_runid=botnum_to_runid,
                 spec=spec,
                 show_individual_equity=show_individual_equity,
+                display_names=display_names,
             ))
 
     if include_summary_table:
-        parts.append(_render_summary_table(dm))
+        parts.append(_render_summary_table(dm, display_names))
 
     return "\n".join(parts)

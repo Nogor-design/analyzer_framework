@@ -1,0 +1,33 @@
+# Recipe Post-Mortem — GOAL A: "What additional runs should I queue next?"
+#
+# Ingest the STAGE-1 SWEEP optimizer CSVs (many rows across the averageSlow
+# axis per StartTimeH bucket), NOT the single-row final backtests. This is the
+# view that reveals parameter landscapes and boundary/edge winners.
+#
+# Run:
+#   python -m ta_foundation.cli.main \
+#     --input ".ta_artifacts/web_optimizer/sessions/opt_627e6fa4eb51/nt_output/stage_1" \
+#     --output ".ta_artifacts/web_optimizer/sessions/opt_627e6fa4eb51/postmortem_reports/discovery" \
+#     --report-config ./recipe_postmortem_discovery.yaml \
+#     --recursive --no-tick-data
+report:
+  title: "Recipe Post-Mortem — Discovery / Next Runs (opt_627e6fa4eb51)"
+  output_filename: "recipe_discovery.html"
+  timezone: "America/Denver"
+
+sections:
+  # Pools EVERY swept row across all stage templates and trends the metric
+  # against each parameter that actually varies. One chart per parameter (not
+  # one block per file), plus a "Next Runs" box that flags boundary winners.
+  - id: recipe_parameter_trend
+    options:
+      metric: total_net_profit   # or: profit_factor
+      min_trades: 1
+      max_params: 12
+
+  # Optional: keep the raw per-template leaderboards available, collapsed below.
+  # Re-enable only if you need to inspect an individual template's sweep.
+  # - id: optimization_overview
+  #   options:
+  #     top_n: 25
+  #     min_trades: 1

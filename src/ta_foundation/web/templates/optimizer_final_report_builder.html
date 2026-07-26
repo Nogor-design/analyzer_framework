@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Final Report Builder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-default { background: #78350f; color: #fcd34d; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-primary:disabled { background: #6b7280; color: #111827; cursor: wait; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details.bucket > summary { cursor: pointer; list-style: none; }
+    details.bucket > summary::-webkit-details-marker { display: none; }
+    input[type="checkbox"] { accent-color: #f59e0b; }
+    .preset-card { border: 1px solid #374151; border-radius: 8px; padding: 12px; background: #111827; }
+    .preset-card.active { border-color: #f59e0b; background: #451a03; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Detail</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}/decision" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Decision</a>
+    <span class="text-amber-400 font-bold text-lg">Final Report Builder</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
+  </div>
+  <a id="open-report-top" href="{{ report_url }}" target="_blank" rel="noopener"
+     class="btn-ghost px-3 py-1.5 rounded text-xs no-underline hidden">Open report</a>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+
+  <section class="card">
+    <div class="flex items-baseline gap-3 flex-wrap mb-2">
+      <h1 class="text-xl font-bold">Final all-template report sections</h1>
+      <span class="pill pill-default">saved profile is preselected</span>
+    </div>
+    <div class="text-xs text-gray-400">
+      Pick the sections for the final report that compares all final candidates together.
+      Saving here updates the session profile used by future final-report builds.
+    </div>
+    <div class="text-xs text-gray-500 mt-2 pathish">
+      Saved as {{ config_url }}
+    </div>
+  </section>
+
+  <form id="builder-form" class="space-y-4">
+    <section class="card">
+      <div class="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 class="text-amber-400 font-semibold text-sm">Report presets</h2>
+          <div class="text-xs text-gray-500 mt-1">
+            Apply a saved section set, then fine-tune individual sections below.
+          </div>
+        </div>
+        <span id="preset-status" class="text-xs text-gray-500"></span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3">
+        {% for preset in presets %}
+          <div class="preset-card {% if preset.id == config.preset_id %}active{% endif %}" data-preset-card="{{ preset.id }}">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="font-semibold text-sm text-gray-100">{{ preset.name }}</div>
+                <div class="text-xs text-gray-400 mt-1">{{ preset.description }}</div>
+                <div class="text-[11px] text-gray-500 mt-2">{{ preset.sections|length }} sections</div>
+              </div>
+              <button type="button"
+                      class="preset-apply-btn btn-ghost px-3 py-1.5 rounded text-xs font-semibold shrink-0"
+                      data-preset-id="{{ preset.id }}">
+                Apply
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% for bucket in buckets %}
+      <details class="bucket card" open>
+        <summary class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-amber-400 font-semibold text-sm">{{ bucket.title }}</h2>
+            <div class="text-xs text-gray-500 mt-1">{{ bucket.description }}</div>
+          </div>
+          <span class="text-xs text-gray-500">{{ bucket.sections|length }} sections</span>
+        </summary>
+        <div class="grid md:grid-cols-2 gap-2 mt-4">
+          {% for section in bucket.sections %}
+            <label class="flex gap-2 items-start text-xs text-gray-300 border border-gray-800 rounded px-3 py-2 hover:border-gray-700">
+              <input class="mt-0.5" type="checkbox" name="sections" value="{{ section.id }}"
+                     {% if section.checked %}checked{% endif %} />
+              <span>
+                <span class="block text-gray-100">{{ section.title }}</span>
+                <span class="block text-gray-500 pathish">{{ section.id }}</span>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+    {% endfor %}
+
+    <section class="card">
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="rebuild-btn" type="submit" class="btn-primary px-4 py-2 rounded text-sm font-semibold">
+          Save and rebuild final report
+        </button>
+        <button id="save-btn" type="button" class="btn-ghost px-3 py-2 rounded text-sm font-semibold">
+          Save only
+        </button>
+        <a id="open-report" href="{{ report_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-2 rounded text-sm no-underline hidden">Open regenerated HTML</a>
+        <span id="status" class="text-xs text-gray-500"></span>
+      </div>
+      <ul id="notes" class="hidden mt-3 text-xs text-amber-200 list-disc pl-5 space-y-1"></ul>
+    </section>
+  </form>
+
+</main>
+
+<script>
+const form = document.getElementById("builder-form");
+const button = document.getElementById("rebuild-btn");
+const saveButton = document.getElementById("save-btn");
+const statusEl = document.getElementById("status");
+const notesEl = document.getElementById("notes");
+const openReport = document.getElementById("open-report");
+const openReportTop = document.getElementById("open-report-top");
+const presetStatus = document.getElementById("preset-status");
+const presets = {{ presets | tojson }};
+const savedConfigSections = {{ config.sections | tojson }};
+let activePresetId = {{ (config.preset_id or "custom") | tojson }};
+let activePresetSections = savedConfigSections || null;
+
+function normalizeSectionEntry(entry) {
+  if (typeof entry === "string") return {id: entry};
+  if (entry && typeof entry === "object" && entry.id) return entry;
+  return null;
+}
+
+function presetById(id) {
+  return presets.find((preset) => preset.id === id) || null;
+}
+
+function sectionEntriesForCurrentSelection() {
+  const checkedIds = new Set(Array.from(form.querySelectorAll("input[name='sections']:checked")).map((el) => el.value));
+  const entries = [];
+  const used = new Set();
+  if (activePresetSections) {
+    activePresetSections.forEach((entry) => {
+      const normalized = normalizeSectionEntry(entry);
+      if (normalized && checkedIds.has(normalized.id) && !used.has(normalized.id)) {
+        entries.push(normalized);
+        used.add(normalized.id);
+      }
+    });
+  }
+  checkedIds.forEach((id) => {
+    if (!used.has(id)) entries.push({id});
+  });
+  return entries;
+}
+
+function setActivePreset(id) {
+  activePresetId = id || "custom";
+  document.querySelectorAll("[data-preset-card]").forEach((card) => {
+    card.classList.toggle("active", card.dataset.presetCard === activePresetId);
+  });
+  const preset = presetById(activePresetId);
+  presetStatus.textContent = preset ? `Active preset: ${preset.name}` : "Custom section set";
+}
+
+function applyPreset(id) {
+  const preset = presetById(id);
+  if (!preset) return;
+  const ids = new Set((preset.sections || []).map(normalizeSectionEntry).filter(Boolean).map((entry) => entry.id));
+  form.querySelectorAll("input[name='sections']").forEach((el) => {
+    el.checked = ids.has(el.value);
+  });
+  activePresetSections = preset.sections || [];
+  setActivePreset(id);
+  statusEl.textContent = `Applied ${preset.name}. Save or rebuild to persist it.`;
+}
+
+function selectedSections() {
+  return sectionEntriesForCurrentSelection();
+}
+
+function resetNotes() {
+  notesEl.classList.add("hidden");
+  notesEl.innerHTML = "";
+}
+
+async function saveConfig() {
+  const sections = selectedSections();
+  if (!sections.length) {
+    statusEl.textContent = "Select at least one section.";
+    return null;
+  }
+  const response = await fetch("{{ config_url }}", {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({sections, preset_id: activePresetId}),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Config save failed");
+  }
+  return payload.config || {};
+}
+
+saveButton.addEventListener("click", async () => {
+  resetNotes();
+  openReport.classList.add("hidden");
+  openReportTop.classList.add("hidden");
+  saveButton.disabled = true;
+  statusEl.textContent = "Saving final report profile...";
+  try {
+    const config = await saveConfig();
+    if (config) statusEl.textContent = `Saved ${(config.sections || []).length} section(s).`;
+  } catch (error) {
+    statusEl.textContent = error.message || String(error);
+  } finally {
+    saveButton.disabled = false;
+  }
+});
+
+document.querySelectorAll(".preset-apply-btn").forEach((button) => {
+  button.addEventListener("click", () => applyPreset(button.dataset.presetId));
+});
+
+form.querySelectorAll("input[name='sections']").forEach((checkbox) => {
+  checkbox.addEventListener("change", () => {
+    if (activePresetSections) {
+      activePresetSections = null;
+      setActivePreset("custom");
+    }
+  });
+});
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const sections = selectedSections();
+  resetNotes();
+  openReport.classList.add("hidden");
+  openReportTop.classList.add("hidden");
+  if (!sections.length) {
+    statusEl.textContent = "Select at least one section.";
+    return;
+  }
+  button.disabled = true;
+  saveButton.disabled = true;
+  statusEl.textContent = `Saving and rebuilding ${sections.length} section(s)...`;
+  try {
+    const response = await fetch("{{ post_url }}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sections, preset_id: activePresetId, save: true}),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Report build failed");
+    }
+    const result = payload.result || {};
+    statusEl.textContent = `Rendered ${(result.sections_rendered || []).length} sections from ${result.package_count || 0} candidate package(s).`;
+    openReport.classList.remove("hidden");
+    openReportTop.classList.remove("hidden");
+    if (result.notes && result.notes.length) {
+      notesEl.classList.remove("hidden");
+      notesEl.innerHTML = result.notes.map((note) => `<li>${note}</li>`).join("");
+    }
+  } catch (error) {
+    statusEl.textContent = error.message || String(error);
+  } finally {
+    button.disabled = false;
+    saveButton.disabled = false;
+  }
+});
+
+setActivePreset(activePresetId);
+</script>
+
+</body>
+</html>

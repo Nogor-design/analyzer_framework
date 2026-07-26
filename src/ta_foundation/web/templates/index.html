@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Capability Orchestration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/mode-json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/mode-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/theme-tomorrow_night.min.js"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    #editor { height: 480px; font-size: 13px; border-radius: 6px; }
+    #report-yaml-preview { min-height: 460px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; }
+    .left-input { min-width: 0; overflow-wrap: anywhere; }
+    .yaml-editor { height: 520px; border-radius: 6px; border: 1px solid #374151; }
+    .gate-pass { color: #34d399; }
+    .gate-fail { color: #f87171; }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #4b5563;
+      border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn { transition: all 0.15s; }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.97); }
+    textarea:focus { outline: none; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .badge-pass { background: #064e3b; color: #34d399; padding: 1px 7px; border-radius: 99px; font-size: 11px; }
+    .badge-fail { background: #450a0a; color: #f87171; padding: 1px 7px; border-radius: 99px; font-size: 11px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-amber-400 font-bold text-lg">ta_foundation</span>
+    <span class="text-gray-500 text-sm">/ Capability Orchestration</span>
+  </div>
+  <div class="flex items-center gap-2 text-xs text-gray-500">
+    <span id="db-status">No registry</span>
+    <span class="w-1.5 h-1.5 rounded-full bg-gray-600" id="db-dot"></span>
+  </div>
+</header>
+
+<nav class="border-b border-gray-800 bg-gray-900 px-6 py-2 flex flex-wrap gap-2">
+  <button class="mode-tab px-3 py-1.5 rounded border border-amber-500 bg-amber-500 text-black text-xs font-semibold" data-mode="reports">Backtest Reports</button>
+  <button class="mode-tab px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-amber-500 text-xs font-semibold" data-mode="prediction">Prediction</button>
+  <button class="mode-tab px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-amber-500 text-xs font-semibold" data-mode="templates">Strategy Templates</button>
+  <button class="mode-tab px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-amber-500 text-xs font-semibold" data-mode="strategy-discovery">Strategy Discovery</button>
+  <button class="mode-tab px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-amber-500 text-xs font-semibold" data-mode="system-map">System Map</button>
+  <a href="/discovery" class="ml-auto px-3 py-1.5 rounded border border-amber-500 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-semibold">Discovery UI &rarr;</a>
+  <a href="/strategy-lab" class="px-3 py-1.5 rounded border border-amber-500 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-semibold">Strategy Lab &rarr;</a>
+  <a href="/optimizer/recipe" class="px-3 py-1.5 rounded border border-amber-500 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-semibold">Recipe Optimizer &rarr;</a>
+  <a href="/image-renamer" class="px-3 py-1.5 rounded border border-amber-500 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-semibold">Image Renamer &rarr;</a>
+</nav>
+
+<!-- Main layout -->
+<div class="flex h-[calc(100vh-93px)]">
+
+  <!-- Left panel: Idea input -->
+  <div class="w-[380px] min-w-[320px] border-r border-gray-800 flex flex-col">
+    <div class="p-4 flex flex-col gap-4 flex-1 overflow-y-auto">
+
+      <div data-panel="templates">
+      <!-- Idea textarea -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Describe your strategy idea
+        </label>
+        <textarea
+          id="idea-input"
+          rows="7"
+          placeholder="e.g. Buy NQ on the 5-minute chart when the 9 EMA crosses above the 21 SMA. Only take trades when price is above the 50 SMA and the ATR is above its 20-bar median. Stop 40 ticks, target 30 ticks with a 50% partial at 16 ticks."
+          class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-gray-100 placeholder-gray-600 resize-none focus:border-amber-500"
+        ></textarea>
+      </div>
+
+      <!-- Model selector -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Ollama model
+        </label>
+        <select id="model-select"
+          class="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:border-amber-500 focus:outline-none">
+          <option value="qwen3-coder:30b">qwen3-coder:30b (recommended)</option>
+        </select>
+      </div>
+
+      <!-- Generate button -->
+      <button id="btn-generate"
+        class="btn w-full bg-amber-500 hover:bg-amber-400 text-black font-semibold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        Generate Template
+      </button>
+
+      <hr class="border-gray-800" />
+
+      <!-- Instrument / contract overrides -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Instrument</label>
+          <input id="instrument-override" type="text" placeholder="from template"
+            class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Contract</label>
+          <input id="contract-override" type="text" placeholder="from template"
+            class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+        </div>
+      </div>
+
+      <!-- Experiment ID -->
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Experiment ID (optional — for registry)</label>
+        <input id="experiment-id" type="number" placeholder="auto from registry"
+          class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+      </div>
+
+      <!-- Action buttons -->
+      <div class="flex flex-col gap-2">
+        <button id="btn-backtest"
+          class="btn w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          Backtest Only
+        </button>
+        <button id="btn-validate"
+          class="btn w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Backtest + Validate
+        </button>
+        <button id="btn-register"
+          class="btn w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          Register Hypothesis
+        </button>
+      </div>
+
+      <!-- Status line -->
+      <div id="status-line" class="text-xs text-gray-500 min-h-[18px]"></div>
+      </div>
+
+      <hr class="border-gray-800" />
+
+      <!-- Report Builder -->
+      <section data-panel="reports strategy-discovery">
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Run a Report
+        </h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">1. Choose report</label>
+            <select id="report-template-select"
+              class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500">
+              <option value="">Loading report presets...</option>
+            </select>
+            <div id="report-template-summary" class="mt-1 text-[11px] text-gray-600 leading-relaxed"></div>
+          </div>
+
+          <div class="rounded border border-blue-900/60 bg-blue-950/20 p-2">
+            <div class="text-[11px] font-semibold text-blue-300 uppercase tracking-wider">2. Confirm folders</div>
+            <div class="mt-1 text-[11px] text-gray-500 leading-relaxed">Defaults are filled in for a normal local run. Change only what is different today.</div>
+          </div>
+          <div>
+            <label class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-1">
+              <span>Input folder</span>
+              <span id="report-input-status" class="text-[10px] text-gray-600">Required</span>
+            </label>
+            <input id="report-input-folder" type="text" placeholder="NinjaTrader export folder"
+              class="left-input w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+          </div>
+          <div>
+            <label class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-1">
+              <span>Output folder</span>
+              <span id="report-output-status" class="text-[10px] text-gray-600">Required</span>
+            </label>
+            <input id="report-output-folder" type="text" placeholder="Report output folder"
+              class="left-input w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+          </div>
+          <div>
+            <label class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-1">
+              <span>Market data folder</span>
+              <span id="report-market-status" class="text-[10px] text-gray-600">Optional</span>
+            </label>
+            <input id="report-market-data-folder" type="text" placeholder="Optional unless selected capabilities need it"
+              class="left-input w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+          </div>
+
+          <input id="report-config-path" type="hidden" />
+          <input id="report-exec-cards-dir" type="hidden" />
+          <input id="report-run-id-regex" type="hidden" />
+          <input id="report-db-path" type="hidden" />
+          <input id="report-title" type="hidden" value="Strategy Comparison" />
+          <input id="report-output-filename" type="hidden" value="comparison_report.html" />
+          <input id="report-open-generated" type="checkbox" class="hidden" checked />
+
+          <div class="rounded border border-amber-900/60 bg-amber-950/10 p-2">
+            <div class="text-[11px] font-semibold text-amber-300 uppercase tracking-wider">3. Report options</div>
+            <div class="mt-1 text-[11px] text-gray-500 leading-relaxed">These are the few settings most users need. Everything else stays in the preset.</div>
+          </div>
+          <div id="report-template-params" class="space-y-2"></div>
+
+          <button id="btn-report-run"
+            class="btn w-full bg-amber-500 hover:bg-amber-400 text-black font-semibold py-3 rounded-lg text-sm">
+            Run Report
+          </button>
+
+          <details class="rounded border border-gray-800 bg-gray-900/70">
+            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-300">Advanced settings</summary>
+            <div class="border-t border-gray-800 p-3 space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <label class="flex items-center gap-2 text-xs text-gray-400">
+                  <input id="report-recursive" type="checkbox" class="accent-amber-500" />
+                  Recursive
+                </label>
+                <label class="flex items-center gap-2 text-xs text-gray-400">
+                  <input id="report-include-run-images" type="checkbox" class="accent-amber-500" />
+                  Run images
+                </label>
+                <label class="flex items-center gap-2 text-xs text-gray-400">
+                  <input id="report-export-exec-cards" type="checkbox" class="accent-amber-500" />
+                  Export cards
+                </label>
+                <label class="flex items-center gap-2 text-xs text-gray-400">
+                  <input id="report-no-tick-data" type="checkbox" class="accent-amber-500" />
+                  Skip ticks
+                </label>
+              </div>
+              <button id="btn-report-preview"
+                class="btn w-full bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-2 rounded text-xs border border-gray-700">
+                Preview / Edit YAML
+              </button>
+              <button id="btn-report-load-yaml"
+                class="btn w-full bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-2 rounded text-xs border border-gray-700">
+                Load Existing YAML
+              </button>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <hr class="border-gray-800" />
+
+      <!-- Prediction jobs -->
+      <section data-panel="prediction">
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Prediction Jobs
+        </h2>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Job type</label>
+            <select id="prediction-job-type"
+              class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500">
+              <option value="run_prediction">Single prediction config</option>
+              <option value="run_multi_agent">Multi-agent config</option>
+              <option value="backtest_horizon">Horizon backtest</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Prediction config path</label>
+            <input id="prediction-config-path" type="text" placeholder="prediction.yaml or multi_agent.yaml"
+              class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Minute bars file (horizon backtest)</label>
+            <input id="prediction-minute-bars-file" type="text" placeholder="NQ 06-26.Last.txt"
+              class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Store dir</label>
+              <input id="prediction-store-dir" type="text" placeholder=".ta_artifacts/horizon"
+                class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">As of</label>
+              <input id="prediction-asof" type="text" placeholder="YYYY-MM-DD"
+                class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center gap-2 text-xs text-gray-400">
+              <input id="prediction-dry-run" type="checkbox" class="accent-amber-500" />
+              Dry run
+            </label>
+            <label class="flex items-center gap-2 text-xs text-gray-400">
+              <input id="prediction-print-report" type="checkbox" class="accent-amber-500" />
+              Print report
+            </label>
+          </div>
+          <button id="btn-prediction-run"
+            class="btn w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-lg text-sm">
+            Run Prediction Job
+          </button>
+        </div>
+      </section>
+
+      <hr class="border-gray-800" />
+
+      <section data-panel="system-map">
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          System Map
+        </h2>
+        <div class="space-y-2 text-xs text-gray-500 leading-relaxed">
+          <div class="rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+            <div class="text-sm font-semibold text-gray-200">Backtest Reports</div>
+            <p>Loads NinjaTrader backtest exports into packages, optionally loads shared market data, runs analysis blocks from report YAML, then renders pure HTML sections.</p>
+          </div>
+          <div class="rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+            <div class="text-sm font-semibold text-gray-200">Prediction</div>
+            <p>Uses the prediction package and its YAML configuration to run daily or horizon prediction jobs without requiring backtest export packages.</p>
+          </div>
+          <div class="rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+            <div class="text-sm font-semibold text-gray-200">Strategy Templates</div>
+            <p>Uses the LLM-assisted Strategy Composer workflow to create structured strategy templates and run local template backtests.</p>
+          </div>
+          <div class="rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+            <div class="text-sm font-semibold text-gray-200">Strategy Discovery</div>
+            <p>Runs discovery/report YAML through the existing CLI. It can analyze uploaded backtest runs and can also include market-discovery signal corpus work from market data.</p>
+          </div>
+        </div>
+      </section>
+
+      <hr class="border-gray-800" />
+
+      <!-- Capability catalog -->
+      <section data-panel="system-map">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            High-Level Capabilities
+          </h2>
+          <span id="capability-count" class="text-[11px] text-gray-600"></span>
+        </div>
+        <div id="capability-list" class="space-y-2">
+          <div class="text-xs text-gray-600">Loading capabilities...</div>
+        </div>
+      </section>
+
+      <section data-panel="system-map">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Individual Report Sections
+          </h2>
+          <span id="report-section-count" class="text-[11px] text-gray-600"></span>
+        </div>
+        <div id="report-section-list" class="space-y-2 max-h-96 overflow-y-auto pr-1">
+          <div class="text-xs text-gray-600">Loading report sections...</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Right panel: JSON editor + results -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Editor toolbar -->
+    <div id="editor-toolbar" class="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900">
+      <span id="editor-title" class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Strategy Template JSON</span>
+      <div id="editor-actions" class="flex gap-2">
+        <button id="btn-load-schema"
+          class="text-xs text-gray-400 hover:text-amber-400 px-2 py-1 rounded border border-gray-700 hover:border-amber-500 transition-colors">
+          Load Schema
+        </button>
+        <button id="btn-copy"
+          class="text-xs text-gray-400 hover:text-amber-400 px-2 py-1 rounded border border-gray-700 hover:border-amber-500 transition-colors">
+          Copy JSON
+        </button>
+        <button id="btn-format"
+          class="text-xs text-gray-400 hover:text-amber-400 px-2 py-1 rounded border border-gray-700 hover:border-amber-500 transition-colors">
+          Format
+        </button>
+      </div>
+    </div>
+
+    <!-- Ace editor -->
+    <div id="editor" class="flex-shrink-0"></div>
+
+    <!-- Results pane -->
+    <div class="flex-1 overflow-y-auto border-t border-gray-800 bg-gray-950">
+      <div id="results-area" class="p-4">
+        <p class="text-gray-600 text-sm italic">Results will appear here after running a backtest.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================================================================== -->
+<script>
+// ── Ace editor setup ──────────────────────────────────────────────────────
+const editorEl = document.getElementById('editor');
+const editor = ace.edit(editorEl);
+editor.setTheme('ace/theme/tomorrow_night');
+editor.session.setMode('ace/mode/json');
+editor.setOptions({ fontSize: '13px', tabSize: 2, useSoftTabs: true, showPrintMargin: false });
+editor.setValue(JSON.stringify({
+  template_name: "my_strategy",
+  hypothesis: "Describe your edge here — then click Generate Template",
+  instrument: "NQ",
+  contract: "H25",
+  timeframe: "5m",
+  direction: "long",
+  entry_signal: { type: "ma_cross", fast_type: "ema", fast_period: 9, slow_type: "sma", slow_period: 21, timing: "next_open" },
+  entry_filters: [],
+  stop_mode: "signal_extreme_capped",
+  hard_stop_ticks_cap: 44,
+  initial_target_ticks: 30,
+  partial_rules: { enabled: false, partial_size_pct: 50, partial_target_ticks: 18, move_stop_to_break_even_after_partial: true },
+  runner_rules: { enabled: false },
+  session_rules: { enabled: true, session_start: "08:30:00", session_end: "15:00:00", timezone: "America/Denver" },
+  max_hold_bars: 20,
+  flatten_on_session_end: true
+}, null, 2), -1);
+
+// ── Populate model list ──────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    const sel = document.getElementById('model-select');
+    if (d.models && d.models.length > 0) {
+      sel.innerHTML = '';
+      d.models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m.includes('qwen3-coder')) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+  } catch(e) { /* Ollama not running */ }
+}
+loadModels();
+
+// ── DB status ──────────────────────────────────────────────────────────
+async function checkRegistry() {
+  try {
+    const r = await fetch('/api/experiments');
+    const d = await r.json();
+    if (!d.error) {
+      const n = (d.experiments || []).length;
+      document.getElementById('db-status').textContent = `Registry: ${n} experiments`;
+      document.getElementById('db-dot').className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
+    }
+  } catch(e) {}
+}
+checkRegistry();
+
+// Capability catalog
+let capabilityCatalog = [];
+let reportSectionCatalog = [];
+let reportTemplates = [];
+let cliParameterCatalog = [];
+let activeMode = 'reports';
+let reportYamlEditor = null;
+const openedReportUrls = new Set();
+
+async function loadCapabilities() {
+  const list = document.getElementById('capability-list');
+  const count = document.getElementById('capability-count');
+  const sectionList = document.getElementById('report-section-list');
+  const sectionCount = document.getElementById('report-section-count');
+  try {
+    const r = await fetch('/api/capabilities');
+    const d = await r.json();
+    const caps = [...(d.capabilities || []), ...(d.capability_groups || [])];
+    const sections = d.report_sections || [];
+    capabilityCatalog = caps;
+    reportSectionCatalog = sections;
+    count.textContent = `${caps.length} found`;
+    sectionCount.textContent = `${sections.length} found`;
+    list.innerHTML = caps.map(renderCapabilityCard).join('');
+    sectionList.innerHTML = renderReportSections(sections);
+  } catch(e) {
+    list.innerHTML = `<div class="text-xs text-red-400">Could not load capabilities: ${escHtml(e.message)}</div>`;
+    sectionList.innerHTML = `<div class="text-xs text-red-400">Could not load report sections: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderCapabilityCard(cap) {
+  const dataNeeds = [
+    cap.needs_market_data ? 'market data' : null,
+    cap.needs_tick_data ? 'tick data' : null,
+  ].filter(Boolean).join(', ');
+  const statusColor = cap.status === 'ready' ? 'text-emerald-400' : 'text-amber-400';
+  const selectable = (cap.report_sections || []).length || Object.keys(cap.config_blocks || {}).length;
+  const checked = cap.id === 'core_comparison_report' ? 'checked' : '';
+  const disabled = selectable ? '' : 'disabled';
+  return `
+    <div class="rounded-lg border border-gray-800 bg-gray-900/70 p-3">
+      <div class="flex items-start justify-between gap-2">
+        <label class="flex items-start gap-2">
+          <input type="checkbox" class="capability-checkbox mt-1 accent-amber-500" value="${escHtml(cap.id)}" ${checked} ${disabled} />
+          <div>
+          <div class="text-sm font-semibold text-gray-200">${escHtml(cap.name)}</div>
+          <div class="text-[11px] text-gray-500">${escHtml(cap.category)} &middot; ${escHtml(cap.estimated_runtime)}</div>
+          </div>
+        </label>
+        <div class="text-[11px] ${statusColor} whitespace-nowrap">${escHtml(cap.status)}</div>
+      </div>
+      <p class="mt-2 text-xs text-gray-500 leading-relaxed">${escHtml(cap.summary)}</p>
+      <div class="mt-2 flex flex-wrap gap-1">
+        ${(cap.required_inputs || []).map(v => `<span class="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">${escHtml(v)}</span>`).join('')}
+        ${dataNeeds ? `<span class="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300">${escHtml(dataNeeds)}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderReportSections(sections) {
+  const grouped = {};
+  sections.forEach(section => {
+    const category = section.category || 'Other Reports';
+    if (!grouped[category]) grouped[category] = [];
+    grouped[category].push(section);
+  });
+  return Object.keys(grouped).sort().map(category => {
+    const items = grouped[category].map(renderReportSectionRow).join('');
+    return `
+      <details class="rounded-lg border border-gray-800 bg-gray-900/70" ${category === 'Core Reports' ? 'open' : ''}>
+        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-300">
+          ${escHtml(category)} <span class="text-gray-600 font-normal">(${grouped[category].length})</span>
+        </summary>
+        <div class="border-t border-gray-800 px-3 py-2 space-y-1">${items}</div>
+      </details>
+    `;
+  }).join('');
+}
+
+function renderReportSectionRow(section) {
+  const blocks = (section.config_block_keys || [])
+    .map(v => `<span class="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">${escHtml(v)}</span>`)
+    .join('');
+  return `
+    <label class="flex items-start gap-2 rounded px-1.5 py-1 hover:bg-gray-800/70">
+      <input type="checkbox" class="report-section-checkbox mt-1 accent-amber-500" value="${escHtml(section.id)}" />
+      <span class="min-w-0">
+        <span class="block text-xs text-gray-300">${escHtml(section.title)}</span>
+        <span class="block text-[11px] text-gray-600 font-mono">${escHtml(section.id)}</span>
+        ${blocks ? `<span class="mt-1 flex flex-wrap gap-1">${blocks}</span>` : ''}
+      </span>
+    </label>
+  `;
+}
+loadCapabilities();
+
+async function loadReportCatalog() {
+  const sel = document.getElementById('report-template-select');
+  const params = document.getElementById('report-template-params');
+  try {
+    const r = await fetch('/api/report-catalog');
+    const d = await r.json();
+    reportTemplates = d.report_templates || [];
+    cliParameterCatalog = d.cli_parameters || [];
+    sel.innerHTML = renderReportTemplateOptions(reportTemplates);
+    applyCliParameterDefaults();
+    applySavedReportFolderDefaults();
+    selectDefaultReportTemplate(activeMode);
+    renderReportTemplateParams();
+    updateReportFolderStatus();
+  } catch(e) {
+    sel.innerHTML = '<option value="">Could not load report presets</option>';
+    params.innerHTML = `<div class="text-xs text-red-400">Could not load report presets: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderReportTemplateOptions(templates) {
+  const grouped = {};
+  templates.forEach(t => {
+    const category = t.category || 'Reports';
+    if (!grouped[category]) grouped[category] = [];
+    grouped[category].push(t);
+  });
+  return Object.keys(grouped).map(category => `
+    <optgroup label="${escHtml(category)}">
+      ${grouped[category].map(t => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('')}
+    </optgroup>
+  `).join('');
+}
+
+function selectDefaultReportTemplate(mode) {
+  const sel = document.getElementById('report-template-select');
+  if (!sel || !reportTemplates.length) return;
+  const wanted = mode === 'strategy-discovery'
+    ? 'strategy_discovery_full'
+    : firstTemplateIdByCategory('Backtest Reports');
+  if (wanted && reportTemplates.some(t => t.id === wanted)) {
+    sel.value = wanted;
+  } else if (!sel.value) {
+    sel.value = reportTemplates[0].id;
+  }
+}
+
+function firstTemplateIdByCategory(category) {
+  const found = reportTemplates.find(t => t.category === category);
+  return found ? found.id : '';
+}
+
+function applyCliParameterDefaults() {
+  const byPath = {};
+  cliParameterCatalog.forEach(param => { byPath[param.path] = param; });
+  const fieldMap = {
+    input_folder: 'report-input-folder',
+    output_folder: 'report-output-folder',
+    market_data_folder: 'report-market-data-folder',
+    report_config_path: 'report-config-path',
+    exec_cards_dir: 'report-exec-cards-dir',
+    run_id_regex: 'report-run-id-regex',
+    db_path: 'report-db-path',
+    recursive: 'report-recursive',
+    include_run_images: 'report-include-run-images',
+    export_exec_cards_png: 'report-export-exec-cards',
+    no_tick_data: 'report-no-tick-data',
+  };
+  Object.entries(fieldMap).forEach(([path, id]) => {
+    const param = byPath[path];
+    const el = document.getElementById(id);
+    if (!param || !el) return;
+    if (el.type === 'checkbox') el.checked = Boolean(param.default);
+    else if (!el.value && param.default != null) el.value = param.default;
+  });
+}
+
+function applySavedReportFolderDefaults() {
+  [
+    ['report-input-folder', 'ta_report_input_folder'],
+    ['report-output-folder', 'ta_report_output_folder'],
+    ['report-market-data-folder', 'ta_report_market_data_folder'],
+  ].forEach(([fieldId, storageKey]) => {
+    const el = document.getElementById(fieldId);
+    const value = localStorage.getItem(storageKey);
+    if (el && value) el.value = value;
+  });
+}
+
+function rememberReportFolderDefaults() {
+  [
+    ['report-input-folder', 'ta_report_input_folder'],
+    ['report-output-folder', 'ta_report_output_folder'],
+    ['report-market-data-folder', 'ta_report_market_data_folder'],
+  ].forEach(([fieldId, storageKey]) => {
+    const value = document.getElementById(fieldId)?.value.trim();
+    if (value) localStorage.setItem(storageKey, value);
+  });
+}
+
+function selectedReportTemplate() {
+  const id = document.getElementById('report-template-select').value;
+  return reportTemplates.find(t => t.id === id) || null;
+}
+
+function renderReportTemplateParams() {
+  const tmpl = selectedReportTemplate();
+  const params = document.getElementById('report-template-params');
+  const summary = document.getElementById('report-template-summary');
+  if (!tmpl) {
+    summary.textContent = '';
+    params.innerHTML = '';
+    return;
+  }
+  summary.innerHTML = `
+    <span class="block">${escHtml(tmpl.description)}</span>
+    <span class="mt-1 flex flex-wrap gap-1">
+      <span class="rounded bg-blue-950 px-1.5 py-0.5 text-[10px] text-blue-300">${tmpl.requires_backtest_data ? 'Backtest exports' : 'No backtest ingest'}</span>
+      <span class="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] text-emerald-300">${tmpl.needs_market_data ? 'Market data required' : 'Market data optional'}</span>
+      <span class="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300">YAML preset</span>
+    </span>
+  `;
+  syncReportFieldsFromTemplate(tmpl);
+  params.innerHTML = `
+    <div class="pt-2">
+      <div class="space-y-2">${renderReportParamGroups(beginnerReportParameters(tmpl.parameters || []))}</div>
+    </div>
+  `;
+  updateReportFolderStatus();
+}
+
+function syncReportFieldsFromTemplate(tmpl) {
+  const title = dottedValue(tmpl.default_config, 'report.title') || '';
+  const outputFilename = dottedValue(tmpl.default_config, 'report.output_filename') || 'report.html';
+  document.getElementById('report-title').value = title;
+  document.getElementById('report-output-filename').value = outputFilename;
+  const outputFolder = document.getElementById('report-output-folder').value.trim() || './outputs/web_reports';
+  const stem = outputFilename.replace(/\.[^.]+$/, '') || 'report';
+  document.getElementById('report-config-path').value = `${outputFolder.replace(/[\\/]$/, '')}/${stem}.yaml`;
+}
+
+function beginnerReportParameters(parameters) {
+  const hiddenPaths = new Set(['report.title', 'report.output_filename']);
+  return parameters.filter(param => !hiddenPaths.has(param.path));
+}
+
+function renderReportParamGroups(parameters) {
+  if (!parameters.length) {
+    return '<div class="rounded border border-gray-800 bg-gray-900/60 p-3 text-xs text-gray-500">This report is ready to run with the default preset options.</div>';
+  }
+  const grouped = {};
+  parameters.forEach(param => {
+    const group = param.group || sectionLabelFromPath(param.path);
+    if (!grouped[group]) grouped[group] = [];
+    grouped[group].push(param);
+  });
+  return Object.keys(grouped).map((group, idx) => `
+    <details class="rounded border border-gray-800 bg-gray-900/60" ${idx < 2 ? 'open' : ''}>
+      <summary class="cursor-pointer px-2 py-2 text-xs font-semibold text-gray-300">${escHtml(group)}
+        <span class="text-gray-600 font-normal">(${grouped[group].length})</span>
+      </summary>
+      <div class="border-t border-gray-800 p-2 space-y-2">
+        ${grouped[group].map(renderReportParam).join('')}
+      </div>
+    </details>
+  `).join('');
+}
+
+function sectionLabelFromPath(path) {
+  if (path.startsWith('sections.')) return 'Section options';
+  const head = path.split('.')[0] || 'General';
+  return head.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+function renderReportParam(param) {
+  const id = 'yaml-param-' + param.path.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const value = param.default == null ? '' : param.default;
+  const displayValue = Array.isArray(value) ? `[${value.join(', ')}]` : value;
+  const input = param.kind === 'boolean'
+    ? `<input id="${id}" data-yaml-path="${escHtml(param.path)}" data-yaml-kind="${escHtml(param.kind)}" type="checkbox" class="report-yaml-param accent-amber-500" ${value ? 'checked' : ''} />`
+    : param.kind === 'list'
+      ? `<textarea id="${id}" data-yaml-path="${escHtml(param.path)}" data-yaml-kind="${escHtml(param.kind)}" rows="2"
+        class="report-yaml-param w-full bg-gray-950 border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-amber-500 resize-y">${escTextarea(displayValue)}</textarea>`
+    : `<input id="${id}" data-yaml-path="${escHtml(param.path)}" data-yaml-kind="${escHtml(param.kind)}" value="${escHtml(value)}" type="${param.kind === 'number' ? 'number' : 'text'}"
+        class="report-yaml-param w-full bg-gray-950 border border-gray-800 rounded px-2 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-amber-500" />`;
+  const control = param.kind === 'boolean'
+    ? `<div class="flex items-center gap-2 min-w-0">
+        ${input}
+        <span class="text-xs font-semibold text-gray-300 pathish">${escHtml(param.label)}</span>
+      </div>`
+    : `<div class="space-y-1">
+        <span class="block text-xs font-semibold text-gray-300 pathish">${escHtml(param.label)}</span>
+        ${input}
+      </div>`;
+  return `
+    <label class="block rounded border border-gray-800 bg-gray-900/60 p-2 min-w-0">
+      ${control}
+      <div class="mt-1 text-[11px] text-gray-600 leading-relaxed">${escHtml(param.description)}</div>
+    </label>
+  `;
+}
+
+function reportTemplateValues() {
+  const values = {};
+  document.querySelectorAll('.report-yaml-param').forEach(el => {
+    const path = el.dataset.yamlPath;
+    if (!path) return;
+    values[path] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  values['report.title'] = document.getElementById('report-title').value.trim();
+  values['report.output_filename'] = document.getElementById('report-output-filename').value.trim();
+  return values;
+}
+
+function dottedValue(obj, path) {
+  let cur = obj;
+  for (const part of path.split('.')) {
+    if (cur == null) return undefined;
+    cur = Array.isArray(cur) ? cur[Number(part)] : cur[part];
+  }
+  return cur;
+}
+
+document.getElementById('report-template-select').addEventListener('change', renderReportTemplateParams);
+['report-input-folder', 'report-output-folder', 'report-market-data-folder'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    syncReportFieldsFromTemplate(selectedReportTemplate() || {default_config: {}});
+    updateReportFolderStatus();
+  });
+});
+loadReportCatalog();
+
+document.querySelectorAll('.mode-tab').forEach(btn => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+function setMode(mode) {
+  activeMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(btn => {
+    const active = btn.dataset.mode === mode;
+    btn.className = active
+      ? 'mode-tab px-3 py-1.5 rounded border border-amber-500 bg-amber-500 text-black text-xs font-semibold'
+      : 'mode-tab px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-amber-500 text-xs font-semibold';
+  });
+  document.querySelectorAll('[data-panel]').forEach(panel => {
+    const modes = String(panel.dataset.panel || '').split(/\s+/);
+    panel.style.display = modes.includes(mode) ? '' : 'none';
+  });
+  const editorVisible = mode === 'templates';
+  document.getElementById('editor-toolbar').style.display = editorVisible ? '' : 'none';
+  document.getElementById('editor').style.display = editorVisible ? '' : 'none';
+  document.getElementById('results-area').innerHTML = mode === 'reports'
+    ? '<p class="text-gray-600 text-sm italic">Choose a report, confirm the folders, then click Run Report. Generated HTML will appear here.</p>'
+    : mode === 'prediction'
+      ? '<p class="text-gray-600 text-sm italic">Prediction job status and output will appear here.</p>'
+      : mode === 'strategy-discovery'
+        ? '<p class="text-gray-600 text-sm italic">Choose the Strategy Discovery report, confirm market data, then click Run Report.</p>'
+        : mode === 'system-map'
+          ? '<p class="text-gray-600 text-sm italic">Use the left map to choose a capability. Job output and generated artifacts appear here.</p>'
+          : '<p class="text-gray-600 text-sm italic">Results will appear here after running a template backtest.</p>';
+  if (mode === 'strategy-discovery') {
+    selectDefaultReportTemplate(mode);
+    renderReportTemplateParams();
+  } else if (mode === 'reports') {
+    const tmpl = selectedReportTemplate();
+    if (!tmpl || tmpl.category !== 'Backtest Reports') {
+      selectDefaultReportTemplate(mode);
+      renderReportTemplateParams();
+    }
+  }
+}
+setMode('reports');
+
+function updateReportFolderStatus() {
+  const tmpl = selectedReportTemplate();
+  const input = document.getElementById('report-input-folder')?.value.trim();
+  const output = document.getElementById('report-output-folder')?.value.trim();
+  const market = document.getElementById('report-market-data-folder')?.value.trim();
+  setMiniStatus('report-input-status', input ? 'Filled' : 'Required', input ? 'text-emerald-400' : 'text-red-400');
+  setMiniStatus('report-output-status', output ? 'Filled' : 'Required', output ? 'text-emerald-400' : 'text-red-400');
+  const marketRequired = Boolean(tmpl && tmpl.needs_market_data);
+  setMiniStatus(
+    'report-market-status',
+    marketRequired ? (market ? 'Filled' : 'Required') : (market ? 'Filled' : 'Optional'),
+    marketRequired && !market ? 'text-red-400' : market ? 'text-emerald-400' : 'text-gray-600'
+  );
+}
+
+function setMiniStatus(id, text, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = `text-[10px] ${color}`;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function setStatus(msg, color='text-gray-500') {
+  const el = document.getElementById('status-line');
+  el.className = `text-xs min-h-[18px] ${color}`;
+  el.textContent = msg;
+}
+
+function getTemplate() {
+  try { return JSON.parse(editor.getValue()); }
+  catch(e) { alert('Template JSON is not valid:\n' + e.message); return null; }
+}
+
+function getInstrument(tmpl) {
+  return document.getElementById('instrument-override').value.trim() || (tmpl && tmpl.instrument) || 'NQ';
+}
+function getContract(tmpl) {
+  return document.getElementById('contract-override').value.trim() || (tmpl && tmpl.contract) || 'H25';
+}
+
+function showSpinner(btnId, label) {
+  const btn = document.getElementById(btnId);
+  btn._orig = btn.innerHTML;
+  btn.innerHTML = `<span class="spinner"></span><span>${label}</span>`;
+  btn.disabled = true;
+}
+function hideSpinner(btnId) {
+  const btn = document.getElementById(btnId);
+  if (btn._orig) btn.innerHTML = btn._orig;
+  btn.disabled = false;
+}
+
+function reportBuilderPayload(reportYaml=null) {
+  const usingTemplate = Boolean(selectedReportTemplate());
+  const selected = usingTemplate ? [] : Array.from(document.querySelectorAll('.capability-checkbox:checked')).map(el => el.value);
+  const selectedSections = usingTemplate ? [] : Array.from(document.querySelectorAll('.report-section-checkbox:checked')).map(el => el.value);
+  const payload = {
+    input_folder: document.getElementById('report-input-folder').value.trim(),
+    output_folder: document.getElementById('report-output-folder').value.trim(),
+    market_data_folder: document.getElementById('report-market-data-folder').value.trim(),
+    report_title: document.getElementById('report-title').value.trim(),
+    output_filename: document.getElementById('report-output-filename').value.trim(),
+    report_config_path: document.getElementById('report-config-path').value.trim(),
+    recursive: document.getElementById('report-recursive').checked,
+    include_run_images: document.getElementById('report-include-run-images').checked,
+    export_exec_cards_png: document.getElementById('report-export-exec-cards').checked,
+    exec_cards_dir: document.getElementById('report-exec-cards-dir').value.trim(),
+    no_tick_data: document.getElementById('report-no-tick-data').checked,
+    db_path: document.getElementById('report-db-path').value.trim(),
+    run_id_regex: document.getElementById('report-run-id-regex').value.trim(),
+    capability_ids: selected,
+    report_section_ids: selectedSections,
+  };
+  if (reportYaml != null) payload.report_yaml = reportYaml;
+  return payload;
+}
+
+function predictionJobPayload() {
+  return {
+    prediction_job_type: document.getElementById('prediction-job-type').value,
+    config_path: document.getElementById('prediction-config-path').value.trim(),
+    minute_bars_file: document.getElementById('prediction-minute-bars-file').value.trim(),
+    store_dir: document.getElementById('prediction-store-dir').value.trim(),
+    asof: document.getElementById('prediction-asof').value.trim(),
+    dry_run: document.getElementById('prediction-dry-run').checked,
+    print_report: document.getElementById('prediction-print-report').checked,
+  };
+}
+
+document.getElementById('btn-report-preview').addEventListener('click', async () => {
+  showSpinner('btn-report-preview', 'Building...');
+  setStatus('Building report YAML preview...', 'text-amber-400');
+  try {
+    const tmpl = selectedReportTemplate();
+    const endpoint = tmpl ? '/api/report-builder/from-template' : '/api/report-builder/preview';
+    const payload = reportBuilderPayload();
+    if (tmpl) {
+      payload.template_id = tmpl.id;
+      payload.values = reportTemplateValues();
+    }
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderReportBuilderPreview(d);
+    const ok = d.validation && d.validation.ok;
+    setStatus(ok ? 'Report YAML is valid.' : 'Report YAML needs attention.', ok ? 'text-emerald-400' : 'text-red-400');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-report-preview');
+  }
+});
+
+document.getElementById('btn-report-run').addEventListener('click', async () => {
+  showSpinner('btn-report-run', 'Running...');
+  setStatus('Building config and starting report...', 'text-amber-400');
+  rememberReportFolderDefaults();
+  try {
+    const tmpl = selectedReportTemplate();
+    if (!tmpl) throw new Error('Choose a report first.');
+    syncReportFieldsFromTemplate(tmpl);
+    const payload = reportBuilderPayload();
+    payload.template_id = tmpl.id;
+    payload.values = reportTemplateValues();
+    const preview = await fetch('/api/report-builder/from-template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const previewData = await preview.json();
+    if (!preview.ok) {
+      renderReportBuilderPreview(previewData);
+      setStatus('Report setup needs attention.', 'text-red-400');
+      return;
+    }
+    const runPayload = reportBuilderPayload(previewData.report_yaml);
+    runPayload.report_config_path = document.getElementById('report-config-path').value.trim();
+    runPayload.save_path = runPayload.report_config_path;
+    const run = await fetch('/api/report-builder/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(runPayload),
+    });
+    const runData = await run.json();
+    if (!run.ok) {
+      renderReportBuilderPreview({...previewData, validation: runData.validation || previewData.validation});
+      setStatus('Report job was not started.', 'text-red-400');
+      return;
+    }
+    renderJobStatus(runData.job);
+    pollJob(runData.job.id);
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-report-run');
+  }
+});
+
+document.getElementById('btn-report-load-yaml').addEventListener('click', async () => {
+  const loadPath = document.getElementById('report-config-path').value.trim();
+  if (!loadPath) { alert('Enter a .yaml or .yml path first.'); return; }
+  showSpinner('btn-report-load-yaml', 'Loading...');
+  setStatus('Loading report YAML...', 'text-amber-400');
+  try {
+    const payload = reportBuilderPayload();
+    payload.load_path = loadPath;
+    payload.report_config_path = loadPath;
+    const r = await fetch('/api/report-builder/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d.report_yaml) {
+      const message = (d.validation && (d.validation.errors || [])[0]) || 'Could not load YAML.';
+      renderError(message);
+      setStatus(message, 'text-red-400');
+      return;
+    }
+    hydrateReportFieldsFromYaml(d.report_yaml);
+    renderReportBuilderPreview(d);
+    const ok = d.validation && d.validation.ok;
+    setStatus(ok ? `Loaded YAML: ${d.path}` : 'Loaded YAML; validation needs attention.', ok ? 'text-emerald-400' : 'text-amber-400');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-report-load-yaml');
+  }
+});
+
+async function validateReportYamlFromPreview() {
+  const reportYaml = currentReportYamlText();
+  if (reportYaml == null) return;
+  setStatus('Validating edited report YAML...', 'text-amber-400');
+  try {
+    const r = await fetch('/api/report-builder/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reportBuilderPayload(reportYaml)),
+    });
+    const d = await r.json();
+    renderReportValidation(d.validation || {});
+    const ok = d.validation && d.validation.ok;
+    setStatus(ok ? 'Report YAML is valid.' : 'Report YAML needs attention.', ok ? 'text-emerald-400' : 'text-red-400');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  }
+}
+
+function hydrateReportFieldsFromYaml(reportYaml) {
+  const title = yamlScalarAfterKey(reportYaml, 'title');
+  const outputFilename = yamlScalarAfterKey(reportYaml, 'output_filename');
+  if (title) document.getElementById('report-title').value = title;
+  if (outputFilename) document.getElementById('report-output-filename').value = outputFilename;
+}
+
+function yamlScalarAfterKey(reportYaml, key) {
+  const rx = new RegExp('^\\s*' + key.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + ':\\s*(.+?)\\s*$', 'm');
+  const match = String(reportYaml || '').match(rx);
+  if (!match) return '';
+  return match[1].replace(/^['"]|['"]$/g, '').trim();
+}
+
+async function saveReportYamlFromPreview() {
+  const reportYaml = currentReportYamlText();
+  if (reportYaml == null) return;
+  const savePath = document.getElementById('report-config-path').value.trim();
+  if (!savePath) { alert('Enter a report YAML save path first.'); return; }
+  setStatus('Saving report YAML...', 'text-amber-400');
+  try {
+    const payload = reportBuilderPayload(reportYaml);
+    payload.save_path = savePath;
+    const r = await fetch('/api/report-builder/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    renderReportValidation(d.validation || {});
+    if (!r.ok) {
+      setStatus('Save failed validation.', 'text-red-400');
+      return;
+    }
+    setStatus('Saved report YAML: ' + d.path, 'text-emerald-400');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  }
+}
+
+async function runReportJobFromPreview() {
+  const reportYaml = currentReportYamlText();
+  const savePath = document.getElementById('report-config-path').value.trim();
+  if (!savePath) { alert('Save the report YAML first, or enter its saved path.'); return; }
+  if (reportYaml == null) return;
+  setStatus('Saving YAML and starting report job...', 'text-amber-400');
+  try {
+    const payload = reportBuilderPayload(reportYaml);
+    payload.report_config_path = savePath;
+    payload.save_path = savePath;
+    const r = await fetch('/api/report-builder/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      renderReportValidation(d.validation || {});
+      setStatus('Report job was not started.', 'text-red-400');
+      return;
+    }
+    renderJobStatus(d.job);
+    pollJob(d.job.id);
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  }
+}
+
+document.getElementById('btn-prediction-run').addEventListener('click', async () => {
+  showSpinner('btn-prediction-run', 'Starting...');
+  setStatus('Starting prediction job...', 'text-indigo-300');
+  try {
+    const r = await fetch('/api/prediction/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(predictionJobPayload()),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      renderError((d.validation && (d.validation.errors || []).join('\n')) || d.error || 'Prediction job failed validation.');
+      setStatus('Prediction job was not started.', 'text-red-400');
+      return;
+    }
+    renderJobStatus(d.job);
+    pollJob(d.job.id);
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-prediction-run');
+  }
+});
+
+async function pollJob(jobId) {
+  try {
+    const r = await fetch('/api/jobs/' + encodeURIComponent(jobId));
+    const d = await r.json();
+    if (!r.ok) {
+      setStatus(d.error || 'Could not read job status.', 'text-red-400');
+      return;
+    }
+    renderJobStatus(d.job);
+    if (d.job.status === 'running' || d.job.status === 'queued') {
+      setTimeout(() => pollJob(jobId), 1500);
+    } else {
+      setStatus(`${d.job.kind} job ${d.job.status}.`, d.job.status === 'succeeded' ? 'text-emerald-400' : 'text-red-400');
+    }
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  }
+}
+
+// ── Generate (SSE streaming) ────────────────────────────────────────────
+document.getElementById('btn-generate').addEventListener('click', async () => {
+  const idea = document.getElementById('idea-input').value.trim();
+  if (!idea) { alert('Please describe your strategy idea first.'); return; }
+  const model = document.getElementById('model-select').value;
+
+  showSpinner('btn-generate', 'Generating…');
+  setStatus('Sending idea to ' + model + '…', 'text-amber-400');
+
+  // Start with empty editor to show streaming
+  editor.setValue('', -1);
+  let buffer = '';
+
+  try {
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea, model }),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value);
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.error) {
+            setStatus('Error: ' + evt.error, 'text-red-400');
+          } else if (evt.token) {
+            buffer += evt.token;
+            editor.setValue(buffer, -1);
+          } else if (evt.done && evt.template) {
+            editor.setValue(JSON.stringify(evt.template, null, 2), -1);
+            setStatus('Template generated — review and edit before running backtest.', 'text-emerald-400');
+          }
+        } catch(_) {}
+      }
+    }
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-generate');
+  }
+});
+
+// ── Backtest ─────────────────────────────────────────────────────────────
+document.getElementById('btn-backtest').addEventListener('click', async () => {
+  const tmpl = getTemplate(); if (!tmpl) return;
+  showSpinner('btn-backtest', 'Running…');
+  setStatus('Running backtest…', 'text-blue-400');
+
+  try {
+    const r = await fetch('/api/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: tmpl, instrument: getInstrument(tmpl), contract: getContract(tmpl) }),
+    });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'text-red-400'); renderError(d.error); }
+    else { renderBacktestResults(d); setStatus(`Done — ${d.n_trades} trades simulated.`, 'text-emerald-400'); }
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-backtest');
+  }
+});
+
+// ── Backtest + Validate ──────────────────────────────────────────────────
+document.getElementById('btn-validate').addEventListener('click', async () => {
+  const tmpl = getTemplate(); if (!tmpl) return;
+  const expId = document.getElementById('experiment-id').value;
+  showSpinner('btn-validate', 'Running…');
+  setStatus('Running backtest + validation…', 'text-emerald-400');
+
+  try {
+    // Run backtest first for display
+    const br = await fetch('/api/backtest', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: tmpl, instrument: getInstrument(tmpl), contract: getContract(tmpl) }),
+    });
+    const bd = await br.json();
+    if (bd.error) { renderError(bd.error); setStatus('Backtest error: ' + bd.error, 'text-red-400'); return; }
+
+    // Then validate
+    const vr = await fetch('/api/validate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template: tmpl, instrument: getInstrument(tmpl), contract: getContract(tmpl),
+        experiment_id: expId || null,
+      }),
+    });
+    const vd = await vr.json();
+
+    renderBacktestResults(bd);
+    renderValidationResults(vd);
+    const verdict = vd.passed ? '✓ All gates PASSED' : '✗ Gates FAILED';
+    setStatus(verdict, vd.passed ? 'text-emerald-400' : 'text-red-400');
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-validate');
+  }
+});
+
+// ── Register ─────────────────────────────────────────────────────────────
+document.getElementById('btn-register').addEventListener('click', async () => {
+  const tmpl = getTemplate(); if (!tmpl) return;
+  if (!tmpl.hypothesis || tmpl.hypothesis.length < 10) {
+    alert('Please fill in a proper hypothesis sentence before registering.'); return;
+  }
+  if (!confirm(`Register this hypothesis?\n\n"${tmpl.hypothesis}"\n\nThe holdout date range will be locked immediately.`)) return;
+
+  showSpinner('btn-register', 'Registering…');
+  setStatus('Registering hypothesis…', 'text-gray-400');
+
+  try {
+    const r = await fetch('/api/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: tmpl }),
+    });
+    const d = await r.json();
+    if (d.error) { setStatus('Error: ' + d.error, 'text-red-400'); }
+    else {
+      document.getElementById('experiment-id').value = d.experiment_id;
+      setStatus(`Registered — experiment id=${d.experiment_id}`, 'text-emerald-400');
+      checkRegistry();
+    }
+  } catch(e) {
+    setStatus('Error: ' + e.message, 'text-red-400');
+  } finally {
+    hideSpinner('btn-register');
+  }
+});
+
+// ── Load schema ───────────────────────────────────────────────────────────
+document.getElementById('btn-load-schema').addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/schema');
+    const d = await r.json();
+    editor.setValue(JSON.stringify(d, null, 2), -1);
+    setStatus('Schema loaded — edit to create your strategy.', 'text-amber-400');
+  } catch(e) { setStatus('Could not load schema.', 'text-red-400'); }
+});
+
+// ── Copy JSON ─────────────────────────────────────────────────────────────
+document.getElementById('btn-copy').addEventListener('click', () => {
+  navigator.clipboard.writeText(editor.getValue());
+  setStatus('Copied to clipboard.', 'text-gray-400');
+});
+
+// ── Format JSON ───────────────────────────────────────────────────────────
+document.getElementById('btn-format').addEventListener('click', () => {
+  try {
+    const obj = JSON.parse(editor.getValue());
+    editor.setValue(JSON.stringify(obj, null, 2), -1);
+  } catch(e) { setStatus('Cannot format — JSON is invalid.', 'text-red-400'); }
+});
+
+// ── Render helpers ────────────────────────────────────────────────────────
+function renderError(msg) {
+  document.getElementById('results-area').innerHTML =
+    `<div class="text-red-400 text-sm">${escHtml(msg)}</div>`;
+}
+
+function renderReportBuilderPreview(d) {
+  const yaml = d.report_yaml || '';
+  const command = d.command_preview || '';
+  document.getElementById('results-area').innerHTML = `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-300">Generated Report YAML</h3>
+          <p class="text-xs text-gray-500">Edit the YAML here and validate it before saving it as your report config.</p>
+        </div>
+        <button onclick="validateReportYamlFromPreview()"
+          class="text-xs text-gray-300 hover:text-amber-300 px-3 py-1.5 rounded border border-gray-700 hover:border-amber-500 transition-colors">
+          Validate YAML
+        </button>
+        <button onclick="saveReportYamlFromPreview()"
+          class="text-xs text-gray-300 hover:text-emerald-300 px-3 py-1.5 rounded border border-gray-700 hover:border-emerald-500 transition-colors">
+          Save YAML
+        </button>
+        <button onclick="runReportJobFromPreview()"
+          class="text-xs text-gray-300 hover:text-blue-300 px-3 py-1.5 rounded border border-gray-700 hover:border-blue-500 transition-colors">
+          Run Report
+        </button>
+      </div>
+      <div id="report-yaml-preview" class="yaml-editor"></div>
+      <textarea id="report-yaml-raw" class="hidden">${escTextarea(yaml)}</textarea>
+      <div>
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Command Preview</div>
+        <pre class="bg-gray-900 border border-gray-800 rounded p-3 text-xs text-gray-400">${escHtml(command)}</pre>
+      </div>
+      <div id="report-validation"></div>
+      <div id="job-status"></div>
+    </div>
+  `;
+  initReportYamlEditor(yaml);
+  renderReportValidation(d.validation || {});
+}
+
+function initReportYamlEditor(yaml) {
+  const el = document.getElementById('report-yaml-preview');
+  const raw = document.getElementById('report-yaml-raw');
+  if (!el) return;
+  if (window.ace) {
+    reportYamlEditor = ace.edit(el);
+    reportYamlEditor.setTheme('ace/theme/tomorrow_night');
+    reportYamlEditor.session.setMode('ace/mode/yaml');
+    reportYamlEditor.setOptions({
+      fontSize: '13px',
+      tabSize: 2,
+      useSoftTabs: true,
+      showPrintMargin: false,
+      wrap: true,
+    });
+    reportYamlEditor.setValue(yaml, -1);
+    reportYamlEditor.session.on('change', () => {
+      if (raw) raw.value = reportYamlEditor.getValue();
+    });
+  } else {
+    el.outerHTML = `<textarea id="report-yaml-preview" class="w-full bg-gray-900 border border-gray-700 rounded p-3 text-sm text-gray-100 focus:border-amber-500 resize-y">${escTextarea(yaml)}</textarea>`;
+    reportYamlEditor = null;
+  }
+}
+
+function currentReportYamlText() {
+  if (reportYamlEditor) return reportYamlEditor.getValue();
+  const textarea = document.getElementById('report-yaml-preview');
+  if (textarea && textarea.tagName === 'TEXTAREA') return textarea.value;
+  const raw = document.getElementById('report-yaml-raw');
+  return raw ? raw.value : null;
+}
+
+function renderReportValidation(validation) {
+  const target = document.getElementById('report-validation');
+  if (!target) return;
+  const errors = validation.errors || [];
+  const warnings = validation.warnings || [];
+  const status = validation.ok
+    ? '<span class="badge-pass">VALID</span>'
+    : '<span class="badge-fail">NEEDS ATTENTION</span>';
+  const errorList = errors.map(e => `<li>${escHtml(e)}</li>`).join('');
+  const warningList = warnings.map(w => `<li>${escHtml(w)}</li>`).join('');
+  target.innerHTML = `
+    <div class="border border-gray-800 rounded p-3 bg-gray-900">
+      <div class="flex items-center gap-2 mb-2">${status}<span class="text-xs text-gray-500">Config validation</span></div>
+      ${errorList ? `<ul class="list-disc pl-5 text-sm text-red-400 space-y-1">${errorList}</ul>` : ''}
+      ${warningList ? `<ul class="list-disc pl-5 text-sm text-amber-300 space-y-1">${warningList}</ul>` : ''}
+      ${!errorList && !warningList ? '<div class="text-sm text-gray-500">No issues found.</div>' : ''}
+    </div>
+  `;
+}
+
+function renderJobStatus(job) {
+  const artifacts = artifactLinks(job);
+  const html = `
+    <div class="space-y-3">
+      <div class="border border-gray-800 rounded p-3 bg-gray-900">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div>
+            <div class="text-sm font-semibold text-gray-300">${escHtml(job.kind)} job</div>
+            <div class="text-[11px] text-gray-600 font-mono">${escHtml(job.id)}</div>
+          </div>
+          <span class="${job.status === 'succeeded' ? 'badge-pass' : job.status === 'failed' ? 'badge-fail' : 'rounded bg-blue-950 px-2 py-0.5 text-[11px] text-blue-300'}">${escHtml(job.status)}</span>
+        </div>
+        <pre class="bg-gray-950 border border-gray-800 rounded p-2 text-xs text-gray-500">${escHtml((job.command || []).join(' '))}</pre>
+      </div>
+      ${artifacts}
+      <div class="border border-gray-800 rounded bg-black">
+        <div class="border-b border-gray-800 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Captured stdout / stderr</div>
+        <pre class="max-h-[420px] overflow-auto p-3 text-xs text-gray-300 min-h-[180px]">${escHtml(job.error || job.output || 'Waiting for output...')}</pre>
+      </div>
+    </div>
+  `;
+  const inline = document.getElementById('job-status');
+  if (inline) inline.innerHTML = html;
+  else document.getElementById('results-area').innerHTML = html;
+}
+
+function artifactLinks(job) {
+  const artifacts = parseArtifacts(job);
+  const htmlReports = artifacts.filter(item => item.kind === 'html');
+  if (job.status === 'succeeded' && document.getElementById('report-open-generated')?.checked && htmlReports.length) {
+    const url = artifactUrl(htmlReports[0].path);
+    if (!openedReportUrls.has(url)) {
+      openedReportUrls.add(url);
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+  if (!artifacts.length) return '';
+  const reportLinks = htmlReports.map(item => `
+    <a target="_blank" rel="noopener" class="text-xs text-blue-300 hover:text-blue-200 underline pathish" href="${artifactUrl(item.path)}">${escHtml(item.path)}</a>
+  `).join('');
+  const groupedOutputs = renderArtifactGroups(artifacts.filter(item => item.kind !== 'html'));
+  return `
+    <div class="border border-gray-800 rounded p-3 bg-gray-900">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Generated Artifacts</div>
+      ${reportLinks ? `<div class="mb-3"><div class="text-[11px] text-gray-600 mb-1">HTML reports</div><div class="flex flex-wrap gap-2">${reportLinks}</div></div>` : ''}
+      ${groupedOutputs}
+    </div>
+  `;
+}
+
+function renderArtifactGroups(items) {
+  const groups = [
+    ['Manifest', item => String(item.label || '').toLowerCase() === 'manifest'],
+    ['Text summaries', item => item.kind === 'txt' || item.kind === 'md'],
+    ['YAML configs', item => item.kind === 'yaml' || item.kind === 'yml'],
+    ['XML templates', item => item.kind === 'xml'],
+    ['Execution cards', item => item.kind === 'png' || item.is_directory],
+    ['Other outputs', item => true],
+  ];
+  const used = new Set();
+  return groups.map(([label, predicate]) => {
+    const groupItems = items.filter((item, idx) => !used.has(idx) && predicate(item));
+    groupItems.forEach(item => used.add(items.indexOf(item)));
+    if (!groupItems.length) return '';
+    const links = groupItems.map(renderArtifactLink).join('');
+    return `<div class="mb-3 last:mb-0"><div class="text-[11px] text-gray-600 mb-1">${label}</div><div class="flex flex-wrap gap-2">${links}</div></div>`;
+  }).join('');
+}
+
+function renderArtifactLink(item) {
+  if (item.is_directory) {
+    return `<span class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-500 pathish">${escHtml(item.label)}: ${escHtml(item.path)}</span>`;
+  }
+  return `<a target="_blank" rel="noopener" class="rounded border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:border-amber-500 hover:text-amber-300 pathish" href="${artifactUrl(item.path)}">${escHtml(item.label)}</a>`;
+}
+
+function parseArtifacts(job) {
+  if (Array.isArray(job.artifacts) && job.artifacts.length) return job.artifacts;
+  const byPath = {};
+  String(job.output || '').split('\n').forEach(line => {
+    [
+      /Wrote:\s+(.+\.(?:html|json|txt|xml|md|png|ya?ml))\s*$/i,
+      /Wrote NT template:\s+(.+\.xml)\s*$/i,
+      /Wrote PantheonBotV2 template:\s+(.+\.xml)\s*$/i,
+      /Wrote PantheonMaster template:\s+(.+\.xml)\s*$/i,
+      /Wrote per-rule template:.*?->\s+(.+\.xml)\s*$/i,
+    ].forEach(rx => {
+      const m = line.match(rx);
+      if (!m) return;
+      const path = m[1].trim();
+      const ext = path.split('.').pop().toLowerCase();
+      byPath[path] = {
+        path,
+        kind: ext === 'html' ? 'html' : ext,
+        label: `${ext.toUpperCase()} ${path}`,
+        is_directory: false,
+      };
+    });
+    const dirMatch = line.match(/Exported\s+\d+\s+exec cards to:\s+(.+)\s*$/i);
+    if (dirMatch) {
+      const path = dirMatch[1].trim();
+      byPath[path] = { path, kind: 'folder', label: `Folder ${path}`, is_directory: true };
+    }
+  });
+  return Object.values(byPath);
+}
+
+function artifactUrl(path) {
+  return `/api/artifact?path=${encodeURIComponent(path)}`;
+}
+
+function renderBacktestResults(d) {
+  const modes = d.ranked_modes || [];
+  let rows = modes.map(m => {
+    const pf = m.profit_factor != null ? m.profit_factor.toFixed(2) : '—';
+    const wr = m.win_rate != null ? (m.win_rate * 100).toFixed(1) + '%' : '—';
+    const exp = m.expectancy != null ? '$' + m.expectancy.toFixed(0) : '—';
+    const net = m.net_pnl != null ? '$' + m.net_pnl.toFixed(0) : '—';
+    const pfColor = m.profit_factor > 1.5 ? 'text-emerald-400' : m.profit_factor > 1.0 ? 'text-amber-400' : 'text-red-400';
+    return `<tr class="border-b border-gray-800">
+      <td class="py-2 pr-4 text-gray-300 font-mono text-xs">${escHtml(m.outcome_mode || 'all')}</td>
+      <td class="py-2 pr-4 text-right">${m.n_trades}</td>
+      <td class="py-2 pr-4 text-right ${pfColor} font-semibold">${pf}</td>
+      <td class="py-2 pr-4 text-right">${wr}</td>
+      <td class="py-2 pr-4 text-right">${exp}</td>
+      <td class="py-2 text-right">${net}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('results-area').innerHTML = `
+    <div class="mb-4">
+      <h3 class="text-sm font-semibold text-gray-300 mb-1">${escHtml(d.template_name || '')}</h3>
+      <p class="text-xs text-gray-500 italic mb-3">${escHtml(d.hypothesis || '')}</p>
+      <div class="text-xs text-gray-400 mb-3">
+        ${d.n_signals} signals → ${d.n_trades} simulated trades
+      </div>
+      ${rows ? `
+      <table class="w-full text-sm text-gray-400">
+        <thead>
+          <tr class="border-b border-gray-700 text-xs uppercase tracking-wider text-gray-500">
+            <th class="pb-2 pr-4 text-left font-normal">Outcome Mode</th>
+            <th class="pb-2 pr-4 text-right font-normal">N</th>
+            <th class="pb-2 pr-4 text-right font-normal">P/F</th>
+            <th class="pb-2 pr-4 text-right font-normal">Win%</th>
+            <th class="pb-2 pr-4 text-right font-normal">E/trade</th>
+            <th class="pb-2 text-right font-normal">Net P&L</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>` : '<p class="text-gray-600 text-sm">No trades generated — check signal parameters and bar data.</p>'}
+    </div>
+    <div id="validation-section"></div>
+  `;
+}
+
+function renderValidationResults(vd) {
+  if (vd.error) {
+    document.getElementById('validation-section').innerHTML =
+      `<div class="text-red-400 text-sm mt-4">${escHtml(vd.error)}</div>`;
+    return;
+  }
+
+  const verdict = vd.passed
+    ? `<span class="text-emerald-400 font-bold text-base">✓ All gates PASSED</span>`
+    : `<span class="text-red-400 font-bold text-base">✗ Gates FAILED</span>`;
+
+  const gateRows = (vd.gates || []).map(g => {
+    const badge = g.passed
+      ? `<span class="badge-pass">PASS</span>`
+      : `<span class="badge-fail">FAIL</span>`;
+    return `<tr class="border-b border-gray-800">
+      <td class="py-2 pr-4 font-mono text-xs text-gray-300">${escHtml(g.name)}</td>
+      <td class="py-2 pr-4">${badge}</td>
+      <td class="py-2 text-xs text-gray-500">${escHtml(g.reason || '')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('validation-section').innerHTML = `
+    <div class="mt-4 border-t border-gray-800 pt-4">
+      <div class="flex items-center gap-3 mb-3">${verdict}</div>
+      ${gateRows ? `
+      <table class="w-full text-sm text-gray-400">
+        <thead>
+          <tr class="border-b border-gray-700 text-xs uppercase tracking-wider text-gray-500">
+            <th class="pb-2 pr-4 text-left font-normal">Gate</th>
+            <th class="pb-2 pr-4 text-left font-normal">Result</th>
+            <th class="pb-2 text-left font-normal">Detail</th>
+          </tr>
+        </thead>
+        <tbody>${gateRows}</tbody>
+      </table>` : ''}
+    </div>
+  `;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escTextarea(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

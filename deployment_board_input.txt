@@ -1,0 +1,50 @@
+Team,
+
+Below is the Ares bot deployment board coming out of tonight's meeting.
+
+Current regime is Breakout 61 percent and Regression 39 percent. That makes this a Gods-first board. Deployment remains controlled, with account posture at 8 out of 20 accounts. Adds are approved only on defended pullback or clean continuation confirmation.
+
+Primary Bots
+
+RiseDionysusCosmosB-NQ | 12:00 AM-2:00 AM CO | Trigger Odds 62% | Success Odds 74% | R/R 1:1
+Reason: This bot moved up because today's review showed the market can reward the earlier active window before the later confirmation cluster fully comes alive. It already proved it can convert live opportunity, and its file quality remains strong.
+
+RisingAthenaFireB-NQ | 1:00 AM-3:00 AM CO | Trigger Odds 65% | Success Odds 72% | R/R 0.3:1
+Reason: This remains one of the cleanest blends of weekly safety, active-file stability, and actual board fit. It is not the most explosive profile, but it is one of the most trustworthy names for this type of session.
+
+PrimingZeusCosmosL-NQ | 6:00 AM-9:00 AM CO | Trigger Odds 58% | Success Odds 76% | R/R 0.4:1
+Reason: This remains the cleanest confirmation-first continuation name on the board. It stays primary because the overall regime is still bullish, but it is no longer first because today showed that the market may pay earlier before this window activates.
+
+Secondary Bots
+
+PrimingZeusEmberBV2-NQ | 6:00 AM-8:00 AM CO | Trigger Odds 54% | Success Odds 73% | R/R 0.3:1
+Reason: Strong continuation-support name if the board confirms after the event window. Good fit, but we do not want to over-assume activation before the market proves it.
+
+CoilingAresFireBV2-NQ | 8:00 AM-10:00 AM CO | Trigger Odds 49% | Success Odds 70% | R/R 0.4:1
+Reason: Useful if price absorbs the macro window and transitions into stable early New York continuation. Good supporting name, but not the first expression we want to lean on.
+
+Reserve
+
+RisingAphroditeBoltB-NQ | 12:00 AM-1:00 AM CO | Trigger Odds 42% | Success Odds 61% | R/R 2:1
+Reason: Strong file on paper, but it underperformed on today's review. Reserve only until the market proves the early pocket is behaving cleanly.
+
+RiseDionysusHunterB-NQ | 12:00 AM-3:00 AM CO | Trigger Odds 44% | Success Odds 60% | R/R 1.1:1
+Reason: Still viable, but it ran behind RiseDionysusCosmosB-NQ on this board, so it stays behind the cleaner Dionysus expression.
+
+ClosingApolloFireB-NQ | 2:00 PM-4:00 PM CO | Trigger Odds 31% | Success Odds 67% | R/R 0.4:1
+Reason: Stable fallback if earlier windows do not develop and the market transitions into a calmer afternoon continuation.
+
+Deployment Law
+
+- No blind aggression into the early macro window.
+- Gods first only while price stays accepted above the stack.
+- Promote the actual paying time window, not just the cleanest theory.
+- If early London pays again, do not suppress it just because Priming Zeus looks safer on paper.
+- If post-event continuation confirms cleanly, Priming Zeus can be promoted aggressively.
+- If price falls back into the stack, reduce pressure immediately.
+
+Summary
+
+This is still a bullish board, but the ranking has been adjusted after review. We are staying Gods-first, but we are no longer assuming the market will pay through the same timing pocket as the prior lesson. Early live opportunity now gets more respect, while the Priming Zeus complex remains the main confirmation group if the board proves itself after the event window.
+
+Hermes

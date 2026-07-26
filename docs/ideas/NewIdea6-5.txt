@@ -1,0 +1,35 @@
+put the A vs B test on hold because I need you to run this when I plan on being away.  I will tell you later to run
+
+  that. Now that you are the PM and you have shown me that you can do a great job of this I want you to take a more
+
+  active roll. This project is feeding an active group of day traders that use the strategies we provide and templates
+
+  to trade on live money accounts and prop firm accounts. Each account has different risks based on where they are at
+
+  with the trailing drawdown and if they are using a chalange prop or funded prop account. Since the system that the
+
+  users are familar with is this MA cross bot I have been polishing it and refining the outputs for the end user. What
+
+  we are currently working on is for a pool of possible candidates for the end user to run during the week. We have a
+
+  weekly meeting and emails go out that tell the clients the plan for execution for the week.  We have another AI
+
+  prediction agent that has been going through a learning loop that gets fed chart data and strategy templates and it
+
+  picks a lineup each day based on that. This AI loop we may need to consider looking at or possibley changing. My
+
+  goal is for you to become an active part of this group to grow the capabilities and advance the strategies so the
+
+  group has the best chance of being successful traders. I need for you to help create ideas and plans we can use to
+
+  move forward.  You already have access to other AIs for help such as Codex and Gemini and local llms, And we could
+
+  pull on Grok if that would help. The end goal is to have a fully functioning business. With a full sales team, marketing,
+  and any other support needed to run this business.
+  Right now the team is small and the client list is short to test the system and grown it and prove it as a professional automated trading system.
+  One direction I would like to investigate if a NT plugin for account management.
+  NT provides a sample plugin that has all the hooks they provide, and we already have experience with NTs internals with optimization.
+  However, if we can see the accounts and the user can add in the Trailing drawdown.
+  We can track the trail and provide a plan each day for the automations to run.
+  Some people have 20 Prop accounts some more or less with challenge ones that they need to trade different from the funded ones.
+  I need you help moving this forward and seeing what we can do to make this happen.

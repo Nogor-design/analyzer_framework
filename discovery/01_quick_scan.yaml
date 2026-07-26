@@ -1,0 +1,334 @@
+# ============================================================
+# STAGE 1 — QUICK SCAN
+# ============================================================
+# Run this FIRST. One pass over all signal families with
+# minimal parameters. Goal: find out which families have any
+# edge at all before investing time in deep sweeps.
+#
+# Runtime: ~3-5 minutes with --no-tick-data
+# Combos:  ~250
+#
+# COMMAND:
+#   python -m ta_foundation.cli.main \
+#     --input "C:/path/to/exports" \
+#     --output ./outputs/01_scan \
+#     --report-config ./discovery/01_quick_scan.yaml \
+#     --market-data "D:/MarketData" \
+#     --recursive --no-tick-data
+#
+# WHAT TO LOOK AT:
+#   Open the HTML → "Unified Strategy Discovery" section at the top.
+#   Note which signal families have PF ≥ 1.2 and on which timeframe.
+#   Those are the only families worth deep-diving in stages 2-5.
+# ============================================================
+
+report:
+  title: "Stage 1 — Quick Scan (All Signal Families)"
+  output_filename: "01_quick_scan.html"
+  timezone: "America/Denver"
+
+# Tag this run for the Discovery web UI sidecar (discovery_summary.json).
+# Edit `instrument` to match what you're testing — the sidecar wraps that
+# instrument's tick_size/tick_value into the JSON for downstream rendering.
+discovery:
+  stage: "01_quick_scan"
+  instrument: "NQ"
+
+# ============================================================
+# CANDLE PATTERNS — 1 param set each, next_open entry only
+# 9 patterns × 1 TP × 1 SL × 1 TF = ~27 combos
+# ============================================================
+candle_discovery:
+  enabled: true
+  # Filter to RTH only before sweeping — cuts 78k bars → 25k (3× faster).
+  # hour_from: 7, minute_from: 30 = 07:30 Denver (NY bell, MDT)
+  # hour_to: 16 = 16:00 Denver (market close)
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  timeframes: [1]         # Start with 1m only — add 5 in stage 2 if 1m wins
+  min_trades: 20
+
+  candle_features:
+    size_lookbacks: [10]  # Single lookback — avoids param explosion
+    atr_period: 14
+    tick_size: 0.25
+    min_body_ticks: 1
+
+  patterns:
+    large_body:
+      enabled: true
+      body_multiplier: [1.5]    # Single value for scanning
+      wick_to_body_max: [0.5]
+      lookback: [10]
+      min_size_ticks: 3
+
+    clean_breakout_bar:
+      enabled: true
+      atr_mult: [1.5]
+      body_to_range_min: [0.60]
+
+    pin_bar_bullish:
+      enabled: true
+      wick_to_body_min: [1.5]
+      body_to_range_max: [0.35]
+
+    pin_bar_bearish:
+      enabled: true
+      wick_to_body_min: [1.5]
+      body_to_range_max: [0.35]
+
+    engulfing_bullish:
+      enabled: true
+      engulf_ratio: [1.0]
+
+    engulfing_bearish:
+      enabled: true
+      engulf_ratio: [1.0]
+
+    inside_bar:
+      enabled: true
+
+    outside_bar:
+      enabled: true
+
+    doji:
+      enabled: true
+      body_to_range_max: [0.12]
+
+  direction: both
+
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: false}   # Off for scan — enable in stage 2
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr:   {enabled: false}           # Skip ATR-based exits for scan
+    ticks:
+      enabled: true
+      take_profit: [20]               # Single TP for scan
+      stop: [10]                      # Single SL for scan
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: false}  # Skip for speed
+
+# ============================================================
+# MA DISCOVERY — 2 MA types, single TP/SL
+# ~24 combos
+# ============================================================
+ma_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  timeframes: [1]
+  min_trades: 20
+
+  signals:
+    ma_cross:
+      enabled: true
+      fast_period: [9]
+      slow_period: [20]
+      ma_type: [ema]
+
+    ma_pullback:
+      enabled: true
+      period: [20]
+      ma_type: [ema]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr:   {enabled: false}
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: false}
+
+# ============================================================
+# ORB DISCOVERY — 3 window sizes, single TP/SL
+# ~24 combos
+# ============================================================
+orb_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  orb_windows_min: [5, 15, 30]    # 3 widths (not 4) for speed
+  session_open_hour: 7
+  session_open_minute: 30
+  tick_size: 0.25
+  tick_value: 5.00
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr:   {enabled: false}
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+  filter_discovery: {enabled: false}
+
+# ============================================================
+# BB DISCOVERY — 1 band width, single TP/SL
+# ~16 combos
+# ============================================================
+bb_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  timeframes: [1]
+
+  signals:
+    bb_mean_reversion:   {enabled: true, period: [20], n_std: [2.0]}
+    bb_continuation:     {enabled: true, period: [20], n_std: [2.0]}
+    bb_squeeze_breakout: {enabled: true, period: [20], n_std: [2.0]}
+    bb_walk:             {enabled: true, period: [20], n_std: [2.0]}
+
+  entry_timing:
+    next_open: {enabled: true}
+
+  outcome:
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# LCR DISCOVERY — 1 multiplier, 1 lookback, single TP/SL
+# ~16 combos
+# ============================================================
+lcr_discovery:
+  enabled: true
+  size_multipliers: [2.0]     # Start with 2× average — strong regions only
+  lookbacks: [20]
+  zone_types: ["body"]
+  tp_ticks: [20]
+  sl_ticks: [10]
+  tick_size: 0.25
+  tick_value: 5.00
+  max_bars_timeout: 20
+  retrace_window: 20
+  signal_types: ["fresh", "touch", "break", "retrace"]
+  min_trades: 20
+  max_active_regions: 100
+  max_region_age: 500
+
+# ============================================================
+# BREAKOUT DISCOVERY — minimal params
+# ~24 combos
+# ============================================================
+breakout_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  lookback_bars: [10, 20]
+  timeframes: [1]
+
+  signals:
+    n_bar_breakout:    {enabled: true}
+    volatility_break:  {enabled: true}
+
+  outcome:
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# PULLBACK DISCOVERY — minimal params
+# ~24 combos
+# ============================================================
+pullback_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  lookback_bars: [10, 20]
+  timeframes: [1]
+
+  signals:
+    trend_pullback:    {enabled: true}
+    retracement_entry: {enabled: true}
+
+  outcome:
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# LEVEL DISCOVERY — minimal params
+# ~24 combos
+# ============================================================
+level_discovery:
+  enabled: true
+  session_filter:
+    hour_from: 7
+    minute_from: 30
+    hour_to: 16
+  min_trades: 20
+  lookback_bars: [20]
+  timeframes: [1]
+
+  signals:
+    swing_level:       {enabled: true}
+    consolidation:     {enabled: true}
+    round_number:      {enabled: true}
+
+  outcome:
+    ticks: {enabled: true, take_profit: [20], stop: [10]}
+    max_bars_timeout: 15
+    timeout_result: loss
+
+  slippage_ticks: 1
+
+# ============================================================
+# SECTIONS — just the unified cross-family view
+# ============================================================
+sections:
+  - id: strategy_discovery_unified
+    options:
+      top_n: 30
+      # Cross-family ranking — this is the PRIMARY output of stage 1.
+      # Find the signal family + timeframe with PF >= 1.2.
+
+  - id: candle_discovery_overview
+
+  - id: lcr_discovery_overview
+    options:
+      top_n: 10
+      show_r2r_stats: true
+      show_retrace_stats: true
+
+  - id: daily_scoreboard
+    options:
+      top_n: 10

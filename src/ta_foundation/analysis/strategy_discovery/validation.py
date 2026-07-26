@@ -113,11 +113,12 @@ class ValidationResult:
 
 
 DEFAULT_WF_CONFIG: Dict[str, Any] = {
-    "wf_type": "rolling",
-    "is_pct": 0.70,
+    "wf_type": "rolling",         # 'rolling' = non-overlapping IS/OOS blocks (T7)
+                                   # 'anchored' = expanding-IS (legacy; leaks earlier-fold IS)
+    "is_pct": 0.70,                # only used when wf_type='anchored'
     "min_oos_trades": 20,
     "min_is_trades": 50,
-    "n_folds": 5,
+    "n_folds": 6,                  # bumped from 5 → 6 per T7; spec calls for k≥6
     "degradation_threshold": 0.20,
 }
 
@@ -171,6 +172,23 @@ def _compute_win_rate(returns: pd.Series) -> Optional[float]:
     return _safe_float(float((valid > 0).mean()))
 
 
+def _compute_sharpe(returns: pd.Series) -> Optional[float]:
+    """Per-trade Sharpe-like ratio: mean(returns) / std(returns).
+
+    Not annualised — used here only to compare folds against each other,
+    so the unit-of-time choice cancels out. Returns None when std is zero
+    or the sample is too small to estimate variance reliably.
+    """
+    valid = pd.to_numeric(returns, errors="coerce").dropna()
+    if len(valid) < 2:
+        return None
+    mu = float(valid.mean())
+    sigma = float(valid.std(ddof=1))
+    if sigma == 0 or not np.isfinite(sigma):
+        return None
+    return _safe_float(mu / sigma)
+
+
 def _compute_max_drawdown(cumulative_pnl: pd.Series) -> float:
     """
     Max drawdown on a cumulative P&L series.
@@ -214,6 +232,50 @@ def apply_cost_model(
         out["profit_net"] = np.nan
 
     return out
+
+
+def extract_oos_pool(
+    trades: pd.DataFrame,
+    *,
+    wf_config: Dict[str, Any],
+    time_col: str = "entry_time",
+) -> pd.DataFrame:
+    """
+    Return the contiguous OOS pool the walk-forward folds evaluate on,
+    sorted by ``time_col`` when present.
+
+    Under ``wf_type='rolling'`` (T7 default) the dev set is partitioned into
+    ``n_folds + 1`` equal blocks: block 0 is fold-1's IS only and every
+    subsequent block is some fold's OOS. The OOS pool is therefore
+    ``trades.iloc[block_size:]`` — the union of all fold-OOS slices.
+
+    Under ``wf_type='anchored'`` (legacy) every row after the first
+    ``is_pct`` fraction is OOS for at least one fold, so the pool is
+    ``trades.iloc[floor(n * is_pct):]``.
+
+    Returns an empty DataFrame (with original columns) if no OOS rows exist.
+    """
+    if trades is None or len(trades) == 0:
+        return trades.iloc[0:0] if isinstance(trades, pd.DataFrame) else pd.DataFrame()
+    df = trades.copy()
+    if time_col in df.columns:
+        df = df.sort_values(time_col).reset_index(drop=True)
+    n = len(df)
+    wf_type = str(wf_config.get("wf_type", "rolling")).lower()
+    if wf_type == "rolling":
+        n_folds = int(wf_config.get("n_folds", 6))
+        if n_folds < 1:
+            return df.iloc[0:0]
+        block_size = n // (n_folds + 1)
+        if block_size < 1 or block_size >= n:
+            return df.iloc[0:0]
+        return df.iloc[block_size:].reset_index(drop=True)
+    # anchored / legacy
+    is_pct = float(wf_config.get("is_pct", 0.70))
+    initial_is_end = int(np.floor(n * is_pct))
+    if initial_is_end >= n:
+        return df.iloc[0:0]
+    return df.iloc[initial_is_end:].reset_index(drop=True)
 
 
 def compute_walk_forward(
@@ -309,17 +371,249 @@ def compute_walk_forward(
     return result
 
 
+def compute_walk_forward_rolling(
+    trades: pd.DataFrame,
+    profit_col: str = "profit_net",
+    *,
+    wf_config: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Multi-fold walk-forward across ``n_folds`` folds.
+
+    Two modes, selected by ``wf_config["wf_type"]``:
+
+    ``rolling`` (default, T7) — TRUE rolling walk-forward.
+        The dev set is divided into ``n_folds + 1`` contiguous, equal-size
+        blocks. For fold ``i`` (1..n_folds): IS = block ``i-1``, OOS = block
+        ``i``. Every fold's IS slice is verifiably DISJOINT from every other
+        fold's IS slice — no expanding-window leak. Each fold's IS is also
+        immediately adjacent to (and just before) its own OOS, which is the
+        property that makes "rolling" meaningful.
+
+    ``anchored`` (legacy) — anchored expanding walk-forward.
+        First ``is_pct`` fraction of trades is the burn-in IS pool. The
+        remaining trades are sliced into ``n_folds`` OOS chunks; each fold
+        uses every trade up to its OOS chunk's start as its (expanding) IS.
+        Earlier-fold IS data is reused by later folds, which biases later
+        folds. Kept only for backwards compatibility and direct comparison
+        with prior runs.
+
+    Returns dict (additive — keys present in the legacy implementation are
+    preserved):
+      wf_type                       'rolling' or 'anchored'
+      n_folds                       requested fold count
+      folds                         list of per-fold dicts (legacy schema)
+      folds_distribution            list of {fold, oos_pf, oos_sharpe,
+                                    oos_expectancy, oos_n_trades}
+      oos_expectancy_across_folds   trade-weighted mean across folds
+      oos_expectancy_std            std-deviation of per-fold oos_expectancy
+      oos_pf_std                    std-deviation of per-fold oos_pf
+      oos_sharpe_mean               equal-weighted mean of per-fold oos_sharpe
+      fold_sign_consistency         fraction of folds with mean OOS > 0
+      passed                        sign_consistency ≥ 0.6 and pooled exp > 0
+      issues                        list of issue strings
+    """
+    wf_type = str(wf_config.get("wf_type", "rolling")).lower()
+    n_folds = int(wf_config.get("n_folds", 6))
+    min_is_trades = int(wf_config.get("min_is_trades", 50))
+
+    result: Dict[str, Any] = {
+        "wf_type": wf_type,
+        "n_folds": n_folds,
+        "folds": [],
+        "folds_distribution": [],
+        "oos_expectancy_across_folds": None,
+        "oos_expectancy_std": None,
+        "oos_pf_std": None,
+        "oos_sharpe_mean": None,
+        "fold_sign_consistency": None,
+        "passed": False,
+        "issues": [],
+    }
+
+    if trades is None or len(trades) == 0:
+        result["issues"].append("no trades for rolling walk-forward")
+        return result
+
+    df = trades.copy()
+    if "entry_time" in df.columns:
+        df = df.sort_values("entry_time").reset_index(drop=True)
+
+    if profit_col not in df.columns:
+        result["issues"].append(f"profit column '{profit_col}' not found")
+        return result
+
+    n = len(df)
+    fold_results: List[Dict[str, Any]] = []
+
+    if wf_type == "rolling":
+        if n_folds < 1:
+            result["issues"].append(f"n_folds={n_folds} invalid (must be ≥1)")
+            return result
+        block_size = n // (n_folds + 1)
+        if block_size < 1:
+            result["issues"].append(
+                f"trade count ({n}) too small for {n_folds} non-overlapping folds"
+            )
+            return result
+
+        # Build n_folds+1 contiguous blocks. Last block absorbs the
+        # remainder so we never silently drop trailing trades.
+        boundaries = [i * block_size for i in range(n_folds + 1)] + [n]
+
+        for fold_idx in range(n_folds):
+            is_start = boundaries[fold_idx]
+            is_end = boundaries[fold_idx + 1]
+            oos_start = is_end
+            oos_end = boundaries[fold_idx + 2]
+            is_df = df.iloc[is_start:is_end]
+            oos_df = df.iloc[oos_start:oos_end]
+            if len(is_df) < min_is_trades or len(oos_df) < 1:
+                continue
+            fold_results.append(
+                _per_fold_metrics(
+                    fold_idx=fold_idx,
+                    is_df=is_df,
+                    oos_df=oos_df,
+                    profit_col=profit_col,
+                    is_range=(is_start, is_end),
+                    oos_range=(oos_start, oos_end),
+                )
+            )
+    else:
+        # anchored / legacy
+        is_pct = float(wf_config.get("is_pct", 0.70))
+        initial_is_end = int(np.floor(n * is_pct))
+        oos_pool = n - initial_is_end
+        if oos_pool < n_folds:
+            result["issues"].append(
+                f"OOS pool ({oos_pool} trades) too small for {n_folds} folds"
+            )
+            return result
+        fold_size = oos_pool // n_folds
+        for fold_idx in range(n_folds):
+            oos_start = initial_is_end + fold_idx * fold_size
+            oos_end = oos_start + fold_size if fold_idx < n_folds - 1 else n
+            is_df = df.iloc[:oos_start]
+            oos_df = df.iloc[oos_start:oos_end]
+            if len(is_df) < min_is_trades or len(oos_df) < 1:
+                continue
+            fold_results.append(
+                _per_fold_metrics(
+                    fold_idx=fold_idx,
+                    is_df=is_df,
+                    oos_df=oos_df,
+                    profit_col=profit_col,
+                    is_range=(0, oos_start),
+                    oos_range=(oos_start, oos_end),
+                )
+            )
+
+    result["folds"] = fold_results
+
+    if not fold_results:
+        result["issues"].append("no folds had sufficient trades")
+        return result
+
+    # Per-fold distribution and aggregates
+    distribution = [
+        {
+            "fold": f["fold"],
+            "oos_pf": f["oos_pf"],
+            "oos_sharpe": f["oos_sharpe"],
+            "oos_expectancy": f["oos_expectancy"],
+            "oos_n_trades": f["oos_trades"],
+        }
+        for f in fold_results
+    ]
+    result["folds_distribution"] = distribution
+
+    n_positive = sum(1 for f in fold_results if f["oos_positive"])
+    sign_consistency = n_positive / len(fold_results)
+    result["fold_sign_consistency"] = _safe_float(sign_consistency)
+
+    total_oos = sum(f["oos_trades"] for f in fold_results)
+    if total_oos > 0:
+        weighted_exp = sum(
+            (f["oos_expectancy"] or 0.0) * f["oos_trades"]
+            for f in fold_results
+        ) / total_oos
+        result["oos_expectancy_across_folds"] = _safe_float(weighted_exp)
+
+    # Variance metrics — fold-to-fold stability. Only meaningful with ≥2 folds.
+    exp_series = [f["oos_expectancy"] for f in fold_results if f["oos_expectancy"] is not None]
+    if len(exp_series) >= 2:
+        result["oos_expectancy_std"] = _safe_float(float(np.std(exp_series, ddof=1)))
+    pf_series = [f["oos_pf"] for f in fold_results if f["oos_pf"] is not None]
+    if len(pf_series) >= 2:
+        result["oos_pf_std"] = _safe_float(float(np.std(pf_series, ddof=1)))
+    sharpe_series = [f["oos_sharpe"] for f in fold_results if f["oos_sharpe"] is not None]
+    if sharpe_series:
+        result["oos_sharpe_mean"] = _safe_float(float(np.mean(sharpe_series)))
+
+    result["passed"] = bool(
+        sign_consistency >= 0.6
+        and result["oos_expectancy_across_folds"] is not None
+        and result["oos_expectancy_across_folds"] > 0
+    )
+
+    return result
+
+
+def _per_fold_metrics(
+    fold_idx: int,
+    is_df: pd.DataFrame,
+    oos_df: pd.DataFrame,
+    profit_col: str,
+    is_range: Tuple[int, int],
+    oos_range: Tuple[int, int],
+) -> Dict[str, Any]:
+    """Build the per-fold result dict consumed by both rolling and anchored modes."""
+    is_returns = pd.to_numeric(is_df[profit_col], errors="coerce").dropna()
+    oos_returns = pd.to_numeric(oos_df[profit_col], errors="coerce").dropna()
+    is_exp = _compute_expectancy(is_returns)
+    oos_exp = _compute_expectancy(oos_returns)
+    return {
+        "fold": fold_idx + 1,
+        "is_trades": int(len(is_df)),
+        "oos_trades": int(len(oos_df)),
+        "is_expectancy": is_exp,
+        "oos_expectancy": oos_exp,
+        "is_pf": _compute_profit_factor(is_returns),
+        "oos_pf": _compute_profit_factor(oos_returns),
+        "oos_sharpe": _compute_sharpe(oos_returns),
+        "oos_positive": bool(oos_exp is not None and oos_exp > 0),
+        "is_idx_range": [int(is_range[0]), int(is_range[1])],
+        "oos_idx_range": [int(oos_range[0]), int(oos_range[1])],
+    }
+
+
 def run_t_test(
     trades: pd.DataFrame,
     profit_col: str = "profit_net",
+    *,
+    n_hypotheses_tested: int = 1,
+    min_t_stat_abs: float = 0.0,
 ) -> Dict[str, Any]:
     """
     One-sample t-test: trade returns vs zero.
-    Returns: t_stat, p_value, passed (p < 0.05), n_valid
+
+    Applies Bonferroni correction when n_hypotheses_tested > 1.
+    corrected_alpha = 0.05 / n_hypotheses_tested
+    required_t_stat = max(t_critical(corrected_alpha, df=n-1), min_t_stat_abs)
+
+    Returns: t_stat, p_value, corrected_alpha, required_t_stat,
+             n_hypotheses_tested, passed, n_valid
     """
+    n_hyp = max(int(n_hypotheses_tested), 1)
+    corrected_alpha = 0.05 / n_hyp
+
     result: Dict[str, Any] = {
         "t_stat": None,
         "p_value": None,
+        "corrected_alpha": corrected_alpha,
+        "required_t_stat": None,
+        "n_hypotheses_tested": n_hyp,
         "passed": False,
         "n_valid": 0,
         "issues": [],
@@ -341,11 +635,21 @@ def run_t_test(
         result["issues"].append(f"insufficient valid trades for t-test: {n_valid}")
         return result
 
+    df_degrees = max(n_valid - 1, 1)
+    required_t = float(scipy_stats.t.ppf(1.0 - corrected_alpha / 2.0, df=df_degrees))
+    required_t = max(required_t, float(min_t_stat_abs))
+    result["required_t_stat"] = _safe_float(required_t)
+
     try:
         t_stat, p_value = scipy_stats.ttest_1samp(returns.values, popmean=0.0)
         result["t_stat"] = _safe_float(t_stat)
         result["p_value"] = _safe_float(p_value)
-        result["passed"] = bool(p_value < 0.05 and t_stat > 0)
+        result["passed"] = bool(
+            t_stat is not None
+            and np.isfinite(float(t_stat))
+            and float(t_stat) > 0
+            and float(t_stat) >= required_t
+        )
     except Exception as exc:
         result["issues"].append(f"t-test failed: {exc}")
 
@@ -431,6 +735,11 @@ def run_validation(
     wf_config: Optional[Dict[str, Any]] = None,
     cost_model: Optional[Dict[str, Any]] = None,
     n_mc_simulations: int = 1000,
+    # --- Bonferroni / multiple-testing correction ---
+    n_hypotheses_tested: int = 1,
+    min_t_stat_abs: float = 0.0,
+    # --- rolling walk-forward ---
+    use_rolling_wf: bool = True,
     # --- optional extended gate inputs ---
     fold_sign_consistency: Optional[float] = None,
     fold_sign_consistency_min: float = 0.6,
@@ -440,6 +749,16 @@ def run_validation(
     regime_dispersion_count: Optional[int] = None,
     sensitivity_class_min: Optional[str] = None,
     sensitivity_class_observed: Optional[str] = None,
+    # --- DSR gate ---
+    dsr_n_trials: Optional[int] = None,
+    dsr_threshold: float = 0.95,
+    dsr_annualization_factor: float = 1.0,
+    # --- regime stratification gate ---
+    regime_breakdown: Optional[Dict[str, Any]] = None,
+    min_per_regime_expectancy: Optional[float] = None,
+    # --- persistence ---
+    db_path: Optional[str] = None,
+    experiment_id: Optional[int] = None,
 ) -> ValidationResult:
     """
     Run all validation checks and return a structured ``ValidationResult``.
@@ -459,6 +778,11 @@ def run_validation(
                               pass if value ≥ regime_dispersion_min (default 2)
       sensitivity_class       parameter sensitivity classification (fragile/moderate/robust);
                               pass if observed class ≥ sensitivity_class_min rank
+      dsr                     Deflated Sharpe Ratio (López de Prado 2018);
+                              applied when dsr_n_trials is provided (or auto-read from DB).
+                              pass if DSR ≥ dsr_threshold (default 0.95)
+      min_per_regime_expectancy  applied when regime_breakdown dict is provided;
+                              pass if every regime with ≥1 trade has avg_trade ≥ threshold
 
     Parameters
     ----------
@@ -466,7 +790,15 @@ def run_validation(
     wf_config                    : walk-forward config overrides
     cost_model                   : cost model overrides
     n_mc_simulations             : Monte Carlo simulation count
-    fold_sign_consistency        : measured value (0-1) from oos_stats
+    n_hypotheses_tested          : total hypotheses tested so far (for Bonferroni correction).
+                                   corrected_alpha = 0.05 / n_hypotheses_tested.
+                                   Default 1 preserves prior p<0.05 behavior.
+    min_t_stat_abs               : enforce a minimum |t| regardless of alpha correction.
+                                   Pass 3.0 to require t > 3 as per the target framework.
+    use_rolling_wf               : if True, run compute_walk_forward_rolling() and auto-wire
+                                   fold_sign_consistency from the result (unless caller
+                                   provides fold_sign_consistency explicitly).
+    fold_sign_consistency        : measured value (0-1) from oos_stats (overrides rolling WF)
     fold_sign_consistency_min    : minimum passing value (default 0.6)
     session_concentration_cap    : measured max-session fraction (0-1)
     session_concentration_max    : maximum allowed (default 0.70)
@@ -502,7 +834,7 @@ def run_validation(
     cost_normalized = apply_cost_model(trades, resolved_cost_model)
 
     # -----------------------------------------------------------------------
-    # Step 2: Walk-forward
+    # Step 2: Walk-forward (single split)
     # -----------------------------------------------------------------------
     wf_results = compute_walk_forward(
         cost_normalized,
@@ -513,9 +845,30 @@ def run_validation(
         all_issues.extend(wf_results["issues"])
 
     # -----------------------------------------------------------------------
-    # Step 3: T-test
+    # Step 2b: Rolling walk-forward (multi-fold) — auto-wires fold_sign_consistency
     # -----------------------------------------------------------------------
-    t_test = run_t_test(cost_normalized, profit_col="profit_net")
+    rolling_wf_results: Dict[str, Any] = {}
+    if use_rolling_wf:
+        rolling_wf_results = compute_walk_forward_rolling(
+            cost_normalized,
+            profit_col="profit_net",
+            wf_config=resolved_wf_config,
+        )
+        if rolling_wf_results.get("issues"):
+            all_issues.extend(rolling_wf_results["issues"])
+        # Auto-wire fold_sign_consistency unless caller provided an explicit value
+        if fold_sign_consistency is None and rolling_wf_results.get("fold_sign_consistency") is not None:
+            fold_sign_consistency = rolling_wf_results["fold_sign_consistency"]
+
+    # -----------------------------------------------------------------------
+    # Step 3: T-test (Bonferroni-corrected)
+    # -----------------------------------------------------------------------
+    t_test = run_t_test(
+        cost_normalized,
+        profit_col="profit_net",
+        n_hypotheses_tested=n_hypotheses_tested,
+        min_t_stat_abs=min_t_stat_abs,
+    )
     if t_test.get("issues"):
         all_issues.extend(t_test["issues"])
 
@@ -557,12 +910,15 @@ def run_validation(
 
     t_stat = t_test.get("t_stat")
     p_val = t_test.get("p_value")
+    req_t = t_test.get("required_t_stat")
+    corr_alpha = t_test.get("corrected_alpha", 0.05)
     gates.append(GateResult(
         name="t_test",
         passed=bool(t_test.get("passed", False)),
         value={"t_stat": t_stat, "p_value": p_val},
-        threshold={"p_max": 0.05, "t_min": 0.0},
-        reason=f"t={t_stat}, p={p_val}",
+        threshold={"corrected_alpha": corr_alpha, "required_t_stat": req_t,
+                   "n_hypotheses_tested": n_hypotheses_tested},
+        reason=f"t={t_stat}, p={p_val}, required_t={req_t} (alpha={corr_alpha:.4f})",
     ))
 
     actual_dd = monte_carlo.get("actual_max_dd")
@@ -592,6 +948,28 @@ def run_validation(
         ))
         if not fsc_passed:
             all_issues.append(f"hard gate failed: fold_sign_consistency ({fsc_val:.3f} < {fold_sign_consistency_min:.3f})")
+    elif use_rolling_wf:
+        # Rolling walk-forward was requested but produced no qualifying folds
+        # (typically n_folds too high relative to dev sample given min_is_trades).
+        # Treat this as an explicit gate failure rather than silently skipping
+        # the consistency check, otherwise a misconfigured n_folds can let a
+        # candidate "pass" hardening with the gate disabled.
+        rolling_issues = rolling_wf_results.get("issues") or []
+        rolling_reason = "; ".join(str(s) for s in rolling_issues) or "no qualifying folds"
+        gates.append(GateResult(
+            name="fold_sign_consistency",
+            passed=False,
+            value=None,
+            threshold=fold_sign_consistency_min,
+            reason=(
+                f"rolling walk-forward did not produce a sign-consistency fraction "
+                f"({rolling_reason}); reduce n_folds or lower min_is_trades"
+            ),
+        ))
+        all_issues.append(
+            "hard gate failed: fold_sign_consistency unavailable — rolling "
+            f"walk-forward produced no fraction ({rolling_reason})"
+        )
 
     # Gate: session concentration
     if session_concentration_cap is not None:
@@ -637,6 +1015,67 @@ def run_validation(
         if not sens_passed:
             all_issues.append(f"hard gate failed: sensitivity_class ({sensitivity_class_observed} < {sensitivity_class_min})")
 
+    # Gate: minimum per-regime expectancy
+    # Applied when regime_breakdown is provided and min_per_regime_expectancy is set.
+    if regime_breakdown and min_per_regime_expectancy is not None:
+        min_exp = float(min_per_regime_expectancy)
+        failing_regimes = []
+        for label, rdata in regime_breakdown.items():
+            if not isinstance(rdata, dict):
+                continue
+            n = rdata.get("n_trades", 0)
+            avg = rdata.get("avg_trade")
+            if n > 0 and (avg is None or float(avg) < min_exp):
+                failing_regimes.append(label)
+        mre_passed = len(failing_regimes) == 0
+        mre_value = {k: v.get("avg_trade") for k, v in regime_breakdown.items() if isinstance(v, dict)}
+        gates.append(GateResult(
+            name="min_per_regime_expectancy",
+            passed=mre_passed,
+            value=mre_value,
+            threshold=min_exp,
+            reason=(
+                f"all regimes ≥ {min_exp}" if mre_passed
+                else f"regimes below threshold: {failing_regimes}"
+            ),
+        ))
+        if not mre_passed:
+            all_issues.append(
+                f"hard gate failed: min_per_regime_expectancy "
+                f"(failing regimes: {failing_regimes})"
+            )
+
+    # Gate: Deflated Sharpe Ratio
+    # Enabled when dsr_n_trials is provided, or auto-read from DB registry.
+    _dsr_n_trials = dsr_n_trials
+    if _dsr_n_trials is None and db_path is not None:
+        try:
+            from ta_foundation.persistence.db import ExperimentRegistry
+            _dsr_n_trials = ExperimentRegistry(db_path).count_experiments()
+        except Exception:
+            pass
+
+    if _dsr_n_trials is not None:
+        from ta_foundation.analysis.statistics.dsr import compute_dsr_gate
+        dsr_result = compute_dsr_gate(
+            cost_normalized,
+            n_trials=_dsr_n_trials,
+            profit_col="profit_net",
+            annualization_factor=dsr_annualization_factor,
+            dsr_threshold=dsr_threshold,
+        )
+        dsr_passed = bool(dsr_result.get("passed", False))
+        dsr_val = dsr_result.get("dsr")
+        gates.append(GateResult(
+            name="dsr",
+            passed=dsr_passed,
+            value=dsr_val,
+            threshold=dsr_threshold,
+            reason=dsr_result.get("reason", f"DSR={dsr_val} vs threshold={dsr_threshold}"),
+        ))
+        if not dsr_passed:
+            all_issues.append(f"hard gate failed: dsr ({dsr_val} < {dsr_threshold})")
+
     # -----------------------------------------------------------------------
     # Composite pass/fail
     # -----------------------------------------------------------------------
@@ -657,14 +1096,28 @@ def run_validation(
     status = "PASSED" if passed else "FAILED"
     summary = f"{status} — {len(gates)} gates\n" + "\n".join(gate_lines)
 
-    return ValidationResult(
+    vr = ValidationResult(
         gates=gates,
         passed=passed,
         issues=all_issues,
         summary=summary,
         cost_normalized=cost_normalized,
-        wf_results=wf_results,
+        wf_results={**wf_results, "rolling": rolling_wf_results},
         t_test=t_test,
         monte_carlo=monte_carlo,
         gate_results=gate_results,
     )
+
+    if db_path is not None:
+        try:
+            from ta_foundation.persistence.db import ExperimentRegistry
+            reg = ExperimentRegistry(db_path)
+            reg.record_validation(
+                experiment_id=experiment_id,
+                validation_result=vr,
+                n_hypotheses_at_time=n_hypotheses_tested,
+            )
+        except Exception:
+            pass  # DB write is best-effort; never block a validation run
+
+    return vr

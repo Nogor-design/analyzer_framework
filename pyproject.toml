@@ -14,6 +14,35 @@ dependencies = [
   "pyyaml",
 ]
 
+[project.optional-dependencies]
+analysis = [
+  "numpy",
+  "scipy",
+  "scikit-learn",
+  "pyarrow",
+]
+prediction = [
+  "anthropic>=0.90.0",
+]
+reporting = [
+  "playwright",
+]
+persistence = [
+  "duckdb",
+]
+web = [
+  "flask",
+]
+agentic = [
+  "langchain",
+  "langgraph",
+  "langchain-ollama",
+  "langgraph-checkpoint-sqlite",
+]
+dev = [
+  "pytest",
+]
+
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Lineage {{ candidate_id or "" }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .node { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 14px 16px; }
+    .node-root { border-left: 3px solid #6b7280; }
+    .node-winner { border-left: 3px solid #34d399; }
+    .node-suppressed { border-left: 3px solid #ef4444; }
+    .node-finalist { border-left: 3px solid #f59e0b; }
+    .connector { width: 2px; min-height: 22px; background: #374151; margin: 0 auto; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-stage { background: #1e3a8a; color: #bfdbfe; font-weight: 600; }
+    .pill-selected { background: #064e3b; color: #34d399; }
+    .pill-evaluated { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+    .pill-recommended { background: #064e3b; color: #34d399; }
+    .pill-rejected { background: #7f1d1d; color: #fecaca; }
+    .pill-unknown { background: #1f2937; color: #6b7280; border: 1px dashed #374151; }
+    .kpi { font-variant-numeric: tabular-nums; }
+    .kpi-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi-value { font-size: 16px; color: #f3f4f6; font-weight: 600; }
+    .param-key { color: #9ca3af; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .param-val { color: #f3f4f6; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .param-val-changed { color: #fcd34d; font-weight: 600; }
+    .param-val-added { color: #34d399; font-weight: 600; }
+    .param-val-absent { color: #4b5563; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .param-key-absent { color: #4b5563; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .param-prev { color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+    .param-tag { font-size: 9px; padding: 1px 5px; border-radius: 4px; vertical-align: middle; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .param-tag-changed { background: rgba(252,211,77,0.15); color: #fcd34d; }
+    .param-tag-added { background: rgba(52,211,153,0.15); color: #34d399; }
+    .params-legend { font-size: 10px; color: #6b7280; }
+    .params-legend .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+    .change-summary { background: rgba(252,211,77,0.08); border: 1px solid rgba(252,211,77,0.25); color: #fcd34d; padding: 6px 10px; border-radius: 6px; font-size: 11px; }
+    .change-summary-flat { background: rgba(75,85,99,0.15); border: 1px solid rgba(75,85,99,0.4); color: #9ca3af; padding: 6px 10px; border-radius: 6px; font-size: 11px; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    select.candidate-picker { background: #1f2937; border: 1px solid #374151; color: #f3f4f6; }
+    select.candidate-picker:focus { outline: none; border-color: #f59e0b; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <a href="/optimizer/sessions/{{ session_id }}" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Detail</a>
+    <a href="/optimizer/sessions/{{ session_id }}/decision" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Decision</a>
+    <span class="text-amber-400 font-bold text-lg">Lineage</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session_id }}</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    {% if siblings and siblings|length > 0 %}
+      <label class="text-gray-500">Candidate</label>
+      <select id="candidate-picker" class="candidate-picker px-2 py-1 rounded text-xs">
+        {% for sib in siblings %}
+          <option value="{{ sib }}" {% if sib == candidate_id %}selected{% endif %}>{{ sib }}</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+    <a href="/optimizer/sessions/{{ session_id }}/decision"
+       class="btn-ghost px-3 py-1.5 rounded text-xs font-semibold no-underline">
+      Back to Decision
+    </a>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto p-6 space-y-5">
+
+{% if error_reason %}
+  <section class="card">
+    <h1 class="text-xl font-bold mb-2">Lineage unavailable</h1>
+    <div class="text-amber-300 text-sm">{{ error_reason }}</div>
+    <div class="mt-3 text-xs text-gray-500">
+      Session: <span class="pathish">{{ session_label or "(unlabeled)" }}</span>
+    </div>
+  </section>
+{% else %}
+
+  <section class="card">
+    <h1 class="text-xl font-bold mb-1">
+      How {{ report.candidate_id }} was discovered
+    </h1>
+    {% if report.candidate_label %}
+      <div class="text-amber-300 text-sm mb-2">{{ report.candidate_label }}</div>
+    {% endif %}
+    <div class="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+      <div>Session: <span class="pathish">{{ session_label or "(unlabeled)" }}</span></div>
+      <div>Stages traced: <span class="text-gray-200">{{ report.nodes|length }}</span></div>
+      <div>Siblings: <span class="text-gray-200">{{ report.siblings|length }}</span></div>
+    </div>
+    {% if report.notes and report.notes|length > 0 %}
+      <div class="mt-3 text-xs text-amber-300">
+        {% for note in report.notes %}
+          <div>&#9888; {{ note }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="space-y-0">
+    {% for node in report.nodes %}
+      <div class="node {% if node.role == 'stage_root' %}node-root{% elif node.role == 'finalist' %}node-finalist{% elif node.role == 'suppressed_refinement' %}node-suppressed{% else %}node-winner{% endif %}">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="pill pill-stage">{{ node.stage_id }}</span>
+            <span class="text-gray-300 text-sm font-semibold">{{ node.stage_label }}</span>
+            {% if node.role == 'stage_root' %}
+              <span class="text-xs text-gray-500">&middot; root</span>
+            {% elif node.role == 'finalist' %}
+              <span class="text-xs text-gray-500">&middot; finalist</span>
+            {% elif node.role == 'suppressed_refinement' %}
+              <span class="text-xs text-red-300">&middot; refinement attempt not retained</span>
+            {% else %}
+              <span class="text-xs text-gray-500">&middot; selected winner</span>
+            {% endif %}
+          </div>
+          <div>
+            {% if node.status == 'selected' %}
+              <span class="pill pill-selected">selected</span>
+            {% elif node.status == 'evaluated' %}
+              <span class="pill pill-evaluated">evaluated</span>
+            {% elif node.status == 'recommended' %}
+              <span class="pill pill-recommended">recommended</span>
+            {% elif node.status == 'rejected' %}
+              <span class="pill pill-rejected">rejected</span>
+            {% else %}
+              <span class="pill pill-unknown">{{ node.status }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <div class="kpi-label">Profit factor</div>
+            <div class="kpi-value">
+              {% if node.kpis.profit_factor is not none %}{{ "%.2f"|format(node.kpis.profit_factor) }}{% else %}&mdash;{% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="kpi-label">Net</div>
+            <div class="kpi-value">
+              {% if node.kpis.total_net_profit is not none %}${{ "{:,.0f}".format(node.kpis.total_net_profit) }}{% else %}&mdash;{% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="kpi-label">Max DD</div>
+            <div class="kpi-value">
+              {% if node.kpis.max_drawdown is not none %}${{ "{:,.0f}".format(node.kpis.max_drawdown) }}{% else %}&mdash;{% endif %}
+            </div>
+          </div>
+          <div>
+            <div class="kpi-label">Trades</div>
+            <div class="kpi-value">
+              {% if node.kpis.trades is not none %}{{ node.kpis.trades }}{% else %}&mdash;{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+          {% if node.template_id %}
+            <div>Template: <span class="text-gray-300 pathish">{{ node.template_id }}</span></div>
+          {% endif %}
+          {% if node.bucket_id %}
+            <div>Bucket: <span class="text-gray-300 pathish">{{ node.bucket_id }}</span></div>
+          {% endif %}
+          {% if node.row_index is not none %}
+            <div>Row: <span class="text-gray-300">#{{ node.row_index }}</span></div>
+          {% endif %}
+          {% if node.candidate_id %}
+            <div>Candidate id: <span class="text-gray-300 pathish">{{ node.candidate_id }}</span></div>
+          {% endif %}
+        </div>
+
+        {% set union_keys = report.union_param_keys or (node.params.keys()|list) %}
+        {% if union_keys and union_keys|length > 0 %}
+          {% if node.depth > 0 %}
+            {% set changed_count = node.param_diff.values()|selectattr("kind", "equalto", "changed")|list|length %}
+            {% set added_count = node.param_diff.values()|selectattr("kind", "equalto", "added")|list|length %}
+            <div class="mt-3 {% if changed_count > 0 or added_count > 0 %}change-summary{% else %}change-summary-flat{% endif %}">
+              {% if changed_count > 0 or added_count > 0 %}
+                <strong>{{ changed_count }}</strong> changed
+                &middot; <strong>{{ added_count }}</strong> new
+                &middot; from previous stage
+              {% else %}
+                No parameter changes from previous stage.
+              {% endif %}
+            </div>
+          {% endif %}
+          <div class="mt-3">
+            <div class="flex items-baseline justify-between gap-3 mb-1">
+              <div class="kpi-label">Parameters</div>
+              {% if node.depth > 0 %}
+                <div class="params-legend">
+                  <span class="swatch" style="background:#fcd34d;"></span>changed from previous stage
+                  <span class="ml-3"><span class="swatch" style="background:#34d399;"></span>new this stage</span>
+                </div>
+              {% endif %}
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
+              {% for key in union_keys %}
+                {% if key in node.params %}
+                  {% set value = node.params[key] %}
+                  {% set change = node.param_diff.get(key) if node.param_diff else None %}
+                  {% set kind = change.kind if change else "unchanged" %}
+                  <div class="flex items-baseline gap-2 flex-wrap">
+                    <span class="param-key">{{ key }}</span>
+                    <span class="param-val{% if kind == 'changed' %} param-val-changed{% elif kind == 'added' %} param-val-added{% endif %}">{{ value }}</span>
+                    {% if kind == 'changed' and change.previous is not none %}
+                      <span class="param-prev">&larr; {{ change.previous }}</span>
+                      <span class="param-tag param-tag-changed">changed</span>
+                    {% elif kind == 'added' %}
+                      <span class="param-tag param-tag-added">new</span>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div class="flex items-baseline gap-2 flex-wrap" title="Not tracked at this stage">
+                    <span class="param-key-absent">{{ key }}</span>
+                    <span class="param-val-absent">&mdash;</span>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if node.status_reason %}
+          <div class="mt-3 text-xs text-gray-400">{{ node.status_reason }}</div>
+        {% endif %}
+
+        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+          {% if node.links.report_url %}
+            <a href="{{ node.links.report_url }}" target="_blank" rel="noopener"
+               class="text-amber-300 hover:text-amber-200 no-underline">View report &#x2197;</a>
+          {% endif %}
+          {% if node.links.decision_url %}
+            <a href="{{ node.links.decision_url }}"
+               class="text-gray-400 hover:text-amber-300 no-underline">Decision dashboard</a>
+          {% endif %}
+          {% if node.links.stage_results_url %}
+            <a href="{{ node.links.stage_results_url }}"
+               class="text-gray-400 hover:text-amber-300 no-underline">Stage results</a>
+          {% endif %}
+        </div>
+      </div>
+      {% if not loop.last %}
+        <div class="connector"></div>
+      {% endif %}
+    {% endfor %}
+  </section>
+
+{% endif %}
+
+</main>
+
+<script>
+(function () {
+  const picker = document.getElementById("candidate-picker");
+  if (!picker) return;
+  picker.addEventListener("change", () => {
+    const sid = {{ session_id | tojson }};
+    const cid = picker.value;
+    if (!sid || !cid) return;
+    window.location.href =
+      "/optimizer/sessions/" + encodeURIComponent(sid) +
+      "/lineage/" + encodeURIComponent(cid);
+  });
+})();
+</script>
+
+</body>
+</html>

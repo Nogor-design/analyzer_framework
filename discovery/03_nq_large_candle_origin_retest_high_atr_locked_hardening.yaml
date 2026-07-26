@@ -1,0 +1,121 @@
+report:
+  title: "NQ Large Candle Origin Retest — High-ATR Locked Hardening"
+  output_filename: "03_nq_large_candle_origin_retest_high_atr_locked_hardening.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "06_validate"
+  instrument: "NQ"
+
+# Locked hypothesis from
+# discovery/03_nq_large_candle_origin_retest_probe.yaml rank 1 +
+# auto-promoted rule_rank 1:
+#   signal_atr >= 14.0785 price units AND level_dist_ticks <= 30 ticks
+# In tick units the ATR threshold is 14.0785 / 0.25 = 56.314 ticks, so we
+# pin min_atr_ticks=57 to apply the regime filter at signal generation.
+# Parent params are frozen to the rank-1 grid point: 5m, both directions,
+# large_body_mult=2.5, min_body_ticks=8, max_retest_bars=6, touch_ticks=8,
+# min_close_ticks=2, avg_lookback=40. Outcome is the rank-1 winner 40/8.
+
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes: [5]
+  signals:
+    swing_level_test:        {enabled: false}
+    consolidation_breakout:  {enabled: false}
+    round_number_bounce:     {enabled: false}
+    vwap_reclaim_reject:     {enabled: false}
+    vwap_continuation:       {enabled: false}
+    prior_session_reaction:  {enabled: false}
+    reference_sweep_reclaim: {enabled: false}
+    failed_reference_breakout: {enabled: false}
+    liquidity_sweep_failure: {enabled: false}
+
+    large_candle_origin_retest:
+      enabled: true
+      avg_lookback: [40]
+      large_body_mult: [2.5]
+      min_body_ticks: [8.0]
+      max_retest_bars: [6]
+      touch_ticks: [8.0]
+      min_close_ticks: [2.0]
+      max_dist_ticks: [30]
+      min_atr_ticks: [57.0]
+      direction: [0]
+      invert_direction: [false]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [40]
+      stop: [8]
+    max_bars_timeout: 40
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: false}
+  entry_discovery: {enabled: false}
+
+  hardening:
+    enabled: true
+    n_mc_simulations: 500
+    # Multi-comparison penalty against the full parent grid that surfaced
+    # this candidate: 8,640 combos in the broad probe.
+    n_hypotheses_tested: 8640
+    min_t_stat_abs: 1.5
+    wf_config:
+      wf_type: rolling
+      # n_folds=3 mirrors the body-midpoint sizing: block_size ~25 lets the
+      # per-fold floor (min_is_trades=20) bind without starving folds.
+      n_folds: 3
+      min_is_trades: 20
+      min_oos_trades: 10
+      degradation_threshold: 0.40
+    holdout:
+      enabled: true
+      is_frac: 0.60
+      val_frac: 0.20
+      time_col: entry_time
+      min_dev_trades: 80
+      min_holdout_trades: 20
+      require_holdout_passed: true
+      min_profit_factor: 1.0
+    slippage_stress:
+      enabled: true
+      slippage_ticks: [1, 2, 3]
+      entry_delays: [0, 1, 2]
+      delay_cost_per_bar_ticks: 1.0
+      max_expectancy_loss_pct: 60.0
+      stress_cell: [2, 1]
+    require_slippage_stress_passed: true
+
+research_note:
+  status: "locked_research_candidate_hardening"
+  parent_config: "discovery/03_nq_large_candle_origin_retest_probe.yaml"
+  parent_sidecar: "output/03_nq_large_candle_origin_retest_probe_summary.json"
+  parent_rank: 1
+  parent_rule_rank: 1
+  parent_rule_string: "signal_atr >= 14.0785 AND level_dist_ticks <= 30.0"
+  parent_rule_stats:
+    n_trades: 225
+    win_rate: 0.5111
+    profit_factor: 3.5856
+    net_profit: 15409.5
+  locked_rule: "NQ large-candle-origin-retest, 5m, both directions, large_body_mult=2.5, min_body_ticks=8, max_retest_bars=6, touch_ticks=8, min_close_ticks=2, max_dist_ticks=30, min_atr_ticks=57 (ATR >= 14.25 price units), 40 tick TP / 8 tick SL, next-open entry"
+  caution: "Conditional pocket from a high-PF scout row. Requires hardening, stress, locked holdout, and forward-shadow observation before any deployment claim."
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 10

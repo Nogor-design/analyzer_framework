@@ -1,0 +1,26 @@
+# 09_daily_scoreboard_snapshot.yaml
+# Daily Scoreboard + Clipboard Snapshot (FIXED)
+# Fixed version of Report 9 from myReports.yaml which had indentation errors.
+# Combines ranked comparison, equity curves, KPIs, and snapshot output.
+
+report:
+  title: "Daily Scoreboard"
+  output_filename: "Daily_Scoreboard_3_14.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: comparison_overview
+    title: "Comparison Overview"
+
+  - id: equity_curve_comparison
+    title: "Equity Curve Comparison"
+
+  - id: run_kpi_cards
+    title: "Run KPI Cards"
+
+  - id: run_snapshot_clipboard
+    title: "Run Snapshot (Copy/Paste)"
+    options:
+      compact: false
+      show_hint: true

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Report Builder {{ run_id }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-default { background: #78350f; color: #fcd34d; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-primary:disabled { background: #6b7280; color: #111827; cursor: wait; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details.bucket > summary { cursor: pointer; list-style: none; }
+    details.bucket > summary::-webkit-details-marker { display: none; }
+    input[type="checkbox"] { accent-color: #f59e0b; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3 flex-wrap">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Detail</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}/decision" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Decision</a>
+    <span class="text-amber-400 font-bold text-lg">Report Builder</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }} / {{ run_id }}</span>
+  </div>
+  <a id="open-report-top" href="{{ report_url }}" target="_blank" rel="noopener"
+     class="btn-ghost px-3 py-1.5 rounded text-xs no-underline hidden">Open report</a>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+
+  <section class="card">
+    <div class="flex items-baseline gap-3 flex-wrap mb-2">
+      <h1 class="text-xl font-bold">{{ run_id }} report sections</h1>
+      <span class="pill pill-default">default auto-set is preselected</span>
+    </div>
+    <div class="text-xs text-gray-400">
+      Pick the sections for this candidate's HTML report, then rebuild only this candidate.
+      Bar-dependent sections can be selected here; they may render empty when the session has no staged market data.
+    </div>
+  </section>
+
+  <form id="builder-form" class="space-y-4">
+    {% for bucket in buckets %}
+      <details class="bucket card" open>
+        <summary class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-amber-400 font-semibold text-sm">{{ bucket.title }}</h2>
+            <div class="text-xs text-gray-500 mt-1">{{ bucket.description }}</div>
+          </div>
+          <span class="text-xs text-gray-500">{{ bucket.sections|length }} sections</span>
+        </summary>
+        <div class="grid md:grid-cols-2 gap-2 mt-4">
+          {% for section in bucket.sections %}
+            <label class="flex gap-2 items-start text-xs text-gray-300 border border-gray-800 rounded px-3 py-2 hover:border-gray-700">
+              <input class="mt-0.5" type="checkbox" name="sections" value="{{ section.id }}"
+                     {% if section.checked %}checked{% endif %} />
+              <span>
+                <span class="block text-gray-100">{{ section.title }}</span>
+                <span class="block text-gray-500 pathish">{{ section.id }}</span>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+    {% endfor %}
+
+    <section class="card">
+      <div class="flex items-center gap-3 flex-wrap">
+        <button id="rebuild-btn" type="submit" class="btn-primary px-4 py-2 rounded text-sm font-semibold">
+          Rebuild this candidate's report
+        </button>
+        <a id="open-report" href="{{ report_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-2 rounded text-sm no-underline hidden">Open regenerated HTML</a>
+        <span id="status" class="text-xs text-gray-500"></span>
+      </div>
+      <ul id="notes" class="hidden mt-3 text-xs text-amber-200 list-disc pl-5 space-y-1"></ul>
+    </section>
+  </form>
+
+</main>
+
+<script>
+const form = document.getElementById("builder-form");
+const button = document.getElementById("rebuild-btn");
+const statusEl = document.getElementById("status");
+const notesEl = document.getElementById("notes");
+const openReport = document.getElementById("open-report");
+const openReportTop = document.getElementById("open-report-top");
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const sections = Array.from(form.querySelectorAll("input[name='sections']:checked")).map((el) => el.value);
+  notesEl.classList.add("hidden");
+  notesEl.innerHTML = "";
+  openReport.classList.add("hidden");
+  openReportTop.classList.add("hidden");
+  if (!sections.length) {
+    statusEl.textContent = "Select at least one section.";
+    return;
+  }
+  button.disabled = true;
+  statusEl.textContent = `Rebuilding ${sections.length} sections...`;
+  try {
+    const response = await fetch("{{ post_url }}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sections}),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Report build failed");
+    }
+    const result = payload.result || {};
+    statusEl.textContent = `Rendered ${(result.sections_rendered || []).length} sections.`;
+    openReport.classList.remove("hidden");
+    openReportTop.classList.remove("hidden");
+    if (result.notes && result.notes.length) {
+      notesEl.classList.remove("hidden");
+      notesEl.innerHTML = result.notes.map((note) => `<li>${note}</li>`).join("");
+    }
+  } catch (error) {
+    statusEl.textContent = error.message || String(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+
+</body>
+</html>

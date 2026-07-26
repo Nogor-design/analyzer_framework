@@ -1,0 +1,539 @@
+report:
+  title: "Large Candle Excursion Findings"
+  output_filename: "large_candle_excursion_findings.html"
+  timezone: "America/Denver"
+
+large_candle_excursion:
+  enabled: true
+  timeframes: [1,2,3, 5]
+  min_events: 20
+
+  # ---- User-defined time segment analysis ----
+  # Segments may overlap — each window is evaluated independently.
+  # Boundaries are evaluated in the specified timezone (default America/New_York).
+  # Midnight-crossing windows are supported (e.g. start: "22:00", end: "02:00").
+  time_segment_analysis:
+    enabled: true
+    timezone: "America/New_York"
+    min_events: 15        # skip a segment if fewer events fall within its window
+    segments:
+      - label: early_london
+        start: "00:00"
+        end:   "04:00"
+      - label: mid_london
+        start: "04:00"
+        end:   "07:00"
+      - label: london_ny_overlap
+        start: "06:00"
+        end:   "09:00"
+      - label: ny_pre_open
+        start: "07:00"
+        end:   "09:30"
+      - label: ny_open
+        start: "09:30"
+        end:   "11:00"
+      - label: mid_day
+        start: "11:00"
+        end:   "14:00"
+      - label: power_hour
+        start: "14:00"
+        end:   "16:00"
+      - label: after_hours
+        start: "16:00"
+        end:   "18:00"
+  candle_size:
+    average_lookbacks: [5, 10, 20]
+    threshold_mode: multiplier
+    threshold_multipliers: [1.5, 2.0, 2.5]
+  forward_window:
+    minutes: [5, 10, 20, 30,60]
+
+  # Session tagging — classify each event by trading session
+  session_analysis:
+    enabled: true
+
+  # Target curve analysis — requires trade_analysis.enabled: true
+  target_curves:
+    enabled: true
+    plateau_tolerance:          3.0    # pp within peak WR = plateau
+    plateau_min_width:          3      # steps for "runner" classification
+    scalp_max_target_pct:       50.0
+    scalp_min_edge_decay:       0.20
+    edge_decay_full_penalty_pp: 50.0
+    fine_sweep:
+      enabled: true
+      target_percents: [10, 15, 20, 25, 30, 35, 40]
+      focus_target_pct: 20
+      stable_neighbor_drop_pp: 3.0
+      micro_scalp_max_target_pct: 25
+      micro_scalp_max_plateau_width: 1
+      micro_scalp_min_edge_decay_penalty: 0.70
+    time_split_validation:
+      enabled: true
+      stable_drop_pp: 8.0
+      stable_time_split_stability: 0.65
+      fragile_time_split_stability: 0.40
+
+  trade_analysis:
+    enabled: true
+    target:
+      percents: [20, 25, 50, 100, 125, 200]
+      fine_sweep:
+        enabled: true
+        percents: [10, 15, 20, 25, 30, 35, 40]
+      time_split_validation:
+        enabled: true
+        n_splits: 3
+        min_events_per_split: 10
+        stable_drop_pp: 8.0
+
+  volume_context:
+    enabled: true
+  candle_structure_context:
+    enabled: true
+  volatility_context:
+    enabled: true
+
+  # ---- Signal candle context intelligence ----
+  directional_context:
+    enabled: true
+    streak_lookback: 3
+
+  ma_vwap_context:
+    enabled: true
+    ma_periods: [100, 200, 300]
+    include_vwap: true
+    at_level_atr_threshold: 0.05
+    extension_buckets:
+      - {label: near,     max: 0.25}
+      - {label: moderate, min: 0.25, max: 0.75}
+      - {label: extended, min: 0.75}
+
+  key_level_context:
+    enabled: true
+    level_types: [prior_day_high, prior_day_low, prior_day_close,
+                  session_high, session_low, overnight_high, overnight_low,
+                  vwap, ma100, ma200]
+    rth_start_hour: 0
+    rth_start_minute: 0
+    rth_end_hour: 23
+    interaction_atr_buckets:
+      - {label: at_level,    max: 0.10}
+      - {label: approaching, min: 0.10, max: 0.30}
+      - {label: nearby,      min: 0.30, max: 0.60}
+      - {label: departing,   min: 0.60}
+
+  trend_state_context:
+    enabled: true
+    slope_lookback: 5
+    ma_periods: [100, 200]
+    slope_strong_threshold_atr: 0.04
+    slope_flat_threshold_atr: 0.01
+
+  # Exhaustion / extension labels — derived from the above modules (runs last)
+  exhaustion_context:
+    enabled: true
+    extended_vwap_atr: 0.75
+    extended_ma_atr: 0.75
+    exhaustion_streak_min: 3
+    level_approach_max_atr: 0.30
+
+large_candle_excursion_findings:
+  enabled: true
+  source_report: large_candle_excursion
+  min_events: 30
+
+  # ---- Reversal size analysis — large-move probability and runner potential ----
+  reversal_size_analysis:
+    enabled: true
+    forward_window_minutes: 30      # analyse using the largest forward window
+    target_percents: [10, 25, 50, 75, 100, 150]
+    min_n_setup:   30
+    min_n_session: 20
+    min_n_context: 25
+    top_n_setups:  10
+    top_n_context: 12
+    large_move_candidate:
+      min_n:            40
+      min_p50_pct:      20.0
+      min_runner_score: 0.40
+
+  reversal_decision_engine:
+    enabled: true
+    forward_window_minutes: 30
+    min_n:
+      overall: 80
+      class: 20
+      interaction: 20
+      rule: 25
+    outcome_thresholds:
+      failed_reversal_max_adv_pct: 10.0
+      micro_bounce_max_adv_pct: 25.0
+      scalp_reversal_max_adv_pct: 50.0
+      expansion_reversal_min_adv_pct: 50.0
+      strong_runner_min_adv_pct: 100.0
+    early_path:
+      explosive_min_fav_2bar_pct: 45.0
+      explosive_max_adv_2bar_pct: 20.0
+      orderly_min_fav_2bar_pct: 25.0
+      orderly_max_adv_2bar_pct: 35.0
+      weak_max_fav_2bar_pct: 15.0
+      weak_min_adv_2bar_pct: 35.0
+      midpoint_reclaim_bars: 2
+      rebreak_bars: 2
+  elite_reversal_setup_extractor:
+    enabled: true
+    top_n: 5
+    min_n: 25
+    min_runner_lift_pp: 4.0
+    max_fail_rate: 35.0
+    min_mfe_mae: 1.25
+    max_conditions: 4
+    dedupe:
+      enabled: true
+      priority_features: [session, early_path_class, recommended_action]
+    score_weights:
+      runner_weight: 0.38
+      expansion_weight: 0.22
+      failure_penalty: 0.30
+      low_sample_penalty: 0.18
+      mfe_mae_weight: 0.18
+      stability_weight: 0.14
+      simplicity_bonus: 0.08
+  recursive_edge_search:
+    enabled: true
+    max_depth: 2
+    max_children_per_node: 12
+    max_total_nodes: 120
+    min_gain_to_expand: 0.04
+    allow_multi_refinement_per_child: false
+    seed_sources:
+      suggested_next_tests: true
+      decision_rules: true
+      elite_setups: true
+      top_families: true
+    promotion:
+      min_n: 25
+      min_runner_lift_pp: 4.0
+      min_fail_reduction_pp: 4.0
+      min_mfe_mae_improvement: 0.25
+      min_stability: 0.42
+      max_complexity_penalty: 0.22
+    pruning:
+      max_fail_worsen_pp: 3.0
+      max_runner_drop_pp: 4.0
+      min_mfe_mae: 1.0
+      max_edge_decay_penalty: 0.75
+      min_plateau_width: 1
+      max_duplicate_jaccard: 0.92
+      min_material_gain_score: 0.015
+    scoring:
+      runner_weight: 0.34
+      expansion_weight: 0.20
+      failure_penalty: 0.28
+      mfe_mae_weight: 0.16
+      stability_weight: 0.14
+      complexity_penalty: 0.12
+      low_sample_penalty: 0.12
+      plateau_bonus: 0.06
+      edge_decay_penalty: 0.10
+  edge_validation_engine:
+    enabled: true
+    candidate_limits:
+      elite_setups: 10
+      decision_rules: 12
+      recursive_branches: 12
+      family_baselines: 8
+    split:
+      method: time_is_oos
+      is_ratio: 0.7
+      multi_period:
+        enabled: true
+        periods: 3
+      rolling:
+        enabled: false
+        train_ratio: 0.6
+        test_ratio: 0.2
+        step_ratio: 0.2
+    minimum_samples:
+      is_min_n: 30
+      oos_min_n: 20
+    classification:
+      stable:
+        runner_drop_pp_max: 8.0
+        fail_increase_pp_max: 6.0
+        min_oos_mfe_mae: 1.05
+        min_oos_runner_vs_baseline_pp: 6.0
+      acceptable:
+        runner_drop_pp_max: 15.0
+        fail_increase_pp_max: 10.0
+        min_oos_runner_vs_baseline_pp: 2.0
+      likely_overfit:
+        runner_drop_pp_min: 20.0
+        fail_increase_pp_min: 12.0
+        runner_to_baseline_distance_pp_max: 3.0
+        mfe_mae_collapse_delta_min: 0.35
+  strategy_blueprint_exporter:
+    enabled: true
+    max_blueprints: 10
+    min_n: 60
+    min_win_rate_pct: 50.0
+    accepted_actions: [hold, scalp, flip_watch]
+    targets_pct_of_signal_candle:
+      scalp: 30
+      expansion: 62
+      runner: 125
+    stop:
+      avg_mae_multiple: 1.3
+      min_stop_ticks: 20
+      max_stop_ticks: 100
+      atr_fallback_multiple: 1.2
+      base_offset_ticks: 4
+    exit:
+      trail_style: atr
+      atr_trail_multiple: 1.5
+      time_stop_minutes: 30
+    instrument:
+      root: NQ
+      tick_size: 0.25
+      tick_value_usd: 5.00
+
+  strategy_construction_engine:
+    enabled: true
+    accepted_validation_labels: [stable_edge, acceptable_degradation, possibly_monitor_further]
+    deprioritized_validation_labels: [fragile_edge, likely_overfit, insufficient_oos_data]
+    risk_constraints:
+      instrument: NQ
+      max_stop_ticks: 100
+      base_unit: 1
+      max_add_ons: 1
+      max_total_units: 2
+    ranking_thresholds:
+      paper_test_ready_min: 0.72
+      code_next_min: 0.80
+      watchlist_min: 0.58
+    max_strategies: 8
+
+  regime_discovery:
+    enabled: true
+    forward_window_minutes: 30
+    win_target_pct: 50.0
+    min_events: 30
+    cluster_detection:
+      min_consecutive_wins: 2
+      max_time_gap_minutes: 45
+      min_expectancy_ticks: 0.0
+      rolling_window_signals: 10
+      rolling_density_threshold: 0.60
+    onset_detection:
+      quiet_lookback_minutes: 60
+      quiet_max_prior_signals: 1
+      lookahead_minutes: 60
+      lookahead_signals: 10
+      min_n: 5
+      vwap_stretch_atr: 0.75
+      volume_multiple: 2.5
+      direction_streak_min: 3
+      range_expansion_multiple: 1.5
+      failed_continuation_lookback_signals: 3
+      follow_through_max_signals_to_cluster: 3
+      follow_through_min_cluster_length: 2
+      too_broad_coverage_pct: 65.0
+      high_overlap_pct: 65.0
+      exclusive_overlap_max_pct: 35.0
+    onset_path_interactions:
+      min_n: 5
+      strong_min_n: 20
+      runner_reversal_pct: 100.0
+      failure_reversal_pct: 25.0
+      scalp_reversal_pct: 50.0
+      expansion_reversal_pct: 50.0
+      top_filter_n: 5
+      matrix_top_n: 40
+      stability_top_n: 20
+      good_lift_pp: 5.0
+      weak_lift_pp: 0.0
+      good_expectancy_lift_ticks: 0.0
+      clean_reclaim_min_cleanliness: 65.0
+      hold_min_cleanliness: 72.0
+      hold_min_win_rate: 55.0
+      poor_follow_through_pct: 35.0
+      fast_decay_minutes: 20.0
+      failure_dominance_rate_pct: 55.0
+      small_sample_n: 30
+      session_concentration_warning_pct: 70.0
+      time_split_count: 3
+      time_instability_warning_pp: 12.0
+      candidate_min_n: 30
+      candidate_min_unique_days: 5
+      hold_min_expectancy_ticks: 0.0
+      hold_max_fail_rate: 35.0
+      hold_min_cluster_participation: 25.0
+      scalp_min_expectancy_ticks: 0.0
+      flip_watch_min_failure_rate: 40.0
+      shutdown_max_expectancy_ticks: 0.0
+      shutdown_min_fail_rate: 45.0
+      max_session_concentration_pct: 75.0
+      min_time_split_stability: 0.45
+      require_incremental_lift: true
+      min_incremental_expectancy_lift_ticks: 0.0
+      min_incremental_cluster_lift_pp: 3.0
+    trigger_windows:
+      minute_windows: [10, 20, 30, 60]
+      signal_windows: [3, 5, 10]
+      min_anchors: 3
+      vwap_stretch_atr: 0.75
+      volume_multiple: 2.5
+    cleanliness:
+      target_pct: 50.0
+      speed_full_credit_minutes: 5.0
+      speed_zero_credit_minutes: 30.0
+    failure_to_flip:
+      failure_max_reversal_pct: 25.0
+      flip_min_continuation_pct: 50.0
+      count_rebreak_as_flip: false
+      min_n: 5
+    decay_detection:
+      rolling_window_signals: 5
+      win_density_drop_below: 0.50
+      mae_rise_multiple: 1.35
+      early_favorable_drop_ratio: 0.70
+      cleanliness_drop_points: 15.0
+      expectancy_drop_ticks: 0.0
+      slow_favorable_minutes: 20.0
+      failed_reversals_allowed: 1
+      min_signature_n: 2
+
+  ranking:
+    primary_metric: composite_score
+    require_min_win_rate: 0.50
+    penalize_low_sample: true
+    penalize_complexity: true
+    curve_penalties:
+      enabled: true
+      plateau_width_lte: 1
+      plateau_penalty: 0.08
+      edge_decay_penalty_weight: 0.12
+      high_edge_decay_threshold: 0.70
+      high_edge_decay_extra_penalty: 0.06
+      micro_scalp_artifact_penalty: 0.06
+      min_time_stability: 0.45
+      time_instability_penalty: 0.06
+
+  promotion:
+    candidate:
+      min_score: 0.52
+      min_n: 80
+      min_plateau: 2
+      max_edge_decay_penalty: 0.80
+    strategy_test_ready:
+      min_score: 0.57
+      min_n: 120
+      min_plateau: 2
+      max_edge_decay_penalty: 0.50
+
+  family_grouping:
+    top_n_families: 20
+
+  fragility_thresholds:
+    plateau_fragile_below: 2
+    edge_decay_fragile_above: 0.70
+    session_concentration_pct: 80.0
+    max_variants_per_family: 5
+
+  # Scoring weights — must sum to ≤ 1.0 (sparse_penalty subtracted separately)
+  scoring_weights:
+    win_rate:         0.40
+    sample_score:     0.20
+    expectancy_score: 0.20
+    stability:        0.15
+    simplicity:       0.05
+
+  # Sample-size thresholds for fragility warnings and sparse scoring penalty
+  min_sample_thresholds:
+    fragility_low:          60    # N below → high-severity fragility warning
+    sparse_penalty_below:   80    # N below → sparse penalty applied in scoring
+    suspicious_strength_n:  80    # combined with suspicious_strength_wr
+    suspicious_strength_wr: 70.0  # WR% at or above triggers "suspicious" flag
+
+  # Optional penalty for setups concentrated in a single session
+  session_concentration_penalty:
+    enabled: false
+    penalty_per_session_pct: 0.05
+
+  # Friction-aware practicality screen for live execution.
+  # commission_per_trade is round-trip account currency; tick_value converts it to ticks.
+  friction:
+    commission_per_trade: 4.18
+    tick_value: 5.00
+    slippage_ticks_per_side: 1
+    additional_buffer_ticks: 0
+    min_target_ticks: 6
+    min_net_target_ticks: 2
+    min_post_friction_rr: 0.25
+    filter_mode: penalize
+    risky_net_expectancy_ticks: 0
+    risky_cost_to_target_ratio: 0.35
+    risky_post_friction_rr: 0.35
+
+  interactions:
+    min_events: 50
+    min_edge_pp: 4.0
+    min_score: 0.48
+    min_stability: 0.45
+    max_complexity_penalty: 0.12
+    attempted_top_n: 12
+
+  neighbor_analysis:
+    enabled: true
+    top_setups: 6
+    max_neighbors: 8
+    target_neighbor_values: [10, 15, 20, 25, 30, 35, 40]
+
+  time_split:
+    enabled: true
+    n_splits: 3
+
+  output:
+    top_n_discoveries:           25
+    top_n_strategy_cards:        10   # max cards rendered in the strategy cards section
+    include_executive_summary:   true
+    include_fragility_warnings:  true
+    include_suggested_next_tests: true
+    max_next_tests:              10
+
+sections:
+  - id: large_candle_excursion_findings_interpretation
+    # Research workflow guide — how to use these results, wired to actual metrics
+  - id: large_candle_excursion_findings_executive_summary
+  - id: large_candle_excursion_findings_families
+    # Setup families table — groups by (mode/direction/tf/bucket), shows promotion ladder
+    options:
+      top_n: 20
+  - id: large_candle_excursion_findings_decision_engine
+  - id: large_candle_excursion_regime_discovery
+  - id: large_candle_excursion_elite_reversal_setup_extractor
+  - id: large_candle_excursion_recursive_edge_search
+  - id: large_candle_excursion_edge_validation_engine
+  - id: large_candle_excursion_strategy_construction_engine
+  - id: large_candle_excursion_strategy_blueprints
+  - id: large_candle_excursion_strategy_cards
+    options:
+      top_n: 10
+  - id: large_candle_excursion_findings_top_discoveries
+  - id: large_candle_excursion_context_diagnostics
+    # Per-module coverage: what ran, N classified, failure reasons
+  - id: large_candle_excursion_time_segments
+    # User-defined time segment analysis: per-window excursion and trade edge breakdown
+  - id: large_candle_excursion_signal_context
+    # Signal candle context: directional, MA/VWAP, key level, trend state effects
+  - id: large_candle_excursion_context_families
+    # Context-conditioned setup families: which signal contexts improve edge
+  - id: large_candle_excursion_reversal_leaders
+    # Large Reversal Move Leaders: which reverse setups produce the biggest moves
+  - id: large_candle_excursion_session_large_moves
+    # Large Move Probability by Session: session-by-session reversal size breakdown
+  - id: large_candle_excursion_findings_interactions
+  - id: large_candle_excursion_findings_fragility
+  - id: large_candle_excursion_findings_next_tests
+  - id: large_candle_excursion_findings_methodology

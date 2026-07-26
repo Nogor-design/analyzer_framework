@@ -1,0 +1,45 @@
+# 03_daily_scoreboard.yaml
+# Daily Scoreboard + Combo Selection
+# Displays daily trading outcomes (Wins/Losses) and solves for optimal bot-combinations (Pairs, Triples, Quads).
+
+report:
+  title: "Daily Scoreboard"
+  output_filename: "Daily_Scoreboard_1_3.html"
+  embedded_images: true
+  timezone: "America/Denver"
+
+sections:
+  - id: daily_scoreboard
+    title: "Daily Scoreboard + Combo Selection"
+    options:
+      include_all_bot_charts: true
+      show_individual_equity: true
+      include_summary_table: true
+
+      # Solve for the best portfolios that complement each other's equity curves
+      combo_sets:
+        - name: "Top 5 Pairs (k=2)"
+          mode: top
+          k: 2
+          top_n: 5
+          max_render: 5
+
+        - name: "Top 5 Triples (k=3)"
+          mode: top
+          k: 3
+          top_n: 5
+          beam_width: 250
+          max_render: 5
+
+        - name: "Top 5 Quads (k=4)"
+          mode: top
+          k: 4
+          top_n: 5
+          beam_width: 300
+          max_render: 5
+
+        - name: "My Explicit Combos (always render)"
+          mode: explicit
+          combos:
+            - bot_numbers: [ 1, 3 ]
+            - bot_numbers: [ 1, 3, 4, 8 ]

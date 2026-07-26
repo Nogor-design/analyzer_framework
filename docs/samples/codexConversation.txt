@@ -1,0 +1,87 @@
+Fixed and redeployed.
+
+Changes:
+
+Destination folder now auto-creates if it does not exist.
+Source folder now searches recursively for *.xml, so selecting generated_phase2_templates works even when templates are under breakout / regression subfolders.
+Empty source message now says it checked source and subfolders.
+Use:
+Source:
+D:\Backup\projects\PythonProject\ta_foundation\output\custom_optimizer_smoke_phase2_from_nt\generated_phase2_templates
+
+Destination:
+D:\Backup\projects\PythonProject\ta_foundation\output\custom_optimizer_smoke_phase2_nt_output
+
+NinjaTrader has been restarted with the new AddOn DLL.
+
+1 file changed
+Undo
+
+Review
+
+NinjaTraderAddOnProject/BatchControl.cs
+
+
+
+
+10:05 AM
+complete
+10:20 AM
+
+
+Worked for 47s
+Phase 2 is clean and we’re through to phase 3.
+
+Verified:
+
+8 phase-2 templates completed in NinjaTrader.
+Each phase-2 _Optimization.csv has 1001 lines: header + 1000 rows.
+TA Foundation parsed all phase-2 exports cleanly: 8000 / 8000 rows, no warnings.
+Generated 8 phase-3 daily-risk optimizer templates.
+Tests still pass: 26 passed.
+Phase-3 source:
+D:\Backup\projects\PythonProject\ta_foundation\output\custom_optimizer_smoke_phase3_from_nt\generated_phase3_templates
+
+Suggested phase-3 destination:
+D:\Backup\projects\PythonProject\ta_foundation\output\custom_optimizer_smoke_phase3_nt_output
+
+The AddOn should now auto-create that destination and find nested templates recursively.
+
+
+
+
+
+10:21 AM
+complete
+10:25 AM
+
+
+Worked for 1m 5s
+Phase 3 mostly ran, but the longer regression template names hit a Windows path-length export error. The first 3 breakout exports completed; 5 regression exports failed during file writing because the full path exceeded the legacy 260-character limit.
+
+I patched and redeployed the AddOn:
+
+Uses shortened, filesystem-safe output folder names when template names are long.
+Keeps the full original template name in BatchRunSummary.csv.
+Uses the shortened name for the _Optimization.csv file too.
+Please rerun phase 3 with the same source, but use a shorter destination to give Windows more room:
+
+Source:
+D:\Backup\projects\PythonProject\ta_foundation\output\custom_optimizer_smoke_phase3_from_nt\generated_phase3_templates
+
+Destination:
+D:\nt_phase3_out
+
+The AddOn will create D:\nt_phase3_out automatically.
+
+1 file changed
+Undo
+
+Review
+
+NinjaTraderAddOnProject/BatchControl.cs
+
+
+
+
+10:26 AM

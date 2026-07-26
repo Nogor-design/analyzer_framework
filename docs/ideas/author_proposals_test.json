@@ -1,0 +1,37 @@
+{
+  "proposals": [
+    {
+      "direction": "both",
+      "family": "orb_failure_reclaim",
+      "instrument": "NQ",
+      "mechanism": "An opening range breakout that cannot hold beyond the range traps early breakout participants. Reclaim into the range forces those late entries to exit, and a body-midpoint pullback attempts to avoid chasing the immediate reversal.",
+      "params": {
+        "fill_mode": "body_midpoint",
+        "orb_minutes": 5,
+        "reclaim_within_bars": 2,
+        "stop_ticks": 24,
+        "sweep_min_ticks": 4,
+        "target_ticks": 80
+      },
+      "revival_reason": null,
+      "session_window": "ny_open_0730_0830_denver",
+      "timeframe": "5m"
+    },
+    {
+      "direction": "both",
+      "family": "compression_then_expansion",
+      "instrument": "NQ",
+      "mechanism": "A short compression window can represent coiled liquidity and reduced realized volatility. A buffered breakout attempts to capture directional expansion before the move is crowded.",
+      "params": {
+        "breakout_buffer_ticks": 4,
+        "compression_bars": 4,
+        "compression_range_ticks_max": 40,
+        "stop_ticks": 24,
+        "target_ticks": 80
+      },
+      "revival_reason": null,
+      "session_window": "rth_morning_0730_1100_denver",
+      "timeframe": "5m"
+    }
+  ]
+}

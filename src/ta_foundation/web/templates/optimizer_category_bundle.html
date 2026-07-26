@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Category Bundle</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#0b0f19; color:#f8fafc; font-family:Inter,system-ui,sans-serif; }
+    .btn-primary { background:#f59e0b; color:#0f172a; transition:all .15s; }
+    .btn-primary:hover { background:#fbbf24; }
+    .btn-ghost { border:1px solid #334155; color:#cbd5e1; transition:all .15s; }
+    .btn-ghost:hover { border-color:#f59e0b; color:#fcd34d; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .panel { background:rgba(15,23,42,.58); border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .cluster { border:1px solid rgba(51,65,85,.72); border-radius:8px; }
+    .dup { border-color:#fb923c; }
+    table { width:100%; font-size:12px; border-collapse:collapse; }
+    th,td { padding:5px 8px; border-bottom:1px solid rgba(51,65,85,.5); text-align:left; }
+    .mono { font-family:ui-monospace,Consolas,monospace; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-slate-800/80 px-6 py-4 flex items-center justify-between bg-slate-950/80">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/weekly-coverage" class="text-slate-400 hover:text-amber-400 text-xs">&larr; Weekly Coverage</a>
+    <span class="text-amber-400 font-extrabold text-lg tracking-tight">Category Bundle</span>
+    <span class="text-slate-500 text-sm">/ prune near-identical templates</span>
+  </div>
+  <div class="text-xs text-slate-500 mono" id="session-id"></div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-4">
+  <section class="panel p-5 flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-lg font-bold text-slate-100">Final bundle by trading category</h1>
+      <div id="summary" class="text-xs text-slate-400 mt-1">Loading…</div>
+    </div>
+    <div class="flex gap-2 flex-wrap items-center">
+      <button onclick="selectRecommended()" class="btn-ghost px-3 py-2 rounded text-xs">Reset to recommended</button>
+      <button onclick="keepAll()" class="btn-ghost px-3 py-2 rounded text-xs">Keep all</button>
+      <button id="build-btn" onclick="buildBundle()" class="btn-primary px-5 py-2.5 rounded-lg text-sm font-bold">Build pruned bundle</button>
+    </div>
+  </section>
+
+  <div id="build-status" class="text-xs text-slate-400"></div>
+  <div id="build-links" class="flex gap-2 flex-wrap hidden">
+    <a id="zip-link" href="#" class="btn-ghost px-3 py-2 rounded text-xs no-underline">Download pruned .zip</a>
+  </div>
+
+  <div id="clusters" class="space-y-3"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SESSION_ID = {{ session_id | tojson }};
+$("session-id").textContent = SESSION_ID;
+let VIEW = null;
+
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`);
+  return body;
+}
+
+function fmt(v, d=0) { return (v==null||v==="") ? "—" : Number(v).toLocaleString(undefined,{maximumFractionDigits:d}); }
+
+async function load() {
+  try {
+    VIEW = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/category-bundle`);
+  } catch (e) { $("summary").textContent = "Error: " + e.message; return; }
+  if (VIEW.status && VIEW.status !== "ok") {
+    $("summary").textContent = VIEW.status === "no_weekly_package"
+      ? "No weekly coverage package yet — build it first from the Weekly Coverage page."
+      : "No templates found to categorize.";
+    return;
+  }
+  render();
+}
+
+function render() {
+  $("summary").textContent =
+    `${VIEW.total_templates} templates · ${VIEW.category_count} categories · ` +
+    `${VIEW.duplicate_count} near-identical duplicates that can be pruned.`;
+  const host = $("clusters");
+  host.innerHTML = "";
+  for (const c of VIEW.categories) {
+    const dup = c.member_count > 1;
+    const div = document.createElement("div");
+    div.className = "cluster panel p-3 " + (dup ? "dup" : "");
+    let rows = "";
+    for (const m of c.members) {
+      const checked = m.recommended_keep ? "checked" : "";
+      rows += `<tr>
+        <td><input type="checkbox" data-run="${m.run_id}" ${checked} class="keep-box accent-amber-500"></td>
+        <td class="mono">${m.run_id}</td>
+        <td class="mono">${m.template_name || "—"}</td>
+        <td>${m.direction_shape}</td>
+        <td>${fmt(m.max_stop)}</td>
+        <td>${m.max_tp_ratio}</td>
+        <td>${fmt(m.profit_stop)}</td>
+        <td>${fmt(m.loss_stop)}</td>
+        <td>${fmt(m.max_trades)}</td>
+        <td>${fmt(m.net_profit)}</td>
+        <td>${fmt(m.profit_factor,2)}</td>
+        <td>${fmt(m.trades)}</td>
+        <td>${m.source}</td>
+      </tr>`;
+    }
+    div.innerHTML =
+      `<div class="flex items-center justify-between gap-2 mb-2">
+         <div class="text-xs ${dup?'text-amber-300':'text-slate-300'} font-semibold">${dup?'⚑ '+c.member_count+' near-identical':''} ${c.label}</div>
+       </div>
+       <table><thead><tr>
+         <th>Keep</th><th>Run</th><th>Template</th><th>Dir</th><th>Stop</th><th>TP</th>
+         <th>PStop</th><th>LStop</th><th>MaxTr</th><th>Net</th><th>PF</th><th>Trades</th><th>Src</th>
+       </tr></thead><tbody>${rows}</tbody></table>`;
+    host.appendChild(div);
+  }
+  updateBuildLabel();
+  host.addEventListener("change", updateBuildLabel);
+}
+
+function keptIds() {
+  return Array.from(document.querySelectorAll(".keep-box:checked")).map(b => b.dataset.run);
+}
+function updateBuildLabel() {
+  const n = keptIds().length;
+  $("build-btn").textContent = `Build pruned bundle (${n} templates)`;
+}
+function selectRecommended() {
+  const rec = new Set(VIEW.categories.flatMap(c => c.members.filter(m => m.recommended_keep).map(m => m.run_id)));
+  document.querySelectorAll(".keep-box").forEach(b => { b.checked = rec.has(b.dataset.run); });
+  updateBuildLabel();
+}
+function keepAll() {
+  document.querySelectorAll(".keep-box").forEach(b => { b.checked = true; });
+  updateBuildLabel();
+}
+
+async function buildBundle() {
+  const keep = keptIds();
+  if (!keep.length) { $("build-status").textContent = "Select at least one template to keep."; return; }
+  const btn = $("build-btn"); btn.disabled = true;
+  $("build-status").textContent = "Building pruned bundle…";
+  try {
+    const data = await fetchJSON(`/api/optimizer/sessions/${encodeURIComponent(SESSION_ID)}/category-bundle/build`, {
+      method: "POST", body: JSON.stringify({ keep_run_ids: keep }),
+    });
+    const r = data.result || {};
+    $("zip-link").href = r.zip_url || `/optimizer/sessions/${SESSION_ID}/category-bundle.zip`;
+    $("build-links").classList.remove("hidden");
+    const miss = (r.missing_templates && r.missing_templates.length) ? ` (${r.missing_templates.length} template files missing)` : "";
+    $("build-status").textContent = `Pruned bundle built: kept ${r.kept}, dropped ${r.dropped}.${miss} Download the .zip for the team.`;
+  } catch (e) {
+    $("build-status").textContent = "Build failed: " + e.message;
+  } finally { btn.disabled = false; }
+}
+
+load();
+</script>
+</body>
+</html>

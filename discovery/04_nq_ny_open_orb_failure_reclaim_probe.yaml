@@ -1,0 +1,55 @@
+report:
+  title: "NQ NY Open ORB Failure Reclaim Probe"
+  output_filename: "04_nq_ny_open_orb_failure_reclaim_probe.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "04_ny_open"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 20
+  orb:
+    signal_type: ["failure_reclaim"]
+    orb_minutes: [5, 15]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [0]
+    min_range_ticks: [8, 16]
+    require_close_beyond: [true]
+    one_signal_per_side: true
+    min_sweep_ticks: [1.0, 4.0, 8.0]
+    close_back_ticks: [0.0, 2.0]
+    max_reclaim_bars: [1, 3, 5]
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+    body_midpoint: {enabled: true, fill_timeout_bars: 5}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [50, 80, 100, 150]
+      stop: [20, 30, 50]
+    max_bars_timeout: 90
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: true, top_n: 10}
+  hardening: {enabled: false}
+
+research_note:
+  status: "broad_structural_probe"
+  thesis: "Fade failed NY opening-range auctions only after price sweeps outside the OR and reclaims back inside."
+  caution: "Search probe only. Any high-PF row requires a separate locked hardening/holdout run before forward observation."
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 20

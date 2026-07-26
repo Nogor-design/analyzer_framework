@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ta_foundation - God & Monster Image Renamer</title>
+  
+  <!-- Modern Typography and Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-darker: #0b0f19;
+      --bg-dark: #111827;
+      --bg-card: rgba(31, 41, 55, 0.45);
+      --border-color: rgba(55, 65, 81, 0.5);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dark: #6b7280;
+      --accent: #f59e0b;
+      --accent-hover: #d97706;
+      --success: #10b981;
+      --danger: #ef4444;
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --font-display: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: linear-gradient(135deg, var(--bg-darker) 0%, #111d33 100%);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Premium Header */
+    header {
+      background: rgba(11, 15, 25, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-b: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, var(--accent) 0%, #f59e0b 100%);
+      color: #0b0f19;
+      font-weight: 800;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+    }
+
+    .header-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .header-subtitle {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-left: 0.5rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .nav-btn {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--border-color);
+    }
+
+    .nav-btn.active {
+      color: var(--accent);
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    /* Main Dashboard Layout */
+    .dashboard-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 65px);
+      overflow: hidden;
+    }
+
+    /* Sidebar controls */
+    .sidebar {
+      width: 380px;
+      background: rgba(15, 23, 42, 0.5);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      margin-bottom: 2rem;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: var(--glass-shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .input-group {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .input-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .text-input {
+      background: rgba(17, 24, 39, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-size: 0.85rem;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+
+    .text-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+    }
+
+    .btn-action {
+      background: linear-gradient(135deg, var(--accent) 0%, #d97706 100%);
+      color: #0b0f19;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 0.65rem 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-action:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-action:active {
+      transform: translateY(0);
+    }
+
+    /* Creature Filter Tabs */
+    .creature-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      max-height: 180px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+      border: 1px solid var(--border-color);
+      padding: 0.75rem;
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.4);
+    }
+
+    .creature-tab {
+      background: rgba(31, 41, 55, 0.6);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+    }
+
+    .creature-tab:hover {
+      color: var(--text-main);
+      border-color: var(--text-muted);
+      background: rgba(55, 65, 81, 0.6);
+    }
+
+    .creature-tab.active {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Expected/Missing List */
+    .missing-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 300px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .missing-item {
+      background: rgba(17, 24, 39, 0.6);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .missing-item:hover {
+      background: rgba(245, 158, 11, 0.08);
+      border-color: rgba(245, 158, 11, 0.3);
+      transform: translateX(2px);
+    }
+
+    .missing-item-name {
+      font-size: 0.8rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .missing-item-role {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+
+    .missing-item-role.generic {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+    }
+
+    .missing-item-role.variant {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+    }
+
+    /* Main Grid Area */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem;
+      overflow-y: auto;
+    }
+
+    .main-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .results-meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .meta-badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      padding: 0.3rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .meta-badge span {
+      color: var(--accent);
+      margin-right: 0.25rem;
+    }
+
+    /* Filter Controls in Main Area */
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      background: rgba(31, 41, 55, 0.2);
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .filter-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .filter-options {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .filter-opt {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+    }
+
+    .filter-opt:hover {
+      color: var(--text-main);
+      border-color: var(--text-muted);
+    }
+
+    .filter-opt.active {
+      background: var(--text-muted);
+      color: #0b0f19;
+      border-color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Image Grid */
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Image Card styling */
+    .image-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--glass-shadow);
+      backdrop-filter: blur(8px);
+      transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease;
+    }
+
+    .image-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .card-preview-wrap {
+      height: 200px;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .card-preview {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.3s ease;
+    }
+
+    .image-card:hover .card-preview {
+      transform: scale(1.05);
+    }
+
+    .card-zoom-overlay {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(11, 15, 25, 0.7);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.3rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: all 0.2s ease;
+      opacity: 0;
+    }
+
+    .card-preview-wrap:hover .card-zoom-overlay {
+      opacity: 1;
+    }
+
+    .card-zoom-overlay:hover {
+      background: var(--accent);
+      color: #0b0f19;
+      border-color: var(--accent);
+    }
+
+    .card-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+
+    .card-badge.named {
+      background: rgba(16, 185, 129, 0.25);
+      border: 1px solid var(--success);
+      color: #34d399;
+    }
+
+    .card-badge.positional {
+      background: rgba(239, 68, 68, 0.25);
+      border: 1px solid var(--danger);
+      color: #f87171;
+    }
+
+    .card-content {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      flex: 1;
+    }
+
+    .card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .card-filename {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 600;
+      word-break: break-all;
+      color: var(--text-main);
+    }
+
+    .card-details {
+      font-size: 0.7rem;
+      color: var(--text-dark);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .rename-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: auto;
+    }
+
+    .rename-input-wrap {
+      position: relative;
+      display: flex;
+    }
+
+    .rename-input {
+      flex: 1;
+      background: rgba(17, 24, 39, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 0.45rem 0.65rem;
+      color: var(--text-main);
+      font-size: 0.8rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .rename-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn-rename {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: var(--accent);
+      padding: 0.45rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: var(--font-display);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn-rename:hover {
+      background: var(--accent);
+      color: #0b0f19;
+      border-color: var(--accent);
+    }
+
+    .rename-status {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+      font-weight: 500;
+    }
+
+    .rename-status.success { color: var(--success); }
+    .rename-status.error { color: var(--danger); }
+
+    /* Modal Overlay (Large zoom image) */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(7, 10, 17, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      backdrop-filter: blur(8px);
+    }
+
+    .modal-content {
+      max-width: 90%;
+      max-height: 90%;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .modal-img {
+      max-width: 100%;
+      max-height: 80vh;
+      border-radius: 12px;
+      border: 2px solid var(--border-color);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      object-fit: contain;
+    }
+
+    .modal-title {
+      color: var(--text-main);
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      color: var(--text-muted);
+      font-size: 1.5rem;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .modal-close:hover {
+      color: var(--text-main);
+    }
+
+    /* Scrollbar customization */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(11, 15, 25, 0.4);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(55, 65, 81, 0.8);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(75, 85, 99, 0.8);
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 4rem 2rem;
+      text-align: center;
+      background: var(--bg-card);
+      border: 1px dashed var(--border-color);
+      border-radius: 12px;
+      color: var(--text-muted);
+      grid-column: 1 / -1;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      stroke: var(--text-dark);
+      margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+      font-size: 0.85rem;
+      max-width: 320px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-logo">
+      <span class="logo-badge">TA</span>
+      <span class="header-title">ta_foundation</span>
+      <span class="header-subtitle">/ God &amp; Monster Image Renamer</span>
+    </div>
+    <div class="nav-links">
+      <a href="/" class="nav-btn">Dashboard</a>
+      <a href="/discovery" class="nav-btn">Discovery UI</a>
+      <a href="/image-renamer" class="nav-btn active">Image Renamer</a>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="dashboard-container">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      
+      <!-- Image Folder Selection -->
+      <div class="sidebar-section">
+        <div class="section-title">Images Directory</div>
+        <div class="sidebar-card">
+          <div class="input-group">
+            <label for="dir-input">Local Path</label>
+            <input type="text" id="dir-input" class="text-input" placeholder="e.g. C:\Users\Owner\Pictures\NewGodImages">
+          </div>
+          <button id="btn-scan" class="btn-action">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Scan Directory
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter by Creature (MA) -->
+      <div class="sidebar-section">
+        <div class="section-title">Filter by Creature (MA)</div>
+        <div class="creature-tabs" id="creature-tabs-container">
+          <button class="creature-tab active" data-ma="all">All Creatures</button>
+          <!-- JavaScript will populate other tabs -->
+        </div>
+      </div>
+
+      <!-- Expected / Missing Cards List -->
+      <div class="sidebar-section">
+        <div class="section-title" id="missing-section-title">Missing Images (0)</div>
+        <div class="missing-list" id="missing-list-container">
+          <!-- JavaScript will populate -->
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Main Grid Content -->
+    <main class="main-content">
+      
+      <!-- Meta & Info Header -->
+      <div class="main-header">
+        <div class="results-meta">
+          <div class="meta-badge" id="badge-total-files"><span>0</span> Total Files</div>
+          <div class="meta-badge" id="badge-positional-files"><span>0</span> Positional (Page) Files</div>
+          <div class="meta-badge" id="badge-scanned-xmls"><span>0</span> XMLs Indexed</div>
+        </div>
+      </div>
+
+      <!-- Filter Bar for File Name Type -->
+      <div class="filter-bar">
+        <span class="filter-label">Filter Name Types:</span>
+        <div class="filter-options" id="filter-type-container">
+          <button class="filter-opt active" data-type="all">All</button>
+          <button class="filter-opt" data-type="positional">Positional (Page Name)</button>
+          <button class="filter-opt" data-type="named">Semantic Name</button>
+        </div>
+      </div>
+
+      <!-- Image Grid -->
+      <div class="image-grid" id="image-grid-container">
+        <!-- Empty State Default -->
+        <div class="empty-state">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <h3>No Images Loaded</h3>
+          <p>Choose an images directory and click Scan to load files.</p>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- Modal Overlay -->
+  <div class="modal-overlay" id="modal-container">
+    <div class="modal-content">
+      <button class="modal-close" id="btn-modal-close">&times;</button>
+      <img class="modal-img" id="modal-image" src="" alt="Zoom preview">
+      <div class="modal-title" id="modal-image-title">Filename</div>
+    </div>
+  </div>
+
+  <script>
+    // Global state
+    let allFiles = [];
+    let expectedNames = {};
+    let activeCreature = 'all';
+    let activeNameType = 'all';
+    let currentActiveInputId = null;
+
+    // Elements
+    const dirInput = document.getElementById('dir-input');
+    const btnScan = document.getElementById('btn-scan');
+    const creatureTabsContainer = document.getElementById('creature-tabs-container');
+    const missingListContainer = document.getElementById('missing-list-container');
+    const imageGridContainer = document.getElementById('image-grid-container');
+    const missingSectionTitle = document.getElementById('missing-section-title');
+    const badgeTotalFiles = document.getElementById('badge-total-files').querySelector('span');
+    const badgePositionalFiles = document.getElementById('badge-positional-files').querySelector('span');
+    const badgeScannedXmls = document.getElementById('badge-scanned-xmls').querySelector('span');
+    const filterTypeContainer = document.getElementById('filter-type-container');
+    const modalContainer = document.getElementById('modal-container');
+    const modalImage = document.getElementById('modal-image');
+    const modalImageTitle = document.getElementById('modal-image-title');
+    const btnModalClose = document.getElementById('btn-modal-close');
+
+    // Init page load
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Load initial folder and list images
+      await fetchExpectedNames();
+      await scanDirectory();
+    });
+
+    // Fetch Expected Names from XML templates
+    async function fetchExpectedNames(directory = '') {
+      try {
+        const response = await fetch(`/api/god-images/expected-names?directory=${encodeURIComponent(directory)}`);
+        const data = await response.json();
+        expectedNames = data;
+        badgeScannedXmls.textContent = data.scanned_templates_count || 0;
+        
+        populateCreatureTabs();
+        updateMissingList();
+      } catch (err) {
+        console.error("Error fetching expected names", err);
+      }
+    }
+
+    // Scan selected directory
+    async function scanDirectory() {
+      const dirValue = dirInput.value.trim();
+      imageGridContainer.innerHTML = `
+        <div style="grid-column: 1/-1; display:flex; justify-content:center; align-items:center; padding: 4rem;">
+          <div style="width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+          <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        </div>
+      `;
+      
+      try {
+        const response = await fetch('/api/god-images/list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ directory: dirValue })
+        });
+        const data = await response.json();
+        
+        if (data.error) {
+          imageGridContainer.innerHTML = `
+            <div class="empty-state" style="border-color: var(--danger);">
+              <h3 style="color: var(--danger);">Scan Error</h3>
+              <p>${data.error}</p>
+            </div>
+          `;
+          return;
+        }
+
+        // Set directory value in input
+        dirInput.value = data.directory;
+        allFiles = data.files || [];
+        
+        badgeTotalFiles.textContent = allFiles.length;
+        badgePositionalFiles.textContent = allFiles.filter(f => !f.is_named).length;
+
+        // If expected names weren't scanned with this specific directory, refresh expected list too
+        if (dirValue) {
+          await fetchExpectedNames(data.directory);
+        }
+
+        renderImageGrid();
+      } catch (err) {
+        console.error("Error scanning directory", err);
+        imageGridContainer.innerHTML = `
+          <div class="empty-state" style="border-color: var(--danger);">
+            <h3 style="color: var(--danger);">Connection Error</h3>
+            <p>Could not connect to Flask API.</p>
+          </div>
+        `;
+      }
+    }
+
+    // Populate Creature Filter Tabs
+    function populateCreatureTabs() {
+      const missingByMa = expectedNames.missing_by_ma || {};
+      const mas = Object.keys(expectedNames.by_ma || {});
+      
+      // Preserve "All" tab
+      let html = `<button class="creature-tab ${activeCreature === 'all' ? 'active' : ''}" data-ma="all">All Creatures</button>`;
+      
+      mas.forEach(ma => {
+        const missingCount = missingByMa[ma] ? missingByMa[ma].length : 0;
+        const badge = missingCount > 0 ? ` (${missingCount})` : '';
+        html += `<button class="creature-tab ${activeCreature === ma ? 'active' : ''}" data-ma="${ma}">${ma}${badge}</button>`;
+      });
+      
+      creatureTabsContainer.innerHTML = html;
+
+      // Click handler
+      creatureTabsContainer.querySelectorAll('.creature-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          creatureTabsContainer.querySelectorAll('.creature-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          activeCreature = tab.dataset.ma;
+          renderImageGrid();
+          updateMissingList();
+        });
+      });
+    }
+
+    // Update missing expected files list in sidebar
+    function updateMissingList() {
+      const missingList = expectedNames.missing_by_ma || {};
+      let items = [];
+
+      if (activeCreature === 'all') {
+        Object.keys(missingList).forEach(ma => {
+          items = items.concat(missingList[ma].map(x => ({ ...x, ma })));
+        });
+      } else {
+        items = (missingList[activeCreature] || []).map(x => ({ ...x, ma: activeCreature }));
+      }
+
+      missingSectionTitle.textContent = `Missing Images (${items.length})`;
+
+      if (items.length === 0) {
+        missingListContainer.innerHTML = `
+          <div style="font-size: 0.8rem; color: var(--text-dark); text-align: center; padding: 1rem 0;">
+            All expected cards have portrait images!
+          </div>
+        `;
+        return;
+      }
+
+      // Sort missing alphabetically
+      items.sort((a, b) => a.stem.localeCompare(b.stem));
+
+      let html = '';
+      items.forEach(item => {
+        html += `
+          <div class="missing-item" data-stem="${item.stem}">
+            <div class="missing-item-name">${item.stem}</div>
+            <div class="missing-item-role ${item.role}">${item.role}</div>
+          </div>
+        `;
+      });
+      missingListContainer.innerHTML = html;
+
+      // Handle clicking a missing name to copy it to active card input
+      missingListContainer.querySelectorAll('.missing-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const stem = el.dataset.stem;
+          if (currentActiveInputId) {
+            const input = document.getElementById(currentActiveInputId);
+            if (input) {
+              input.value = stem;
+              input.focus();
+            }
+          } else {
+            // Find the first positional image rename input in the grid and fill it
+            const firstPositionalInput = document.querySelector('.image-card[data-is-named="false"] .rename-input');
+            if (firstPositionalInput) {
+              firstPositionalInput.value = stem;
+              firstPositionalInput.focus();
+            }
+          }
+        });
+      });
+    }
+
+    // Render Main Image Grid
+    function renderImageGrid() {
+      let filtered = allFiles;
+
+      // Apply creature filter
+      if (activeCreature !== 'all') {
+        filtered = filtered.filter(f => f.detected_ma === activeCreature);
+      }
+
+      // Apply name type filter
+      if (activeNameType === 'positional') {
+        filtered = filtered.filter(f => !f.is_named);
+      } else if (activeNameType === 'named') {
+        filtered = filtered.filter(f => f.is_named);
+      }
+
+      if (filtered.length === 0) {
+        imageGridContainer.innerHTML = `
+          <div class="empty-state">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <h3>No Matches Found</h3>
+            <p>Try changing your filters or scan a different directory.</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      filtered.forEach((file, index) => {
+        const badgeClass = file.is_named ? 'named' : 'positional';
+        const badgeLabel = file.is_named ? 'Semantic Name' : 'Positional Page';
+        const inputId = `rename-input-${index}`;
+        
+        // Autocomplete values
+        const maMissing = expectedNames.missing_by_ma || {};
+        const suggestions = (activeCreature === 'all' 
+          ? (file.detected_ma ? maMissing[file.detected_ma] || [] : [])
+          : maMissing[activeCreature] || []
+        ).map(x => x.stem);
+
+        html += `
+          <div class="image-card" data-is-named="${file.is_named}" data-index="${index}" data-path="${file.absolute_path}">
+            <div class="card-preview-wrap">
+              <span class="card-badge ${badgeClass}">${badgeLabel}</span>
+              <img class="card-preview" src="/api/god-images/file?path=${encodeURIComponent(file.absolute_path)}" alt="Preview" loading="lazy">
+              <button class="card-zoom-overlay" onclick="zoomImage('${file.absolute_path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </button>
+            </div>
+            
+            <div class="card-content">
+              <div class="card-info">
+                <div class="card-filename" title="${file.name}">${file.name}</div>
+                <div class="card-details">
+                  <span>${(file.size_bytes / 1024).toFixed(1)} KB</span>
+                  <span>${file.detected_ma ? 'MA: ' + file.detected_ma : 'No detected MA'}</span>
+                </div>
+              </div>
+              
+              <div class="rename-form">
+                <div class="rename-input-wrap">
+                  <input type="text" id="${inputId}" class="rename-input" 
+                    placeholder="NewName (no extension)" 
+                    onfocus="currentActiveInputId='${inputId}'"
+                    onblur="setTimeout(() => { if(currentActiveInputId==='${inputId}') currentActiveInputId=null; }, 200)"
+                    list="suggestions-${index}">
+                  <datalist id="suggestions-${index}">
+                    ${suggestions.map(s => `<option value="${s}">`).join('')}
+                  </datalist>
+                </div>
+                <button class="btn-rename" onclick="renameImage(${index}, '${inputId}')">Rename</button>
+                <div class="rename-status" id="status-${index}"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      imageGridContainer.innerHTML = html;
+    }
+
+    // Zoom modal preview
+    function zoomImage(path, filename) {
+      modalImage.src = `/api/god-images/file?path=${encodeURIComponent(path)}`;
+      modalImageTitle.textContent = filename;
+      modalContainer.style.display = 'flex';
+    }
+
+    // Close modal
+    btnModalClose.addEventListener('click', () => {
+      modalContainer.style.display = 'none';
+      modalImage.src = '';
+    });
+    modalContainer.addEventListener('click', (e) => {
+      if (e.target === modalContainer) {
+        modalContainer.style.display = 'none';
+        modalImage.src = '';
+      }
+    });
+
+    // Rename action trigger
+    async function renameImage(index, inputId) {
+      const card = document.querySelector(`.image-card[data-index="${index}"]`);
+      const oldPath = card.dataset.path;
+      const input = document.getElementById(inputId);
+      const newName = input.value.trim();
+      const statusDiv = document.getElementById(`status-${index}`);
+
+      if (!newName) {
+        statusDiv.className = 'rename-status error';
+        statusDiv.textContent = 'Enter a name first.';
+        return;
+      }
+
+      statusDiv.className = 'rename-status';
+      statusDiv.textContent = 'Renaming...';
+
+      try {
+        const response = await fetch('/api/god-images/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_path: oldPath, new_name: newName })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          statusDiv.className = 'rename-status success';
+          statusDiv.textContent = data.message;
+          
+          // Clear input
+          input.value = '';
+          
+          // Update local memory and re-render grid
+          const fileIndex = allFiles.findIndex(f => f.absolute_path === oldPath);
+          if (fileIndex !== -1) {
+            allFiles[fileIndex].name = data.new_name;
+            allFiles[fileIndex].stem = PathStem(data.new_name);
+            allFiles[fileIndex].absolute_path = data.new_path;
+            allFiles[fileIndex].is_named = true;
+            
+            // Re-detect creature (MA)
+            for (const ma of KNOWN_MAS) {
+              if (allFiles[fileIndex].stem.toLowerCase().includes(ma.toLowerCase())) {
+                allFiles[fileIndex].detected_ma = ma;
+                break;
+              }
+            }
+          }
+
+          // Trigger refresh of counts and missing lists
+          const dirValue = dirInput.value.trim();
+          await fetchExpectedNames(dirValue);
+          
+          // Small delay before updating the grid so the user sees the success state
+          setTimeout(() => {
+            renderImageGrid();
+          }, 800);
+          
+        } else {
+          statusDiv.className = 'rename-status error';
+          statusDiv.textContent = data.error || 'Failed to rename.';
+        }
+      } catch (err) {
+        console.error("Rename error", err);
+        statusDiv.className = 'rename-status error';
+        statusDiv.textContent = 'API connection error.';
+      }
+    }
+
+    // Helper functions for Javascript
+    function PathStem(filename) {
+      const idx = filename.lastIndexOf('.');
+      return idx === -1 ? filename : filename.substring(0, idx);
+    }
+
+    const KNOWN_MAS = [
+      "Aphrodite", "Apollo", "Ares", "Artemis", "Athena",
+      "Cerberus", "Chimera", "Demeter", "Dionysus", "Echidna",
+      "Griffin", "Hades", "Harpy", "Hephaestus", "Hera",
+      "Hermes", "Hydra", "Medusa", "Minotaur", "Phoenix",
+      "Poseidon", "Siren", "Sphinx", "Typhon", "Zeus"
+    ];
+
+    // Scan button click
+    btnScan.addEventListener('click', () => {
+      scanDirectory();
+    });
+
+    // Handle pressing enter in dirInput
+    dirInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        scanDirectory();
+      }
+    });
+
+    // Name Type Filter Selection
+    filterTypeContainer.querySelectorAll('.filter-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterTypeContainer.querySelectorAll('.filter-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeNameType = btn.dataset.type;
+        renderImageGrid();
+      });
+    });
+  </script>
+</body>
+</html>

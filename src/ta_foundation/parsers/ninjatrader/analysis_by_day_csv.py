@@ -19,7 +19,7 @@ class NinjaTraderDailyAnalysisCsvParser:
     _TZ = ZoneInfo("America/Denver")
 
     def can_parse(self, path: Path, header: str) -> bool:
-        name_ok = path.name.endswith("_Analysis.csv")
+        name_ok = path.name.endswith("_Analysis.csv") or path.name == "Analysis.csv"
         sig_ok = ("Period" in header and "Cum. net profit" in header and "% Trade" in header)
         return name_ok and sig_ok
 

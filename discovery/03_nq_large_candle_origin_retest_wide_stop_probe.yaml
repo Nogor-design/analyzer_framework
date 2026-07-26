@@ -1,0 +1,95 @@
+report:
+  title: "NQ Large Candle Origin Retest — Wide-Stop Re-Probe"
+  output_filename: "03_nq_large_candle_origin_retest_wide_stop_probe.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "03_levels_regions"
+  instrument: "NQ"
+
+# Separate hypothesis (not a refinement) of the family graveyarded on
+# 2026-05-13. The 40t/8t outcome geometry (5:1 R:R, 8t stop) collapsed
+# at 2t/1-bar slippage stress — a single tick of friction consumed ~50%
+# of expectancy, two ticks consumed 95-115%. The 8t stop left no room
+# for execution cost regardless of which conditional pocket
+# (signal_atr, level_dist, direction, session) we filtered to.
+#
+# Hypothesis under test: the signal itself (origin retest of an
+# unusually large directional candle) still discriminates, but the
+# outcome must be wider to absorb realistic friction. Stops of
+# 16-20t with proportional targets (40-150t) push the cost-of-tick
+# below the noise floor.
+#
+# This is a fresh broad probe. We narrow the signal grid to the
+# bands where the prior probe was strongest (avg_lookback=40 zone,
+# large_body_mult >= 2.0, fast retest <=12 bars, touch >= 5t) and
+# replace the outcome grid entirely with wide-stop geometry. The
+# entry_discovery rule miner is left on so we can compare
+# conditional pockets to the prior family's two-dimensional pocket
+# without bias.
+
+level_discovery:
+  enabled: true
+  min_trades: 40
+  atr_period: 14
+  timeframes: [1, 5]
+  signals:
+    swing_level_test:        {enabled: false}
+    consolidation_breakout:  {enabled: false}
+    round_number_bounce:     {enabled: false}
+    vwap_reclaim_reject:     {enabled: false}
+    vwap_continuation:       {enabled: false}
+    prior_session_reaction:  {enabled: false}
+    reference_sweep_reclaim: {enabled: false}
+    failed_reference_breakout: {enabled: false}
+    liquidity_sweep_failure: {enabled: false}
+
+    large_candle_origin_retest:
+      enabled: true
+      avg_lookback: [20, 40]
+      large_body_mult: [2.0, 2.5]
+      min_body_ticks: [8.0, 12.0]
+      max_retest_bars: [6, 12]
+      touch_ticks: [5.0, 8.0]
+      min_close_ticks: [2.0, 3.0]
+      min_atr_ticks: [4.0]
+      direction: [0]
+      invert_direction: [false]
+
+  entry_timing:
+    next_open:     {enabled: true}
+    break_extreme: {enabled: false}
+    body_midpoint: {enabled: false}
+
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [40, 60, 80, 100, 150]
+      stop: [16, 20]
+    max_bars_timeout: 40
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+
+  filter_discovery: {enabled: false}
+  entry_discovery:
+    enabled: true
+    max_depth: 2
+    min_trades: 40
+    max_candidates: 700
+    top_n: 10
+
+sections:
+  - id: level_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 30
+
+research_note:
+  status: "broad_probe_separate_hypothesis"
+  parent_family: "large_candle_origin_retest"
+  parent_close_out: "discovery/03_nq_large_candle_origin_retest_probe.yaml (graveyard 2026-05-13)"
+  thesis: "Wider stops (16-20t) with proportional targets (40-150t) absorb realistic slippage and one-bar fill delay; the signal continues to discriminate even though the prior 40t/8t geometry was execution-fragile."
+  caution: "Different outcome geometry from the graveyarded probe — combos do NOT share the 8,640-hypothesis penalty. Treat this as a new search budget (~1,280 combos). Any promoted pocket must clear hardening including 2t/1-bar slippage stress before any deployment claim."

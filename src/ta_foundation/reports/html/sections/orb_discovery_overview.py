@@ -200,14 +200,16 @@ def render_orb_discovery_overview(ctx: dict) -> str:
 
     if "orb_discovery" in ctx:
         od_data = ctx["orb_discovery"]
-    elif ctx.get("all_options", {}).get("orb_discovery"):
-        od_data = ctx["all_options"]["orb_discovery"]
     else:
-        for pkg in (ctx.get("packages") or {}).values():
-            derived = getattr(pkg, "metadata", {}).get("derived", {})
-            if "orb_discovery" in derived:
-                od_data = derived["orb_discovery"]
-                break
+        ao_od = ctx.get("all_options", {}).get("orb_discovery")
+        if ao_od and isinstance(ao_od, dict) and "sweep_results" in ao_od:
+            od_data = ao_od
+        else:
+            for pkg in (ctx.get("packages") or {}).values():
+                derived = getattr(pkg, "metadata", {}).get("derived", {})
+                if "orb_discovery" in derived:
+                    od_data = derived["orb_discovery"]
+                    break
 
     if not od_data:
         return (

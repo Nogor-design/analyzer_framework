@@ -1,0 +1,35 @@
+{
+  "proposals": [
+    {
+      "direction": "both",
+      "family": "overnight_high_low_sweep_reclaim",
+      "instrument": "NQ",
+      "mechanism": "Overnight highs and lows concentrate resting liquidity before the RTH open. A sweep followed by fast reclaim suggests the breakout side did not attract continuation flow; trapped breakout participants and stop-outs can fuel a reversal back into the overnight range.",
+      "params": {
+        "level_type": "both",
+        "sweep_min_ticks": 6,
+        "reclaim_within_bars": 3,
+        "stop_ticks": 28,
+        "target_ticks": 90
+      },
+      "revival_reason": null,
+      "session_window": "ny_open_0730_0830_denver",
+      "timeframe": "5m"
+    },
+    {
+      "direction": "both",
+      "family": "vwap_reject_fade",
+      "instrument": "NQ",
+      "mechanism": "When NQ stretches beyond VWAP by at least 15 ticks but less than 85 ticks, momentum exhaustion is faded. Rejection of the extremes leads to a mean reversion trade aiming for a return to the volume-weighted average price.",
+      "params": {
+        "min_distance_ticks": 15,
+        "max_distance_ticks": 85,
+        "stop_ticks": 24,
+        "target_ticks": 70
+      },
+      "revival_reason": null,
+      "session_window": "rth_morning_0730_1030_denver",
+      "timeframe": "5m"
+    }
+  ]
+}

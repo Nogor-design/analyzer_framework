@@ -165,7 +165,10 @@ def build_feature_matrix(
                 if c != "dt" and c not in result.columns
             ]
             # Always include well-known columns if present
-            desired = {"regime", "adx", "atr", "trend_direction", "vol_regime"}
+            desired = {
+                "regime", "adx", "atr", "trend_direction", "trend_strength",
+                "vol_regime", "vol_regime_tertile", "vol_regime_quartile"
+            }
             regime_merge_cols = [
                 c for c in bars_with_regime.columns
                 if c in desired or c in regime_cols_to_add

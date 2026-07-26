@@ -1,0 +1,50 @@
+report:
+  title: "NQ NY Open ORB Large Move Probe"
+  output_filename: "04_nq_ny_open_orb_large_move_probe.html"
+  timezone: "America/Denver"
+
+discovery:
+  stage: "05_orb_momentum"
+  instrument: "NQ"
+
+orb_discovery:
+  enabled: true
+  min_trades: 20
+  orb:
+    orb_minutes: [5, 15, 30]
+    session_open_hour: 7
+    session_open_minute: 30
+    session_close_hour: 10
+    direction: [0, 1, -1]
+    min_range_ticks: [8, 16]
+    require_close_beyond: [true, false]
+    one_signal_per_side: true
+    tick_size: 0.25
+    atr_period: 14
+  entry_timing:
+    next_open: {enabled: true}
+    break_extreme: {enabled: true, buffer_ticks: 1, fill_timeout_bars: 3}
+  outcome:
+    atr: {enabled: false}
+    ticks:
+      enabled: true
+      take_profit: [80, 100, 150]
+      stop: [30, 50, 75]
+    max_bars_timeout: 90
+    timeout_result: "at_close"
+    tick_size: 0.25
+    tick_value: 5.0
+    commission_per_side: 2.09
+    slippage_ticks: 1
+  filter_discovery: {enabled: false}
+  hardening: {enabled: false}
+
+research_note:
+  status: "large_move_search"
+  thesis: "NQ NY-open ORB may be a low-hit-rate runner rather than a scalp; test 20-37.5 point targets."
+  caution: "Fast search only. Any survivor needs hardening and slippage stress."
+
+sections:
+  - id: orb_discovery_overview
+  - id: strategy_discovery_unified
+    top_n: 30

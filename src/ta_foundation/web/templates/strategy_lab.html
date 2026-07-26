@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Strategy Lab</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    input[type="text"], input[type="number"], select {
+      background: #111827; border: 1px solid #374151; color: #f3f4f6;
+      border-radius: 4px; padding: 4px 8px; font-size: 12px;
+    }
+    input:focus, select:focus { outline: 1px solid #f59e0b; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .panel { background: #111827; border: 1px solid #1f2937; border-radius: 8px; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; display: inline-block; }
+    .pill-running, .pill-optimizer_running, .pill-observing_compile, .pill-repairing { background: #1e3a8a; color: #93c5fd; }
+    .pill-candidate, .pill-compile_clean, .pill-ready { background: #064e3b; color: #34d399; }
+    .pill-archive, .pill-incomplete { background: #78350f; color: #fcd34d; }
+    .pill-halted, .pill-blocked { background: #7f1d1d; color: #fecaca; }
+    .pill-empty, .pill-none, .pill-done { background: #1f2937; color: #9ca3af; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Workbench</a>
+    <span class="text-amber-400 font-bold text-lg">Strategy Lab</span>
+    <span class="text-gray-500 text-sm">/ autonomous NinjaTrader loop</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <button id="ensure-nt-btn" class="btn-ghost px-3 py-1.5 rounded">Ensure NT ready</button>
+    <a href="/optimizer/recipe" class="btn-ghost px-3 py-1.5 rounded no-underline">Recipe optimizer</a>
+    <a href="/optimizer/sessions" class="btn-ghost px-3 py-1.5 rounded no-underline">Optimizer sessions</a>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-6">
+
+  <section class="panel p-4">
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">
+        <h1 class="text-lg font-bold mb-2">What This Page Does</h1>
+        <p class="text-sm text-gray-300 leading-6">
+          Strategy Lab starts from a <span class="text-amber-300">strategy_spec.json</span>. That file is the strategy picker here:
+          its <span class="text-amber-300">strategy_name</span> becomes the NinjaScript class and optimizer strategy, and
+          its <span class="text-amber-300">family</span> chooses the source renderer.
+        </p>
+        <div class="grid sm:grid-cols-3 gap-3 mt-4 text-xs text-gray-400">
+          <div class="border border-gray-800 rounded p-3">
+            <div class="font-semibold text-gray-200 mb-1">1. Author</div>
+            Generate or update the NinjaTrader strategy from the spec.
+          </div>
+          <div class="border border-gray-800 rounded p-3">
+            <div class="font-semibold text-gray-200 mb-1">2. Compile/repair</div>
+            Ask NinjaTrader to compile, then repair errors when the loop can.
+          </div>
+          <div class="border border-gray-800 rounded p-3">
+            <div class="font-semibold text-gray-200 mb-1">3. Optimize</div>
+            After a clean compile, create an optimizer session and run guardrails.
+          </div>
+        </div>
+      </div>
+      <div class="border border-gray-800 rounded p-3 text-xs text-gray-400">
+        <div class="font-semibold text-gray-200 mb-2">When to use which page</div>
+        <p class="leading-5">
+          Use <span class="text-amber-300">Strategy Lab</span> when you want the loop to author and repair a strategy first.
+          Use the <a href="/optimizer/recipe" class="text-amber-300 hover:text-amber-200">Recipe optimizer</a> when the strategy already
+          exists in NinjaTrader and you only want to generate or run optimizer batches.
+        </p>
+        <p class="mt-3 leading-5">
+          Built-in spec families: <span class="pathish text-gray-200">sma_cross</span>,
+          <span class="pathish text-gray-200">sma_cross_smoke</span>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h1 class="text-lg font-bold">Start A Loop</h1>
+      <span id="launch-status" class="text-xs text-gray-500"></span>
+    </div>
+    <div class="grid grid-cols-3 gap-4">
+      <div class="col-span-2">
+        <label class="block text-xs text-gray-400 mb-1">Strategy spec JSON (selects what gets optimized)</label>
+        <div class="flex gap-2">
+          <input id="spec-path" type="text" class="w-full pathish"
+                 placeholder="D:\path\strategy_spec.json" />
+          <button id="preview-spec-btn" class="btn-ghost px-3 py-1.5 rounded text-xs shrink-0" type="button">Preview spec</button>
+        </div>
+        <div class="text-xs text-gray-500 mt-1">
+          The spec's strategy_name becomes the NinjaScript class and optimizer strategy id.
+        </div>
+        <div id="spec-preview" class="hidden mt-3 border border-gray-800 rounded p-3 text-xs"></div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Compile mode</label>
+        <select id="compile-mode" class="w-full">
+          <option value="live">live</option>
+          <option value="fixture">fixture</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Instrument</label>
+        <input id="instrument" type="text" class="w-full" value="NQ 06-26" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Market suffix</label>
+        <input id="market-suffix" type="text" class="w-full" value="NQ" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max repair attempts</label>
+        <input id="max-repair-attempts" type="number" class="w-full" value="5" min="1" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max drawdown</label>
+        <input id="max-drawdown" type="number" class="w-full" value="2500" min="0" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min trades</label>
+        <input id="min-trades" type="number" class="w-full" value="10" min="0" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Min profit factor</label>
+        <input id="min-profit-factor" type="number" step="0.1" class="w-full" value="1.5" min="0" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Max combinations / chunk</label>
+        <input id="max-combinations" type="number" class="w-full" value="5000" min="1" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Keep best rows</label>
+        <input id="keep-best" type="number" class="w-full" value="500" min="1" />
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">Optimizer timeout seconds</label>
+        <input id="optimizer-timeout" type="number" class="w-full" value="3600" min="1" />
+      </div>
+      <div class="flex items-end gap-3">
+        <label class="flex items-center gap-2 text-xs text-gray-400">
+          <input id="overwrite" type="checkbox" />
+          overwrite existing strategy
+        </label>
+      </div>
+      <div class="flex items-end gap-3">
+        <label class="flex items-center gap-2 text-xs text-gray-400">
+          <input id="repair-llm" type="checkbox" />
+          LLM repair
+        </label>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-400 mb-1">LLM model</label>
+        <input id="repair-llm-model" type="text" class="w-full" value="qwen3-coder:30b" />
+      </div>
+    </div>
+    <div class="flex items-center gap-3 mt-4">
+      <button id="full-loop-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-semibold">Run full loop</button>
+      <button id="repair-loop-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Compile/repair only</button>
+      <button id="refresh-btn" class="btn-ghost px-3 py-1.5 rounded text-xs">Refresh sessions</button>
+    </div>
+    <pre id="job-output" class="hidden mt-4 bg-black/30 border border-gray-800 rounded p-3 text-xs text-gray-400 whitespace-pre-wrap max-h-72 overflow-auto"></pre>
+  </section>
+
+  <section class="panel p-4">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-lg font-bold">Loop Sessions</h2>
+      <span id="session-count" class="text-xs text-gray-500">{{ sessions|length }} session{% if sessions|length != 1 %}s{% endif %}</span>
+    </div>
+    <div id="sessions-list" class="space-y-3">
+      {% if not sessions %}
+        <div class="text-sm text-gray-500 border border-dashed border-gray-800 rounded p-6 text-center">No strategy lab sessions yet.</div>
+      {% endif %}
+      {% for s in sessions %}
+        <div class="border border-gray-800 rounded p-4 flex items-start gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="/strategy-lab/sessions/{{ s.session_id }}" class="font-semibold text-gray-100 hover:text-amber-300 no-underline">{{ s.strategy_name or s.session_id }}</a>
+              <span class="pill pill-{{ s.decision or 'none' }}">{{ s.decision or "no decision" }}</span>
+              <span class="pill pill-{{ s.stage }}">{{ s.stage }}</span>
+              {% if s.family %}<span class="pill pill-none">{{ s.family }}</span>{% endif %}
+            </div>
+            <div class="text-xs text-gray-500 mt-1 pathish">{{ s.session_id }}</div>
+            <div class="text-xs text-gray-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Attempts: <span class="text-gray-200">{{ s.attempt_count }}</span></span>
+              <span>Compile: <span class="text-gray-200">{{ s.compile_state or "?" }}</span></span>
+              <span>Errors: <span class="text-gray-200">{{ s.latest_error_count if s.latest_error_count is not none else "?" }}</span></span>
+              <span>Optimizer: <span class="text-gray-200">{{ s.optimizer_state }}</span></span>
+              <span>Rows: <span class="text-gray-200">{{ s.optimizer_analysis.row_count }}</span></span>
+              <span>Passing: <span class="text-gray-200">{{ s.optimizer_analysis.passing_rows }}</span></span>
+              <span>Updated: <span class="text-gray-200">{{ s.updated_at }}</span></span>
+            </div>
+            {% if s.latest_error %}
+              <div class="text-xs text-red-300 mt-2">{{ s.latest_error }}</div>
+            {% endif %}
+          </div>
+          <div class="flex flex-col gap-2 min-w-[160px]">
+            <a href="/strategy-lab/sessions/{{ s.session_id }}" class="btn-primary px-3 py-1.5 rounded text-sm text-center font-semibold no-underline">Open</a>
+            {% if s.optimizer_session_id %}
+              <a href="/optimizer/sessions/{{ s.optimizer_session_id }}" class="btn-ghost px-3 py-1.5 rounded text-xs text-center no-underline">Optimizer</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function esc(value) {
+  return String(value === null || value === undefined ? "" : value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function payload() {
+  return {
+    spec_path: $("spec-path").value,
+    compile_mode: $("compile-mode").value,
+    instrument: $("instrument").value,
+    market_suffix: $("market-suffix").value,
+    max_repair_attempts: Number($("max-repair-attempts").value || 5),
+    max_drawdown: Number($("max-drawdown").value || 2500),
+    min_trades: Number($("min-trades").value || 10),
+    min_profit_factor: Number($("min-profit-factor").value || 1.5),
+    max_combinations_per_chunk: Number($("max-combinations").value || 5000),
+    keep_best_results: Number($("keep-best").value || 500),
+    optimizer_timeout_seconds: Number($("optimizer-timeout").value || 3600),
+    overwrite: $("overwrite").checked,
+    repair_llm: $("repair-llm").checked,
+    repair_llm_model: $("repair-llm-model").value,
+  };
+}
+
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {}),
+  });
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (_) { data = {error: text}; }
+  if (!res.ok) throw data;
+  return data;
+}
+
+function renderSpecPreview(spec) {
+  const box = $("spec-preview");
+  box.classList.remove("hidden");
+  const errors = (spec.errors || []).map((item) => `<div class="text-red-300">${esc(item)}</div>`).join("");
+  const warnings = (spec.warnings || []).map((item) => `<div class="text-amber-300">${esc(item)}</div>`).join("");
+  const params = (spec.parameter_keys || []).length
+    ? spec.parameter_keys.map((item) => `<span class="pill pill-none mr-1 mb-1">${esc(item)}</span>`).join("")
+    : `<span class="text-gray-500">No parameters listed.</span>`;
+  const status = spec.ok
+    ? `<span class="pill pill-ready">ready</span>`
+    : `<span class="pill pill-blocked">needs attention</span>`;
+  box.innerHTML = `
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <div class="font-semibold text-gray-200">Selected strategy</div>
+      ${status}
+    </div>
+    ${errors}
+    ${warnings}
+    <div class="grid sm:grid-cols-2 gap-x-4 gap-y-2 mt-2">
+      <div><span class="text-gray-500">Strategy:</span> <span class="text-gray-100">${esc(spec.strategy_name || "?")}</span></div>
+      <div><span class="text-gray-500">Family:</span> <span class="text-gray-100">${esc(spec.family || "?")}</span></div>
+      <div class="sm:col-span-2"><span class="text-gray-500">Path:</span> <span class="pathish text-gray-200">${esc(spec.path || "")}</span></div>
+      <div class="sm:col-span-2"><span class="text-gray-500">Intent:</span> <span class="text-gray-200">${esc(spec.intent || "No intent text in spec.")}</span></div>
+      <div class="sm:col-span-2"><span class="text-gray-500">Optimizer parameters:</span> <span class="inline-flex flex-wrap align-middle">${params}</span></div>
+    </div>
+  `;
+}
+
+async function previewSpec() {
+  $("launch-status").textContent = "Reading spec...";
+  try {
+    const data = await postJSON("/api/strategy-lab/spec-info", {spec_path: $("spec-path").value});
+    renderSpecPreview(data.spec || {});
+    $("launch-status").textContent = data.spec && data.spec.ok ? "Spec ready." : "Spec needs attention.";
+  } catch (err) {
+    $("launch-status").textContent = "Spec preview failed.";
+    $("spec-preview").classList.remove("hidden");
+    $("spec-preview").innerHTML = `<div class="text-red-300">${esc(err.error || JSON.stringify(err))}</div>`;
+  }
+}
+
+async function startJob(url, body) {
+  $("launch-status").textContent = "Starting...";
+  $("job-output").classList.remove("hidden");
+  $("job-output").textContent = "";
+  try {
+    const data = await postJSON(url, body);
+    const job = data.job;
+    $("launch-status").textContent = "Job " + job.id + " started.";
+    pollJob(job.id);
+  } catch (err) {
+    const errors = err.validation && err.validation.errors ? err.validation.errors.join("\\n") : (err.error || JSON.stringify(err));
+    $("launch-status").textContent = "Start failed.";
+    $("job-output").textContent = errors;
+  }
+}
+
+async function pollJob(jobId) {
+  const res = await fetch("/api/jobs/" + encodeURIComponent(jobId));
+  if (!res.ok) return;
+  const data = await res.json();
+  const job = data.job || {};
+  $("job-output").textContent = job.output || job.error || "";
+  $("launch-status").textContent = "Job " + job.status + (job.returncode !== null && job.returncode !== undefined ? " (" + job.returncode + ")" : "");
+  if (!["succeeded", "failed", "cancelled"].includes(job.status)) {
+    setTimeout(() => pollJob(jobId), 1500);
+  } else {
+    setTimeout(() => window.location.reload(), 1200);
+  }
+}
+
+$("full-loop-btn").addEventListener("click", () => startJob("/api/strategy-lab/full-loop", payload()));
+$("repair-loop-btn").addEventListener("click", () => startJob("/api/strategy-lab/repair-loop", payload()));
+$("refresh-btn").addEventListener("click", () => window.location.reload());
+$("ensure-nt-btn").addEventListener("click", () => startJob("/api/strategy-lab/ensure-nt-ready", {restart: false}));
+$("preview-spec-btn").addEventListener("click", previewSpec);
+$("spec-path").addEventListener("change", previewSpec);
+</script>
+
+</body>
+</html>

@@ -41,10 +41,17 @@ from ta_foundation.analysis.entry_strategies.candle.mtf import (
     apply_hierarchical_filter,
     label_independent,
 )
-from ta_foundation.analysis.entry_strategies.outcome.simulator import simulate_outcomes
+from ta_foundation.analysis.entry_strategies.outcome.simulator import (
+    count_outcome_modes,
+    simulate_outcomes,
+)
 from ta_foundation.analysis.strategy_discovery.evaluation import (
     compute_evaluation_metrics,
     compute_regime_breakdown,
+)
+from ta_foundation.analysis.entry_strategies.hardening import (
+    attach_hardening_metadata,
+    inject_trial_grid_size,
 )
 from ta_foundation.analysis.entry_strategies.validation import compute_is_oos_degradation
 
@@ -140,6 +147,62 @@ def _direction_values(direction_cfg: str) -> List[int]:
 
 
 # ---------------------------------------------------------------------------
+# Trial-grid sizing — feeds the hardening selection-bias correction
+# ---------------------------------------------------------------------------
+
+def _count_signal_combos(cfg: Dict[str, Any]) -> int:
+    """Independent (non-MTF) signal combos: tf x pattern-params x dir x timing."""
+    timeframes = [int(tf) for tf in cfg.get("timeframes", [])]
+    directions = _direction_values(str(cfg.get("direction", "both")))
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_param_combos = 0
+    for pattern_id, pat_cfg in (cfg.get("patterns", {}) or {}).items():
+        if not pat_cfg.get("enabled", True):
+            continue
+        if pattern_id not in PATTERN_REGISTRY:
+            continue
+        n_param_combos += len(_expand_pattern_params(pattern_id, pat_cfg))
+    return len(timeframes) * n_param_combos * len(directions) * n_timings
+
+
+def _compute_trial_grid_size(cfg: Dict[str, Any]) -> int:
+    """Total candidate cells the sweep evaluates — the within-run trial count.
+
+    Independent combos are exact from config. The MTF confluence/hierarchical
+    passes depend on which signals are actually detected, so they are bounded
+    above by the pattern-key grid. An upper bound is the safe direction for a
+    selection-bias correction: better to over-count trials than under-count.
+    """
+    outcome_modes = count_outcome_modes(cfg.get("outcome", {}) or {})
+    independent = _count_signal_combos(cfg) * outcome_modes
+
+    timeframes = [int(tf) for tf in cfg.get("timeframes", [])]
+    directions = _direction_values(str(cfg.get("direction", "both")))
+    timing_cfgs = cfg.get("entry_timing", {}) or {}
+    n_timings = sum(1 for tc in timing_cfgs.values() if tc.get("enabled", True))
+    n_pattern_keys = len(directions) * sum(
+        1
+        for pid, pc in (cfg.get("patterns", {}) or {}).items()
+        if pc.get("enabled", True) and pid in PATTERN_REGISTRY
+    )
+
+    mtf_cfg = cfg.get("mtf", {}) or {}
+    mtf_upper = 0
+    conf_cfg = mtf_cfg.get("confluence", {}) or {}
+    if conf_cfg.get("enabled", True) and len(timeframes) >= 2:
+        mtf_upper += n_pattern_keys * n_timings * outcome_modes
+    hier_cfg = mtf_cfg.get("hierarchical", {}) or {}
+    if hier_cfg.get("enabled", True):
+        ctx_tf = int(hier_cfg.get("context_tf", 5))
+        ent_tf = int(hier_cfg.get("entry_tf", 1))
+        if ctx_tf in timeframes and ent_tf in timeframes:
+            mtf_upper += n_pattern_keys * n_timings * outcome_modes
+
+    return max(1, independent + mtf_upper)
+
+
+# ---------------------------------------------------------------------------
 # Filter discovery (optional, wraps existing module)
 # ---------------------------------------------------------------------------
 
@@ -177,8 +240,17 @@ def _run_single_combo(
     tf_minutes: int,
     min_trades: int,
     filter_cfg: Dict[str, Any],
+    hardening_cfg: Dict[str, Any],
+    bars_tf: Optional[pd.DataFrame] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Run one full pipeline combination and return a SweepResult dict or None."""
+    """Run one full pipeline combination and return a SweepResult dict or None.
+
+    Parameters
+    ----------
+    bars_tf : pre-resampled bars at tf_minutes resolution.  When provided,
+              used directly for next_open timing (avoids resampling per combo).
+              Falls back to resampling bars_1m if None.
+    """
 
     # 1. Detect signals
     detect_params = {**params, "direction": direction}
@@ -190,7 +262,11 @@ def _run_single_combo(
 
     # 2. Emit entries
     timing_params = {**timing_cfg, "tick_size": outcome_cfg.get("tick_size", 0.25)}
-    bars_for_timing = ohlcv_resample_from_bars(bars_1m, f"{tf_minutes}m") if timing_mode == "next_open" else None
+    if timing_mode == "next_open":
+        # Use pre-resampled bars if available to avoid per-combo resample overhead
+        bars_for_timing = bars_tf if bars_tf is not None else ohlcv_resample_from_bars(bars_1m, f"{tf_minutes}m")
+    else:
+        bars_for_timing = None
     try:
         pending = emit_entries(signals_df, timing_mode, bars=bars_for_timing, params=timing_params)
     except Exception:
@@ -285,6 +361,9 @@ def _run_single_combo(
             "filter_results":   filter_results,
             "is_oos_degradation": compute_is_oos_degradation(group),
         }
+        attach_hardening_metadata(
+            result, group, outcome_cfg, hardening_cfg, bars_with_regime=bars_with_regime
+        )
         all_results.append(result)
 
     return all_results if all_results else None
@@ -331,20 +410,29 @@ def run_candle_discovery(
     outcome_cfg:   Dict       = cfg.get("outcome", {})
     mtf_cfg:       Dict       = cfg.get("mtf", {})
     filter_cfg:    Dict       = cfg.get("filter_discovery", {})
+    hardening_cfg: Dict       = cfg.get("hardening", {})
+
+    # Auto-populate the trial budget: the sweep knows its own grid size, so the
+    # hardening selection-bias correction reflects the real search instead of
+    # being inert at n=1.
+    trial_grid_size = _compute_trial_grid_size(cfg)
+    hardening_cfg = inject_trial_grid_size(hardening_cfg, trial_grid_size)
 
     directions     = _direction_values(direction_cfg)
     enabled_timings = [tm for tm, tc in timing_cfgs.items() if tc.get("enabled", True)]
 
     sweep_results:   List[Dict[str, Any]] = []
     signals_by_tf:   Dict[int, Dict[str, pd.DataFrame]] = {}  # {tf: {pattern_id: signals_df}}
+    bars_tf_cache:   Dict[int, pd.DataFrame] = {}             # {tf: resampled bars}
     n_combinations_run = 0
 
     for tf in timeframes:
-        # Resample to TF
+        # Resample to TF (cached — avoids re-resampling per combo)
         if tf == 1:
             bars_tf = bars_1m.copy()
         else:
             bars_tf = ohlcv_resample_from_bars(bars_1m, f"{tf}m")
+        bars_tf_cache[tf] = bars_tf
 
         if bars_tf is None or bars_tf.empty:
             continue
@@ -397,6 +485,8 @@ def run_candle_discovery(
                             tf_minutes=tf,
                             min_trades=min_trades,
                             filter_cfg=filter_cfg,
+                            hardening_cfg=hardening_cfg,
+                            bars_tf=bars_tf,
                         )
                         if results:
                             sweep_results.extend(results)
@@ -432,6 +522,7 @@ def run_candle_discovery(
                 timing_cfg_item = timing_cfgs.get(timing_mode, {})
                 n_combinations_run += 1
 
+                _min_tf = min(by_tf.keys())
                 results = _run_single_combo(
                     enriched_tf=filtered,   # already has candle feature cols
                     bars_1m=bars_1m,
@@ -443,9 +534,11 @@ def run_candle_discovery(
                     outcome_cfg=outcome_cfg,
                     bars_with_regime=bars_with_regime,
                     mtf_label=f"confluence_{min_agreement}of{len(by_tf)}",
-                    tf_minutes=min(by_tf.keys()),
+                    tf_minutes=_min_tf,
                     min_trades=min_trades,
                     filter_cfg=filter_cfg,
+                    hardening_cfg=hardening_cfg,
+                    bars_tf=bars_tf_cache.get(_min_tf),
                 )
                 if results:
                     mtf_confluence_results.extend(results)
@@ -502,6 +595,8 @@ def run_candle_discovery(
                         tf_minutes=ent_tf,
                         min_trades=min_trades,
                         filter_cfg=filter_cfg,
+                        hardening_cfg=hardening_cfg,
+                        bars_tf=bars_tf_cache.get(ent_tf),
                     )
                     if results:
                         mtf_hierarchical_results.extend(results)
@@ -512,6 +607,7 @@ def run_candle_discovery(
         "mtf_hierarchical_results":  mtf_hierarchical_results,
         "n_combinations_run":        n_combinations_run,
         "n_results":                 len(sweep_results) + len(mtf_confluence_results) + len(mtf_hierarchical_results),
+        "trial_grid_size":           trial_grid_size,
     }
 
 

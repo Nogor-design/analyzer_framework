@@ -1,0 +1,32 @@
+You are an expert enterprise C# software engineer and a master developer for the NinjaTrader 8 platform. I need a comprehensive, production-grade architectural and development plan to build a custom NinjaTrader 8 AddOn. 
+
+This AddOn serves as a centralized "Automated Strategy Deployment and Risk Management System." It operates as a headless control deck to dynamically load, deploy, and manage live NinjaScript strategies, accounts, and risk thresholds from a single WPF user interface without relying on open charts.
+
+Please provide a highly structured, step-by-step technical blueprint covering the following architecture and implementation requirements:
+
+1. WORKSPACE & UI ARCHITECTURE (WPF/XAML)
+- Detail the correct implementation of 'NTWindow' and 'NTTabPage' to ensure the AddOn natively docks, saves workspace states, and matches NinjaTrader's skinning/themes.
+- Outline the UI layout: A Strategy Deployment grid (Instrument, Period, Template dropdowns), an Active Strategy Manager (Start/Stop/Performance metrics), and a Global Account/Drawdown Dashboard.
+
+2. PROGRAMMATIC STRATEGY LIFECYCLE MANAGEMENT
+- Provide the exact C# code architecture to load NinjaTrader strategy templates (.xml) from the 'Documents\NinjaTrader 8\templates\Strategy\' directories.
+- Explain how to handle reflection or dynamic instantiation to spin up strategy objects from a string name.
+- Write the exact execution sequence using 'NinjaTrader.NinjaScript.Strategy.Configurator.ProcessNewStrategy' to bind the strategy instance to an Account, Instrument, BarsPeriod, and TradingHours, and programmatically flip 'Enabled = true'.
+
+3. MULTI-ACCOUNT MANAGEMENT & SYNC
+- Detail how to subscribe to global account events using 'NinjaTrader.Cbi.Account' collections.
+- Explain how to link or mirror trade executions across multiple SIM or live accounts programmatically from the AddOn layer when a deployed strategy fires an order.
+
+4. REAL-TIME ACCOUNT-LEVEL DRAWDOWN & RISK CIRCUIT BREAKERS
+- Design a background monitoring service within the AddOn that tracks NetLiquidation, Realized PnL, and Unrealized PnL across active accounts.
+- Create a strict engineering workflow for a "Circuit Breaker": If a user-defined daily max drawdown threshold is hit, the AddOn must programmatically loops through all active strategies, set 'Enabled = false', and flatten all open market positions via 'Account.Flatten()'.
+
+5. MULTI-THREADING, SAFETY, AND LIFECYCLE SYNCHRONIZATION
+- Explain how to safely bridge the WPF UI thread and the core NinjaTrader data/trading threads using 'NinjaTrader.Code.Dispatcher.InvokeAsync'.
+- Detail memory management and disposal: What happens to running strategies if the AddOn window is accidentally closed? Provide a state-preservation or clean-cleanup protocol.
+
+6. PHASED DEVELOPMENT ROADMAP
+- Break down the development into 4 distinct, logical phases (e.g., UI & Template Parsing, Lifecycle Engine, Risk/Account Integration, Testing/Hardening).
+- For each phase, list the specific NinjaTrader assemblies, classes, or namespaces required, alongside critical edge cases to test (such as historical data loading lag or sudden network disconnections).
+
+Format your response with clear technical headings, production-ready C# code snippets adhering to NT8 API standards, and actionable architectural patterns.

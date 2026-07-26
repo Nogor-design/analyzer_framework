@@ -103,6 +103,7 @@ using NinjaTrader.NinjaScript;
 using NinjaTrader.NinjaScript.DrawingTools;
 using NinjaTrader.NinjaScript.Indicators;
 using NinjaTrader.NinjaScript.Strategies;
+using TaFoundation.Pantheon;   // shared PantheonStopEngine (pure C#, also linked into the AddOn). Drop PantheonStopEngine.cs into bin/Custom so NinjaScript compiles it.
 #endregion
 
 namespace NinjaTrader.NinjaScript.Strategies
@@ -132,6 +133,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 	}
 
 	// ─── Static helpers ───────────────────────────────────────────────────────────
+
+	public enum PantheonForceEntry
+	{
+		None  = 0,
+		Long  = 1,
+		Short = 2
+	}
 
 	internal static class PantheonRegimeClassifier
 	{
@@ -200,7 +208,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 	[Gui.CategoryOrder("Discovery Exit",       13)]
 	[Gui.CategoryOrder("Discovery Daily Risk", 14)]
 	[Gui.CategoryOrder("Live Stop Management", 15)]
-	[Gui.CategoryOrder("Debug",                16)]
+	[Gui.CategoryOrder("Manual Test",          16)]
+	[Gui.CategoryOrder("Debug",                17)]
 	public class PantheonMaster : Strategy
 	{
 		// ── Signal name constants ────────────────────────────────────────────────
@@ -245,8 +254,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 		private bool   breakEvenActive;
 		private double liveHighestFavorablePrice;
 		private double liveLowestFavorablePrice;
+		private double liveMarketPrice;           // last live tick price (stop-side guard)
+		private DateTime lastLiveTickTime = DateTime.MinValue; // last tick time, for tick-resolution stop-audit rows (Time[0] is only bar-resolution)
+		private double entryFillPrice;            // actual entry execution price (Position.AveragePrice is stale in OnExecutionUpdate)
 		private double lastSubmittedStopPrice;
 		private bool   entryOrdersPrepared;      // true only on live path
+		private bool   forceEntryDone;           // manual test: force-entry fired once this run
 
 		// ── Order references (live path) ──────────────────────────────────────────
 		private Order          activeStopOrder;
@@ -285,7 +298,19 @@ namespace NinjaTrader.NinjaScript.Strategies
 				StartBehavior                             = StartBehavior.WaitUntilFlat;
 				TimeInForce                               = TimeInForce.Gtc;
 				TraceOrders                               = false;
-				RealtimeErrorHandling                     = RealtimeErrorHandling.StopCancelClose;
+				// Live stop management submits/amends explicit stop orders tick-by-tick. The
+				// side-of-market guards in SubmitInitialProtectiveOrders + MoveStopIfImproved are
+				// the PRIMARY defense against a wrong-side ("buy-stop below market") rejection, but
+				// no client-side guard can fully close the race between the guard check and the
+				// order reaching the matching engine in a fast/Playback feed. The default
+				// StopCancelClose turns any such reject into a strategy KILL — it cancels orders,
+				// force-closes via a market "Buy to cover", and terminates (the ATRError saga:
+				// docs/samples/ATRError*.png). IgnoreRejects instead leaves the prior valid resting
+				// stop working and keeps the strategy alive, so a rare reject can't blow up live
+				// risk or C#<->Python parity with a spurious liquidation. Non-rejection errors
+				// (e.g. connection loss) still get the safe default StopCancelClose behavior.
+				// Our OnOrderUpdate already tracks/clears the stop reference on terminal states.
+				RealtimeErrorHandling                     = RealtimeErrorHandling.StopCancelCloseIgnoreRejects;
 				StopTargetHandling                        = StopTargetHandling.PerEntryExecution;
 				BarsRequiredToTrade                       = 20;
 				IsInstantiatedOnEachOptimizationIteration = false;
@@ -388,6 +413,10 @@ namespace NinjaTrader.NinjaScript.Strategies
 				// Live stop management
 				UseLiveStopManagement = true;
 
+				// Manual test
+				ForceEntry       = PantheonForceEntry.None;
+				StopAuditCsvPath = "";
+
 				// Debug
 				EnableDebugPrint = false;
 			}
@@ -469,6 +498,11 @@ namespace NinjaTrader.NinjaScript.Strategies
 			if (Bars.IsFirstBarOfSession)
 				ResetSessionTracking();
 
+			// Manual test: force one entry on the first realtime bar (bypasses all filters)
+			// so the live stop/target/trail path can be exercised on demand. Routes through
+			// the strategy's own entry signal, so OnExecutionUpdate fires SubmitInitialProtectiveOrders.
+			if (TryForceEntry()) return;
+
 			if (!CheckRiskLocks())
 			{
 				FlattenAndDisableTrading("Daily risk lock");
@@ -482,7 +516,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				// Historical path: adjust SetStopLoss() each bar for trailing stops.
 				// Live path: ManageLiveDynamicStop() handles this tick-by-tick in OnMarketData.
-				if (!(UseLiveStopManagement && State == State.Realtime))
+				// Gate on the MODE flag, not State: a Playback session runs a historical
+				// warmup BEFORE going realtime, and SetStopLoss is "sticky" (NT reuses the
+				// last offset to auto-attach a managed "Stop loss" to the next entry). If the
+				// managed bar-close trail ran during warmup it would poison the realtime
+				// entry, so the explicit live stop gets ignored and activeStopOrder is null.
+				// UseLiveStopManagement=true => never use the managed path at all.
+				if (!UseLiveStopManagement)
 					ManageHistoricalOrBarCloseDynamicStops();
 			}
 
@@ -508,6 +548,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 		protected override void OnMarketData(MarketDataEventArgs marketDataUpdate)
 		{
 			if (State == State.Historical) return;
+
+			// Capture the real tick timestamp for tick-resolution stop-audit rows. Time[0] is
+			// only the current bar's time, so per-tick live trail moves would otherwise all
+			// collapse onto one minute and the parity comparator could not align them to the
+			// Python tick replica (85% of trail events were colliding on a single minute).
+			lastLiveTickTime = marketDataUpdate.Time;
 
 			UpdateCurrentPnLDisplay();
 
@@ -586,7 +632,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 				activeEntrySignal      = Position.MarketPosition == MarketPosition.Long
 				                         ? LongEntrySignal : ShortEntrySignal;
 				activeManagedDirection = Position.MarketPosition;
-				ResetDynamicTrackingOnEntry();   // position price is now valid
+				// Use the EXECUTION's fill price: Position.AveragePrice is not reliably
+				// updated yet inside OnExecutionUpdate (it settles in OnPositionUpdate),
+				// and with Reverse=true it can read the prior position — a stale avg put
+				// the initial protective stop on the wrong side of the market and the
+				// broker rejected it, terminating the strategy on entry.
+				entryFillPrice = price;
+				ResetDynamicTrackingOnEntry();   // seeds trail from entryFillPrice
 				SubmitInitialProtectiveOrders(); // live path only
 			}
 
@@ -746,6 +798,46 @@ namespace NinjaTrader.NinjaScript.Strategies
 			LogEntry(actualLong ? "Long" : "Short");
 		}
 
+		/// <summary>
+		/// Manual test harness (realtime only). When ForceEntry != None and the strategy is
+		/// flat, immediately submits one entry in the requested direction, bypassing every
+		/// signal/regime/session/time/trend filter. Routes through PrepareOrdersForNewEntry
+		/// + EnterLong/EnterShort with the canonical entry-signal names, so the fill triggers
+		/// OnExecutionUpdate -> SubmitInitialProtectiveOrders and the full live stop/target/trail
+		/// path runs. Fires once per strategy enable. Returns true if an entry was submitted.
+		/// </summary>
+		private bool TryForceEntry()
+		{
+			if (ForceEntry == PantheonForceEntry.None) return false;
+			if (forceEntryDone)                        return false;
+			if (State != State.Realtime)               return false;
+			if (Position.MarketPosition != MarketPosition.Flat) return false;
+
+			bool isLong = ForceEntry == PantheonForceEntry.Long;
+
+			PrepareOrdersForNewEntry(isLong);
+
+			if (isLong)
+			{
+				EnterLong(Contracts, LongEntrySignal);
+				Draw.VerticalLine(this, "Force Long " + CurrentBar, 0, Brushes.Lime, DashStyleHelper.Dash, 2);
+			}
+			else
+			{
+				EnterShort(Contracts, ShortEntrySignal);
+				Draw.VerticalLine(this, "Force Short " + CurrentBar, 0, Brushes.Crimson, DashStyleHelper.Dash, 2);
+			}
+
+			BarBrush       = Brushes.DeepSkyBlue;
+			forceEntryDone = true;
+			trades++;
+
+			Print($"[PantheonMaster] FORCE ENTRY {(isLong ? "Long" : "Short")} | bar={CurrentBar} "
+			    + $"| exitPolicy={DiscoveryExitPolicy} | ATR={currentAtr:F2} | close={Close[0]:F2}");
+
+			return true;
+		}
+
 		// ═════════════════════════════════════════════════════════════════════════
 		//  Order preparation
 		//  ──────────────────────────────────────────────────────────────────────
@@ -762,8 +854,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// Live: defer stop/target submission until after the fill (OnExecutionUpdate).
 			entryOrdersPrepared = UseLiveStopManagement && State == State.Realtime;
 
-			// Historical/Analyzer: configure managed SL and TP before entry order.
-			if (!entryOrdersPrepared)
+			// Configure managed SL/TP only in pure-managed mode. NEVER when live stop
+			// management is on: a managed SetStopLoss is sticky (NT reuses the last offset
+			// to auto-generate a "Stop loss" order on the NEXT open position — see
+			// setstoploss.md), so a warmup entry's managed stop would poison the realtime
+			// entry, NT would ignore the explicit ExitLongStopMarket the live trail controls,
+			// and activeStopOrder would stay null (the stop never trails). Run Strategy
+			// Analyzer backtests with UseLiveStopManagement=false to get the managed path.
+			if (!UseLiveStopManagement)
 				ConfigureHistoricalManagedOrders(isLong);
 		}
 
@@ -829,28 +927,66 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			bool   isLong = Position.MarketPosition == MarketPosition.Long;
 			int    qty    = Position.Quantity;
-			double avg    = Position.AveragePrice;
+			double avg    = entryFillPrice > 0 ? entryFillPrice : Position.AveragePrice;
 			if (qty <= 0) return;
 
 			double initialStop = RoundToTick(GetInitialStopPrice(isLong, avg));
 			string fromEntry   = isLong ? LongEntrySignal : ShortEntrySignal;
 
-			if (isLong) ExitLongStopMarket(qty,  initialStop, LongStopSignal,  fromEntry);
-			else        ExitShortStopMarket(qty, initialStop, ShortStopSignal, fromEntry);
+			// SIDE-OF-MARKET GUARD (initial stop). A protective stop must rest on the valid
+			// side of the CURRENT market or the broker rejects it (buy-stop must be ABOVE,
+			// sell-stop BELOW) and ErrorHandling terminates the strategy. In Market Replay /
+			// Playback the entry market order fills, but by the time this stop is submitted
+			// the replay feed has often already run price PAST the intended stop distance
+			// (the gap is bigger at higher replay speed — hence the crash-after-N-trades
+			// pattern). When that happens the trade is already beyond its stop, so the honest
+			// action is to exit now: clamp the stop to one tick past the live market so it is
+			// a legal resting order that triggers immediately, instead of an illegal price.
+			// Mirror the trail guard's market-price fallback chain (bid/ask are frequently 0
+			// in Replay, so prefer the last live tick, then bid/ask mid, then bar close).
+			double mkt = liveMarketPrice;
+			if (mkt <= 0) { double a = GetCurrentAsk(), b = GetCurrentBid();
+			                mkt = (a > 0 && b > 0) ? (a + b) * 0.5 : Math.Max(a, b); }
+			if (mkt <= 0) mkt = Close[0];
 
-			lastSubmittedStopPrice = initialStop;
+			double submitStop = initialStop;
+			if (mkt > 0)
+			{
+				if (isLong  && submitStop >= mkt - TickSize * 0.5)
+					submitStop = RoundToTick(mkt - TickSize);
+				if (!isLong && submitStop <= mkt + TickSize * 0.5)
+					submitStop = RoundToTick(mkt + TickSize);
+			}
+
+			if (EnableDebugPrint && submitStop.ApproxCompare(initialStop) != 0)
+				Print($"[PantheonMaster] Initial stop {initialStop:F2} was on the wrong side of "
+				    + $"market {mkt:F2} (isLong={isLong}); clamped to {submitStop:F2} to avoid rejection.");
+
+			// isLiveUntilCancelled=true: we submit this stop ONCE and then move it via
+			// ChangeOrder() tick-by-tick across bars. Without the flag the managed framework
+			// expires the resting stop at bar end, leaving the position unprotected and our
+			// activeStopOrder reference stale (NinjatraderDocScrapper exits/managed_dynamic_stop.md,
+			// exitshortstopmarket.md advanced overload). barsInProgressIndex=0 (primary series).
+			if (isLong) ExitLongStopMarket(0,  true, qty, submitStop, LongStopSignal,  fromEntry);
+			else        ExitShortStopMarket(0, true, qty, submitStop, ShortStopSignal, fromEntry);
+
+			lastSubmittedStopPrice = submitStop;
+			AppendStopAudit("INIT", 0.0, submitStop, mkt,
+			    isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice, peakOpenProfit);
 
 			if (ShouldUseTarget())
 			{
 				double targetPrice = RoundToTick(GetInitialTargetPrice(isLong, avg));
-				if (isLong) ExitLongLimit(qty,  targetPrice, LongTargetSignal,  fromEntry);
-				else        ExitShortLimit(qty, targetPrice, ShortTargetSignal, fromEntry);
+				// isLiveUntilCancelled=true: OCO target sibling of the resting stop; must
+				// likewise persist across bars rather than expire at bar end.
+				if (isLong) ExitLongLimit(0,  true, qty, targetPrice, LongTargetSignal,  fromEntry);
+				else        ExitShortLimit(0, true, qty, targetPrice, ShortTargetSignal, fromEntry);
 
 				if (EnableDebugPrint)
-					Print($"[PantheonMaster] Protective orders: Stop={initialStop:F2}  Target={targetPrice:F2}");
+					Print($"[PantheonMaster] Protective orders: Stop={submitStop:F2}  Target={targetPrice:F2}");
 			}
 			else if (EnableDebugPrint)
-				Print($"[PantheonMaster] Protective orders: Stop={initialStop:F2}  (no target)");
+				Print($"[PantheonMaster] Protective orders: Stop={submitStop:F2}  (no target)");
 
 			entryOrdersPrepared = false;
 		}
@@ -876,11 +1012,80 @@ namespace NinjaTrader.NinjaScript.Strategies
 			int qty = Position.Quantity;
 			if (qty <= 0) return;
 
+			// A live protective stop must sit on the valid side of the CURRENT market or
+			// the broker rejects it (buy-stop must be ABOVE market, sell-stop BELOW) and
+			// the strategy terminates. When price has retraced through the proposed trail
+			// level (e.g. a short ran down then ticked back up past lowSinceEntry+ATR), skip
+			// this move and keep the existing still-valid resting stop — an actual stop hit
+			// is handled by the working order, not a fresh ChangeOrder to an illegal price.
+			// GetCurrentBid/Ask are frequently 0 in Market Replay, so use the last live tick
+			// price (set in ManageLiveDynamicStop) with bid/ask then bar close as fallbacks.
+			// Guard against the CONSERVATIVE side of the book + a buffer: a long's sell-stop
+			// must clear the BID, a short's buy-stop the ASK. Referencing Last (liveMarketPrice)
+			// alone is too optimistic — Last sits at/above the bid, so a stop just under Last
+			// can still be above the bid and the broker rejects it ("stop can't be changed above
+			// the market"), which RealtimeErrorHandling escalates to terminating the strategy.
+			bool   guardLong = Position.MarketPosition == MarketPosition.Long;
+			double bid = GetCurrentBid(), ask = GetCurrentAsk();
+			double refMkt = guardLong ? (bid > 0 ? bid : liveMarketPrice)
+			                          : (ask > 0 ? ask : liveMarketPrice);
+			if (refMkt <= 0) refMkt = liveMarketPrice > 0 ? liveMarketPrice : Close[0];
+			double guardBuffer = TickSize * 2;
+			if (refMkt > 0)
+			{
+				if (guardLong  && proposedStopPrice > refMkt - guardBuffer) return;
+				if (!guardLong && proposedStopPrice < refMkt + guardBuffer) return;
+			}
+
+			double priorStop = lastSubmittedStopPrice;
 			ChangeOrder(activeStopOrder, qty, 0, proposedStopPrice);
 			lastSubmittedStopPrice = proposedStopPrice;
 
+			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, liveMarketPrice,
+			    guardLong ? liveHighestFavorablePrice : liveLowestFavorablePrice, peakOpenProfit);
+
 			if (EnableDebugPrint)
 				Print($"[PantheonMaster] ChangeOrder stop -> {proposedStopPrice:F2}");
+		}
+
+		/// <summary>
+		/// Appends one row per stop event to StopAuditCsvPath when set. The per-event trail
+		/// trace you diff against the Python battery's prediction: one run yields the full
+		/// stop trajectory instead of one trade at a time. Written by BOTH the live tick
+		/// path (INIT/TRAIL via ExitLongStopMarket+ChangeOrder) and the historical/bar-close
+		/// path (TRAIL via SetStopLoss) — so a Strategy Analyzer backtest and a Playback/live
+		/// run produce diffable CSVs. The caller passes the favorable extreme + peak open
+		/// profit because the two paths track them in different fields (live*FavorablePrice
+		/// tick-by-tick vs high/lowSinceEntry bar-by-bar).
+		/// </summary>
+		private void AppendStopAudit(string evt, double oldStop, double newStop, double marketPrice,
+		                             double favorable, double peakProfit)
+		{
+			if (string.IsNullOrEmpty(StopAuditCsvPath)) return;
+			try
+			{
+				bool isLong = Position.MarketPosition == MarketPosition.Long;
+				if (!System.IO.File.Exists(StopAuditCsvPath))
+					System.IO.File.AppendAllText(StopAuditCsvPath,
+						"time,event,policy,dir,entry,market,favorable,atr,peakProfit,oldStop,newStop\n");
+
+				// Live path (per-tick, called from OnMarketData) must stamp with the real tick
+				// time, not Time[0] (bar resolution). The historical/bar-close path keeps Time[0].
+				DateTime stamp = (UseLiveStopManagement && State != State.Historical
+				                  && lastLiveTickTime != DateTime.MinValue)
+				                 ? lastLiveTickTime : Time[0];
+
+				string row = string.Format(
+					"{0:yyyy-MM-ddTHH:mm:ss.fff},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}\n",
+					stamp, evt, DiscoveryExitPolicy, isLong ? "long" : "short",
+					Position.AveragePrice, marketPrice, favorable, currentAtr,
+					peakProfit, oldStop, newStop);
+				System.IO.File.AppendAllText(StopAuditCsvPath, row);
+			}
+			catch (Exception ex)
+			{
+				if (EnableDebugPrint) Print("[PantheonMaster] StopAudit write failed: " + ex.Message);
+			}
 		}
 
 		private void CancelWorkingProtectiveOrders()
@@ -1090,8 +1295,17 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			if (!improveLong && !improveShort) return;
 
+			double priorStop = lastSubmittedStopPrice;
 			SetStopLoss(activeEntrySignal, CalculationMode.Price, proposedStopPrice, false);
 			lastSubmittedStopPrice = proposedStopPrice;
+
+			// Mirror the live path's StopAuditCsvPath trace from the bar-close trail, so a
+			// Strategy Analyzer backtest also dumps a stop trajectory diffable against the
+			// live one. The bar-close path tracks the favorable extreme in high/lowSinceEntry
+			// (not the live*FavorablePrice tick fields); the market reference is the bar close.
+			bool isLong = Position.MarketPosition == MarketPosition.Long;
+			AppendStopAudit("TRAIL", priorStop, proposedStopPrice, Close[0],
+			    isLong ? highSinceEntry : lowSinceEntry, peakOpenProfit);
 
 			if (EnableDebugPrint)
 				Print($"[PantheonMaster] Historical stop -> {proposedStopPrice:F2}");
@@ -1165,12 +1379,22 @@ namespace NinjaTrader.NinjaScript.Strategies
 			// For a short position we care about ask (what we can buy back at).
 			if (Position.MarketPosition == MarketPosition.Long  && md.MarketDataType == MarketDataType.Bid) return md.Price;
 			if (Position.MarketPosition == MarketPosition.Short && md.MarketDataType == MarketDataType.Ask) return md.Price;
+
+			// FALLBACK — Market Replay / thin live feeds frequently stream only Last and
+			// never emit the side-specific Bid/Ask tick. Without this, ManageLiveDynamicStop
+			// is never reached in Playback: the resting initial stop is placed but the trail
+			// NEVER moves (the "I can't see it move the stop" symptom). Last is a faithful
+			// trigger for trail decisions and matches the Python tick replica's single price
+			// series, so the live trail now exercises in Playback exactly as it will live.
+			if (md.MarketDataType == MarketDataType.Last) return md.Price;
 			return 0.0;
 		}
 
 		private void ManageLiveDynamicStop(double triggerPrice)
 		{
 			if (!UseDiscoveryExitPolicy) return;
+
+			liveMarketPrice = triggerPrice;   // last live price, for the stop-side guard
 
 			bool   isLong = Position.MarketPosition == MarketPosition.Long;
 			double avg    = Position.AveragePrice;
@@ -1185,48 +1409,55 @@ namespace NinjaTrader.NinjaScript.Strategies
 			double liveOpenProfit = GetOpenProfitCurrencyFromPrice(triggerPrice);
 			peakOpenProfit = Math.Max(peakOpenProfit, liveOpenProfit);
 
+			// DELEGATE to the shared PantheonStopEngine — the SAME pure math the Python
+			// battery validated and the AddOn harness will drive. The strategy still owns
+			// the NinjaScript-only bits: the favorable extreme, the Chandelier bar reference
+			// (MAX/MIN series), and the actual ChangeOrder via MoveStopIfImproved.
+			int    dir       = isLong ? PantheonStopEngine.Long : PantheonStopEngine.Short;
+			double favorable = isLong ? liveHighestFavorablePrice : liveLowestFavorablePrice;
+			double chandRef  = 0.0;
+			if (DiscoveryExitPolicy == PantheonExitPolicy.Chandelier)
+				chandRef = isLong ? MAX(High, ChandelierLookback)[0] : MIN(Low, ChandelierLookback)[0];
+
+			PantheonTrailResult res = PantheonStopEngine.ComputeTrailStop(
+				dir, avg, triggerPrice, favorable, currentAtr, peakOpenProfit,
+				Position.Quantity, chandRef, breakEvenActive, BuildStopConfig());
+
+			if (res.BreakEvenActivated) breakEvenActive = true;
+			if (res.HasProposal)        MoveStopIfImproved(res.ProposedStop);
+		}
+
+		/// <summary>Maps the NinjaScript exit-policy enum to the shared engine's policy enum.</summary>
+		private PantheonStopPolicy MapExitPolicy()
+		{
 			switch (DiscoveryExitPolicy)
 			{
-				case PantheonExitPolicy.BreakEvenOnly:
-					if (!breakEvenActive)
-					{
-						double triggerLevel = isLong
-						    ? avg + BreakEvenTriggerTicks * TickSize
-						    : avg - BreakEvenTriggerTicks * TickSize;
-
-						if (isLong ? triggerPrice >= triggerLevel : triggerPrice <= triggerLevel)
-						{
-							breakEvenActive = true;
-							MoveStopIfImproved(isLong
-							    ? avg + BreakEvenPlusTicks * TickSize
-							    : avg - BreakEvenPlusTicks * TickSize);
-						}
-					}
-					break;
-
-				case PantheonExitPolicy.AtrTrail:
-					MoveStopIfImproved(isLong
-					    ? liveHighestFavorablePrice - AtrTrailMultiple * currentAtr
-					    : liveLowestFavorablePrice  + AtrTrailMultiple * currentAtr);
-					break;
-
-				case PantheonExitPolicy.Chandelier:
-					double refPrice = isLong
-					    ? Math.Max(MAX(High, ChandelierLookback)[0], liveHighestFavorablePrice)
-					    : Math.Min(MIN(Low,  ChandelierLookback)[0], liveLowestFavorablePrice);
-					MoveStopIfImproved(isLong
-					    ? refPrice - AtrTrailMultiple * currentAtr
-					    : refPrice + AtrTrailMultiple * currentAtr);
-					break;
-
-				case PantheonExitPolicy.Giveback:
-					if (peakOpenProfit > 0)
-					{
-						double protectedProfit = peakOpenProfit * (1.0 - GivebackPct);
-						MoveStopIfImproved(GetStopPriceFromProtectedOpenProfit(isLong, protectedProfit));
-					}
-					break;
+				case PantheonExitPolicy.FixedRR:       return PantheonStopPolicy.FixedRR;
+				case PantheonExitPolicy.AtrTrail:      return PantheonStopPolicy.AtrTrail;
+				case PantheonExitPolicy.Chandelier:    return PantheonStopPolicy.Chandelier;
+				case PantheonExitPolicy.Giveback:      return PantheonStopPolicy.Giveback;
+				case PantheonExitPolicy.FixedStop:     return PantheonStopPolicy.FixedStop;
+				case PantheonExitPolicy.BreakEvenOnly: return PantheonStopPolicy.BreakEvenOnly;
+				default:                               return PantheonStopPolicy.FixedRR;
 			}
+		}
+
+		/// <summary>Builds the shared engine config from the live Discovery Exit parameters.</summary>
+		private PantheonStopConfig BuildStopConfig()
+		{
+			return new PantheonStopConfig
+			{
+				Policy                = MapExitPolicy(),
+				TickSize              = TickSize,
+				PointValue            = Instrument.MasterInstrument.PointValue,
+				StopTicks             = StopTicks,
+				TargetTicks           = TargetTicks,
+				AtrTrailMultiple      = AtrTrailMultiple,
+				ChandelierLookback    = ChandelierLookback,
+				GivebackPct           = GivebackPct,
+				BreakEvenTriggerTicks = BreakEvenTriggerTicks,
+				BreakEvenPlusTicks    = BreakEvenPlusTicks,
+			};
 		}
 
 		private double GetOpenProfitCurrencyFromPrice(double price)
@@ -1247,15 +1478,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 		private void ResetDynamicTrackingOnEntry()
 		{
-			// Called AFTER the fill so Position.AveragePrice is the real entry price.
-			bool isLong = activeManagedDirection == MarketPosition.Long;
+			// Seed from the actual entry fill price (entryFillPrice); Position.AveragePrice
+			// is not reliably settled inside OnExecutionUpdate. A stale seed made the short
+			// trail compute a stop far below the market.
+			bool   isLong     = activeManagedDirection == MarketPosition.Long;
+			double entryPrice = entryFillPrice > 0 ? entryFillPrice : Position.AveragePrice;
 
 			highSinceEntry            = 0.0;
 			lowSinceEntry             = 0.0;
 			peakOpenProfit            = 0.0;
 			breakEvenActive           = false;
-			liveHighestFavorablePrice = isLong ? Position.AveragePrice : 0.0;
-			liveLowestFavorablePrice  = isLong ? 0.0 : Position.AveragePrice;
+			liveHighestFavorablePrice = isLong ? entryPrice : 0.0;
+			liveLowestFavorablePrice  = isLong ? 0.0 : entryPrice;
 			lastSubmittedStopPrice    = 0.0;
 		}
 
@@ -1748,6 +1982,20 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[NinjaScriptProperty]
 		[Display(Name = "Use Live Stop Management", GroupName = "Live Stop Management", Order = 1)]
 		public bool UseLiveStopManagement { get; set; }
+		#endregion
+
+		#region Manual Test
+		[NinjaScriptProperty]
+		[Display(Name = "Force Entry On Start",
+		         Description = "Realtime only: immediately enter one position (bypassing all filters) to test the live stop/target/trail path. Fires once per enable.",
+		         GroupName = "Manual Test", Order = 1)]
+		public PantheonForceEntry ForceEntry { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Stop Audit CSV Path",
+		         Description = "When set, every initial/trailed stop is appended to this CSV (one Playback run = full stop trajectory to diff against the Python battery). Leave blank to disable.",
+		         GroupName = "Manual Test", Order = 2)]
+		public string StopAuditCsvPath { get; set; }
 		#endregion
 
 		#region Debug
