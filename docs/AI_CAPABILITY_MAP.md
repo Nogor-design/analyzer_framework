@@ -50,7 +50,9 @@ is documented in `docs/ANALYSIS_CAPABILITY_GUIDE.md`, including:
 - MA anchor interaction TP/SL recommendations and trade alignment.
 - Pattern engine and entry-strategy families.
 - Large candle excursion event studies, target curves, reversal decision
-  engine, validation, strategy construction, and blueprints.
+  engine, validation, strategy construction, and blueprints; plus
+  strategy-parity adaptive time-window analysis with fixed-bracket walk-forward
+  replay (`analysis.large_candle_excursion.adaptive_window`).
 - Optimizer final-template reports, weekly coverage package, deployment matrix
   manifest, and template-quality feature export.
 

@@ -459,6 +459,7 @@ Entry/config examples live under
 
 Important code:
 
+- `analysis/large_candle_excursion/adaptive_window.py`
 - `analysis/large_candle_excursion/detector.py`
 - `forward_window.py`
 - `tick_analyzer.py`
@@ -483,6 +484,10 @@ What it tells you:
 - Context families and interaction effects.
 - Fragility warnings, next tests, and validated edge candidates.
 - Strategy construction and blueprint export candidates.
+- For a strategy whose edge changes over weeks: lane-isolated, fixed-bracket
+  continuation/reversion P&L; recency-weighted time-bin states; and weekly
+  window maps frozen before the week begins. The optional parity emitter
+  reproduces CandleCenterBotV2 fresh-candle and centered-zone-break semantics.
 
 ### Horizon Prediction Reports
 

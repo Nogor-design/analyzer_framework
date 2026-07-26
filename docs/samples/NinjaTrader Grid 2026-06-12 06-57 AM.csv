@@ -1,0 +1,2 @@
+Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,
+1,NQ 06-26,Playback101,PantheonMaster,Long,1,30125.25,30124.75,5/27/2026 1:29:01 AM,5/27/2026 1:38:25 AM,PantheonLong,PantheonLongStop,($10.00),($10.00),$0.00,$0.00,$0.00,$0.00,$0.00,$170.00,$260.00,$270.00,10,

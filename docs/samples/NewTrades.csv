@@ -1,0 +1,3 @@
+Trade number,Instrument,Account,Strategy,Market pos.,Qty,Entry price,Exit price,Entry time,Exit time,Entry name,Exit name,Profit,Cum. net profit,Commission,Clearing Fee,Exchange Fee,IP Fee,NFA Fee,MAE,MFE,ETD,Bars,
+1,NQ 06-26,Playback101,PantheonMaster,Short,1,27911.00,27888.50,5/4/2026 12:11:02 AM,5/4/2026 12:39:55 AM,PantheonShort,Profit target,$450.00,$450.00,$0.00,$0.00,$0.00,$0.00,$0.00,$295.00,$460.00,$10.00,29,
+2,NQ 06-26,Playback101,PantheonMaster,Short,1,28323.00,28338.00,5/6/2026 12:52:01 AM,5/6/2026 1:00:01 AM,PantheonShort,Stop loss,($300.00),$150.00,$0.00,$0.00,$0.00,$0.00,$0.00,$305.00,$65.00,$365.00,9,
