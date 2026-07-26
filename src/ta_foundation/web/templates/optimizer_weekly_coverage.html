@@ -680,8 +680,8 @@ async function pollStatus(sid) {
       method: "POST", body: JSON.stringify({}),
     });
   } catch (err) {
-    $("run-state").textContent = `Could not advance run: ${err.message}`;
-    setBuildReady(true);  // don't hard-block; let the user try the build
+    $("run-state").textContent = `Could not advance run: ${err.message}. Build stays locked until final backtests are confirmed.`;
+    setBuildReady(false);
     return;
   }
   const st = (data.state || {}).state || "unknown";

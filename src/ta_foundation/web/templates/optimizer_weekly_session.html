@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ta_foundation - Weekly Coverage Session</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #111827; color: #f3f4f6; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 16px; }
+    .btn-primary { background: #f59e0b; color: #111827; }
+    .btn-primary:hover { background: #fbbf24; }
+    .btn-ghost { border: 1px solid #374151; color: #d1d5db; }
+    .btn-ghost:hover { border-color: #f59e0b; color: #fcd34d; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+    .pill-state { background: #1f2937; color: #93c5fd; }
+    .pill-ready { background: #064e3b; color: #34d399; }
+    .pathish { overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    th { color: #9ca3af; text-align: left; font-weight: 500; padding-right: 12px; }
+    td { padding: 3px 0; }
+  </style>
+</head>
+<body class="min-h-screen">
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/optimizer/sessions" class="text-gray-500 hover:text-amber-400 text-xs">&larr; Sessions</a>
+    <span class="text-amber-400 font-bold text-lg">Weekly Coverage</span>
+    <span class="text-gray-500 text-sm pathish">/ {{ session.session_id }}</span>
+  </div>
+  <div class="flex items-center gap-3 text-xs">
+    <a href="/optimizer/weekly-coverage" class="btn-ghost px-3 py-1.5 rounded no-underline">Launcher</a>
+    <a href="/reports" class="btn-ghost px-3 py-1.5 rounded no-underline">User reports</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}/refine" class="btn-ghost px-3 py-1.5 rounded no-underline">Refine risk params</a>
+    <a href="/optimizer/sessions/{{ session.session_id }}/category-bundle" class="btn-ghost px-3 py-1.5 rounded no-underline">Category bundle</a>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-6 space-y-5">
+  <section class="card">
+    <div class="flex items-baseline gap-3 mb-3 flex-wrap">
+      <h1 class="text-xl font-bold">{{ session.label or "(unlabeled session)" }}</h1>
+      {% if summary.recipe_state %}
+        <span class="pill pill-state">{{ summary.recipe_state }}</span>
+      {% endif %}
+      {% if summary.has_final_review %}
+        <span class="pill pill-ready">final review ready</span>
+      {% endif %}
+    </div>
+    <table class="text-xs">
+      <tr><th>Strategy</th><td>{{ session.strategy_id or "?" }}</td></tr>
+      <tr><th>Instrument</th><td>{{ session.instrument or "?" }}</td></tr>
+      <tr><th>Seed template</th><td class="pathish">{{ session.seed_template_path or "(none)" }}</td></tr>
+      <tr><th>OOS window</th><td>{{ session.oos_from_date or "(seed)" }} to {{ session.oos_to_date or "(seed)" }}</td></tr>
+      <tr><th>Current stage</th><td>{{ summary.current_stage_id or "n/a" }}</td></tr>
+      <tr><th>Last error</th><td class="text-rose-300">{{ summary.last_error or "none" }}</td></tr>
+      <tr><th>Updated</th><td>{{ session.updated_at }}</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-3">Artifacts</h2>
+    <div class="flex flex-wrap gap-2">
+      {% if summary.weekly_coverage_report_url %}
+        <a href="{{ summary.weekly_coverage_report_url }}" target="_blank" rel="noopener"
+           class="btn-primary px-3 py-2 rounded text-xs no-underline">Open coverage report</a>
+      {% endif %}
+      {% if summary.session_candidate_report_url %}
+        <a href="{{ summary.session_candidate_report_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open standard report</a>
+      {% endif %}
+      {% if summary.daily_update_report_url %}
+        <a href="{{ summary.daily_update_report_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open daily update</a>
+      {% endif %}
+      {% if summary.weekly_reports_url %}
+        <a href="{{ summary.weekly_reports_url }}" target="_blank" rel="noopener"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open weekly report pack</a>
+      {% endif %}
+      {% if summary.weekly_reports_zip_url %}
+        <a href="{{ summary.weekly_reports_zip_url }}"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Download weekly pack ZIP</a>
+      {% endif %}
+      <button type="button"
+              onclick="publishWeeklySite('{{ session.session_id }}')"
+              class="btn-primary px-3 py-2 rounded text-xs"
+              {% if not summary.weekly_reports_publish_ready %}disabled title="Build the weekly report pack first." style="opacity:.55;cursor:not-allowed"{% endif %}>
+        Publish user site
+      </button>
+      <button type="button"
+              onclick="buildWeeklyReportPack('{{ session.session_id }}')"
+              class="btn-ghost px-3 py-2 rounded text-xs"
+              {% if not summary.has_final_review %}disabled title="Available after final review is ready." style="opacity:.55;cursor:not-allowed"{% endif %}>
+        Build weekly report pack
+      </button>
+      {% if summary.weekly_coverage_zip_url %}
+        <a href="{{ summary.weekly_coverage_zip_url }}"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Download package ZIP</a>
+      {% endif %}
+      <a href="{{ summary.publish_portal_url }}"
+         class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open user portal</a>
+      {% if summary.published_week_url %}
+        <a href="{{ summary.published_week_url }}"
+           class="btn-ghost px-3 py-2 rounded text-xs no-underline">Open published week</a>
+      {% endif %}
+      <a href="/optimizer/sessions/{{ session.session_id }}/category-bundle"
+         class="btn-ghost px-3 py-2 rounded text-xs no-underline">Prune near-identical bundle</a>
+    </div>
+    <div id="weekly-report-pack-status" class="text-xs text-gray-400 mt-3"></div>
+    <div id="publish-site-status" class="text-xs text-gray-400 mt-2"></div>
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Run summary</h2>
+    <table class="text-xs">
+      <tr><th>Phase-1 parsed rows</th><td>{{ summary.row_count or 0 }}</td></tr>
+      <tr><th>Phase 2 templates</th><td>{{ summary.phase2_template_count or 0 }}</td></tr>
+      <tr><th>Phase 3 templates</th><td>{{ summary.phase3_template_count or 0 }}</td></tr>
+      <tr><th>Final Backtest templates</th><td>{{ summary.final_template_count or 0 }}</td></tr>
+      <tr><th>Final recommendations</th><td>{{ summary.final_recommendation_count or 0 }}</td></tr>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2 class="text-amber-400 font-semibold text-sm mb-2">Note</h2>
+    <p class="text-xs text-gray-400 leading-relaxed">
+      This standalone surface intentionally keeps only the weekly-coverage workflow.
+      The broader recipe editor and other optimizer workbenches stay in the main `ta_foundation` app.
+    </p>
+  </section>
+</main>
+<script>
+async function buildWeeklyReportPack(sessionId) {
+  const status = document.getElementById("weekly-report-pack-status");
+  if (!status) return;
+  status.textContent = "Building weekly report pack...";
+  try {
+    const res = await fetch(`/api/optimizer/sessions/${encodeURIComponent(sessionId)}/weekly-reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ report_asset_mode: "external" }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    const reportUrl = body.report_url || `/optimizer/sessions/${encodeURIComponent(sessionId)}/weekly-reports`;
+    status.innerHTML = `Weekly report pack built. <a href="${reportUrl}" target="_blank" rel="noopener" class="text-amber-300 underline">Open it</a>.`;
+  } catch (err) {
+    status.textContent = `Weekly report pack build failed: ${err.message}`;
+  }
+}
+
+async function publishWeeklySite(sessionId) {
+  const status = document.getElementById("publish-site-status");
+  if (!status) return;
+  status.textContent = "Publishing weekly archive site...";
+  try {
+    const res = await fetch(`/api/optimizer/sessions/${encodeURIComponent(sessionId)}/publish-site`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    const weekUrl = body.week_url || "/reports/index.html";
+    const archiveUrl = body.archive_url || "/reports/index.html";
+    status.innerHTML = `Published. <a href="${weekUrl}" target="_blank" rel="noopener" class="text-amber-300 underline">Open this week</a> or <a href="${archiveUrl}" target="_blank" rel="noopener" class="text-amber-300 underline">open the archive</a>.`;
+  } catch (err) {
+    status.textContent = `Publish failed: ${err.message}`;
+  }
+}
+</script>
+</body>
+</html>

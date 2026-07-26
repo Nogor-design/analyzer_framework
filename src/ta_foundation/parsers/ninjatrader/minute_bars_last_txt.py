@@ -74,7 +74,10 @@ class MinuteBarsLastTxtParser:
                 return None
             return dt_utc.tz_convert(self.target_tz)
 
-        with path.open("r", encoding="utf-8", errors="replace") as f:
+        # NinjaTrader's Strategy Analyzer exporter writes UTF-8 with a BOM.
+        # ``utf-8-sig`` removes that marker when present and behaves like
+        # regular UTF-8 for files produced without one.
+        with path.open("r", encoding="utf-8-sig", errors="replace") as f:
             for i, line in enumerate(f, start=1):
                 raw = line
                 line = line.strip()

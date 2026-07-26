@@ -38,7 +38,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from ta_foundation.core.pipeline import ingest_folder
+from ta_foundation.core.pipeline import IngestResult, ingest_folder
 from ta_foundation.core.registry import ParserRegistry
 from ta_foundation.parsers.ninjatrader.analysis_by_day_csv import NinjaTraderDailyAnalysisCsvParser
 from ta_foundation.parsers.ninjatrader.optimization_csv import NinjaTraderOptimizationCsvParser
@@ -51,6 +51,7 @@ from ta_foundation.reports.html.export_cards import export_exec_cards_to_png
 from ta_foundation.reports.html.registry import SECTION_REGISTRY
 from ta_foundation.web.report_assets import finalize_report_html, normalize_report_asset_mode
 from ta_foundation.web.optimizer_session import OptimizerSession
+from ta_foundation.web.optimizer_template_naming_fallback import analyze_template_dict
 
 
 PER_CANDIDATE_REPORTS_DIRNAME = "per_candidate_reports"
@@ -88,14 +89,14 @@ EXEC_PROFILE_SECTION: dict[str, Any] = {
         "show_hint": True,
         "show_run_image": True,
         "background_style": "image-dark-overlay",
-        "card_width_px": 1180,
+        "card_width_px": 1040,
         "card_padding_px": 24,
-        "image_width_px": 420,
+        "image_width_px": 340,
         "wlr_days_back": 30,
         "wlr_gap_px": 2,
         "show_detail_charts": True,
         "detail_chart_layout": "stack",
-        "detail_chart_width_px": 1080,
+        "detail_chart_width_px": 900,
         "timeline_render_bin_minutes": 15,
         "timeline_cell_h_px": 10,
         "timeline_show_hours": True,
@@ -496,6 +497,7 @@ def build_session_candidate_report(
     enrich_packages: bool = True,
     enrich_detail_charts: bool = True,
     report_asset_mode: str = "embedded",
+    preloaded_ingest: IngestResult | None = None,
 ) -> SessionCandidateReportResult:
     """Build one HTML report that ingests every final candidate together.
 
@@ -520,26 +522,20 @@ def build_session_candidate_report(
         )
 
     requested = sections or DEFAULT_SESSION_CANDIDATE_SECTIONS
-    registry = _build_registry()
-    ingest = ingest_folder(
-        results_dir,
-        registry=registry,
-        recursive=True,
-        include_run_images=False,
-        load_tick_data=False,
-    )
+    ingest = preloaded_ingest or load_session_candidate_ingest(session)
     if not ingest.packages:
         raise CandidateReportError(
             f"Ingest produced no packages for {results_dir}"
         )
+    packages = dict(ingest.packages)
     if requested_run_ids:
-        ingest.packages = {
+        packages = {
             package_id: package
-            for package_id, package in ingest.packages.items()
+            for package_id, package in packages.items()
             if package_id in requested_run_ids
             or str(getattr(package, "run_id", "") or "") in requested_run_ids
         }
-        if not ingest.packages:
+        if not packages:
             raise CandidateReportError(
                 "No final candidate packages matched selected run id(s): "
                 + ", ".join(sorted(requested_run_ids))
@@ -554,13 +550,13 @@ def build_session_candidate_report(
     if enrich_packages:
         image_notes = _enrich_final_template_report_packages(
             session,
-            ingest.packages,
+            packages,
             images_dir=images_dir,
             attach_detail_charts=enrich_detail_charts,
         )
         notes.extend(image_notes)
     else:
-        notes.extend(_enrich_final_template_report_package_names(session, ingest.packages))
+        notes.extend(_enrich_final_template_report_package_names(session, packages))
 
     html_sections: list[HtmlSection] = []
     rendered: list[str] = []
@@ -588,7 +584,7 @@ def build_session_candidate_report(
         sections=html_sections,
     )
     html = builder.build({
-        "packages": ingest.packages,
+        "packages": packages,
         "market": ingest.market,
         "options": {},
         "all_options": {},
@@ -621,10 +617,10 @@ def build_session_candidate_report(
         session_id=session.id,
         html_path=str(out_path),
         sections_rendered=rendered,
-        package_count=len(ingest.packages),
+        package_count=len(packages),
         cards_dir=str(cards_dir) if cards_dir else None,
         cards_exported=cards_exported,
-        run_ids=sorted(str(run_id) for run_id in ingest.packages.keys()),
+        run_ids=sorted(str(run_id) for run_id in packages.keys()),
         notes=notes,
     )
 
@@ -693,6 +689,23 @@ def _build_registry() -> ParserRegistry:
         NinjaTraderSettingsCsvParser(),
         NinjaTraderOptimizationCsvParser(),
     ])
+
+
+def load_session_candidate_ingest(session: OptimizerSession) -> IngestResult:
+    """Load the shared final-backtest ingest used by session-wide reports."""
+    results_dir = (
+        session.directory
+        / "deployment_package"
+        / "final_backtest_handoff"
+        / "nt8_backtest_results"
+    )
+    return ingest_folder(
+        results_dir,
+        registry=_build_registry(),
+        recursive=True,
+        include_run_images=False,
+        load_tick_data=False,
+    )
 
 
 def _normalize_section_entry(entry: str | dict[str, Any]) -> tuple[str, str | None, dict[str, Any]]:
@@ -880,20 +893,33 @@ def _attach_template_display_name(
     The run folder remains ``F_001`` for data joins and card exports, but the
     visual identity should use the name written by the template-naming pass.
     """
-    template_display = _stem_without_market(template_path.name if template_path else "", market_root)
-    compact = str(decoded.get("compact_name") or "").strip()
-    spaced = str(decoded.get("spaced_name") or "").strip()
-    output_name = str(decoded.get("output_file_name") or "").strip()
+    decoded_map = dict(decoded or {})
+    if template_path is not None and not (
+        decoded_map.get("compact_name")
+        or decoded_map.get("spaced_name")
+        or decoded_map.get("output_file_name")
+    ):
+        try:
+            decoded_map = analyze_template_dict(template_path)
+        except Exception:
+            decoded_map = dict(decoded or {})
 
-    display = template_display or compact or _stem_without_market(output_name, market_root)
+    template_display = _stem_without_market(template_path.name if template_path else "", market_root)
+    compact = str(decoded_map.get("compact_name") or "").strip()
+    spaced = str(decoded_map.get("spaced_name") or "").strip()
+    output_name = str(decoded_map.get("output_file_name") or "").strip()
+
+    display = compact or template_display or _stem_without_market(output_name, market_root)
     if display:
         derived["display_name"] = display
-    if template_display:
-        derived["display_name_spaced"] = _space_template_name(template_display)
+    if compact:
+        derived["display_name_spaced"] = _space_template_name(compact)
     elif spaced:
         derived["display_name_spaced"] = spaced
+    elif template_display:
+        derived["display_name_spaced"] = _space_template_name(template_display)
     elif display:
-        derived["display_name_spaced"] = display
+        derived["display_name_spaced"] = _space_template_name(display)
 
 
 def _stem_without_market(name: str, market_root: str | None) -> str:
@@ -1237,15 +1263,8 @@ def _find_template_path_for_run_id(
     if suffix_num is None:
         return None
     for xml in sorted(named_dir.rglob("*.xml")):
-        stem = xml.stem
-        if not stem:
-            continue
-        head = stem.split("_", 1)[0]
-        try:
-            n = int(head)
-        except ValueError:
-            continue
-        if n == suffix_num:
+        stem_run_id = _template_run_id(xml)
+        if stem_run_id == run_id:
             return xml
     return None
 
@@ -1273,6 +1292,21 @@ def _run_id_to_number(run_id: str) -> int | None:
         return int(run_id[2:])
     except ValueError:
         return None
+
+
+def _template_run_id(path: Path) -> str | None:
+    stem = path.stem
+    if not stem:
+        return None
+    match = re.match(r"^(?P<prefix>[FP])_(?P<number>\d{3})(?:_|$)", stem, flags=re.IGNORECASE)
+    if match:
+        return f"{match.group('prefix').upper()}_{int(match.group('number')):03d}"
+    head = stem.split("_", 1)[0]
+    try:
+        number = int(head)
+    except ValueError:
+        return None
+    return f"F_{number:03d}"
 
 
 def _bucket_index_for_section(section_id: str) -> int:

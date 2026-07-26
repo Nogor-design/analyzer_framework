@@ -19,13 +19,16 @@ from ta_foundation.web import optimizer_session as opt_session
 from ta_foundation.web.optimizer_candidate_report import (
     DEFAULT_FINALIST_SECTIONS,
     DEFAULT_SESSION_CANDIDATE_SECTIONS,
+    EXEC_PROFILE_SECTION,
     PER_CANDIDATE_REPORTS_DIRNAME,
     SESSION_CANDIDATE_REPORT_FILENAME,
     CandidateReportError,
+    _attach_template_display_name,
     build_all_candidate_reports,
     build_candidate_report,
     build_session_candidate_report,
     list_existing_candidate_reports,
+    load_session_candidate_ingest,
     _attach_potential_metrics,
     _resolve_images_dir,
 )
@@ -129,6 +132,19 @@ def test_session_candidate_report_ingests_all_finalists(fixture_session):
 
 
 @needs_fixture
+def test_session_candidate_report_accepts_preloaded_ingest(fixture_session):
+    ingest = load_session_candidate_ingest(fixture_session)
+    result = build_session_candidate_report(
+        fixture_session,
+        preloaded_ingest=ingest,
+        sections=["comparison_overview"],
+    )
+    assert result.package_count == 8
+    html = Path(result.html_path).read_text(encoding="utf-8")
+    assert "comparison_overview" in html
+
+
+@needs_fixture
 def test_list_existing_after_batch(fixture_session):
     build_all_candidate_reports(fixture_session)
     existing = list_existing_candidate_reports(fixture_session)
@@ -182,6 +198,24 @@ def test_resolve_images_dir_honors_explicit_path(tmp_path: Path, monkeypatch):
     assert _resolve_images_dir(explicit) == str(explicit)
 
 
+def test_attach_template_display_name_humanizes_compact_name(tmp_path: Path, monkeypatch):
+    template_path = tmp_path / "F_098_StartTimeH_00.xml"
+    template_path.write_text("<Strategy />", encoding="utf-8")
+    monkeypatch.setattr(
+        "ta_foundation.web.optimizer_candidate_report.analyze_template_dict",
+        lambda path: {
+            "compact_name": "RisingCerberusFireS",
+            "spaced_name": "Rise Cerberus RisingCerberusFire S",
+        },
+    )
+
+    derived: dict[str, str] = {}
+    _attach_template_display_name(derived, {}, template_path=template_path, market_root="NQ")
+
+    assert derived["display_name"] == "RisingCerberusFireS"
+    assert derived["display_name_spaced"] == "Rising Cerberus Fire S"
+
+
 def test_potential_metrics_respect_session_guardrails():
     settings = pd.DataFrame([
         {"item": "Instrument", "value": "NQ 06-26"},
@@ -225,3 +259,24 @@ def test_potential_metrics_count_multiple_trades_until_guardrail():
     assert derived["max_potential_profit_usd"] == 1250
     assert derived["max_potential_loss_trades"] == 2
     assert derived["max_potential_loss_usd"] == 1300
+
+
+@needs_fixture
+def test_exec_profile_report_uses_browser_friendly_widths(fixture_session):
+    out_path = fixture_session.directory / "deployment_package" / "tmp_exec_profile_test.html"
+
+    result = build_session_candidate_report(
+        fixture_session,
+        sections=[EXEC_PROFILE_SECTION],
+        output_path=out_path,
+        run_ids=["F_001"],
+        dark_shell=True,
+        report_asset_mode="external",
+    )
+
+    html = Path(result.html_path).read_text(encoding="utf-8")
+    assert "width: min(100%, 1040px) !important;" in html
+    assert "width:min(100%, 340px); max-width:100%;" in html
+    assert "width: min(100%, 900px) !important;" in html
+    assert "@media (max-width: 1080px)" in html
+    assert "ta-exec-layout td.ta-exec-col" in html

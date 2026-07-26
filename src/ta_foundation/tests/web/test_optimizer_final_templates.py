@@ -148,6 +148,15 @@ def test_rename_final_templates_accepts_f_prefixed_handoff_names(
     assert list_active_final_templates_filtered(session, {"F_001"}) == [renamed]
 
 
+def test_find_template_path_for_run_id_accepts_f_prefixed_named_templates(tmp_path: Path):
+    session = _make_session_with_f_named_template(tmp_path)
+
+    matched = _find_template_path_for_run_id(session, "F_001")
+
+    assert matched is not None
+    assert matched.name == "F_001_StartTimeH_00.xml"
+
+
 def test_rename_final_templates_resolves_relative_session_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -224,7 +233,7 @@ def test_final_template_routes_rename_list_and_zip(monkeypatch: pytest.MonkeyPat
         assert zip_res.status_code == 200
         assert zip_res.mimetype == "application/zip"
         with zipfile.ZipFile(BytesIO(zip_res.data)) as zf:
-            assert zf.namelist() == ["F_001.xml"]
+            assert zf.namelist() == ["CoilApolloInfernoL-NQ.xml"]
 
 
 def test_final_template_list_route_reports_empty_folder(tmp_path: Path):

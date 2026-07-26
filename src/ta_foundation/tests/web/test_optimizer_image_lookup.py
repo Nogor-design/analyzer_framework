@@ -283,3 +283,31 @@ def test_extension_case_insensitive(tmp_path: Path, fake_decision):
     result = lookup_image_for_template(template, images_dir=imgs)
     assert result.image_path is not None
     assert Path(result.image_path).name == "CoilingPoseidonFire.PNG"
+
+
+def test_xml_fallback_decoder_works_without_template_naming(monkeypatch, tmp_path: Path):
+    import sys
+
+    monkeypatch.delitem(sys.modules, "template_naming", raising=False)
+    template = tmp_path / "candidate.xml"
+    template.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<StrategyTemplate><Strategy><PantheonMasterBotV01TesterV2>
+<InstrumentOrInstrumentList>NQ 09-26</InstrumentOrInstrumentList>
+<StartTimeH>7</StartTimeH><StartTimeM>0</StartTimeM>
+<averageFast>5</averageFast><averageSlow>150</averageSlow>
+<MaxTrades>5</MaxTrades><ProfitStop>10000</ProfitStop><LossStop>10000</LossStop>
+<MaxStop>250</MaxStop><MaxTPRatio>1.0</MaxTPRatio>
+<Long>true</Long><Short>true</Short><Reverse>false</Reverse>
+</PantheonMasterBotV01TesterV2></Strategy></StrategyTemplate>""",
+        encoding="utf-8",
+    )
+    imgs = tmp_path / "imgs"; imgs.mkdir()
+    _touch(imgs / "CoilingPoseidonFireB-NQ.png")
+
+    result = lookup_image_for_template(template, images_dir=imgs, market_suffix="NQ")
+
+    assert result.image_path is not None
+    assert Path(result.image_path).name == "CoilingPoseidonFireB-NQ.png"
+    assert result.decoded["compact_name"] == "CoilingPoseidonFireB"
+    assert result.matched_step == "compact+direction+market"

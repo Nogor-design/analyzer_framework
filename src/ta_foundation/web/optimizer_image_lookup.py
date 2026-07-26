@@ -44,10 +44,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from ta_foundation.web.optimizer_template_naming_fallback import analyze_template_any
+
 
 SUPPORTED_EXTS: tuple[str, ...] = (".jpeg", ".jpg", ".png")
 _PORTRAIT_CACHE: dict[str, tuple[Path, ...]] = {}
+_PORTRAIT_STEM_INDEX_CACHE: dict[str, dict[str, Path]] = {}
+_SUBSTRING_MATCH_CACHE: dict[tuple[str, str], Path | None] = {}
 _CHILD_DIR_CACHE: dict[str, tuple[Path, ...]] = {}
+_CHILD_DIR_NAME_INDEX_CACHE: dict[str, dict[str, Path]] = {}
 
 
 @dataclass(frozen=True)
@@ -108,11 +113,9 @@ def lookup_image_for_template(
         )
 
     try:
-        # template_naming is editable-installed at D:\templateNaming
-        from template_naming import analyze_template
-        decision = analyze_template(template)
+        decision = analyze_template_any(template)
     except Exception as exc:  # pragma: no cover - import / parse failure surface
-        notes.append(f"template_naming.analyze_template failed: {exc}")
+        notes.append(f"template decoder failed: {exc}")
         return ImageLookupResult(
             template_path=str(template), image_path=None, decoded={},
             candidates_tried=[], matched_step=None, notes=notes,
@@ -313,13 +316,7 @@ def _find_in_dir(img_dir: Path, stem: str) -> Path | None:
     """Case-insensitive exact-stem lookup across supported extensions."""
     if not stem:
         return None
-    stem_lower = stem.lower()
-    for entry in _iter_portraits(img_dir):
-        if not _is_portrait(entry):
-            continue
-        if entry.stem.lower() == stem_lower:
-            return entry
-    return None
+    return _portrait_stem_index(img_dir).get(stem.lower())
 
 
 def _pick_from_god_pool(img_dir: Path, ma_name: str) -> Path | None:
@@ -331,11 +328,7 @@ def _pick_from_god_pool(img_dir: Path, ma_name: str) -> Path | None:
     deterministic across reruns and easy to override by renaming a file.
     """
     needle = f"{ma_name}_images".lower()
-    subdir: Path | None = None
-    for entry in _child_dirs(img_dir):
-        if entry.name.lower() == needle:
-            subdir = entry
-            break
+    subdir = _child_dir_name_index(img_dir).get(needle)
     if subdir is None:
         return None
 
@@ -346,41 +339,67 @@ def _pick_from_god_pool(img_dir: Path, ma_name: str) -> Path | None:
 def _substring_search(img_dir: Path, needle: str) -> Path | None:
     if not needle:
         return None
+    cache_key = (str(img_dir.resolve()), needle.lower())
+    if cache_key in _SUBSTRING_MATCH_CACHE:
+        return _SUBSTRING_MATCH_CACHE[cache_key]
     needle_lower = needle.lower()
     best: Path | None = None
     for entry in _iter_portraits(img_dir):
         if needle_lower in entry.stem.lower():
             if best is None or len(entry.stem) < len(best.stem):
                 best = entry
+    _SUBSTRING_MATCH_CACHE[cache_key] = best
     return best
 
 
-def _iter_portraits(img_dir: Path) -> list[Path]:
+def _iter_portraits(img_dir: Path) -> tuple[Path, ...]:
     key = str(img_dir.resolve())
     cached = _PORTRAIT_CACHE.get(key)
     if cached is not None:
-        return list(cached)
+        return cached
     try:
         portraits = tuple(
             sorted((entry for entry in img_dir.rglob("*") if _is_portrait(entry)), key=lambda p: str(p).lower())
         )
     except OSError:
-        return []
+        return ()
     _PORTRAIT_CACHE[key] = portraits
-    return list(portraits)
+    return portraits
 
 
-def _child_dirs(img_dir: Path) -> list[Path]:
+def _portrait_stem_index(img_dir: Path) -> dict[str, Path]:
+    key = str(img_dir.resolve())
+    cached = _PORTRAIT_STEM_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+    index: dict[str, Path] = {}
+    for entry in _iter_portraits(img_dir):
+        index.setdefault(entry.stem.lower(), entry)
+    _PORTRAIT_STEM_INDEX_CACHE[key] = index
+    return index
+
+
+def _child_dirs(img_dir: Path) -> tuple[Path, ...]:
     key = str(img_dir.resolve())
     cached = _CHILD_DIR_CACHE.get(key)
     if cached is not None:
-        return list(cached)
+        return cached
     try:
         children = tuple(sorted((entry for entry in img_dir.iterdir() if entry.is_dir()), key=lambda p: p.name.lower()))
     except OSError:
-        return []
+        return ()
     _CHILD_DIR_CACHE[key] = children
-    return list(children)
+    return children
+
+
+def _child_dir_name_index(img_dir: Path) -> dict[str, Path]:
+    key = str(img_dir.resolve())
+    cached = _CHILD_DIR_NAME_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+    index = {entry.name.lower(): entry for entry in _child_dirs(img_dir)}
+    _CHILD_DIR_NAME_INDEX_CACHE[key] = index
+    return index
 
 
 def _safe_float(value: Any) -> float | None:

@@ -461,6 +461,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
     detail_chart_width_px = int(options.get("detail_chart_width_px", 540))
     detail_chart_gap_px = int(options.get("detail_chart_gap_px", 16))
     detail_chart_layout = options.get("detail_chart_layout", "two-up")  # "two-up" or "stack"
+    responsive_breakpoint_px = int(options.get("responsive_breakpoint_px", 1080))
 
     days_back = int(options.get("wlr_days_back", 20))
     box_px = int(options.get("wlr_box_px", 10))
@@ -578,7 +579,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         pf = _kpi_lookup(pkg, "profit factor")
 
         derived = (getattr(pkg, "metadata", None) or {}).get("derived", {}) or {}
-        display_name = str(derived.get("display_name") or derived.get("display_name_spaced") or run_id)
+        display_name = str(derived.get("display_name_spaced") or derived.get("display_name") or run_id)
 
         avg_win = _kpi_lookup(pkg, "avg. winning trade", "average winning trade")
         avg_loss = _kpi_lookup(pkg, "avg. losing trade", "average losing trade")
@@ -669,6 +670,16 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append(
             """
         <style>
+        .ta-exec-card {
+          width: min(100%, CARD_WIDTH_PX) !important;
+          max-width: CARD_WIDTH_PX !important;
+          margin-left: auto;
+          margin-right: auto;
+        }
+        .ta-exec-card img {
+          max-width: 100%;
+          height: auto;
+        }
         .ta-wlr-strip-wrap { margin-top: 6px; margin-bottom: 8px; }
         .ta-wlr-strip { border-collapse: collapse; }
         .ta-wlr-box { border-radius: 0; }
@@ -864,12 +875,45 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
           transition: none !important;
         }
 
+        .ta-exec-detail-chart {
+          width: min(100%, DETAIL_CHART_WIDTH_PX) !important;
+          max-width: 100%;
+          height: auto;
+        }
+
+        @media (max-width: RESPONSIVE_BREAKPOINT_PX) {
+          .ta-exec-card {
+            padding: 18px !important;
+          }
+          .ta-exec-layout,
+          .ta-exec-layout tbody,
+          .ta-exec-layout tr,
+          .ta-exec-layout td.ta-exec-col {
+            display: block;
+            width: 100% !important;
+          }
+          .ta-exec-layout td.ta-exec-col {
+            padding-right: 0 !important;
+            padding-bottom: 18px !important;
+          }
+          .ta-exec-layout td.ta-exec-col:last-child {
+            padding-bottom: 0 !important;
+          }
+          .ta-exec-col-image img {
+            width: min(100%, IMAGE_WIDTH_PX) !important;
+          }
+        }
+
         </style>
-        """.strip()
+        """.replace("CARD_WIDTH_PX", f"{card_width}px")
+           .replace("DETAIL_CHART_WIDTH_PX", f"{detail_chart_width_px}px")
+           .replace("IMAGE_WIDTH_PX", f"{img_w}px")
+           .replace("RESPONSIVE_BREAKPOINT_PX", f"{responsive_breakpoint_px}px")
+           .strip()
         )
 
         # Outer 3-column table (OPEN)
-        card_parts.append('<table style="width:100%; border-collapse:collapse;">')
+        card_parts.append('<table class="ta-exec-layout" style="width:100%; border-collapse:collapse;">')
 
         # ------------------------------------------------------------
         # Row 1: Full-width W/L/NT strip + timeline
@@ -915,10 +959,12 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append("<tr>")
 
         # Column 1: image (OPEN td)
-        card_parts.append(f'<td style="width:{img_w}px; vertical-align:top; padding-right:22px;">')
+        card_parts.append(
+            f'<td class="ta-exec-col ta-exec-col-image" style="width:{img_w}px; vertical-align:top; padding-right:22px;">'
+        )
         if img_uri:
             card_parts.append(
-                f'<img src="{img_uri}" style="width:{img_w}px; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
+                f'<img src="{img_uri}" style="width:min(100%, {img_w}px); max-width:100%; height:auto; object-fit:cover; border-radius:12px; display:block;" />'
             )
         else:
             card_parts.append(f'<div style="{muted} font-size:16px;">No image for {_esc(display_name)}</div>')
@@ -927,7 +973,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
 
         # Column 2: strategy + logic blocks (OPEN td)
         # card_parts.append('<td style="vertical-align:top; padding-right:26px; width:52%;">')
-        card_parts.append('<td style="vertical-align:top; padding-right:26px; width:33%;">')
+        card_parts.append('<td class="ta-exec-col ta-exec-col-profile" style="vertical-align:top; padding-right:26px; width:33%;">')
 
         # card_parts.append(f'<div style="{h1}">Pantheon Master Bot — Executive Strategy Profile</div>')
         card_parts.append(f'<div style="{h2}">Pantheon Bot Profile</div>')
@@ -975,7 +1021,7 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
         card_parts.append("</td>")  # Column 2 (CLOSE td)
 
         # Column 3: performance blocks (OPEN td)
-        card_parts.append('<td style="vertical-align:top; width:30%;">')
+        card_parts.append('<td class="ta-exec-col ta-exec-col-metrics" style="vertical-align:top; width:30%;">')
 
         card_parts.append(f'<div style="{h2}">Performance</div>')
         card_parts.append(f'<div style="{body}"><ul style="margin: 0 0 0 22px; padding:0;">')
@@ -1031,14 +1077,14 @@ def render_run_executive_profile_cards(ctx: dict) -> str:
                 if analysis_chart_uri:
                     card_parts.append(
                         f'<div style="margin-bottom:{detail_chart_gap_px}px;">'
-                        f'<img src="{analysis_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'<img class="ta-exec-detail-chart" src="{analysis_chart_uri}" style="width:min(100%, {detail_chart_width_px}px); max-width:100%; height:auto; '
                         f'border-radius:12px; display:block;" />'
                         f"</div>"
                     )
                 if summery_chart_uri:
                     card_parts.append(
                         f'<div>'
-                        f'<img src="{summery_chart_uri}" style="width:{detail_chart_width_px}px; height:auto; '
+                        f'<img class="ta-exec-detail-chart" src="{summery_chart_uri}" style="width:min(100%, {detail_chart_width_px}px); max-width:100%; height:auto; '
                         f'border-radius:12px; display:block;" />'
                         f"</div>"
                     )

@@ -22,6 +22,8 @@ from ta_foundation.web.optimizer_candidate_report import (
     EXEC_PROFILE_SECTION,
     WEEKLY_PROP_SECTION,
     build_session_candidate_report,
+    load_session_candidate_ingest,
+    _section_with_overrides,
 )
 from ta_foundation.web.optimizer_final_templates import (
     FinalTemplateError,
@@ -54,6 +56,35 @@ WEEKLY_LEADERBOARD_CARDS_SECTION: dict[str, Any] = {
         "warn_buffer": 500,
         "compact_noimg": True,
         "bot_columns": 1,
+    },
+}
+
+FAST_EXEC_PROFILE_SECTION: dict[str, Any] = _section_with_overrides(
+    EXEC_PROFILE_SECTION,
+    {
+        # Weekly published packs favor browser-friendly speed and weight over
+        # regenerating 98 per-run detail chart images on every build.
+        "show_detail_charts": False,
+    },
+)
+
+WEEKLY_SCOREBOARD_BUNDLES_SECTION: dict[str, Any] = {
+    "id": "daily_scoreboard",
+    "title": "Daily Scoreboard + Best Daily Pairs",
+    "options": {
+        "show_individual_equity": True,
+        "include_summary_table": True,
+        "include_all_bot_charts": False,
+        "combo_sets": [
+            {
+                "name": "Best Daily Pairs",
+                "mode": "top",
+                "k": 2,
+                "top_n": 6,
+                "max_render": 1,
+                "beam_width": 120,
+            },
+        ],
     },
 }
 
@@ -145,6 +176,7 @@ def build_weekly_report_pack(
 
     copied_templates = _copy_templates(session, selected_run_ids, root / TEMPLATES_DIRNAME)
     reports: list[WeeklyReportArtifact] = []
+    shared_ingest = load_session_candidate_ingest(session)
 
     specs: list[tuple[str, list[str | dict[str, Any]], bool, bool, bool]] = [
         (
@@ -156,10 +188,10 @@ def build_weekly_report_pack(
         ),
         (
             "Executive-Strategy-Profiles.html",
-            [EXEC_PROFILE_SECTION],
+            [FAST_EXEC_PROFILE_SECTION],
             True,
             True,
-            True,
+            False,
         ),
         (
             "Weekly-Prop-Dashboard.html",
@@ -207,35 +239,7 @@ def build_weekly_report_pack(
         ),
         (
             "Daily-Scoreboard-Bundles.html",
-            [
-                {
-                    "id": "daily_scoreboard",
-                    "title": "Daily Scoreboard + Best Non-Co-Losing Combos",
-                    "options": {
-                        "show_individual_equity": True,
-                        "include_summary_table": True,
-                        "include_all_bot_charts": False,
-                        "combo_sets": [
-                            {
-                                "name": "Best Daily Pairs",
-                                "mode": "top",
-                                "k": 2,
-                                "top_n": 8,
-                                "max_render": 2,
-                                "beam_width": 300,
-                            },
-                            {
-                                "name": "Best Daily Trios",
-                                "mode": "top",
-                                "k": 3,
-                                "top_n": 8,
-                                "max_render": 2,
-                                "beam_width": 300,
-                            },
-                        ],
-                    },
-                }
-            ],
+            [WEEKLY_SCOREBOARD_BUNDLES_SECTION],
             False,
             False,
             False,
@@ -272,6 +276,7 @@ def build_weekly_report_pack(
                 enrich_packages=needs_enrichment,
                 enrich_detail_charts=needs_detail_charts,
                 report_asset_mode=report_asset_mode,
+                preloaded_ingest=shared_ingest,
             )
         except Exception as exc:
             reports.append(
@@ -339,6 +344,11 @@ def _ensure_final_templates_named(session: OptimizerSession) -> str:
     try:
         result = rename_final_templates(session)
     except FinalTemplateError as exc:
+        if source_ids:
+            return (
+                "Template semantic renaming was unavailable; falling back to the existing "
+                f"named final templates. Reason: {exc}"
+            )
         raise WeeklyReportPackError(f"Final template naming failed: {exc}") from exc
     return f"Renamed {result.template_count} final templates before report build."
 
