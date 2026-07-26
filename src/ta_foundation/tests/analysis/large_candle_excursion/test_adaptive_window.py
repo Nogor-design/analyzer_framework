@@ -4,6 +4,7 @@ import pandas as pd
 
 from ta_foundation.analysis.large_candle_excursion.adaptive_window import (
     _score_modes,
+    build_adaptive_event_streams,
     emit_candle_center_events,
     run_adaptive_large_candle_windows,
     simulate_event_brackets,
@@ -440,3 +441,119 @@ def test_parameter_lanes_remain_separate_even_when_the_same_candle_qualifies():
         "tf1m|lb5|range|x1.5",
     }
     assert result["n_events"] == sum(s["n_events"] for s in result["streams"])
+
+
+def test_event_stream_builder_returns_complete_ordered_counterfactual_rows():
+    dts = pd.date_range("2026-07-20 10:00", periods=600, freq="1min")
+    rows = []
+    for i, dt in enumerate(dts):
+        half_range = 1.5 if i % 5 == 4 else 0.5
+        rows.append((dt, 100.25, 100.0 + half_range, 100.0 - half_range, 99.75))
+    bars = _bars(rows)
+    cfg = {
+        "timeframes": [1],
+        "lookbacks": [5],
+        "bases": ["range"],
+        "multipliers": [1.2, 1.5],
+        "tick_size": 0.25,
+        "average_mode": "include_current",
+        "signal_direction": "bear_only",
+        "bars_required": 1,
+        "signals": {
+            "fresh_large_candle": True,
+            "center_zone_break": False,
+            "region_percent": 30,
+        },
+        "time_filter": {"enabled": False},
+        "outcome": {
+            "target_ticks": 2,
+            "stop_ticks": 4,
+            "max_hold_minutes": 5,
+            "round_trip_cost_ticks": 0,
+            "max_concurrent_per_direction": 3,
+        },
+    }
+
+    streams = build_adaptive_event_streams(bars, cfg)
+
+    assert [stream["lane_id"] for stream in streams] == [
+        "tf1m|lb5|range|x1.2",
+        "tf1m|lb5|range|x1.5",
+    ]
+    assert all(stream["signal_side"] == "bear" for stream in streams)
+    assert all(len(stream["events"]) == 119 for stream in streams)
+    for stream in streams:
+        events = stream["events"]
+        assert [row["entry_dt"] for row in events] == sorted(
+            row["entry_dt"] for row in events
+        )
+        for row in events:
+            assert row["signal_side"] == stream["signal_side"]
+            assert row["continuation"]["available"] is True
+            assert row["reversion"]["available"] is True
+            assert isinstance(
+                row["continuation"]["exit_known_dt"],
+                pd.Timestamp,
+            )
+            assert isinstance(row["reversion"]["exit_known_dt"], pd.Timestamp)
+            assert "entry_price" in row["continuation"]
+            assert "exit_price" in row["continuation"]
+            assert "entry_price" in row["reversion"]
+            assert "exit_price" in row["reversion"]
+
+
+def test_event_stream_refactor_preserves_legacy_counts_and_baselines():
+    dts = pd.date_range("2026-07-20 10:00", periods=40, freq="1min")
+    rows = []
+    for i, dt in enumerate(dts):
+        half_range = 1.5 if i % 5 == 4 else 0.5
+        rows.append((dt, 100.25, 100.0 + half_range, 100.0 - half_range, 99.75))
+    result = run_adaptive_large_candle_windows(
+        _bars(rows),
+        {
+            "timeframes": [1],
+            "lookbacks": [5],
+            "bases": ["range"],
+            "multipliers": [1.2, 1.5],
+            "tick_size": 0.25,
+            "average_mode": "include_current",
+            "signal_direction": "bear_only",
+            "bars_required": 1,
+            "signals": {
+                "fresh_large_candle": True,
+                "center_zone_break": False,
+                "region_percent": 30,
+            },
+            "time_filter": {"enabled": False},
+            "outcome": {
+                "target_ticks": 2,
+                "stop_ticks": 4,
+                "max_hold_minutes": 5,
+                "round_trip_cost_ticks": 0,
+                "max_concurrent_per_direction": 3,
+            },
+            "adaptive": {"min_local_signals": 1, "time_bin_minutes": 30},
+        },
+    )
+
+    assert result["n_events"] == 14
+    assert [stream["n_events"] for stream in result["streams"]] == [7, 7]
+    for stream in result["streams"]:
+        assert stream["baseline"]["continuation"] == {
+            "n_trades": 7,
+            "win_rate_pct": 100.0,
+            "profit_factor": None,
+            "avg_trade_ticks": 2.0,
+            "total_net_ticks": 14.0,
+            "total_net_dollars": 70.0,
+            "max_drawdown_ticks": 0.0,
+        }
+        assert stream["baseline"]["reversion"] == {
+            "n_trades": 7,
+            "win_rate_pct": 0.0,
+            "profit_factor": 0.0,
+            "avg_trade_ticks": -4.0,
+            "total_net_ticks": -28.0,
+            "total_net_dollars": -140.0,
+            "max_drawdown_ticks": 28.0,
+        }

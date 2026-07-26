@@ -109,44 +109,17 @@ def run_adaptive_large_candle_windows(
         return {"enabled": True, "message": "no minute bars", "streams": []}
 
     bars = _prepare_bars(bars_1m)
-    tick_size = float(cfg.get("tick_size", 0.25))
-    streams: List[Dict[str, Any]] = []
-    total_events = 0
-
-    for tf in _positive_ints(cfg.get("timeframes") or [1, 2]):
-        tf_bars = bars.copy() if tf == 1 else ohlcv_resample_from_bars(bars, f"{tf}m")
-        if tf_bars is None or tf_bars.empty:
-            continue
-        tf_bars = _prepare_bars(tf_bars)
-
-        for lookback in _positive_ints(cfg.get("lookbacks") or [5]):
-            for basis in _bases(cfg.get("bases") or ["range"]):
-                for multiplier in _positive_floats(cfg.get("multipliers") or [1.5]):
-                    lane_cfg = {
-                        **cfg,
-                        "timeframe": tf,
-                        "lookback": lookback,
-                        "basis": basis,
-                        "multiplier": multiplier,
-                    }
-                    events = emit_candle_center_events(tf_bars, lane_cfg)
-                    outcomes = simulate_event_brackets(events, bars, lane_cfg)
-                    total_events += len(outcomes)
-                    if not outcomes:
-                        continue
-
-                    for signal_side in ("bull", "bear"):
-                        side_rows = [r for r in outcomes if r.get("signal_side") == signal_side]
-                        if not side_rows:
-                            continue
-                        streams.append(
-                            _analyze_stream(
-                                side_rows,
-                                lane_cfg,
-                                lane_id=_lane_id(tf, lookback, basis, multiplier),
-                                signal_side=signal_side,
-                            )
-                        )
+    event_streams = _build_adaptive_event_streams_from_prepared(bars, cfg)
+    streams = [
+        _analyze_stream(
+            stream["events"],
+            stream["lane_config"],
+            lane_id=stream["lane_id"],
+            signal_side=stream["signal_side"],
+        )
+        for stream in event_streams
+    ]
+    total_events = sum(len(stream["events"]) for stream in event_streams)
 
     return _json_safe({
         "enabled": True,
@@ -181,6 +154,85 @@ def run_adaptive_large_candle_windows(
             ],
         },
     })
+
+
+def build_adaptive_event_streams(
+    bars_1m: pd.DataFrame,
+    config: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Build complete, lane-isolated counterfactual event/outcome streams.
+
+    Unlike ``run_adaptive_large_candle_windows``, this reusable research
+    surface does not score, sample, or JSON-serialize the rows. Every returned
+    event retains both continuation and reversion outcomes, including their
+    exact ``exit_known_dt`` values, so downstream causal gates can enforce
+    decision-time outcome eligibility without relying on the UI's 100-row
+    event sample.
+    """
+    cfg = _deep_merge(DEFAULT_ADAPTIVE_WINDOW_CONFIG, config or {})
+    if not cfg.get("enabled", True) or bars_1m is None or bars_1m.empty:
+        return []
+    return _build_adaptive_event_streams_from_prepared(
+        _prepare_bars(bars_1m),
+        cfg,
+    )
+
+
+def _build_adaptive_event_streams_from_prepared(
+    bars: pd.DataFrame,
+    config: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    streams: List[Dict[str, Any]] = []
+    for tf in _positive_ints(config.get("timeframes") or [1, 2]):
+        tf_bars = (
+            bars.copy()
+            if tf == 1
+            else ohlcv_resample_from_bars(bars, f"{tf}m")
+        )
+        if tf_bars is None or tf_bars.empty:
+            continue
+        tf_bars = _prepare_bars(tf_bars)
+
+        for lookback in _positive_ints(config.get("lookbacks") or [5]):
+            for basis in _bases(config.get("bases") or ["range"]):
+                for multiplier in _positive_floats(
+                    config.get("multipliers") or [1.5]
+                ):
+                    lane_cfg = {
+                        **config,
+                        "timeframe": tf,
+                        "lookback": lookback,
+                        "basis": basis,
+                        "multiplier": multiplier,
+                    }
+                    events = emit_candle_center_events(tf_bars, lane_cfg)
+                    outcomes = simulate_event_brackets(events, bars, lane_cfg)
+                    if not outcomes:
+                        continue
+
+                    lane_id = _lane_id(tf, lookback, basis, multiplier)
+                    for signal_side in ("bull", "bear"):
+                        side_rows = sorted(
+                            (
+                                row
+                                for row in outcomes
+                                if row.get("signal_side") == signal_side
+                            ),
+                            key=lambda row: pd.Timestamp(row["entry_dt"]),
+                        )
+                        if not side_rows:
+                            continue
+                        streams.append({
+                            "lane_id": lane_id,
+                            "signal_side": signal_side,
+                            "timeframe": tf,
+                            "lookback": lookback,
+                            "basis": basis,
+                            "multiplier": multiplier,
+                            "lane_config": lane_cfg,
+                            "events": side_rows,
+                        })
+    return streams
 
 
 def emit_candle_center_events(
