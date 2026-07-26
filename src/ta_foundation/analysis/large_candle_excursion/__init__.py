@@ -1,3 +1,9 @@
+from ta_foundation.analysis.large_candle_excursion.adaptive_context import (
+    attach_context_to_events,
+    build_intraday_context,
+    classify_trend_state,
+    structurally_aligned_mode,
+)
 from ta_foundation.analysis.large_candle_excursion.adaptive_window import (
     build_adaptive_event_streams,
     run_adaptive_large_candle_windows,
@@ -5,7 +11,11 @@ from ta_foundation.analysis.large_candle_excursion.adaptive_window import (
 from ta_foundation.analysis.large_candle_excursion.sweep import run_large_candle_excursion
 
 __all__ = [
+    "attach_context_to_events",
     "build_adaptive_event_streams",
+    "build_intraday_context",
+    "classify_trend_state",
     "run_adaptive_large_candle_windows",
     "run_large_candle_excursion",
+    "structurally_aligned_mode",
 ]
