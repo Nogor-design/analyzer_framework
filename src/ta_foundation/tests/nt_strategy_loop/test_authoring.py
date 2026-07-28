@@ -93,3 +93,55 @@ def test_orb_failure_reclaim_parameters_are_extractable_for_seed_template() -> N
     # received the seed-derived template.
     for parameter in parameters:
         assert parameter.minimum == parameter.maximum == parameter.default
+
+
+def test_cash_open_first_bar_follow_through_renders_fixed_reference_rule() -> None:
+    spec = StrategySpec(
+        strategy_name="YmFirstBarUnit",
+        family="cash_open_first_bar_follow_through",
+        intent="unit test",
+        parameters={
+            "CashOpenHour": 7,
+            "CashOpenMinute": 30,
+            "MinBodyTicks": 3,
+            "TargetBodyMultiple": 2.0,
+            "StopBodyMultiple": 1.0,
+            "MaxBarsInTrade": 60,
+        },
+    )
+
+    source = render_source(spec)
+
+    assert "public class YmFirstBarUnit : Strategy" in source
+    assert "OrderFillResolution = OrderFillResolution.High;" in source
+    assert "(CashOpenHour * 60 + CashOpenMinute + 1) % (24 * 60)" in source
+    assert "currentBarCloseMinute != signalBarCloseMinute" in source
+    assert "double body = Close[0] - Open[0];" in source
+    assert "bodyTicks * TargetBodyMultiple" in source
+    assert 'EnterLong("FirstBarLong")' in source
+    assert 'EnterShort("FirstBarShort")' in source
+
+
+def test_cash_open_first_bar_parameters_are_extractable_and_pinned() -> None:
+    from ta_foundation.nt_strategy_loop.seed_template import extract_strategy_parameters
+
+    source = render_source(
+        StrategySpec(
+            strategy_name="YmFirstBarUnit",
+            family="cash_open_first_bar_follow_through",
+            intent="unit test",
+        )
+    )
+    parameters = extract_strategy_parameters(source)
+    by_name = {parameter.name: parameter for parameter in parameters}
+
+    assert set(by_name) == {
+        "CashOpenHour",
+        "CashOpenMinute",
+        "MinBodyTicks",
+        "TargetBodyMultiple",
+        "StopBodyMultiple",
+        "MaxBarsInTrade",
+    }
+    for parameter in parameters:
+        assert parameter.minimum == parameter.maximum == parameter.default

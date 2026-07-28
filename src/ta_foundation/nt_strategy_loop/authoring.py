@@ -452,3 +452,159 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 
 register_family("orb_failure_reclaim", _orb_failure_reclaim_renderer)
+
+
+def _cash_open_first_bar_follow_through_renderer(spec: StrategySpec) -> str:
+    """Render the fixed, theory-first cash-open continuation hypothesis.
+
+    The signal is evaluated when the configured cash-open minute bar closes.
+    A managed market entry submitted at that close fills on the next bar open,
+    matching the Python structural-hypothesis reference. Stop and target
+    distances scale with the signal bar's body.
+    """
+
+    name = spec.strategy_name
+    p = spec.parameters
+    params = {
+        "CashOpenHour": int(p.get("CashOpenHour", 7)),
+        "CashOpenMinute": int(p.get("CashOpenMinute", 30)),
+        "MinBodyTicks": int(p.get("MinBodyTicks", 3)),
+        "TargetBodyMultiple": float(p.get("TargetBodyMultiple", 2.0)),
+        "StopBodyMultiple": float(p.get("StopBodyMultiple", 1.0)),
+        "MaxBarsInTrade": int(p.get("MaxBarsInTrade", 60)),
+    }
+    return f"""using System;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using NinjaTrader.Cbi;
+using NinjaTrader.Data;
+using NinjaTrader.NinjaScript;
+
+namespace NinjaTrader.NinjaScript.Strategies
+{{
+    // One theory-first signal per session: the direction of a meaningful
+    // cash-open bar continues as overnight positioning is incorporated.
+    public class {name} : Strategy
+    {{
+        private DateTime signalDate = DateTime.MinValue;
+
+        protected override void OnStateChange()
+        {{
+            if (State == State.SetDefaults)
+            {{
+                Name = "{name}";
+                Description = "Cash-open first-bar follow-through validation.";
+                Calculate = Calculate.OnBarClose;
+                OrderFillResolution = OrderFillResolution.High;
+                OrderFillResolutionType = BarsPeriodType.Tick;
+                OrderFillResolutionValue = 1;
+                EntriesPerDirection = 1;
+                EntryHandling = EntryHandling.AllEntries;
+                IsExitOnSessionCloseStrategy = true;
+                ExitOnSessionCloseSeconds = 30;
+                BarsRequiredToTrade = 2;
+                DefaultQuantity = 1;
+                CashOpenHour = {params["CashOpenHour"]};
+                CashOpenMinute = {params["CashOpenMinute"]};
+                MinBodyTicks = {params["MinBodyTicks"]};
+                TargetBodyMultiple = {params["TargetBodyMultiple"]};
+                StopBodyMultiple = {params["StopBodyMultiple"]};
+                MaxBarsInTrade = {params["MaxBarsInTrade"]};
+            }}
+        }}
+
+        protected override void OnBarUpdate()
+        {{
+            if (CurrentBar < BarsRequiredToTrade)
+                return;
+
+            if (Position.MarketPosition != MarketPosition.Flat)
+            {{
+                // BarsSinceEntryExecution is zero on the entry bar. Signaling
+                // after MaxBarsInTrade observed bars exits at the following
+                // bar open, the closest managed-order analogue to the Python
+                // reference's final-bar close timeout.
+                if (BarsSinceEntryExecution() >= MaxBarsInTrade - 1)
+                {{
+                    if (Position.MarketPosition == MarketPosition.Long)
+                        ExitLong("TimeExit", "FirstBarLong");
+                    else
+                        ExitShort("TimeExit", "FirstBarShort");
+                }}
+                return;
+            }}
+
+            // NinjaTrader labels time-based bars by their ending timestamp.
+            // The 07:30-07:31 cash-open bar is therefore Time[0] == 07:31.
+            int signalBarCloseMinute =
+                (CashOpenHour * 60 + CashOpenMinute + 1) % (24 * 60);
+            int currentBarCloseMinute = Time[0].Hour * 60 + Time[0].Minute;
+            if (currentBarCloseMinute != signalBarCloseMinute)
+                return;
+            DateTime cashOpenDate = signalBarCloseMinute == 0
+                ? Time[0].Date.AddDays(-1)
+                : Time[0].Date;
+            if (signalDate == cashOpenDate)
+                return;
+            signalDate = cashOpenDate;
+
+            double body = Close[0] - Open[0];
+            double bodyTicks = Math.Abs(body) / TickSize;
+            if (bodyTicks < MinBodyTicks)
+                return;
+
+            int targetTicks = Math.Max(
+                1, (int)Math.Round(bodyTicks * TargetBodyMultiple)
+            );
+            int stopTicks = Math.Max(
+                1, (int)Math.Round(bodyTicks * StopBodyMultiple)
+            );
+            SetProfitTarget(CalculationMode.Ticks, targetTicks);
+            SetStopLoss(CalculationMode.Ticks, stopTicks);
+
+            // OnBarClose market orders fill at the next bar open in Strategy
+            // Analyzer, which is the pre-registered entry convention.
+            if (body > 0)
+                EnterLong("FirstBarLong");
+            else
+                EnterShort("FirstBarShort");
+        }}
+
+        [NinjaScriptProperty]
+        [Range(0, 23)]
+        [Display(Name = "CashOpenHour", GroupName = "Parameters", Order = 1)]
+        public int CashOpenHour {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(0, 59)]
+        [Display(Name = "CashOpenMinute", GroupName = "Parameters", Order = 2)]
+        public int CashOpenMinute {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(1, 100)]
+        [Display(Name = "MinBodyTicks", GroupName = "Parameters", Order = 3)]
+        public int MinBodyTicks {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(0.1, 10.0)]
+        [Display(Name = "TargetBodyMultiple", GroupName = "Parameters", Order = 4)]
+        public double TargetBodyMultiple {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(0.1, 10.0)]
+        [Display(Name = "StopBodyMultiple", GroupName = "Parameters", Order = 5)]
+        public double StopBodyMultiple {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(1, 600)]
+        [Display(Name = "MaxBarsInTrade", GroupName = "Parameters", Order = 6)]
+        public int MaxBarsInTrade {{ get; set; }}
+    }}
+}}
+"""
+
+
+register_family(
+    "cash_open_first_bar_follow_through",
+    _cash_open_first_bar_follow_through_renderer,
+)
