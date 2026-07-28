@@ -19,6 +19,14 @@ ERROR_PATTERNS = (
     "invalid",
 )
 
+_AMBIENT_EDITOR_TEXT = frozenset(
+    {
+        "error",
+        "the above warnings have been detected:",
+        "the above programming errors must be resolved before compiling",
+    }
+)
+
 
 @dataclass(frozen=True)
 class NinjaTraderUiFinding:
@@ -47,15 +55,29 @@ def scan_ninjatrader_error_text(patterns: Sequence[str] = ERROR_PATTERNS) -> lis
         return []
     findings: list[NinjaTraderUiFinding] = []
     for item in payload if isinstance(payload, list) else []:
+        window_name = str(item.get("window_name") or "")
+        class_name = str(item.get("class_name") or "")
+        text = str(item.get("text") or "")
+        if _is_ambient_editor_chrome(window_name, class_name, text):
+            continue
         findings.append(
             NinjaTraderUiFinding(
-                window_name=str(item.get("window_name") or ""),
+                window_name=window_name,
                 automation_id=str(item.get("automation_id") or ""),
-                class_name=str(item.get("class_name") or ""),
-                text=str(item.get("text") or ""),
+                class_name=class_name,
+                text=text,
             )
         )
     return findings
+
+
+def _is_ambient_editor_chrome(window_name: str, class_name: str, text: str) -> bool:
+    """Ignore the empty NinjaScript error grid's permanent labels."""
+    if "ninjascript editor" not in window_name.casefold():
+        return False
+    if class_name.casefold() == "header":
+        return True
+    return text.strip().casefold() in _AMBIENT_EDITOR_TEXT
 
 
 def dismiss_ninjatrader_error_dialogs() -> bool:
