@@ -85,6 +85,12 @@ _BRIDGE_TERMINAL_STATES = frozenset({
     "complete", "completed", "success", "finished", "done",
     "failed", "error", "cancelled", "canceled", "timed_out", "stale",
 })
+# Terminal states returned by ``get_status`` that a late cancel request must
+# not overwrite. A cancel can race the AddOn's final heartbeat/export by a few
+# seconds; once completion or failure is observable, that evidence wins.
+_CANCEL_PRESERVED_TERMINAL_STATES = frozenset({
+    "finished", "finished_with_issues", "timed_out", "failed", "error",
+})
 # A command with no terminal status and no heartbeat this old is treated as
 # abandoned (e.g. the web app died mid-run) and may be reclaimed. Generous so
 # a legitimately long batch is never stolen out from under a live run.
@@ -334,13 +340,37 @@ def cancel_run(
     run = load_run(session)
     if run is None:
         return None
+    moment = now or datetime.now(timezone.utc)
+
+    # Reconcile the heartbeat and exported output before signalling cancel.
+    # Without this check, a user request arriving just after the AddOn's final
+    # export can downgrade a completed run to ``cancelled`` in run.json.
+    live_status = get_status(session, now=moment)
+    if (
+        live_status is not None
+        and live_status.state in _CANCEL_PRESERVED_TERMINAL_STATES
+    ):
+        run = load_run(session) or run
+        run.state = live_status.state
+        run.last_observed_completed = max(
+            run.last_observed_completed, live_status.completed
+        )
+        run.last_error = live_status.last_error
+        run.cancelled_at = None
+        if not run.finished_at:
+            run.finished_at = (
+                live_status.finished_at
+                or moment.isoformat(timespec="microseconds")
+            )
+        _save_run(session, run)
+        return run
+
     cmd_path = Path(command_file) if command_file else Path(run.command_file or DEFAULT_COMMAND_FILE)
     try:
         if cmd_path.exists():
             cmd_path.unlink()
     except OSError:
         pass
-    moment = now or datetime.now(timezone.utc)
     run.state = "cancelled"
     run.cancelled_at = moment.isoformat(timespec="microseconds")
     run.finished_at = run.cancelled_at
