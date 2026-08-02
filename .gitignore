@@ -66,3 +66,13 @@ scratch/
 
 # Generated weekly report output (large PNGs) — do not track in git
 ExampleWeeklyReport/
+
+# Research-ledger runtime database. Rebuilt from research_ledger/migrations/,
+# which are the source of truth -- the .sqlite file is derived state.
+data/research_ledger.sqlite
+
+# Trading-competition submission tree (codex_nq_v2). A self-contained side
+# project rather than ta_foundation source: 6.7MB of generated positions /
+# trades CSVs, parquet, pickles and .pyc alongside its own scripts. If it needs
+# version control it wants its own repo, not this one.
+comp-rules/
