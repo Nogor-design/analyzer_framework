@@ -306,6 +306,35 @@ def test_cancel_tolerates_missing_command_file(tmp_path: Path):
     assert cancelled.state == "cancelled"
 
 
+def test_cancel_preserves_terminal_heartbeat_result(tmp_path: Path):
+    session = _make_session_with_templates(count=1)
+    cmd_path = tmp_path / "nt8_command.json"
+    status_path = tmp_path / "nt8_status.json"
+    record = start_run(
+        session,
+        command_file=cmd_path,
+        status_file=status_path,
+    )
+    _drop_summary(session, "chunk_000")
+    _write_heartbeat(
+        status_path,
+        run_id=record.run_id,
+        state="finished",
+        completed=1,
+        total=1,
+    )
+
+    reconciled = cancel_run(session, command_file=cmd_path)
+
+    assert reconciled is not None
+    assert reconciled.state == "finished"
+    assert reconciled.last_observed_completed == 1
+    assert reconciled.cancelled_at is None
+    assert reconciled.finished_at is not None
+    assert cmd_path.exists()
+    assert get_status(session).state == "finished"
+
+
 # ---------------------------------------------------------------------------
 # Heartbeat (nt8_status.json) integration
 # ---------------------------------------------------------------------------

@@ -608,6 +608,86 @@ class Repository:
         )
         return cur.rowcount == 1
 
+    def reserve_holdout_attempt(self, candidate_id: str, attempt_id: str) -> bool:
+        """Reserve the one-shot holdout for a named crash-resumable attempt.
+
+        Returns True when this call acquired the lock *or* when ``attempt_id``
+        already owns it. Returns False when another/legacy attempt spent it.
+        """
+        owner = attempt_id.strip()
+        if not owner:
+            raise ValueError("attempt_id is required")
+        if self.get_candidate(candidate_id) is None:
+            raise LedgerIntegrityError(
+                f"reserve_holdout_attempt on unknown candidate {candidate_id}"
+            )
+        cur = self._conn.execute(
+            """
+            UPDATE candidates
+            SET holdout_attempted = 1,
+                holdout_attempt_id = ?,
+                holdout_locked_at = ?
+            WHERE candidate_id = ? AND holdout_attempted = 0
+            """,
+            (owner, _now_iso(), candidate_id),
+        )
+        if cur.rowcount == 1:
+            return True
+        row = self._conn.execute(
+            """
+            SELECT holdout_attempt_id
+            FROM candidates
+            WHERE candidate_id = ?
+            """,
+            (candidate_id,),
+        ).fetchone()
+        return bool(row and row["holdout_attempt_id"] == owner)
+
+    def record_holdout_result(
+        self,
+        *,
+        candidate_id: str,
+        n_trades: Optional[int],
+        profit_factor: Optional[float],
+        expectancy: Optional[float] = None,
+    ) -> None:
+        """Persist the sealed result once; identical crash retries are a no-op."""
+        candidate = self.get_candidate(candidate_id)
+        if candidate is None:
+            raise LedgerIntegrityError(
+                f"record_holdout_result on unknown candidate {candidate_id}"
+            )
+        if not candidate.holdout_attempted:
+            raise LedgerIntegrityError(
+                f"record_holdout_result before holdout reservation for {candidate_id}"
+            )
+        desired = (
+            None if n_trades is None else int(n_trades),
+            None if profit_factor is None else float(profit_factor),
+            None if expectancy is None else float(expectancy),
+        )
+        existing = (
+            candidate.n_trades_holdout,
+            candidate.pf_holdout,
+            candidate.expectancy_holdout,
+        )
+        if any(value is not None for value in existing):
+            if existing != desired:
+                raise LedgerIntegrityError(
+                    f"holdout result already recorded for {candidate_id}"
+                )
+            return
+        self._conn.execute(
+            """
+            UPDATE candidates
+            SET n_trades_holdout = ?,
+                pf_holdout = ?,
+                expectancy_holdout = ?
+            WHERE candidate_id = ?
+            """,
+            (*desired, candidate_id),
+        )
+
     # ---- Tool journal ----------------------------------------------------
 
     def journal(

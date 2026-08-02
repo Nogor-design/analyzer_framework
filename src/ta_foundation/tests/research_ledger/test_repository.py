@@ -433,7 +433,7 @@ def test_list_graveyard_filters(repo: Repository) -> None:
     assert {c.candidate_id for c in grave} == {"c_1"}
 
 
-# ---------- TestHoldoutLock (3 tests) ---------------------------------------
+# ---------- TestHoldoutLock -------------------------------------------------
 
 
 def test_holdout_lock_first_attempt_succeeds(repo: Repository) -> None:
@@ -453,6 +453,57 @@ def test_holdout_lock_second_attempt_fails(repo: Repository) -> None:
 def test_holdout_lock_unknown_candidate_raises(repo: Repository) -> None:
     with pytest.raises(LedgerIntegrityError):
         repo.lock_holdout_attempt("c_does_not_exist")
+
+
+def test_named_holdout_reservation_is_idempotent_for_same_owner(
+    repo: Repository,
+) -> None:
+    _seed_run(repo)
+    repo.record_candidate(candidate_id="c_1", run_id="r_1", rank_in_run=1, params={})
+    assert repo.reserve_holdout_attempt("c_1", "attempt-a") is True
+    assert repo.reserve_holdout_attempt("c_1", "attempt-a") is True
+    assert repo.reserve_holdout_attempt("c_1", "attempt-b") is False
+    assert repo.lock_holdout_attempt("c_1") is False
+
+
+def test_legacy_holdout_lock_cannot_be_claimed_by_named_owner(
+    repo: Repository,
+) -> None:
+    _seed_run(repo)
+    repo.record_candidate(candidate_id="c_1", run_id="r_1", rank_in_run=1, params={})
+    assert repo.lock_holdout_attempt("c_1") is True
+    assert repo.reserve_holdout_attempt("c_1", "attempt-a") is False
+
+
+def test_holdout_result_is_idempotent_but_cannot_be_reinterpreted(
+    repo: Repository,
+) -> None:
+    _seed_run(repo)
+    repo.record_candidate(candidate_id="c_1", run_id="r_1", rank_in_run=1, params={})
+    assert repo.reserve_holdout_attempt("c_1", "attempt-a") is True
+    repo.record_holdout_result(
+        candidate_id="c_1",
+        n_trades=41,
+        profit_factor=1.42,
+        expectancy=18.5,
+    )
+    repo.record_holdout_result(
+        candidate_id="c_1",
+        n_trades=41,
+        profit_factor=1.42,
+        expectancy=18.5,
+    )
+    candidate = repo.get_candidate("c_1")
+    assert candidate is not None
+    assert candidate.n_trades_holdout == 41
+    assert candidate.pf_holdout == pytest.approx(1.42)
+    with pytest.raises(LedgerIntegrityError):
+        repo.record_holdout_result(
+            candidate_id="c_1",
+            n_trades=40,
+            profit_factor=1.42,
+            expectancy=18.5,
+        )
 
 
 # ---------- TestSimilarityAndCounting (4 tests) -----------------------------
