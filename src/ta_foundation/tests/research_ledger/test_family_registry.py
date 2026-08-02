@@ -80,6 +80,40 @@ def test_get_family_spec_round_trip(repo: Repository) -> None:
     assert by_name["target_ticks"].max == 800
 
 
+def test_pantheon_family_accepts_registered_r2_surface(repo: Repository) -> None:
+    violations = validate_params(
+        repo,
+        "pantheon_sma_crossover",
+        {
+            "AtrTrailMultiple": [0.5, 6.0],
+            "ChandelierLookback": [3, 100],
+            "AllowLondon": [False, True],
+            "AllowNyPre": [False, True],
+            "AllowNyOpen": [False, True],
+            "AllowNyMid": [False, True],
+            "AllowMyPowerHr": [False, True],
+            "AllowAsia": [False, True],
+        },
+    )
+    assert violations == []
+
+
+def test_cash_open_first_bar_family_accepts_fixed_reference_rule(repo: Repository) -> None:
+    violations = validate_params(
+        repo,
+        "cash_open_first_bar_follow_through",
+        {
+            "CashOpenHour": 7,
+            "CashOpenMinute": 30,
+            "MinBodyTicks": 3,
+            "TargetBodyMultiple": 2.0,
+            "StopBodyMultiple": 1.0,
+            "MaxBarsInTrade": 60,
+        },
+    )
+    assert violations == []
+
+
 def test_validate_params_accepts_valid_params(repo: Repository) -> None:
     violations = validate_params(
         repo,
