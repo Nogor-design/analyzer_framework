@@ -34,6 +34,7 @@ dispatch + poll + verify.
 
 import json
 import os
+import subprocess
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -77,6 +78,55 @@ DEFAULT_STRATEGY_SOURCE = (
 
 # Status poll cadence / ceilings (mirror drive_final_backtest_to_complete).
 POLL_INTERVAL_SECONDS = 20
+
+# A cold Strategy Analyzer refuses automated runs until its Run command becomes
+# executable. The AddOn already polls for runnability, but its budget (~7s) was
+# sized for a mid-batch tab-activation race, not for a freshly started
+# NinjaTrader -- which the 2026-08-30 audit showed can stay un-runnable for far
+# longer and previously needed a manual RUN BATCH BACKTEST click to get going.
+#
+# The refusal is benign and idempotent: the AddOn dispatched nothing, so
+# re-issuing the same batch is safe. Retrying *only* this specific error keeps a
+# genuine failure (bad template, missing data, wrong instrument) loud.
+READINESS_REFUSAL_MARKER = "run command was not executable"
+
+#: Waits before each re-dispatch after a readiness refusal. Cumulative ~2.5 min,
+#: matching the documented 1-2 minute NinjaTrader cold-start window.
+READINESS_RETRY_BACKOFF_SECONDS: tuple[int, ...] = (20, 45, 90)
+
+
+def ninjatrader_is_running() -> bool | None:
+    """Whether a NinjaTrader process exists.
+
+    Returns ``None`` when the question cannot be answered (non-Windows, or the
+    process query failed). Callers must treat ``None`` as "proceed", never as
+    "absent": guessing absent would abort a perfectly good refresh.
+    """
+
+    if os.name != "nt":
+        return None
+    try:
+        completed = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return "NinjaTrader.exe" in completed.stdout
+
+
+def is_readiness_refusal(error: str | None) -> bool:
+    """True when NinjaTrader refused the run because it was not ready yet.
+
+    Distinguishes "ask again in a moment" from "this batch is broken". Only the
+    former may be retried automatically.
+    """
+
+    return bool(error) and READINESS_REFUSAL_MARKER in error.lower()
+
+
 DEFAULT_TIMEOUT_SECONDS = 6 * 60 * 60
 _TERMINAL_STATES = frozenset({
     "finished", "completed", "complete", "success", "done",
@@ -104,6 +154,13 @@ class ExportFileResult:
     exists: bool
     line_count: int
     size_bytes: int
+    #: Size before the run. A re-dump of an existing contract overwrites a file
+    #: that was already there, so "the file exists and is non-empty" says
+    #: nothing about whether NinjaTrader actually wrote anything this time.
+    size_before: int = 0
+    #: Whether this run changed the file at all. The only honest success signal
+    #: when the output path is a pre-existing export.
+    changed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -126,6 +183,12 @@ class GatherResult:
     tick_path: str | None
     files: list[ExportFileResult] = field(default_factory=list)
     error: str | None = None
+    #: How many RunBatch dispatches this gather needed. >1 means NinjaTrader
+    #: refused an earlier attempt as not-yet-ready and the handshake waited.
+    dispatch_attempts: int = 1
+    #: run_ids actually sent, in order. The AddOn de-duplicates by runId, so a
+    #: retry that reused the first id would be silently ignored.
+    dispatched_run_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -281,6 +344,9 @@ def gather_market_data(
     dispatch: bool = True,
     now: datetime | None = None,
     logger=print,
+    readiness_backoff_seconds: tuple[int, ...] | None = None,
+    sleeper=time.sleep,
+    process_check=ninjatrader_is_running,
 ) -> GatherResult:
     """Gather bars (and optional ticks) for ``instrument`` over [from_date,
     to_date] by driving ``TaFoundationDataExportStrategy`` through the NT batch
@@ -358,7 +424,23 @@ def gather_market_data(
         result.state = "prepared"
         return result
 
-    # 2. Guard + write the command.
+    # 2. Fail fast if NinjaTrader is not even running. Without this an
+    #    unattended refresh writes the command file and then polls an absent
+    #    AddOn for the full timeout -- six hours per contract by default, which
+    #    turns an overnight backfill into an overnight hang. A definite "no
+    #    process" is worth far more than a slow timeout; an unknown answer is
+    #    never treated as absent.
+    if process_check is not None and process_check() is False:
+        result.state = "blocked"
+        result.error = (
+            "NinjaTrader is not running, so the export bridge has no listener. "
+            "Start it first (see the nt-ensure-ready playbook: "
+            "`python -m ta_foundation.nt_strategy_loop.cli ensure-nt-ready`). "
+            "No command was dispatched and no data was pulled."
+        )
+        raise MarketDataExportError(result.error)
+
+    # 3. Guard + write the command.
     try:
         ensure_bridge_available(cmd_path, status_path, now=moment)
     except BridgeBusyError as exc:
@@ -366,10 +448,13 @@ def gather_market_data(
         result.error = str(exc)
         raise
 
-    # Record pre-run sizes so we can confirm the files actually grew.
-    pre_sizes = {
-        "bars": _safe_size(bars_path),
-        "ticks": _safe_size(tick_path) if tick_path else 0,
+    # Record pre-run size *and* mtime so we can confirm NT actually rewrote the
+    # files. Size alone is not enough: re-dumping an identical window produces
+    # an identical byte count, and the output path is usually a pre-existing
+    # export rather than a fresh file.
+    pre_state = {
+        "bars": _file_state(bars_path),
+        "ticks": _file_state(tick_path) if tick_path else (0, 0),
     }
 
     # Clear stale heartbeat so the first live one for this run isn't erased.
@@ -379,37 +464,129 @@ def gather_market_data(
     except OSError:
         pass
 
-    payload = build_command_payload(
-        run_id=run_id,
-        source_folder=source_folder,
-        dest_folder=dest_folder,
-        instrument=instrument,
-        timeout_seconds=timeout_seconds,
+    # 4. Dispatch and poll, re-issuing only while NinjaTrader says it is not
+    #    ready yet. This is the cold-start handshake: without it, an unattended
+    #    backfill dies on the first refusal and needs a human to click RUN BATCH
+    #    BACKTEST once to warm the Analyzer.
+    backoff = (
+        READINESS_RETRY_BACKOFF_SECONDS
+        if readiness_backoff_seconds is None
+        else tuple(readiness_backoff_seconds)
     )
-    _write_command_file(cmd_path, payload)
-    result.state = "dispatched"
-    logger(f"[market_data_export] dispatched RunBatch {run_id} -> {cmd_path}")
 
-    # 3. Poll to terminal.
-    final_state = _poll_to_terminal(
-        status_path,
-        run_id=run_id,
-        timeout_seconds=timeout_seconds,
-        poll_interval_seconds=poll_interval_seconds,
-        logger=logger,
-    )
+    final_state = "unknown"
+    completed = total = 0
+    last_error: str | None = None
+
+    for attempt in range(len(backoff) + 1):
+        # The AddOn de-duplicates by runId, so a retry MUST carry a fresh one or
+        # it is dropped as a duplicate and we would poll a batch that never ran.
+        # The template filename stays fixed: sourceFolder must hold exactly one
+        # XML, or the batch would run every stale attempt's template too.
+        attempt_run_id = run_id if attempt == 0 else f"{run_id}_r{attempt}"
+        result.dispatched_run_ids.append(attempt_run_id)
+        result.dispatch_attempts = attempt + 1
+
+        if attempt:
+            # Re-check the shared bridge: something else may have claimed it
+            # while we were waiting out the cold start. Our own refused attempt
+            # still owns the command file, so identify as that previous run --
+            # otherwise we would treat ourselves as a foreign owner and abort.
+            try:
+                ensure_bridge_available(
+                    cmd_path,
+                    status_path,
+                    now=datetime.now(timezone.utc),
+                    requesting_run_id=result.dispatched_run_ids[-2],
+                )
+            except BridgeBusyError as exc:
+                result.state = "blocked"
+                result.error = str(exc)
+                raise
+            try:
+                if status_path.exists():
+                    status_path.unlink()
+            except OSError:
+                pass
+
+        payload = build_command_payload(
+            run_id=attempt_run_id,
+            source_folder=source_folder,
+            dest_folder=dest_folder,
+            instrument=instrument,
+            timeout_seconds=timeout_seconds,
+        )
+        _write_command_file(cmd_path, payload)
+        result.state = "dispatched"
+        result.run_id = attempt_run_id
+        logger(f"[market_data_export] dispatched RunBatch {attempt_run_id} -> {cmd_path}")
+
+        final_state, completed, total, last_error = _poll_to_terminal(
+            status_path,
+            run_id=attempt_run_id,
+            timeout_seconds=timeout_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+            logger=logger,
+        )
+
+        if not is_readiness_refusal(last_error):
+            break
+        if attempt >= len(backoff):
+            logger(
+                "[market_data_export] NinjaTrader still not ready after "
+                f"{attempt + 1} attempt(s); giving up"
+            )
+            break
+
+        wait = backoff[attempt]
+        logger(
+            f"[market_data_export] NinjaTrader not ready yet (attempt {attempt + 1}); "
+            f"waiting {wait}s before re-dispatching"
+        )
+        sleeper(wait)
+
     result.state = final_state
 
-    # 4. Verify outputs.
-    result.files = _verify_outputs(bars_path, tick_path, pre_sizes)
-    grew = all(f.exists and f.size_bytes > 0 for f in result.files)
-    if final_state in {"timeout"} or not grew:
-        if result.error is None:
-            missing = [f.path for f in result.files if not (f.exists and f.size_bytes > 0)]
+    # NinjaTrader signals a refused run as state="finished", completed=0, with
+    # the reason only in lastError (e.g. "RunError: Strategy Analyzer Run
+    # command was not executable"). Surfacing it is what stops a failed gather
+    # from being reported as a success over an untouched file.
+    if last_error and result.error is None:
+        if is_readiness_refusal(last_error):
+            # Exhausted the handshake. Say so plainly, so the operator knows the
+            # backfill did not silently skip -- NinjaTrader never started.
             result.error = (
-                f"export did not produce expected output (state={final_state}); "
-                f"missing/empty: {missing}"
+                f"{last_error} NinjaTrader was still not ready after "
+                f"{result.dispatch_attempts} dispatch attempt(s). Confirm it is "
+                "logged in and the Control Center is up (see the nt-ensure-ready "
+                "playbook); no data was pulled."
             )
+        else:
+            result.error = last_error
+
+    # 5. Verify outputs.
+    result.files = _verify_outputs(bars_path, tick_path, pre_state)
+    present = all(f.exists and f.size_bytes > 0 for f in result.files)
+    wrote = any(f.changed for f in result.files)
+    incomplete = bool(total) and completed < total
+
+    if result.error is None and (final_state == "timeout" or not present):
+        missing = [f.path for f in result.files if not (f.exists and f.size_bytes > 0)]
+        result.error = (
+            f"export did not produce expected output (state={final_state}); "
+            f"missing/empty: {missing}"
+        )
+    if result.error is None and incomplete:
+        result.error = (
+            f"export reported {completed}/{total} template(s) complete "
+            f"(state={final_state})"
+        )
+    if result.error is None and not wrote:
+        # Every file already existed and none of them moved. Nothing was pulled.
+        result.error = (
+            f"export left every output byte-identical (state={final_state}); "
+            "NinjaTrader wrote nothing"
+        )
     return result
 
 
@@ -424,15 +601,22 @@ def _poll_to_terminal(
     timeout_seconds: int,
     poll_interval_seconds: int,
     logger,
-) -> str:
+) -> tuple[str, int, int, str | None]:
     """Poll the AddOn heartbeat file until the run reaches a terminal state.
 
     Mirrors ``scripts/drive_final_backtest_to_complete.wait_for_nt``: only
     heartbeats whose ``runId`` matches ours count; ``completed >= total`` with a
-    non-in-flight state is treated as finished. Returns the terminal state, or
-    ``"timeout"``."""
+    non-in-flight state is treated as finished.
+
+    Returns ``(state, completed, total, last_error)``. The last three are not
+    decoration: NinjaTrader reports a failed run as ``state="finished"`` with
+    ``completed=0`` and the reason in ``lastError`` -- so a caller that reads
+    only the state cannot tell a successful export from a refused one.
+    """
     deadline = time.time() + timeout_seconds
     last_completed = -1
+    completed = total = 0
+    last_error: str | None = None
     while time.time() < deadline:
         payload = _read_status(status_path)
         if payload is None or str(payload.get("runId") or "") != run_id:
@@ -441,6 +625,7 @@ def _poll_to_terminal(
         state = str(payload.get("state") or "").strip().lower()
         completed = int(payload.get("completed") or 0)
         total = int(payload.get("total") or 0)
+        last_error = str(payload.get("lastError") or "").strip() or None
         if completed != last_completed:
             logger(
                 f"[market_data_export] {run_id}: {state} {completed}/{total} "
@@ -448,11 +633,11 @@ def _poll_to_terminal(
             )
             last_completed = completed
         if state in _TERMINAL_STATES:
-            return state
+            return state, completed, total, last_error
         if total and completed >= total and state not in {"running", "starting"}:
-            return "finished"
+            return "finished", completed, total, last_error
         time.sleep(poll_interval_seconds)
-    return "timeout"
+    return "timeout", completed, total, last_error
 
 
 def _read_status(path: Path) -> dict[str, Any] | None:
@@ -465,27 +650,45 @@ def _read_status(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _file_state(path: Path | None) -> tuple[int, int]:
+    """``(size_bytes, mtime_ns)``, or ``(0, 0)`` when the file is absent."""
+    if path is None:
+        return (0, 0)
+    try:
+        stat = path.stat()
+    except OSError:
+        return (0, 0)
+    return (stat.st_size, stat.st_mtime_ns)
+
+
 def _verify_outputs(
     bars_path: Path,
     tick_path: Path | None,
-    pre_sizes: dict[str, int],
+    pre_state: dict[str, tuple[int, int]],
 ) -> list[ExportFileResult]:
-    files = [_verify_one("bars", bars_path)]
+    files = [_verify_one("bars", bars_path, pre_state)]
     if tick_path is not None:
-        files.append(_verify_one("ticks", tick_path))
+        files.append(_verify_one("ticks", tick_path, pre_state))
     return files
 
 
-def _verify_one(kind: str, path: Path) -> ExportFileResult:
+def _verify_one(
+    kind: str, path: Path, pre_state: dict[str, tuple[int, int]]
+) -> ExportFileResult:
     exists = path.exists()
-    size = _safe_size(path)
+    size, mtime = _file_state(path)
     lines = _count_lines(path) if exists else 0
+    before_size, before_mtime = pre_state.get(kind, (0, 0))
     return ExportFileResult(
         kind=kind,
         path=str(path),
         exists=exists,
         line_count=lines,
         size_bytes=size,
+        size_before=before_size,
+        # Either dimension moving proves NT wrote. mtime catches a re-dump of an
+        # identical window; size catches a filesystem with coarse timestamps.
+        changed=exists and size > 0 and (size != before_size or mtime != before_mtime),
     )
 
 

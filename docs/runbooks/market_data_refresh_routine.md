@@ -46,7 +46,12 @@ python scripts/refresh_market_data.py
 Refreshes every contract flagged stale or missing a bars↔ticks partner, **bars +
 ticks**, serially. Skips expired contracts. Prerequisites:
 
-- NinjaTrader logged in + warm (title `Control Center …`, RAM > ~700 MB).
+- NinjaTrader logged in (title `Control Center …`). It no longer has to be
+  **warm**: a cold Strategy Analyzer refuses the first automated run, and the
+  gather now recognises that specific refusal and re-dispatches with backoff
+  (~20s, 45s, 90s) using a fresh `runId` each time. Nobody has to click RUN
+  BATCH BACKTEST to prime it. A refusal that outlasts the budget fails loudly
+  and pulls no data.
 - **No optimizer batch running** — the NT command bridge is single-writer; the
   script aborts cleanly (exit 2) if a batch owns it. Rerun when free.
 
@@ -175,3 +180,29 @@ disk/time accordingly before a multi-month or all-instrument tick refresh.
 4. **Per-instrument staleness.** `--stale-days` is global. If some instruments
    need tighter freshness than others, that's the obvious next knob to add to
    `plan_refresh()`.
+
+---
+
+## Refresh record: 2026-08-03 index panel and rollover seed
+
+With NinjaTrader already warm, the routine was used to remove the live-panel
+gap that had blocked a sibling-contract replication:
+
+- refreshed NQ 09-26 bars and ticks through 2026-08-03;
+- acquired ES, RTY, YM, and MNQ 09-26 bars from the 2026-06-15 Strategy
+  Analyzer session through 2026-08-03;
+- seeded NQ, ES, RTY, YM, and MNQ 12-26 bars on 2026-08-01 through 2026-08-03;
+  and
+- filled every missing 09-26 and 12-26 tick partner.
+
+The resulting 20 active/rollover files total 6.194 GB. The final verification
+command was:
+
+```bash
+python scripts/refresh_market_data.py --dry-run --stale-days 3
+```
+
+It scanned 20 contracts, reported every non-expired 09-26/12-26 contract as
+`ok`, skipped 10 expired contracts, and printed `Everything current -- nothing
+to pull.` The December files are now discoverable by the normal routine; they
+do not need to be seeded again when the roll approaches, only refreshed.

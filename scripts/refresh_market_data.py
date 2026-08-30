@@ -18,8 +18,13 @@ actual data-pull capability is NOT reimplemented -- it is the shared
 ``gather_market_data``.
 
 Prerequisites (same as ``scripts/gather_market_data.py``): NinjaTrader must be
-logged in, warm, and NOT running an optimizer batch (the bridge is
-single-writer; this aborts cleanly if a batch owns it).
+logged in and NOT running an optimizer batch (the bridge is single-writer; this
+aborts cleanly if a batch owns it).
+
+It no longer has to be warm. A cold Strategy Analyzer refuses the first
+automated run; ``gather_market_data`` recognises that specific refusal and
+re-dispatches with backoff, so an unattended refresh survives a freshly started
+NinjaTrader without anyone clicking RUN BATCH BACKTEST.
 
 Examples
 --------
@@ -390,9 +395,13 @@ def main(argv: list[str] | None = None) -> int:
 
         ok = result.state in {"finished", "completed", "complete", "success", "done"} and not result.error
         for f in result.files:
-            _log(f"    {f.kind}: exists={f.exists} lines={f.line_count} bytes={f.size_bytes}")
+            delta = f.size_bytes - f.size_before
+            _log(
+                f"    {f.kind}: exists={f.exists} lines={f.line_count} "
+                f"bytes={f.size_bytes} ({delta:+d}) written={f.changed}"
+            )
         if not ok:
-            _log(f"  INCOMPLETE {c.name}: state={result.state} {result.error or ''}")
+            _log(f"  FAILED {c.name}: state={result.state} {result.error or ''}")
             failures += 1
 
     _log(f"Done. {len(planned) - failures}/{len(planned)} contract(s) refreshed OK.")
