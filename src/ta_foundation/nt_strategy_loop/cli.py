@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -325,7 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     full = sub.add_parser(
         "full-loop",
-        help="Author → repair → compile-clean → optimize → analyze end-to-end.",
+        help="Author -> repair -> compile-clean -> optimize -> analyze end-to-end.",
     )
     full.add_argument("--spec", required=True, help="JSON StrategySpec file.")
     full.add_argument("--lab-root", default=str(Path(".ta_artifacts") / "nt_strategy_lab" / "sessions"))
@@ -363,7 +364,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_streams() -> None:
+    """Keep the CLI usable on a cp1252 console.
+
+    NinjaTrader compile errors and strategy names can carry non-cp1252 text.
+    Without this, printing help or a compile report raises UnicodeEncodeError
+    and the tool looks broken to an unattended caller.
+    """
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _force_utf8_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))
