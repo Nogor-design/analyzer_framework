@@ -303,3 +303,17 @@ def test_read_sidecar_invalid_json(repo: Repository, tmp_path: Path) -> None:
     p.write_text("{not valid", encoding="utf-8")
     out = read_sidecar(repo, path=str(p))
     assert out["ok"] and out["result"]["valid_json"] is False
+
+
+def test_family_registry_is_returned_inline_not_spilled(repo: Repository) -> None:
+    """The registry must stay inline as families are added.
+
+    It is the list of families the Hypothesis Author is allowed to choose from,
+    so a spilled result -- {ok, truncated, artifact_path, summary} with no
+    `result` -- makes the tool useless. At 16 families it already exceeded the
+    2 KB global default.
+    """
+    out = list_probe_families(repo)
+    assert out["ok"]
+    assert "result" in out, f"registry spilled to disk: {sorted(out)}"
+    assert not out.get("truncated")

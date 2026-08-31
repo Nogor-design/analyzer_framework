@@ -159,6 +159,13 @@ def test_weekly_coverage_run_writes_recipe_with_default_lane_grid(
         {"param": "DurationTimeH", "role": "fixed", "value": 4},
         {"param": "Reverse", "role": "matrix_axis", "values": [False, True]},
         {"param": "averageSlow", "role": "matrix_axis", "values": [20, 50, 100, 200, 300, 400]},
+        # The trend filter is pinned OFF deliberately: the Pantheon seed defaults
+        # UseTrend=true, which runs the whole grid trend-on, starves most lanes of
+        # trades, and makes every survivor violate the UseTrend=false settings
+        # contract (2026-06-04 full run: 4/252 covered, all rejected). Do not drop
+        # these two entries to make this assertion shorter.
+        {"param": "UseTrend", "role": "fixed", "value": False},
+        {"param": "UseTrendReverse", "role": "fixed", "value": False},
     ]
     selection = recipe["stages"][0]["selection"]
     assert selection["mode"] == "coverage_matrix_sequence"

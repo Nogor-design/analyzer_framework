@@ -105,7 +105,13 @@ def analyze_template_with_fallback(path: Path | str) -> FallbackNamingDecision:
         per_trade_profit=per_trade_profit,
         per_trade_loss=per_trade_max_loss,
     )
-    true_max_loss = min(loss_stop, per_trade_max_loss * effective_trades) if loss_stop > 0 else (per_trade_max_loss * effective_trades)
+    from ta_foundation.web.optimizer_trade_budget import compute_true_max_loss
+
+    true_max_loss = compute_true_max_loss(
+        per_trade_max_loss=per_trade_max_loss,
+        max_trades=max_trades,
+        loss_stop=loss_stop,
+    )
 
     compact_name = build_name(
         start_minute=start_minute,
@@ -120,6 +126,7 @@ def analyze_template_with_fallback(path: Path | str) -> FallbackNamingDecision:
         long_enabled=long_enabled,
         short_enabled=short_enabled,
         rules=FALLBACK_NAMING_RULES,
+        single_multi="single" if effective_trades <= 1 else "multi",
     )
     session = classify_session(start_minute, FALLBACK_NAMING_RULES)
     phase = phase_word(
@@ -207,12 +214,15 @@ def _compute_effective_trades(
     per_trade_profit: float,
     per_trade_loss: float,
 ) -> int:
-    counts = [max(1, int(max_trades))]
-    if profit_stop > 0 and per_trade_profit > 0:
-        counts.append(max(1, int(-(-profit_stop // per_trade_profit))))
-    if loss_stop > 0 and per_trade_loss > 0:
-        counts.append(max(1, int(-(-loss_stop // per_trade_loss))))
-    return min(counts) if counts else 1
+    from ta_foundation.web.optimizer_trade_budget import compute_effective_trades
+
+    return compute_effective_trades(
+        max_trades=max_trades,
+        profit_stop=profit_stop,
+        loss_stop=loss_stop,
+        per_trade_profit=per_trade_profit,
+        per_trade_loss=per_trade_loss,
+    )
 
 
 def _int_value(value: Any, default: int) -> int:

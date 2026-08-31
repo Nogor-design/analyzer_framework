@@ -19,6 +19,12 @@ from ta_foundation.research_ledger.repository import Repository
         "the parameter whitelist and mechanism template."
     ),
     schema={},
+    # The family registry is a bounded lookup the Hypothesis Author must be able
+    # to read inline -- it is the list of families it is allowed to choose from.
+    # At 16 families the rows already exceed the 2 KB default and the whole
+    # result spilled to disk, leaving callers with no `result` key. Sized to
+    # stay inline as the registry grows.
+    max_inline_bytes=16384,
 )
 def list_probe_families(repo: Repository) -> list[dict]:
     return [

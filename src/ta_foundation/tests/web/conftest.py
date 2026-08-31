@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from ta_foundation.web import optimizer_recipe_runner, optimizer_runner
+from ta_foundation.web.weekly_report_publish import set_published_site_root
 
 # optimizer_promotion_run is part of the (currently in-flight) promotion
 # feature; import defensively so this conftest still loads — and still
@@ -60,3 +61,39 @@ def isolate_nt_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         )
 
     return bridge
+
+
+@pytest.fixture(autouse=True)
+def isolate_naming_rules(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the deployment-matrix naming rules at the in-repo fixture.
+
+    ``load_naming_rules`` defaults to ``D:\templateNaming\naming_rules.json``,
+    an absolute path outside the repository. On any machine without that
+    checkout the deployment-matrix routes answer 400 and their tests fail for a
+    reason that has nothing to do with the code under test. The suite already
+    ships ``fixtures/naming_rules.json`` for exactly this; make every web test
+    use it rather than whatever happens to be on the operator's D: drive.
+
+    Tests that pass ``path=`` explicitly are unaffected -- that argument wins.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "naming_rules.json"
+    monkeypatch.setenv("TA_NAMING_RULES_PATH", str(fixture))
+    return fixture
+
+
+@pytest.fixture(autouse=True)
+def isolate_published_site(tmp_path: Path) -> Path:
+    """Keep the published-site root out of the developer's real artifacts.
+
+    ``/reports`` redirects to the published site when one exists. The real root
+    lives under ``.ta_artifacts/web_optimizer/published-site``, so once anyone
+    has published a weekly report on this machine the route 302s and every test
+    expecting the rendered page fails. Restore afterwards so tests that set
+    their own root are unaffected.
+    """
+    root = tmp_path / "_published_site"
+    set_published_site_root(root)
+    try:
+        yield root
+    finally:
+        set_published_site_root(None)

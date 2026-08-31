@@ -81,3 +81,10 @@ data/research_ledger.sqlite-shm
 # trades CSVs, parquet, pickles and .pyc alongside its own scripts. If it needs
 # version control it wants its own repo, not this one.
 comp-rules/
+
+# NinjaScript strategy build output. MSBuild writes bin/ and obj/ next to each
+# strategy's source, including ~1.5 MB copies of NinjaTrader's own assembly XML
+# docs. All of it is rebuilt on every compile; the repo tracks only the .cs,
+# templates, and helper scripts.
+src/ta_foundation/strategies/*/bin/
+src/ta_foundation/strategies/*/obj/

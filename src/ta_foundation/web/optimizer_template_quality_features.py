@@ -270,8 +270,26 @@ def _risk_features(session: Any, cell: dict[str, Any]) -> dict[str, float | int 
             loss_stop=float(loss_stop),
         )
     except Exception:
-        effective = min(int(max_trades), max(1, math.ceil(float(loss_stop) / per_trade_loss)))
-        true_max_loss = min(float(loss_stop), per_trade_loss * effective)
+        # The old inline fallback capped the answer at loss_stop, which
+        # understates the worst case: LossStop halts new entries once the day is
+        # already down, so one more full-stop trade can still land on top of it.
+        from ta_foundation.web.optimizer_trade_budget import (
+            compute_effective_trades as _eff,
+            compute_true_max_loss as _tml,
+        )
+
+        effective = _eff(
+            max_trades=int(max_trades),
+            profit_stop=float(profit_stop),
+            loss_stop=float(loss_stop),
+            per_trade_profit=per_trade_profit,
+            per_trade_loss=per_trade_loss,
+        )
+        true_max_loss = _tml(
+            per_trade_max_loss=per_trade_loss,
+            max_trades=int(max_trades),
+            loss_stop=float(loss_stop),
+        )
     return {"prop_max_daily_loss": float(true_max_loss), "effective_trades": int(effective)}
 
 

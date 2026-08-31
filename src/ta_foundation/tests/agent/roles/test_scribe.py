@@ -314,7 +314,13 @@ def test_weekly_letter_empty_window_writes_stub(repo: Repository) -> None:
 
 def test_weekly_letter_hitl_on_hallucination(repo: Repository) -> None:
     today = date.today()
-    week_start = today - timedelta(days=today.isoweekday() - 1)
+    # A rolling seven-day window, matching test_weekly_letter_with_window_data.
+    # Using the ISO week start instead made this test calendar-dependent: on a
+    # Monday or Tuesday the candidate seeded two days ago falls in the *previous*
+    # week, so the letter had nothing to consider, the LLM was never called, and
+    # the hallucination linter under test never ran -- the assertion then failed
+    # for a reason unrelated to HITL behaviour.
+    week_start = today - timedelta(days=6)
     _seed_candidate_in_window(repo, cid="c_001", days_ago=2)
 
     def hallucinating_llm(system: str, user: str) -> str:

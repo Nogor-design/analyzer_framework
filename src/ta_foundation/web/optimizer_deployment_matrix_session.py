@@ -53,13 +53,24 @@ def _facts_from_template_xml(path: str | Path) -> dict[str, Any]:
 
 
 def _canonical_name(path: str | Path, market_suffix: str) -> str | None:
-    """The current canonical name for a template, computed fresh from its XML by
-    the template_naming package (so it reflects the live naming rules)."""
-    try:
-        from template_naming.core import analyze_template
+    """The current canonical name for a template, computed fresh from its XML so
+    it reflects the live naming rules.
 
-        name = analyze_template(path).compact_name
+    Routed through ``analyze_template_any``, which prefers the external
+    ``template_naming`` package and falls back to the in-repo decoder. Importing
+    ``template_naming.core`` directly meant that on any checkout without that
+    optional package every template silently kept its stored ``semantic_name``
+    -- often a bare filename -- instead of a real deployment name.
+    """
+    try:
+        from ta_foundation.web.optimizer_template_naming_fallback import (
+            analyze_template_any,
+        )
+
+        name = analyze_template_any(path).compact_name
     except Exception:
+        return None
+    if not name:
         return None
     return f"{name}-{market_suffix}" if market_suffix else name
 

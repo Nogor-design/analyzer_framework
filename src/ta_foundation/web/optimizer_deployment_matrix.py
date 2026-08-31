@@ -115,11 +115,19 @@ def classify_single_multi(
     back to the raw-cap rule (MaxTrades==1, or both stops pinned to 1).
     """
     if max_stop is not None and max_tp_ratio is not None and tick_value:
+        import math
+
         try:
-            import math
-
             from template_naming.core import compute_effective_trades
+        except ImportError:
+            # template_naming is optional and usually absent. Use the shared
+            # local rule rather than the raw-cap rule below: that one only ever
+            # says "single" for MaxTrades == 1, so a guardrail-capped template
+            # was silently mis-labelled "multi" on every machine without the
+            # package.
+            from ta_foundation.web.optimizer_trade_budget import compute_effective_trades
 
+        try:
             per_trade_loss = float(max_stop) * float(tick_value)
             per_trade_profit = math.floor(float(max_stop) * float(max_tp_ratio)) * float(tick_value)
             effective = compute_effective_trades(
@@ -437,9 +445,16 @@ def build_name(
     rules: dict,
     market: str | None = None,
     version: int | None = None,
+    single_multi: str | None = None,
 ) -> str:
     session = classify_session(start_minute, rules)
-    single_multi = classify_single_multi(max_trades, profit_stop, loss_stop)
+    # Callers that already know the bracket-aware answer (they have MaxStop and
+    # MaxTPRatio, so they can run classify_effective) pass it in. Without it the
+    # raw MaxTrades rule is all this function can see, and the phase word in the
+    # name then contradicts the single/multi axis the deployment matrix files
+    # the same template under.
+    if single_multi is None:
+        single_multi = classify_single_multi(max_trades, profit_stop, loss_stop)
     tier = classify_tier(average_fast, average_slow, rules)
 
     name = "".join(

@@ -69,9 +69,17 @@ def journaled_tool(
     schema: dict,
     description: str,
     preconditions: tuple[Precondition, ...] = (),
+    max_inline_bytes: int = MAX_INLINE_OUTPUT_BYTES,
 ):
     """Decorator factory. The wrapped function must accept (repo, **inputs) and
-    return any JSON-serialisable value (which becomes `result`)."""
+    return any JSON-serialisable value (which becomes `result`).
+
+    ``max_inline_bytes`` raises the spill-to-disk threshold for one tool. The
+    global default protects the agent's context from unbounded result sets, but
+    a small bounded registry -- the kind of lookup whose whole purpose is to be
+    read inline -- becomes useless once it spills: callers get
+    ``{ok, truncated, artifact_path, summary}`` with no ``result`` at all.
+    """
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., dict]:
         @functools.wraps(fn)
@@ -110,7 +118,7 @@ def journaled_tool(
             # 4. Output truncation.
             payload: dict = {"ok": True, "result": result}
             blob = _canonical_json(payload)
-            if len(blob.encode("utf-8")) > MAX_INLINE_OUTPUT_BYTES:
+            if len(blob.encode("utf-8")) > max_inline_bytes:
                 artifact_path = _spill_to_disk(name, blob)
                 payload = {
                     "ok": True,
