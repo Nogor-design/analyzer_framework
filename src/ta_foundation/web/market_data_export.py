@@ -47,6 +47,7 @@ from ta_foundation.nt_strategy_loop.seed_template import (
 )
 from ta_foundation.optimization.grid_workflow import generate_fixed_backtest_template
 from ta_foundation.web.optimizer_runner import (
+    make_run_id,
     DEFAULT_COMMAND_FILE,
     DEFAULT_STATUS_FILE,
     BridgeBusyError,
@@ -89,6 +90,11 @@ POLL_INTERVAL_SECONDS = 20
 # re-issuing the same batch is safe. Retrying *only* this specific error keeps a
 # genuine failure (bad template, missing data, wrong instrument) loud.
 READINESS_REFUSAL_MARKER = "run command was not executable"
+
+#: How long to wait for the AddOn's first heartbeat before concluding nothing is
+#: listening. Generous enough for a busy NinjaTrader to get around to the command
+#: file, short enough that an unattended job fails in minutes, not hours.
+ACK_TIMEOUT_SECONDS = 120
 
 #: Waits before each re-dispatch after a readiness refusal. Cumulative ~2.5 min,
 #: matching the documented 1-2 minute NinjaTrader cold-start window.
@@ -347,6 +353,7 @@ def gather_market_data(
     readiness_backoff_seconds: tuple[int, ...] | None = None,
     sleeper=time.sleep,
     process_check=ninjatrader_is_running,
+    ack_timeout_seconds: int = ACK_TIMEOUT_SECONDS,
 ) -> GatherResult:
     """Gather bars (and optional ticks) for ``instrument`` over [from_date,
     to_date] by driving ``TaFoundationDataExportStrategy`` through the NT batch
@@ -383,7 +390,7 @@ def gather_market_data(
     source_folder.mkdir(parents=True, exist_ok=True)
     dest_folder.mkdir(parents=True, exist_ok=True)
 
-    run_id = "mdexport_" + moment.strftime("%Y%m%d_%H%M%S")
+    run_id = make_run_id("mdexport", moment)
     template_path = source_folder / f"{run_id}.xml"
 
     bars_name, tick_name = export_filenames(instrument, suf, export_ticks=export_ticks)
@@ -419,6 +426,7 @@ def gather_market_data(
         strategy_source=strategy_source,
     )
     logger(f"[market_data_export] template written: {template_path}")
+    _enforce_single_template(source_folder, template_path, logger)
 
     if not dispatch:
         result.state = "prepared"
@@ -479,11 +487,11 @@ def gather_market_data(
     last_error: str | None = None
 
     for attempt in range(len(backoff) + 1):
-        # The AddOn de-duplicates by runId, so a retry MUST carry a fresh one or
-        # it is dropped as a duplicate and we would poll a batch that never ran.
-        # The template filename stays fixed: sourceFolder must hold exactly one
-        # XML, or the batch would run every stale attempt's template too.
-        attempt_run_id = run_id if attempt == 0 else f"{run_id}_r{attempt}"
+        # The AddOn de-duplicates by runId, so every attempt takes a fresh one
+        # from the shared generator (collision-proof within this process). The
+        # template file is *not* regenerated: sourceFolder must hold exactly one
+        # XML, which _enforce_single_template guarantees above.
+        attempt_run_id = run_id if attempt == 0 else make_run_id("mdexport", moment)
         result.dispatched_run_ids.append(attempt_run_id)
         result.dispatch_attempts = attempt + 1
 
@@ -497,7 +505,7 @@ def gather_market_data(
                     cmd_path,
                     status_path,
                     now=datetime.now(timezone.utc),
-                    requesting_run_id=result.dispatched_run_ids[-2],
+                    requesting_run_id=result.dispatched_run_ids,
                 )
             except BridgeBusyError as exc:
                 result.state = "blocked"
@@ -527,6 +535,7 @@ def gather_market_data(
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             logger=logger,
+            ack_timeout_seconds=ack_timeout_seconds,
         )
 
         if not is_readiness_refusal(last_error):
@@ -551,6 +560,16 @@ def gather_market_data(
     # the reason only in lastError (e.g. "RunError: Strategy Analyzer Run
     # command was not executable"). Surfacing it is what stops a failed gather
     # from being reported as a success over an untouched file.
+    if final_state == "no_ack" and result.error is None:
+        result.error = (
+            "NinjaTrader never acknowledged the export command within "
+            f"{ack_timeout_seconds}s. The process is running but its batch AddOn "
+            "is not servicing the command bridge -- it can be busy running a "
+            "strategy, or the AddOn may need re-authorizing. Nothing was "
+            "exported. Check the Control Center, then retry; do not assume the "
+            "data was refreshed."
+        )
+
     if last_error and result.error is None:
         if is_readiness_refusal(last_error):
             # Exhausted the handshake. Say so plainly, so the operator knows the
@@ -601,6 +620,7 @@ def _poll_to_terminal(
     timeout_seconds: int,
     poll_interval_seconds: int,
     logger,
+    ack_timeout_seconds: int = ACK_TIMEOUT_SECONDS,
 ) -> tuple[str, int, int, str | None]:
     """Poll the AddOn heartbeat file until the run reaches a terminal state.
 
@@ -612,16 +632,29 @@ def _poll_to_terminal(
     decoration: NinjaTrader reports a failed run as ``state="finished"`` with
     ``completed=0`` and the reason in ``lastError`` -- so a caller that reads
     only the state cannot tell a successful export from a refused one.
+
+    A dispatch that is never acknowledged returns ``"no_ack"`` rather than
+    burning the whole timeout. NinjaTrader can be alive and responsive while its
+    AddOn is not servicing the command file at all -- observed 2026-08-31 with
+    NinjaTrader busy running a strategy, and evidenced before that by the
+    ``nt8_command.stale-*`` recovery files. Waiting six hours for a listener
+    that never answers is the difference between an unattended job that reports
+    a problem and one that silently occupies the bridge all night.
     """
-    deadline = time.time() + timeout_seconds
+    started = time.time()
+    deadline = started + timeout_seconds
+    acknowledged = False
     last_completed = -1
     completed = total = 0
     last_error: str | None = None
     while time.time() < deadline:
         payload = _read_status(status_path)
         if payload is None or str(payload.get("runId") or "") != run_id:
+            if not acknowledged and time.time() - started >= ack_timeout_seconds:
+                return "no_ack", completed, total, last_error
             time.sleep(poll_interval_seconds)
             continue
+        acknowledged = True
         state = str(payload.get("state") or "").strip().lower()
         completed = int(payload.get("completed") or 0)
         total = int(payload.get("total") or 0)
@@ -724,6 +757,41 @@ def _normalize_date(value: str, label: str) -> str:
     except ValueError as exc:
         raise MarketDataExportError(f"{label} must be YYYY-MM-DD, got {value!r}") from exc
     return date_part
+
+
+def _enforce_single_template(source_folder: Path, template_path: Path, logger) -> None:
+    """Guarantee the AddOn's sourceFolder holds exactly our one template.
+
+    The batch AddOn runs *every* XML in sourceFolder. For a single-contract
+    export that makes a leftover template silently in-scope: a stale window or
+    the wrong instrument gets re-run and its bars land in the output the caller
+    is about to accept as this run's result. That is the one failure here that
+    can put wrong data into the market-data store, so it is enforced rather than
+    assumed.
+
+    This function owns ``<work_dir>/generated_templates``, so clearing stale
+    XML from it is safe; anything non-XML is left alone and reported.
+    """
+
+    for stale in sorted(source_folder.glob("*.xml")):
+        if stale.resolve() == template_path.resolve():
+            continue
+        logger(f"[market_data_export] removing stale template: {stale.name}")
+        try:
+            stale.unlink()
+        except OSError as exc:
+            raise MarketDataExportError(
+                f"cannot remove stale template {stale}: {exc}. The batch would "
+                "run it alongside this export and mix its bars into the result."
+            ) from exc
+
+    remaining = sorted(source_folder.glob("*.xml"))
+    if remaining != [template_path]:
+        raise MarketDataExportError(
+            f"expected exactly one template in {source_folder}, found "
+            f"{[p.name for p in remaining]}. Refusing to dispatch: the batch "
+            "runs every template in the folder."
+        )
 
 
 def _write_command_file(path: Path, payload: dict[str, Any]) -> None:

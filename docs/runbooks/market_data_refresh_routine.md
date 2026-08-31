@@ -52,6 +52,14 @@ ticks**, serially. Skips expired contracts. Prerequisites:
   (~20s, 45s, 90s) using a fresh `runId` each time. Nobody has to click RUN
   BATCH BACKTEST to prime it. A refusal that outlasts the budget fails loudly
   and pulls no data.
+- **NinjaTrader running is not the same as the bridge listening.** The AddOn can
+  stop servicing `nt8_command.json` while NinjaTrader itself is alive and
+  responsive -- seen on 2026-08-31 with NinjaTrader busy running a strategy, and
+  before that in the `C:	emp
+t8_command.stale-*` recovery files. The gather now
+  gives up after 120s with no heartbeat (`state=no_ack`) instead of holding the
+  bridge for the full six-hour timeout. If you see that, check the Control
+  Center and whether a strategy or optimizer batch is occupying NinjaTrader.
 - **No optimizer batch running** — the NT command bridge is single-writer; the
   script aborts cleanly (exit 2) if a batch owns it. Rerun when free.
 

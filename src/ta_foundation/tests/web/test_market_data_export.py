@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -511,3 +512,140 @@ def test_process_check_can_be_disabled(tmp_path: Path, monkeypatch):
 def test_live_process_check_answers_without_raising():
     """The real check must return a bool or None, never blow up a refresh."""
     assert mde.ninjatrader_is_running() in (True, False, None)
+
+
+# ---------------------------------------------------------------------------
+# The three bridge traps, closed at the source
+# ---------------------------------------------------------------------------
+
+def test_run_ids_cannot_collide_within_a_second():
+    """A repeated runId is dropped by the AddOn; the caller then polls forever."""
+    moment = datetime(2026, 8, 31, 12, 0, 0, tzinfo=timezone.utc)
+    ids = [mde.make_run_id("mdexport", moment) for _ in range(10_000)]
+    assert len(set(ids)) == len(ids)
+
+
+def test_run_ids_stay_sortable_by_time():
+    early = mde.make_run_id("x", datetime(2026, 1, 1, tzinfo=timezone.utc))
+    late = mde.make_run_id("x", datetime(2026, 6, 1, tzinfo=timezone.utc))
+    assert early < late
+
+
+def test_a_stale_template_is_removed_before_dispatch(tmp_path: Path, monkeypatch):
+    """The batch runs every XML in sourceFolder, so a leftover would mix in."""
+    md = _stub_existing_export(tmp_path)
+    templates = tmp_path / "work" / "generated_templates"
+    templates.mkdir(parents=True, exist_ok=True)
+    stale = templates / "leftover_from_last_week.xml"
+    stale.write_text("<NinjaTrader/>", encoding="utf-8")
+
+    _scripted_poll(monkeypatch, [("finished", 0, 1, "SetupError: stop here")])
+    _gather(tmp_path, md)
+
+    assert not stale.exists(), "a stale template would have been re-run"
+    assert len(list(templates.glob("*.xml"))) == 1
+
+
+def test_dispatch_refuses_when_the_folder_cannot_be_reduced_to_one(tmp_path: Path, monkeypatch):
+    md = _stub_existing_export(tmp_path)
+    templates = tmp_path / "work" / "generated_templates"
+    templates.mkdir(parents=True, exist_ok=True)
+
+    real_unlink = Path.unlink
+
+    def refuse(self, *a, **k):
+        if self.name == "stubborn.xml":
+            raise OSError("locked")
+        return real_unlink(self, *a, **k)
+
+    (templates / "stubborn.xml").write_text("<NinjaTrader/>", encoding="utf-8")
+    monkeypatch.setattr(Path, "unlink", refuse)
+    monkeypatch.setattr(mde, "_poll_to_terminal", lambda *a, **k: pytest.fail(
+        "must not dispatch while a foreign template is in scope"))
+
+    with pytest.raises(mde.MarketDataExportError) as exc:
+        _gather(tmp_path, md)
+    assert "stale template" in str(exc.value) or "exactly one template" in str(exc.value)
+
+
+def test_retry_reacquires_the_bridge_from_any_id_it_owns(tmp_path: Path, monkeypatch):
+    """Callers must not have to work out which attempt still owns the file."""
+    md = _stub_existing_export(tmp_path)
+    seen_requesting: list[object] = []
+    real = mde.ensure_bridge_available
+
+    def spy(cmd, status, *, requesting_run_id=None, now=None):
+        if requesting_run_id is not None:
+            seen_requesting.append(requesting_run_id)
+        return real(cmd, status, requesting_run_id=requesting_run_id, now=now)
+
+    monkeypatch.setattr(mde, "ensure_bridge_available", spy)
+    _scripted_poll(monkeypatch, [("finished", 0, 1, _REFUSAL)])
+    result = _gather(tmp_path, md, readiness_backoff_seconds=(1,))
+
+    assert seen_requesting, "retry must identify itself to the bridge"
+    # Every id this run used is offered, so no index arithmetic can go wrong.
+    assert set(result.dispatched_run_ids) >= set(seen_requesting[-1])
+
+
+def test_bridge_accepts_a_collection_of_owned_ids():
+    from ta_foundation.web.optimizer_runner import _as_run_id_set
+    assert _as_run_id_set("solo") == frozenset({"solo"})
+    assert _as_run_id_set(["a", "b"]) == frozenset({"a", "b"})
+
+
+def test_unacknowledged_dispatch_fails_fast_not_after_the_full_timeout(tmp_path: Path, monkeypatch):
+    """NinjaTrader can be alive while its AddOn ignores the command bridge.
+
+    Driven by a fake clock so the assertion is about elapsed *budget*, not about
+    how fast this machine spins.
+    """
+    md = _stub_existing_export(tmp_path)
+    clock = {"t": 1000.0}
+    slept: list[float] = []
+
+    def fake_sleep(seconds):
+        slept.append(seconds)
+        clock["t"] += seconds
+
+    monkeypatch.setattr(mde.time, "time", lambda: clock["t"])
+    monkeypatch.setattr(mde.time, "sleep", fake_sleep)
+
+    six_hours = 6 * 60 * 60
+    result = _gather(tmp_path, md, timeout_seconds=six_hours,
+                     poll_interval_seconds=5, ack_timeout_seconds=120)
+
+    assert result.state == "no_ack"
+    assert "never acknowledged" in result.error
+    assert "Nothing was exported" in result.error
+    elapsed = clock["t"] - 1000.0
+    assert elapsed <= 120 + 5, elapsed
+    assert elapsed < six_hours / 10, "must not burn anything like the full timeout"
+
+
+def test_an_acknowledged_run_is_never_cut_off_early(tmp_path: Path, monkeypatch):
+    """A slow but live batch must keep its full timeout."""
+    status = tmp_path / "nt8_status.json"
+    ticks = {"n": 0}
+
+    def heartbeat(_path):
+        ticks["n"] += 1
+        run_id = json.loads((tmp_path / "nt8_command.json").read_text())["runId"]
+        state = "running" if ticks["n"] < 400 else "finished"
+        completed = 0 if ticks["n"] < 400 else 1
+        return {"runId": run_id, "state": state, "completed": completed,
+                "total": 1, "lastError": None}
+
+    monkeypatch.setattr(mde, "_read_status", heartbeat)
+    monkeypatch.setattr(mde.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        mde, "_verify_outputs",
+        lambda *a, **k: [mde.ExportFileResult(
+            kind="bars", path=str(tmp_path / "x"), exists=True,
+            line_count=5, size_bytes=9, changed=True)],
+    )
+    md = _stub_existing_export(tmp_path)
+    result = _gather(tmp_path, md, timeout_seconds=6 * 60 * 60,
+                     poll_interval_seconds=1, ack_timeout_seconds=3600)
+    assert result.state == "finished", result.error
+    assert result.error is None

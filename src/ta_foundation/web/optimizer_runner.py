@@ -22,14 +22,17 @@ overwritten with the new payload.
 """
 
 import csv
+import itertools
 import json
 import os
 import re
 import tempfile
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -82,7 +85,7 @@ class BridgeBusyError(OptimizerRunnerError):
 
 # A run is no longer holding the bridge once its status reaches any of these.
 _BRIDGE_TERMINAL_STATES = frozenset({
-    "complete", "completed", "success", "finished", "done",
+    "complete", "completed", "success", "succeeded", "finished", "done",
     "failed", "error", "cancelled", "canceled", "timed_out", "stale",
 })
 # Terminal states returned by ``get_status`` that a late cancel request must
@@ -147,20 +150,23 @@ def ensure_bridge_available(
     command_file: Path | str,
     status_file: Path | str,
     *,
-    requesting_run_id: str | None = None,
+    requesting_run_id: str | Iterable[str] | None = None,
     now: datetime | None = None,
 ) -> None:
     """Raise :class:`BridgeBusyError` if a different live run owns the bridge.
 
     ``requesting_run_id`` lets a run re-acquire the bridge it already owns
-    (idempotent re-dispatch) without tripping the guard.
+    (idempotent re-dispatch) without tripping the guard. It accepts either a
+    single id or every id this logical run has dispatched under, so a caller
+    that retried does not have to work out which attempt still owns the file --
+    getting that index wrong aborts a healthy run as if a stranger held it.
     """
     moment = now or datetime.now(timezone.utc)
     owner = _bridge_owner(Path(command_file), Path(status_file), now=moment)
     if owner is None:
         return
     owner_run_id, state = owner
-    if requesting_run_id and owner_run_id == requesting_run_id:
+    if requesting_run_id and owner_run_id in _as_run_id_set(requesting_run_id):
         return
     raise BridgeBusyError(
         owner_run_id=owner_run_id, state=state, command_file=str(command_file)
@@ -536,8 +542,38 @@ def load_run(session: OptimizerSession) -> RunRecord | None:
 # Internals
 # ---------------------------------------------------------------------------
 
+#: Process-local dispatch counter. See :func:`make_run_id`.
+_RUN_SEQUENCE = itertools.count()
+
+
+def _as_run_id_set(value: str | Iterable[str]) -> frozenset[str]:
+    if isinstance(value, str):
+        return frozenset({value})
+    return frozenset(value)
+
+
+def make_run_id(prefix: str, moment: datetime | None = None) -> str:
+    """Build a run id that cannot collide with another dispatch.
+
+    The AddOn de-duplicates incoming RunBatch commands by ``runId``: a repeat
+    id is dropped without complaint, and the caller is then left polling a
+    batch that never started until its timeout expires. Second-resolution
+    timestamps made that reachable whenever two dispatches landed in the same
+    second, so every id carries a random suffix. The timestamp stays in front
+    to keep ids sortable and greppable in the AddOn log.
+    """
+
+    stamp = (moment or datetime.now(timezone.utc)).strftime("%Y%m%d_%H%M%S")
+    # Counter first, randomness second, and both are load-bearing. The counter
+    # makes a collision *impossible* within one process, which is the case that
+    # actually bites: a retry loop or a bulk gather issuing several dispatches
+    # inside the same second. The random half covers concurrent processes, where
+    # no shared counter exists. Randomness alone is only probabilistically safe.
+    return f"{prefix}_{stamp}_{next(_RUN_SEQUENCE) & 0xFFFF:04x}{uuid.uuid4().hex[:4]}"
+
+
 def _make_run_id(moment: datetime) -> str:
-    return "run_" + moment.strftime("%Y%m%d_%H%M%S")
+    return make_run_id("run", moment)
 
 
 def _command_instrument_for(session: OptimizerSession) -> str:
