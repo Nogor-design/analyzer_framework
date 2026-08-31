@@ -62,6 +62,17 @@ Observation records:
 attempts. This is an operational compile-trigger gap, not evidence that the
 generated C# compiled or failed compilation.
 
+The installed `NinjaTraderAddOnProject.dll` does contain
+`CompileObserverService` and `TriggerEditorCompile`, so the observer was not
+missing from the deployed AddOn. Source inspection identified a diagnostic
+blind spot in that trigger: it only invokes `OnCompile(false)` on entries in
+`NinjaTrader.Gui.NinjaScript.Editor.EditorViewModel.Instances`. If the WPF
+application, editor type, instances collection, or `OnCompile` method is
+unavailable, the method returns silently; its outer exception handler is also
+empty. The two timeouts therefore cannot distinguish "no open editor instance"
+from a reflection or invocation failure. This is evidence for the next repair,
+not confirmation of which silent branch occurred at runtime.
+
 The unique installed proof file was moved out of the active Strategies folder
 to the recoverable quarantine path:
 
@@ -71,7 +82,16 @@ Its quarantined SHA-256 matches the generated C# hash above.
 
 ## Next Gate
 
-Repair or re-prove the no-GUI NinjaTrader compile trigger. The acceptance check
-is a changed `NinjaTrader.Custom.dll` timestamp plus a terminal `compiled=true`
+Repair or re-prove the no-GUI NinjaTrader compile trigger. The repair must
+report whether an editor view model and callable compile method were found,
+surface invocation errors instead of swallowing them, and fail quickly with a
+specific reason when no supported compile path exists. The acceptance check is
+a changed `NinjaTrader.Custom.dll` timestamp plus a terminal `compiled=true`
 observation for the uniquely named proof strategy. Only then may the optimizer
 bridge run; optimization and parity must not be inferred from this proof.
+
+The active AddOn checkout at `D:\ninjatraderOptimizer` already contains
+uncommitted compile-observer and batch-control work. It was inspected read-only
+and was not modified or rebuilt as part of this bridge proof. Reconcile that
+work before implementing or deploying the trigger repair, and revalidate the
+AddOn against installed NinjaTrader 8.1.8.1 before relying on it.
