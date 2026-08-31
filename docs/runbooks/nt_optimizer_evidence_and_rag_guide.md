@@ -12,11 +12,11 @@ optimizer behavior live:
 
 | Source | What It Answers |
 |---|---|
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper` | Local NinjaTrader docs RAG, Strategy Factory, NinjaScript generation, compile repair, template-generation guidance |
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\README.md` | RAG build/search/generation commands and project overview |
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\docs\PROJECT_HANDOFF.md` | What the RAG/factory currently contains |
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\LLM_DOCUMENTATION_GUIDE.md` | LLM rules for using retrieved NT docs, especially optimization docs |
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\strategy_factory\modules\templates\LLM_TEMPLATE_CREATION_GUIDE.md` | Strategy Analyzer template XML structure, including `KeepBestResults` and `OptimizationFitness` |
+| `D:\ninjatrader-strategy-factory` | Local NinjaTrader docs RAG, Strategy Factory, NinjaScript generation, compile repair, template-generation guidance |
+| `D:\ninjatrader-strategy-factory\README.md` | RAG build/search/generation commands and project overview |
+| `D:\ninjatrader-strategy-factory\docs\PROJECT_HANDOFF.md` | What the RAG/factory currently contains |
+| `D:\ninjatrader-strategy-factory\LLM_DOCUMENTATION_GUIDE.md` | LLM rules for using retrieved NT docs, especially optimization docs |
+| `D:\ninjatrader-strategy-factory\strategy_factory\modules\templates\LLM_TEMPLATE_CREATION_GUIDE.md` | Strategy Analyzer template XML structure, including `KeepBestResults` and `OptimizationFitness` |
 | `D:\ninjatraderOptimizer\PROJECT_STATUS.md` | Local AddOn behavior, version sensitivity, Strategy Analyzer automation quirks |
 | `D:\ninjatraderOptimizer\NinjaTraderOptimizerProject` | Standalone custom optimizer and custom optimization-fitness project; this is the active home for optimizer/fitness code |
 | `D:\ninjatraderOptimizer\NinjaTraderOptimizerProject\NinjaTraderOptimizerProject\OptimizationFitnesses\CustomMultiObjectiveFitness.cs` | Current buildable custom fitness implementation |
@@ -39,7 +39,7 @@ Official NinjaTrader anchors:
 
 ## Local RAG Commands
 
-From `D:\Backup\projects\PythonProject\NinjatraderDocScrapper`:
+From `D:\ninjatrader-strategy-factory`:
 
 ```powershell
 .\.venv\Scripts\python.exe .\build_ollama_index.py `
@@ -60,8 +60,8 @@ From `D:\Backup\projects\PythonProject\NinjatraderDocScrapper`:
 
 The canonical local RAG artifacts are:
 
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\ninjatrader_docs\chunks.jsonl`
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\ninjatrader_docs\rag_index.sqlite`
+- `D:\ninjatrader-strategy-factory\ninjatrader_docs\chunks.jsonl`
+- `D:\ninjatrader-strategy-factory\ninjatrader_docs\rag_index.sqlite`
 
 For optimization or template XML work, prioritize retrieved docs under
 References Optimizer and References Optimization Fitness, then cross-check

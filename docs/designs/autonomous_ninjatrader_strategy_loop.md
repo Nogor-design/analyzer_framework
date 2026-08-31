@@ -8,15 +8,15 @@ Last reviewed: 2026-05-19.
 Related projects:
 
 - `D:\Backup\projects\PythonProject\ta_foundation`
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper`
+- `D:\ninjatrader-strategy-factory`
 - `D:\ninjatraderOptimizer`
 
 Related docs:
 
 - `docs/designs/ninjatrader_optimizer_web_ui.md`
 - `docs/designs/optimizer_process_explained.md`
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\docs\COMPILE_LOOP.md`
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\README.md`
+- `D:\ninjatrader-strategy-factory\docs\COMPILE_LOOP.md`
+- `D:\ninjatrader-strategy-factory\README.md`
 - `D:\ninjatraderOptimizer\PROJECT_STATUS.md`
 
 ## NinjaTrader Startup Runbook

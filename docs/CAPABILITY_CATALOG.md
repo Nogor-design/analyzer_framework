@@ -57,7 +57,7 @@ Detailed analysis routing: `docs/ANALYSIS_CAPABILITY_GUIDE.md`.
 | Project | Purpose | Status |
 |---|---|---|
 | `D:\local-deep-research` | Online research agent (LangGraph, 30+ engines) → edge/rules research; already wired via `research_intake/ldr.py` | Production |
-| `D:\Backup\projects\PythonProject\NinjatraderDocScrapper` | NinjaScript **strategy factory** + learning RAG: discovered edge → compilable `.cs` + repair + parity | Working (likely supersedes `StrategyDiscoveryFilter.cs`) |
+| `D:\ninjatrader-strategy-factory` | NinjaScript **strategy factory** + learning RAG: discovered edge → compilable `.cs` + repair + parity | Working (likely supersedes `StrategyDiscoveryFilter.cs`) |
 | `D:\NinjaAccountManager` | Real-time NT account monitor + order API (WebSocket bridge, not plugin); has account state, **lacks DD/prop rules** | Working, early |
 | `D:\DailyAnalysis` | Rule-based NQ daily context (bias/levels/news); no selection, no LLM | Functional |
 | `D:\agentic-engine` | Idea→hypothesis→test→decision validation ledger (overlaps internal `research_ledger/`) | Working core |

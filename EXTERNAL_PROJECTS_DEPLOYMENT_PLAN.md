@@ -430,7 +430,7 @@ GET /v1/strategies/jobs/{job_id}/result
 
 **Dependencies:**
 - `nt_strategy_loop/*` (session, authoring, installer, compile_worker, repair, optimizer_bridge)
-- **External:** `D:\Backup\projects\PythonProject\NinjatraderDocScrapper` (strategy factory)
+- **External:** `D:\ninjatrader-strategy-factory` (strategy factory)
 - **External:** `D:\ninjatraderOptimizer` (RunBatch IPC, AddOn)
 
 **Deployment Target:** Requires NinjaTrader + compiler installed; typically on dedicated machine

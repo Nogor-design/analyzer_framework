@@ -56,7 +56,7 @@ Do not rebuild these:
 - Execution bridge compatibility:
   `src/ta_foundation/strategies/TaFoundationExecutionBridge/`
 - Strategy Factory:
-  `D:\Backup\projects\PythonProject\NinjatraderDocScrapper\strategy_factory`
+  `D:\ninjatrader-strategy-factory\strategy_factory`
 - Optimizer AddOn: `D:\ninjatraderOptimizer`
 - Sim/runtime account monitor and direct strategy API: `D:\NinjaAccountManager`
 

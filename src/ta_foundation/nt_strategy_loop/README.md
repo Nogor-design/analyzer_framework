@@ -40,6 +40,7 @@ owns intent, durable artifacts, repair policy, and the decision record.
 |---|---|
 | NinjaTrader 8 | Installed at the standard `Documents\NinjaTrader 8` location. |
 | `BatchStrategyOptimizerAddOn` | The C# AddOn that handles the `ObserveCompile` and `RunBatch` IPC actions. Must be compiled and authorized in NinjaTrader. |
+| Working compile trigger | `ObserveCompile` currently installs and observes a source file; confirm the installed NinjaTrader build actually rebuilds `NinjaTrader.Custom.dll` after the drop. |
 | `ta_foundation` installed | `pip install -e .` from the repo root. |
 | Ollama (optional) | Only needed for `--repair-llm`. A local `ollama serve` with a code model such as `qwen3-coder:30b`. |
 
@@ -95,8 +96,8 @@ via `--spec`:
 | `risk_note` | no | Free text carried into the session record. |
 
 An unknown `family` raises a clear error — register a renderer with
-`authoring.register_family(...)` or hand off to the NinjatraderDocScrapper
-strategy factory.
+`authoring.register_family(...)` or hand off to the external Strategy Factory
+at `D:\ninjatrader-strategy-factory`.
 
 ---
 
@@ -156,6 +157,25 @@ Builds a provisional Strategy Analyzer seed XML from a compile-clean `.cs`
 
 ### `smoke-loop`
 A tiny author/compile/analyze loop for verifying the plumbing end to end.
+
+### External Strategy Factory bridge
+
+Use the bridge when a canonical Strategy Factory spec should be realized by the
+external deterministic generator before the existing compile/optimizer loop
+takes over:
+
+```powershell
+python -m ta_foundation.nt_strategy_loop.strategy_factory_bridge `
+  --spec D:\ninjatrader-strategy-factory\strategy_factory\specs\examples\ema_cross_fixed_stop_target.json `
+  --out-dir .ta_artifacts\nt_strategy_lab\factory_builds\ema_cross_fixed_stop_target
+```
+
+The bridge validates the factory manifest and returns paths to the normalized
+spec, ta_foundation template JSON, proposed NinjaScript C#, and Strategy
+Analyzer XML. It deliberately does not install, compile, optimize, enable, or
+deploy the strategy. Pass the returned C# to `observe-compile` or another
+existing `nt_strategy_loop` command when the applicable research action is
+authorized.
 
 ---
 
@@ -289,7 +309,7 @@ exposure.
 |---|---|
 | Commands hang or time out right after launch | NinjaTrader still cold-starting. Wait 1–2 minutes, or run `ensure-nt-ready` first. |
 | `peer_compile_block` stop reason | A different `.cs` in `bin\Custom` has compile errors and blocks the whole assembly. Open the file named in the message and fix or quarantine it. |
-| `stale_assembly` stop reason | NinjaTrader did not rebuild `NinjaTrader.Custom.dll`. Confirm the AddOn is authorized and NinjaTrader is responsive. |
+| `stale_assembly` stop reason or repeated timeout with zero errors | NinjaTrader did not rebuild `NinjaTrader.Custom.dll`. Confirm the AddOn is authorized and NinjaTrader is responsive, then retry once. If the identical file times out again, stop: the compile trigger is not operational in the current runtime and the absence of compiler errors is not compile-clean evidence. |
 | `--repair-llm` always declines | `ollama serve` is not running, or the model name is wrong. The warning prints to stderr. |
 | `optimizer-bridge` reports `incomplete` | NinjaTrader/AddOn not running or not authorized. Re-run `ensure-nt-ready`, then retry the bridge against the same session. |
-| `no in-tree renderer for family ...` | The spec's `family` has no registered source renderer. Use a built-in family or register one. |
+| `no in-tree renderer for family ...` | The spec's `family` has no registered source renderer. Use a built-in family, register one, or realize an external canonical spec through `strategy_factory_bridge`. |

@@ -122,7 +122,7 @@ Start-Process "C:\Program Files\NinjaTrader 8\bin\NinjaTrader.exe"
 python -m ta_foundation.nt_strategy_loop.cli ensure-nt-ready --username eirwin --password-file "C:\Users\Owner\Downloads\P.txt"
 ```
 
-- NEVER mix managed (`SetStopLoss`/`SetProfitTarget`) and explicit `Exit*StopMarket` orders on the same signal — see `CLAUDE.md` and the NT doc mirror in `NinjatraderDocScrapper`.
+- NEVER mix managed (`SetStopLoss`/`SetProfitTarget`) and explicit `Exit*StopMarket` orders on the same signal — see `CLAUDE.md` and the NT doc mirror in `D:\ninjatrader-strategy-factory`.
 
 Testing and debugging tips
 - Run a single test file (example):
@@ -158,7 +158,7 @@ Quick file map (fast-check targets)
 - `src/ta_foundation/reports/html/registry.py` and `reports/html/sections/` — section definitions and registration
 
 Don'ts (explicit)
-- Do NOT edit NinjaTrader `.cs` files without consulting `NinjatraderDocScrapper` and runbooks.
+- Do NOT edit NinjaTrader `.cs` files without consulting `D:\ninjatrader-strategy-factory` and the runbooks.
 - Do NOT add CLI flags for rendering/report behavior — use `report.yaml`.
 - Do NOT serialize pandas DataFrames or callables into `pkg.metadata`.
 

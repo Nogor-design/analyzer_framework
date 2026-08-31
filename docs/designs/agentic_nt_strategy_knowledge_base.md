@@ -152,7 +152,7 @@ Known state:
 
 External repo:
 
-- `D:\Backup\projects\PythonProject\NinjatraderDocScrapper`
+- `D:\ninjatrader-strategy-factory`
 
 Primary files:
 

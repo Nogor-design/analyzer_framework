@@ -5,7 +5,7 @@ from __future__ import annotations
 The repair loop and the smoke loop both need a deterministic way to render an
 initial `.cs` from a `StrategySpec`. The full design (see
 `docs/designs/autonomous_ninjatrader_strategy_loop.md`) calls for delegating
-unknown families to NinjatraderDocScrapper's strategy factory; this module
+unknown families to the external Strategy Factory; this module
 owns the families that live in-tree and raises a clear error for the rest so
 the orchestrator can hand off to that factory deliberately.
 """
@@ -62,7 +62,8 @@ def render_source(spec: StrategySpec) -> str:
     if renderer is None:
         raise AuthoringError(
             f"no in-tree renderer for family {spec.family!r}; "
-            f"register one with authoring.register_family or hand off to NinjatraderDocScrapper"
+            "register one with authoring.register_family or use "
+            "ta_foundation.nt_strategy_loop.strategy_factory_bridge"
         )
     return renderer(spec)
 
