@@ -145,3 +145,78 @@ def test_cash_open_first_bar_parameters_are_extractable_and_pinned() -> None:
     }
     for parameter in parameters:
         assert parameter.minimum == parameter.maximum == parameter.default
+
+
+def test_overnight_range_fade_renders_strategy_with_study_defaults() -> None:
+    spec = StrategySpec(
+        strategy_name="OnFadeUnit",
+        family="overnight_range_fade",
+        intent="unit test",
+        parameters={
+            "SessionOpenHour": 16,
+            "RthOpenHour": 7,
+            "RthOpenMinute": 30,
+            "EntryWindowMinutes": 60,
+            "StopAtrMult": 2.0,
+            "TargetAtrMult": 4.0,
+            "TrailBars": 0,
+        },
+    )
+
+    source = render_source(spec)
+
+    assert "public class OnFadeUnit : Strategy" in source
+    assert 'Name = "OnFadeUnit"' in source
+    assert "SessionOpenHour = 16;" in source
+    assert "EntryWindowMinutes = 60;" in source
+    assert "StopAtrMult = 2.0;" in source
+    assert "TargetAtrMult = 4.0;" in source
+    # The bracket is sized per trade from the PRIOR bar's ATR, so it must not
+    # be a fixed SetStopLoss in State.Configure.
+    assert "atr[1]" in source
+    assert "SetStopLoss(\"\", CalculationMode.Ticks, stopTicks, false)" in source
+    assert "SetProfitTarget(\"\", CalculationMode.Ticks, targetTicks)" in source
+    # Fade: a break of the overnight high is sold.
+    assert "EnterShort(Contracts" in source
+    assert "EnterLong(Contracts" in source
+
+
+def test_overnight_range_fade_resets_on_session_not_calendar_day() -> None:
+    """The overnight window wraps midnight.
+
+    A calendar-day reset -- which the ORB family correctly uses for a window
+    that sits wholly inside one date -- would split the 16:01-07:30 range in
+    half and latch a range built from six hours instead of fifteen.
+    """
+    spec = StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade",
+        intent="unit test", parameters={},
+    )
+    source = render_source(spec)
+
+    assert "Bars.IsFirstBarOfSession" in source
+    assert "Time[0].Date != currentDay" not in source
+    # Wrap-safe minute indexing rather than a raw minute-of-day comparison.
+    assert "MinutesSinceSessionOpen" in source
+    assert "delta += 1440" in source
+
+
+def test_overnight_range_fade_parameters_are_extractable_for_seed_template() -> None:
+    from ta_foundation.nt_strategy_loop.seed_template import extract_strategy_parameters
+
+    spec = StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade",
+        intent="unit test", parameters={"StopAtrMult": 2.0, "TargetAtrMult": 4.0},
+    )
+    parameters = extract_strategy_parameters(render_source(spec))
+
+    by_name = {parameter.name: parameter for parameter in parameters}
+    assert {
+        "SessionOpenHour", "RthOpenHour", "EntryWindowMinutes",
+        "StopAtrMult", "TargetAtrMult", "TrailBars", "Reverse",
+    } <= by_name.keys()
+    # The ATR multiples must reach the optimizer as doubles; an int would
+    # quantise the very sweep the study says matters.
+    assert by_name["StopAtrMult"].type_name == "System.Double"
+    assert by_name["TargetAtrMult"].type_name == "System.Double"
+    assert by_name["Reverse"].type_name == "System.Boolean"
