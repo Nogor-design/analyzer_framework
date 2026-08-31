@@ -68,8 +68,13 @@ scratch/
 ExampleWeeklyReport/
 
 # Research-ledger runtime database. Rebuilt from research_ledger/migrations/,
-# which are the source of truth -- the .sqlite file is derived state.
+# which are the source of truth -- the .sqlite file is derived state. The -wal
+# and -shm sidecars are SQLite's write-ahead log and shared-memory index: pure
+# runtime state that appears whenever the ledger is open, and left untracked
+# they make `git status` look dirty on a clean checkout.
 data/research_ledger.sqlite
+data/research_ledger.sqlite-wal
+data/research_ledger.sqlite-shm
 
 # Trading-competition submission tree (codex_nq_v2). A self-contained side
 # project rather than ta_foundation source: 6.7MB of generated positions /
