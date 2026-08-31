@@ -14,20 +14,18 @@ run, and no order was submitted.
 
 - Strategy Factory active home: `D:\ninjatrader-strategy-factory`
 - Strategy Factory branch: `codex/project-modernization`
-- ta_foundation bridge worktree:
-  `D:\ta-foundation-strategy-factory-bridge`
-- ta_foundation branch: `codex/strategy-factory-bridge`
+- ta_foundation canonical home: `D:\ta_foundation`
+- ta_foundation bridge commit: `e592346`
 
 ## Bridge Verification
 
 Command:
 
 ```powershell
-$env:PYTHONPATH = "D:\ta-foundation-strategy-factory-bridge\src"
 D:\ta_foundation\.venv\Scripts\python.exe `
   -m ta_foundation.nt_strategy_loop.strategy_factory_bridge `
   --spec D:\ninjatrader-strategy-factory\strategy_factory\specs\examples\ema_cross_factory_bridge_proof.json `
-  --out-dir D:\ta-foundation-strategy-factory-bridge\.ta_artifacts\nt_strategy_lab\factory_builds\ema_cross_factory_bridge_proof_20260831
+  --out-dir D:\ta_foundation\.ta_artifacts\nt_strategy_lab\factory_builds\ema_cross_factory_bridge_proof_20260831
 ```
 
 The bridge validated a manifest containing the normalized spec,
