@@ -177,6 +177,8 @@ class GatherResult:
     instrument: str
     from_date: str
     to_date: str
+    bar_minutes: int
+    analyzer_mode: str
     export_ticks: bool
     suffix: str
     output_dir: str
@@ -226,6 +228,8 @@ def build_export_template(
     suffix: str,
     export_ticks: bool,
     output_path: str | Path,
+    bar_minutes: int = 1,
+    analyzer_mode: str = "backtest",
     overwrite_if_exists: bool = True,
     strategy_source: str | Path | None = None,
 ) -> Path:
@@ -246,6 +250,15 @@ def build_export_template(
     from_d = _normalize_date(from_date, "from_date")
     to_d = _normalize_date(to_date, "to_date")
     suf = (str(suffix).strip() or DEFAULT_SUFFIX)
+    try:
+        primary_bar_minutes = int(bar_minutes)
+    except (TypeError, ValueError) as exc:
+        raise MarketDataExportError("bar_minutes must be an integer") from exc
+    if primary_bar_minutes < 1 or primary_bar_minutes > 60:
+        raise MarketDataExportError("bar_minutes must be between 1 and 60")
+    mode = str(analyzer_mode).strip().lower()
+    if mode not in {"backtest", "optimize"}:
+        raise MarketDataExportError("analyzer_mode must be 'backtest' or 'optimize'")
     out_dir = str(output_dir)
 
     target = Path(output_path)
@@ -262,27 +275,48 @@ def build_export_template(
         to_date=f"{to_d}T00:00:00",
     )
 
-    # Step 2: stamp the 1-combo fixed backtest, pinning the value params we can
-    # send through grid_workflow (NO backslash values — OutputDirectory is
-    # patched separately below because the shared replacer is not
-    # backslash-safe in the replacement string).
-    generate_fixed_backtest_template(
-        seed_path,
-        target,
-        {
-            "FilenameSuffix": suf,
-            "ExportTicks": bool(export_ticks),
-            "OverwriteIfExists": bool(overwrite_if_exists),
-        },
-        from_date=from_d,
-        to_date=to_d,
-        strict_params=True,
-    )
+    # Step 2: normally stamp a one-combination fixed backtest. The legacy
+    # 8.1.6.3 AddOn can leave Backtest tabs permanently non-runnable after a
+    # cold Analyzer start, while the same historical no-order export remains
+    # runnable as a one-combination Optimize tab. Keep that fallback explicit
+    # and parameter-clamped; it does not search or place orders.
+    if mode == "backtest":
+        generate_fixed_backtest_template(
+            seed_path,
+            target,
+            {
+                "FilenameSuffix": suf,
+                "ExportTicks": bool(export_ticks),
+                "OverwriteIfExists": bool(overwrite_if_exists),
+            },
+            from_date=from_d,
+            to_date=to_d,
+            strict_params=True,
+        )
+    else:
+        target.write_text(seed_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     # Step 3: backslash-safe patches for the path + instrument.
     text = target.read_text(encoding="utf-8")
     text = _replace_tag_text(text, "OutputDirectory", out_dir, count=1)
+    text = _replace_tag_text(text, "FilenameSuffix", suf, count=1)
+    text = _replace_tag_text(
+        text, "ExportTicks", "true" if export_ticks else "false", count=1
+    )
+    text = _replace_tag_text(
+        text,
+        "OverwriteIfExists",
+        "true" if overwrite_if_exists else "false",
+        count=1,
+    )
     text = _replace_or_insert_strategy_tag(text, "InstrumentOrInstrumentList", inst)
+    # Make the primary period explicit. Parity work must compare NinjaTrader's
+    # native two-minute construction instead of assuming a Python resample is
+    # byte-for-byte equivalent.
+    text = _replace_tag_text(
+        text, "BaseBarsPeriodValue", str(primary_bar_minutes), count=1
+    )
+    text = _replace_tag_text(text, "Value", str(primary_bar_minutes), count=1)
     # The seed inherits NT's default OrderFillResolution=High (Tick), which forces
     # NT to load a SECONDARY TICK SERIES for fill simulation -> "Insufficient data
     # available for secondary series" on any window NT lacks ticks for. The export
@@ -337,6 +371,8 @@ def gather_market_data(
     from_date: str = "",
     to_date: str = "",
     *,
+    bar_minutes: int = 1,
+    analyzer_mode: str = "backtest",
     export_ticks: bool = True,
     suffix: str = DEFAULT_SUFFIX,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
@@ -401,6 +437,8 @@ def gather_market_data(
         instrument=str(instrument).strip(),
         from_date=from_d,
         to_date=to_d,
+        bar_minutes=int(bar_minutes),
+        analyzer_mode=str(analyzer_mode).strip().lower(),
         export_ticks=bool(export_ticks),
         suffix=suf,
         output_dir=str(out_dir),
@@ -422,6 +460,8 @@ def gather_market_data(
         suffix=suf,
         export_ticks=export_ticks,
         output_path=template_path,
+        bar_minutes=bar_minutes,
+        analyzer_mode=analyzer_mode,
         overwrite_if_exists=overwrite_if_exists,
         strategy_source=strategy_source,
     )

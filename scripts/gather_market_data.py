@@ -45,6 +45,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("from_date", help="Window start (YYYY-MM-DD)")
     parser.add_argument("to_date", help="Window end (YYYY-MM-DD)")
     parser.add_argument("--no-ticks", dest="ticks", action="store_false", help="Bars only (skip ticks)")
+    parser.add_argument(
+        "--bar-minutes",
+        type=int,
+        default=1,
+        choices=range(1, 61),
+        metavar="N",
+        help="Primary NinjaTrader minute-bar period (default: 1)",
+    )
+    parser.add_argument(
+        "--analyzer-mode",
+        choices=("backtest", "optimize"),
+        default="backtest",
+        help="Historical Analyzer lane; optimize is a one-combination cold-start fallback",
+    )
     parser.add_argument("--suffix", default=DEFAULT_SUFFIX, help=f"Filename suffix (default {DEFAULT_SUFFIX})")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output dir (default D:\\MarketData)")
     parser.add_argument("--append", dest="overwrite", action="store_false", help="Append instead of overwrite")
@@ -60,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
             instrument=args.instrument,
             from_date=args.from_date,
             to_date=args.to_date,
+            bar_minutes=args.bar_minutes,
+            analyzer_mode=args.analyzer_mode,
             export_ticks=args.ticks,
             suffix=args.suffix,
             output_dir=args.output_dir,

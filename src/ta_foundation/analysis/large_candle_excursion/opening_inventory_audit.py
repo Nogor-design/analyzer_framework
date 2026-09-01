@@ -56,6 +56,47 @@ class OpeningInventoryAuditError(ValueError):
     pass
 
 
+def build_opening_inventory_sequence_opportunities(
+    rows: Sequence[Mapping[str, Any]] | pd.DataFrame,
+    bars: pd.DataFrame,
+    *,
+    sequence: str,
+    tick_size: float,
+) -> Dict[str, Any]:
+    """Build the frozen acceptance-policy opportunity ledger for one sequence."""
+    canonical = _canonical_rows(rows, sequence)
+    paired = _pair_modes(canonical)
+    states = _overnight_states(
+        bars,
+        sequence,
+        paired["session_id"].unique().tolist(),
+        float(tick_size),
+    )
+    state = pd.DataFrame(states)
+    paired = paired.merge(state, on=["sequence", "session_id"], validate="many_to_one")
+    paired = paired.loc[paired["state_eligible"]].copy()
+    if paired.empty:
+        raise OpeningInventoryAuditError(f"no eligible overnight states for {sequence}")
+    if (paired["overnight_evidence_dt"] >= paired["signal_dt"]).any():
+        raise OpeningInventoryAuditError("overnight evidence is not strictly pre-signal")
+    paired["aligned"] = paired["signal_direction"] == paired["overnight_direction"]
+    paired["primary_mode"] = np.where(paired["aligned"], "continuation", "reversion")
+    paired["primary_reward_ticks"] = np.where(
+        paired["aligned"], paired["continuation_reward_ticks"], paired["reversion_reward_ticks"]
+    )
+    paired["counterfactual_reward_ticks"] = np.where(
+        paired["aligned"], paired["reversion_reward_ticks"], paired["continuation_reward_ticks"]
+    )
+    paired["paired_uplift_ticks"] = (
+        paired["primary_reward_ticks"] - paired["counterfactual_reward_ticks"]
+    )
+    opportunities = _attach_session_indices(paired)
+    return {
+        "opportunities": opportunities,
+        "session_states": state,
+    }
+
+
 def run_opening_inventory_audit(
     sequence_rows: Mapping[str, Sequence[Mapping[str, Any]] | pd.DataFrame],
     sequence_bars: Mapping[str, pd.DataFrame],

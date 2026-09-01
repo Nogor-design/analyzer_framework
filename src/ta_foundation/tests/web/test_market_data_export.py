@@ -111,6 +111,72 @@ def test_build_export_template_export_ticks_false(tmp_path: Path):
     assert _tag(text, "OutputDirectory") == r"D:\MarketData"
 
 
+def test_build_export_template_pins_native_two_minute_primary(tmp_path: Path):
+    target = tmp_path / "export_2m.xml"
+    build_export_template(
+        instrument="NQ 03-26",
+        from_date="2026-01-02",
+        to_date="2026-03-12",
+        output_dir=tmp_path / "export",
+        suffix="ParityL0_2m",
+        export_ticks=False,
+        output_path=target,
+        bar_minutes=2,
+    )
+    text = target.read_text(encoding="utf-8")
+    assert _tag(text, "BaseBarsPeriodValue") == "2"
+    assert _tag(text, "Value") == "2"
+
+
+def test_build_export_template_can_preserve_one_combo_optimize_lane(tmp_path: Path):
+    target = tmp_path / "export_optimize.xml"
+    build_export_template(
+        instrument="NQ 03-26",
+        from_date="2026-01-02",
+        to_date="2026-03-12",
+        output_dir=tmp_path / "export",
+        suffix="ParityL0",
+        export_ticks=False,
+        output_path=target,
+        analyzer_mode="optimize",
+    )
+    text = target.read_text(encoding="utf-8")
+    assert _tag(text, "Category") == "Optimize"
+    assert "<OptimizerType>" in text
+    assert "<OptimizationParameters>" in text
+    assert _tag(text, "ExportTicks") == "false"
+    assert _tag(text, "OverwriteIfExists") == "true"
+    assert _tag(text, "OrderFillResolution") == "Standard"
+
+
+def test_build_export_template_rejects_invalid_analyzer_mode(tmp_path: Path):
+    with pytest.raises(MarketDataExportError, match="analyzer_mode"):
+        build_export_template(
+            instrument="NQ 03-26",
+            from_date="2026-01-02",
+            to_date="2026-03-12",
+            output_dir=tmp_path,
+            suffix="ParityL0",
+            export_ticks=False,
+            output_path=tmp_path / "x.xml",
+            analyzer_mode="mystery",
+        )
+
+
+def test_build_export_template_rejects_invalid_bar_minutes(tmp_path: Path):
+    with pytest.raises(MarketDataExportError, match="bar_minutes"):
+        build_export_template(
+            instrument="NQ 03-26",
+            from_date="2026-01-02",
+            to_date="2026-03-12",
+            output_dir=tmp_path,
+            suffix="ParityL0",
+            export_ticks=False,
+            output_path=tmp_path / "x.xml",
+            bar_minutes=0,
+        )
+
+
 def test_build_export_template_accepts_full_datetime(tmp_path: Path):
     target = tmp_path / "export.xml"
     build_export_template(
@@ -211,6 +277,8 @@ def test_gather_dry_run_builds_template_no_command(tmp_path: Path):
     )
     assert isinstance(result, GatherResult)
     assert result.state == "prepared"
+    assert result.bar_minutes == 1
+    assert result.analyzer_mode == "backtest"
     assert Path(result.template_path).exists()
     # No command written on a dry run.
     assert not cmd.exists()
