@@ -611,6 +611,102 @@ register_family(
 )
 
 
+_OVERNIGHT_RANGE_FADE_DEFAULTS: dict[str, Any] = {
+    "SessionOpenHour": 16,
+    "SessionOpenMinute": 0,
+    "RthOpenHour": 7,
+    "RthOpenMinute": 30,
+    "EntryWindowMinutes": 60,
+    "FlatByHour": 14,
+    "FlatByMinute": 55,
+    "AtrPeriod": 14,
+    "StopAtrMult": 2.0,
+    "TargetAtrMult": 4.0,
+    "TrailBars": 0,
+    "TrailArmAtrMult": 2.0,
+    "MaxHoldMinutes": 240,
+    "MinOvernightBars": 600,
+    "MinRangeTicks": 0,
+    "BreakSide": 0,
+    "Reverse": False,
+    "Contracts": 1,
+    "ExpectedTradingHoursName": "CME US Index Futures ETH",
+    "ExpectedTimeZoneId": "Mountain Standard Time",
+}
+
+_OVERNIGHT_RANGE_FADE_TYPES: dict[str, type] = {
+    key: type(value) for key, value in _OVERNIGHT_RANGE_FADE_DEFAULTS.items()
+}
+
+
+def _overnight_range_fade_params(raw: dict[str, Any]) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    for key, default in _OVERNIGHT_RANGE_FADE_DEFAULTS.items():
+        kind = _OVERNIGHT_RANGE_FADE_TYPES[key]
+        value = raw.get(key, default)
+        params[key] = str(value) if kind is str else kind(value)
+    return params
+
+
+def _validate_overnight_range_fade(p: dict[str, Any]) -> None:
+    """Refuse a spec that cannot describe the researched experiment.
+
+    The Strategy Analyzer will happily run an inverted clock or an entry window
+    that reaches past the flatten time; it just measures something else. Every
+    rule here is also enforced at runtime, because an optimizer can pick a
+    combination the renderer never saw.
+    """
+    problems: list[str] = []
+    for key in ("SessionOpenHour", "RthOpenHour", "FlatByHour"):
+        if not 0 <= p[key] <= 23:
+            problems.append(f"{key}={p[key]} is not an hour")
+    for key in ("SessionOpenMinute", "RthOpenMinute", "FlatByMinute"):
+        if not 0 <= p[key] <= 59:
+            problems.append(f"{key}={p[key]} is not a minute")
+    session_open = p["SessionOpenHour"] * 60 + p["SessionOpenMinute"]
+    rth_open = p["RthOpenHour"] * 60 + p["RthOpenMinute"]
+    flat_by = p["FlatByHour"] * 60 + p["FlatByMinute"]
+    if not rth_open < flat_by < session_open:
+        problems.append(
+            "the clock must run RthOpen < FlatBy < SessionOpen; the overnight "
+            "range wraps midnight and the trade must be flat before the next "
+            "session opens"
+        )
+    if p["EntryWindowMinutes"] < 1 or rth_open + p["EntryWindowMinutes"] >= flat_by:
+        problems.append("EntryWindowMinutes must be positive and end before FlatBy")
+    overnight_minutes = 1440 - session_open + rth_open
+    if not 0 <= p["MinOvernightBars"] <= overnight_minutes:
+        problems.append(
+            f"MinOvernightBars={p['MinOvernightBars']} counts one-minute bars and "
+            f"cannot exceed the {overnight_minutes}-minute overnight window"
+        )
+    if p["AtrPeriod"] < 2:
+        problems.append("AtrPeriod must be at least 2")
+    if p["StopAtrMult"] <= 0:
+        problems.append("StopAtrMult must be positive")
+    if p["TrailBars"] < 0:
+        problems.append("TrailBars cannot be negative")
+    if p["TrailBars"] == 0 and p["TargetAtrMult"] <= 0:
+        problems.append("a fixed bracket needs a positive TargetAtrMult")
+    if p["TrailArmAtrMult"] < 0:
+        problems.append("TrailArmAtrMult cannot be negative")
+    if p["MaxHoldMinutes"] < 1:
+        problems.append("MaxHoldMinutes must be at least 1")
+    if p["MinRangeTicks"] < 0:
+        problems.append("MinRangeTicks cannot be negative")
+    if p["BreakSide"] not in (0, 1, 2):
+        problems.append("BreakSide must be 0 (both), 1 (up breaks) or 2 (down breaks)")
+    if p["Contracts"] < 1:
+        problems.append("Contracts must be at least 1")
+    for key in ("ExpectedTradingHoursName", "ExpectedTimeZoneId"):
+        if any(ch in p[key] for ch in '"\\\r\n'):
+            problems.append(f"{key} cannot contain quotes, backslashes or newlines")
+    if problems:
+        raise AuthoringError(
+            "overnight_range_fade spec is internally inconsistent: " + "; ".join(problems)
+        )
+
+
 def _overnight_range_fade_renderer(spec: StrategySpec) -> str:
     """NinjaScript realization of the `overnight_range_fade` family.
 
@@ -620,63 +716,85 @@ def _overnight_range_fade_renderer(spec: StrategySpec) -> str:
     session-clustered t of 2.82 across NQ/ES/YM/RTY -- a candidate, not a
     validated edge, which is exactly why it needs a NinjaTrader run.
 
-    Two details differ from `orb_failure_reclaim` and both matter:
+    This is the managed-order (Layer 2) harness of
+    `D:\\nt-strategy-forge\\docs\\OVERNIGHT_FADE_CANDIDATE_AUDIT_2026-08-30.md`.
+    Its event definition deliberately follows the order-free
+    `OvernightFadeParityReference` rather than inventing its own:
 
-    * The range is the OVERNIGHT one, 16:01 to 07:30 Denver, so it wraps
-      midnight. A calendar-day reset would split it in half; the session is
-      reset on ``Bars.IsFirstBarOfSession`` and time is indexed as minutes
-      since the session open, which is wrap-safe and timezone-parameterised.
-    * The bracket is sized per trade from the ATR of the bar BEFORE the signal,
-      so it cannot use a fixed ``SetStopLoss`` in ``State.Configure``. The study
-      found the edge is flat below one ATR of stop and plateaus from two
-      upward, so a fixed tick stop would not be a faithful realization.
+    * Session identity and the overnight range come from an added one-minute
+      series on the clock, not from ``Bars.IsFirstBarOfSession``. That removes
+      the dependence on whichever trading-hours template happens to be loaded,
+      and there is no warm-up ``return`` that can skip a session reset.
+    * Each side's first break is consumed whether or not a position is open.
+      An occupied or side-filtered break is written to the output log, never
+      silently re-armed for a later bar to trade as though it were first.
+    * The bracket is the source's continuous ``mult x ATR`` leg moved outward
+      onto the tick lattice with ``ceil`` and a frozen 1e-10 tolerance, so an
+      order is never tighter than the research threshold.
+    * The ATR is the source's exclusive Wilder recursion seeded with the first
+      true range, read as of the bar before the signal.
+    * The path ends at ``MaxHoldMinutes`` one-minute rows or the FlatBy bar.
+    * The structure trail counts one-minute bars and arms only after
+      ``TrailArmAtrMult`` ATR of favourable excursion, never loosening the
+      initial stop.
     """
     name = spec.strategy_name
-    p = spec.parameters
-    params = {
-        "SessionOpenHour": int(p.get("SessionOpenHour", 16)),
-        "SessionOpenMinute": int(p.get("SessionOpenMinute", 0)),
-        "RthOpenHour": int(p.get("RthOpenHour", 7)),
-        "RthOpenMinute": int(p.get("RthOpenMinute", 30)),
-        "EntryWindowMinutes": int(p.get("EntryWindowMinutes", 60)),
-        "FlatByHour": int(p.get("FlatByHour", 14)),
-        "FlatByMinute": int(p.get("FlatByMinute", 55)),
-        "AtrPeriod": int(p.get("AtrPeriod", 14)),
-        "StopAtrMult": float(p.get("StopAtrMult", 2.0)),
-        "TargetAtrMult": float(p.get("TargetAtrMult", 4.0)),
-        "TrailBars": int(p.get("TrailBars", 0)),
-        "MinOvernightBars": int(p.get("MinOvernightBars", 300)),
-        "MinRangeTicks": int(p.get("MinRangeTicks", 20)),
-        "Reverse": bool(p.get("Reverse", False)),
-        "Contracts": int(p.get("Contracts", 1)),
-    }
+    params = _overnight_range_fade_params(spec.parameters)
+    _validate_overnight_range_fade(params)
     reverse = "true" if params["Reverse"] else "false"
     return f"""using System;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
-using NinjaTrader.NinjaScript.Indicators;
 
 namespace NinjaTrader.NinjaScript.Strategies
 {{
-    // Overnight-range fade. Each Globex session accumulates the high and low
-    // from the session open through the cash open, then fades the FIRST break
-    // of each side that occurs inside the entry window. Stop and target are
-    // multiples of the ATR of the bar before the signal, because the measured
-    // edge is flat below one ATR of stop and plateaus from two upward.
+    // Overnight-range fade, managed-order research harness. Historical only.
+    //
+    // Two series, two jobs. The added 1-minute series owns the clock: session
+    // identity, the 16:01 -> 07:30 overnight range, the holding horizon, the
+    // flatten time and the structure trail. The primary series (2-minute for
+    // the study) owns the decision: a bar whose high takes out the overnight
+    // high inside the entry window is sold, a bar whose low takes out the low
+    // is bought, and the bracket is sized from the ATR of the bar before it.
     public class {name} : Strategy
     {{
-        private double onHigh;
-        private double onLow;
+        // An ATR leg is a continuous price; orders live on the tick lattice.
+        // Rounding outward never tightens the researched leg. The tolerance is
+        // the one frozen in fixed_2r2r_lattice_sensitivity_v1.
+        private const double LatticeTolerance = 1e-10;
+
+        private bool configured;
+
+        private DateTime currentSession = DateTime.MinValue;
+        private double onHigh = double.MinValue;
+        private double onLow = double.MaxValue;
         private int onBars;
-        private bool onReady;
         private bool rangeLatched;
+        private bool onReady;
         private bool firedUp;
         private bool firedDown;
+
+        private bool hasAtr;
+        private double atrWilder;
+
+        private double pendingAtrTicks;
+        private int pendingStopTicks;
+        private int entryBar = -1;
+        private int tradeDirection;
+        private double tradeAtrTicks;
+        private double fillPrice;
+        private double bestTicks;
+        private bool trailArmed;
         private double trailPrice;
-        private ATR atr;
+        private bool exitSubmitted;
+
+        private int signalsSubmitted;
+        private int signalsSuppressed;
+        private int signalsFiltered;
 
         protected override void OnStateChange()
         {{
@@ -685,20 +803,22 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Name = "{name}";
                 Description = "Fade the first regular-hours break of the overnight range.";
                 Calculate = Calculate.OnBarClose;
-                // A market entry with a bracket can reach the stop and the
-                // target inside one minute. Tick fills decide that ordering
-                // rather than leaving it to a bar-level convention, which the
-                // source study showed was not merely conservative but
-                // anti-correlated with the tape.
+                // The source resolves every bracket on one-minute bars and
+                // reaches for ticks only where one minute touched both legs.
+                // One-minute fill resolution is that model; one-tick High
+                // resolution is not, and changes more than the tied bars.
                 OrderFillResolution = OrderFillResolution.High;
-                OrderFillResolutionType = BarsPeriodType.Tick;
+                OrderFillResolutionType = BarsPeriodType.Minute;
                 OrderFillResolutionValue = 1;
                 EntriesPerDirection = 1;
                 EntryHandling = EntryHandling.AllEntries;
                 IsExitOnSessionCloseStrategy = true;
                 ExitOnSessionCloseSeconds = 30;
-                BarsRequiredToTrade = 20;
+                // No bar-count guard: it would return before session state is
+                // maintained. Readiness is the latched range and a seeded ATR.
+                BarsRequiredToTrade = 0;
                 DefaultQuantity = 1;
+                IsInstantiatedOnEachOptimizationIteration = true;
                 SessionOpenHour = {params["SessionOpenHour"]};
                 SessionOpenMinute = {params["SessionOpenMinute"]};
                 RthOpenHour = {params["RthOpenHour"]};
@@ -710,95 +830,186 @@ namespace NinjaTrader.NinjaScript.Strategies
                 StopAtrMult = {params["StopAtrMult"]};
                 TargetAtrMult = {params["TargetAtrMult"]};
                 TrailBars = {params["TrailBars"]};
+                TrailArmAtrMult = {params["TrailArmAtrMult"]};
+                MaxHoldMinutes = {params["MaxHoldMinutes"]};
                 MinOvernightBars = {params["MinOvernightBars"]};
                 MinRangeTicks = {params["MinRangeTicks"]};
+                BreakSide = {params["BreakSide"]};
                 Reverse = {reverse};
                 Contracts = {params["Contracts"]};
+                ExpectedTradingHoursName = "{params["ExpectedTradingHoursName"]}";
+                ExpectedTimeZoneId = "{params["ExpectedTimeZoneId"]}";
+            }}
+            else if (State == State.Configure)
+            {{
+                AddDataSeries(BarsPeriodType.Minute, 1);
             }}
             else if (State == State.DataLoaded)
             {{
-                atr = ATR(Math.Max(2, AtrPeriod));
+                ValidateConfiguration();
             }}
-        }}
-
-        // Minutes elapsed since the session open, wrapping midnight. The
-        // overnight window spans 16:01 to 07:30, so a calendar-day reset or a
-        // raw minute-of-day test would cut it in two.
-        private int MinutesSinceSessionOpen(int minuteOfDay)
-        {{
-            int open = SessionOpenHour * 60 + SessionOpenMinute;
-            int delta = minuteOfDay - open;
-            if (delta < 0)
-                delta += 1440;
-            return delta;
-        }}
-
-        private int OffsetFromSessionOpen(int hour, int minute)
-        {{
-            return MinutesSinceSessionOpen(hour * 60 + minute);
+            else if (State == State.Realtime)
+            {{
+                throw new InvalidOperationException(
+                    "{name} is a historical research harness and refuses real-time execution.");
+            }}
+            else if (State == State.Terminated && configured)
+            {{
+                Print(string.Format(CultureInfo.InvariantCulture,
+                    "OVERNIGHT_FADE_DONE|submitted={{0}}|suppressed_occupied={{1}}|side_filtered={{2}}",
+                    signalsSubmitted, signalsSuppressed, signalsFiltered));
+            }}
         }}
 
         protected override void OnBarUpdate()
         {{
-            if (CurrentBar < BarsRequiredToTrade || CurrentBar < AtrPeriod + 1)
-                return;
-
-            if (Bars.IsFirstBarOfSession)
+            if (BarsInProgress == 1)
             {{
-                onHigh = double.MinValue;
-                onLow = double.MaxValue;
-                onBars = 0;
-                onReady = false;
-                rangeLatched = false;
-                firedUp = false;
-                firedDown = false;
+                if (CurrentBars[1] >= 0)
+                    OnMinuteBar();
+                return;
             }}
+            if (BarsInProgress == 0 && CurrentBars[0] >= 0)
+                OnDecisionBar();
+        }}
 
-            int elapsed = MinutesSinceSessionOpen(Time[0].Hour * 60 + Time[0].Minute);
-            int rthOffset = OffsetFromSessionOpen(RthOpenHour, RthOpenMinute);
-            int flatOffset = OffsetFromSessionOpen(FlatByHour, FlatByMinute);
+        // ---- clock: the 1-minute series ------------------------------------
 
-            // Accumulate the overnight range, then latch it at the cash open.
+        private void OnMinuteBar()
+        {{
+            DateTime stamp = Times[1][0];
+            DateTime session = SessionDateOf(stamp);
+            if (session != currentSession)
+                ResetSession(session);
+
+            int minute = stamp.Hour * 60 + stamp.Minute;
             if (!rangeLatched)
             {{
-                if (elapsed <= rthOffset)
+                if (IsOvernightStamp(minute))
                 {{
-                    onHigh = Math.Max(onHigh, High[0]);
-                    onLow = Math.Min(onLow, Low[0]);
+                    onHigh = Math.Max(onHigh, Highs[1][0]);
+                    onLow = Math.Min(onLow, Lows[1][0]);
                     onBars++;
-                    return;
                 }}
-                rangeLatched = true;
-                onReady = onBars >= MinOvernightBars
-                    && (onHigh - onLow) >= MinRangeTicks * TickSize;
-            }}
-
-            // Flat before the cash close regardless of what else is true.
-            if (Position.MarketPosition != MarketPosition.Flat && elapsed >= flatOffset)
-            {{
-                // Bare form: the flatten must match whichever entry is open,
-                // and a named fromEntrySignal that does not match is silently
-                // ignored by NinjaTrader.
-                if (Position.MarketPosition == MarketPosition.Long)
-                    ExitLong();
                 else
-                    ExitShort();
-                return;
+                {{
+                    rangeLatched = true;
+                    onReady = onBars >= MinOvernightBars
+                        && onHigh > onLow
+                        && (onHigh - onLow) >= MinRangeTicks * TickSize;
+                }}
             }}
 
-            if (TrailBars > 0 && Position.MarketPosition != MarketPosition.Flat)
+            ManagePosition(minute);
+        }}
+
+        private void ManagePosition(int minute)
+        {{
+            if (Position.MarketPosition == MarketPosition.Flat)
             {{
-                UpdateStructureTrail();
+                entryBar = -1;
+                exitSubmitted = false;
+                return;
+            }}
+            if (entryBar < 0)
+            {{
+                // The first 1-minute bar the position exists on is the fill
+                // bar: row 0 of the source's forward path.
+                entryBar = CurrentBars[1];
+                fillPrice = Position.AveragePrice;
+                tradeDirection = Position.MarketPosition == MarketPosition.Long ? 1 : -1;
+                tradeAtrTicks = pendingAtrTicks;
+                bestTicks = 0.0;
+                trailArmed = TrailArmAtrMult <= 0.0;
+                trailPrice = fillPrice - tradeDirection * pendingStopTicks * TickSize;
+            }}
+            if (exitSubmitted)
+                return;
+
+            // The source path ends at its MaxHoldMinutes-th row or the FlatBy
+            // bar and books that row's close. A managed exit submitted on the
+            // close fills at the next open: a one-bar lattice residual, not a
+            // different estimand.
+            int rowsHeld = CurrentBars[1] - entryBar + 1;
+            bool horizon = rowsHeld >= MaxHoldMinutes;
+            bool flatTime = MinutesSinceSessionOpen(minute)
+                >= MinutesSinceSessionOpen(FlatByHour * 60 + FlatByMinute);
+            if (horizon || flatTime)
+            {{
+                string reason = horizon ? "OnFadeHorizon" : "OnFadeFlatBy";
+                if (tradeDirection > 0)
+                    ExitLong(1, Position.Quantity, reason, "OnFadeLong");
+                else
+                    ExitShort(1, Position.Quantity, reason, "OnFadeShort");
+                exitSubmitted = true;
                 return;
             }}
 
-            if (!onReady || Position.MarketPosition != MarketPosition.Flat)
-                return;
-            if (elapsed <= rthOffset || elapsed > rthOffset + EntryWindowMinutes)
+            if (TrailBars > 0)
+                AdvanceStructureTrail(rowsHeld);
+        }}
+
+        // Ratchet the stop to the extreme of the last TrailBars 1-minute bars
+        // once the trade has been TrailArmAtrMult ATR ahead. Mirrors
+        // lca.exits.simulate: the bar's own stop/target test comes first (the
+        // fill engine), then the excursion, then the stop for the next bar.
+        private void AdvanceStructureTrail(int rowsHeld)
+        {{
+            double favourable = tradeDirection > 0
+                ? (Highs[1][0] - fillPrice) / TickSize
+                : (fillPrice - Lows[1][0]) / TickSize;
+            bestTicks = Math.Max(bestTicks, favourable);
+            if (!trailArmed && bestTicks >= TrailArmAtrMult * tradeAtrTicks)
+                trailArmed = true;
+            if (!trailArmed)
                 return;
 
-            bool upFresh = High[0] > onHigh && !firedUp;
-            bool downFresh = Low[0] < onLow && !firedDown;
+            int look = Math.Min(TrailBars, rowsHeld);
+            if (tradeDirection > 0)
+            {{
+                double level = Lows[1][0];
+                for (int i = 1; i < look; i++)
+                    level = Math.Min(level, Lows[1][i]);
+                if (level > trailPrice)
+                {{
+                    trailPrice = level;
+                    SetStopLoss("", CalculationMode.Price, trailPrice, false);
+                }}
+            }}
+            else
+            {{
+                double level = Highs[1][0];
+                for (int i = 1; i < look; i++)
+                    level = Math.Max(level, Highs[1][i]);
+                if (level < trailPrice)
+                {{
+                    trailPrice = level;
+                    SetStopLoss("", CalculationMode.Price, trailPrice, false);
+                }}
+            }}
+        }}
+
+        // ---- decision: the primary series ----------------------------------
+
+        private void OnDecisionBar()
+        {{
+            double priorAtr = hasAtr ? atrWilder : double.NaN;
+            double trueRange = PrimaryTrueRange();
+            EvaluateBreak(Times[0][0], priorAtr);
+            UpdateAtr(trueRange);
+        }}
+
+        private void EvaluateBreak(DateTime decision, double priorAtr)
+        {{
+            if (!onReady || currentSession == DateTime.MinValue)
+                return;
+            int since = MinutesSinceSessionOpen(decision.Hour * 60 + decision.Minute);
+            int rthOffset = MinutesSinceSessionOpen(RthOpenHour * 60 + RthOpenMinute);
+            if (since <= rthOffset || since > rthOffset + EntryWindowMinutes)
+                return;
+
+            bool upFresh = Highs[0][0] > onHigh && !firedUp;
+            bool downFresh = Lows[0][0] < onLow && !firedDown;
             if (!upFresh && !downFresh)
                 return;
 
@@ -808,69 +1019,182 @@ namespace NinjaTrader.NinjaScript.Strategies
             {{
                 firedUp = true;
                 firedDown = true;
+                AuditSignal(decision, "both", "both_sides_consumed", double.NaN, 0, 0);
                 return;
             }}
 
-            double atrTicks = atr[1] / TickSize;
-            if (atrTicks <= 0 || double.IsNaN(atrTicks))
+            // The first break of a side is consumed HERE, before any position
+            // or filter test, so a later break can never trade as a first one.
+            if (upFresh)
+                firedUp = true;
+            else
+                firedDown = true;
+            string side = upFresh ? "up" : "down";
+
+            if (double.IsNaN(priorAtr) || priorAtr <= 0.0)
+            {{
+                AuditSignal(decision, side, "atr_unavailable", double.NaN, 0, 0);
                 return;
-            int stopTicks = Math.Max(1, (int)Math.Round(StopAtrMult * atrTicks));
-            int targetTicks = Math.Max(1, (int)Math.Round(TargetAtrMult * atrTicks));
+            }}
+            double atrTicks = priorAtr / TickSize;
+            int stopTicks = LatticeTicks(StopAtrMult * atrTicks);
+            int targetTicks = LatticeTicks(TargetAtrMult * atrTicks);
+
+            if ((BreakSide == 1 && !upFresh) || (BreakSide == 2 && upFresh))
+            {{
+                signalsFiltered++;
+                AuditSignal(decision, side, "side_filtered", atrTicks, stopTicks, targetTicks);
+                return;
+            }}
+            if (Position.MarketPosition != MarketPosition.Flat)
+            {{
+                signalsSuppressed++;
+                AuditSignal(decision, side, "suppressed_occupied", atrTicks, stopTicks, targetTicks);
+                return;
+            }}
 
             SetStopLoss("", CalculationMode.Ticks, stopTicks, false);
             if (TrailBars <= 0)
                 SetProfitTarget("", CalculationMode.Ticks, targetTicks);
+            pendingAtrTicks = atrTicks;
+            pendingStopTicks = stopTicks;
 
             // Fade: a break of the overnight high is sold. Reverse trades the
             // continuation instead, which is the control arm of the study.
             bool goShort = upFresh ? !Reverse : Reverse;
             if (goShort)
-            {{
-                EnterShort(Contracts, "OnFadeShort");
-                trailPrice = double.MaxValue;
-            }}
+                EnterShort(0, Contracts, "OnFadeShort");
             else
-            {{
-                EnterLong(Contracts, "OnFadeLong");
-                trailPrice = double.MinValue;
-            }}
-            if (upFresh)
-                firedUp = true;
-            else
-                firedDown = true;
+                EnterLong(0, Contracts, "OnFadeLong");
+            signalsSubmitted++;
+            AuditSignal(decision, side, "submitted", atrTicks, stopTicks, targetTicks);
         }}
 
-        // Ratchet a stop to the extreme of the last TrailBars bars, never
-        // loosening it. The source study found this roughly doubles expectancy
-        // over a symmetric bracket once the entry actually has an edge.
-        private void UpdateStructureTrail()
-        {{
-            int look = Math.Min(TrailBars, CurrentBar);
-            if (look < 1)
-                return;
+        // ---- source arithmetic ---------------------------------------------
 
-            if (Position.MarketPosition == MarketPosition.Long)
+        private double PrimaryTrueRange()
+        {{
+            if (!hasAtr)
+                return Highs[0][0] - Lows[0][0];
+            double previousClose = Closes[0][1];
+            return Math.Max(
+                Highs[0][0] - Lows[0][0],
+                Math.Max(Math.Abs(Highs[0][0] - previousClose),
+                    Math.Abs(Lows[0][0] - previousClose)));
+        }}
+
+        private void UpdateAtr(double trueRange)
+        {{
+            if (!hasAtr)
             {{
-                double level = Low[0];
-                for (int i = 1; i < look; i++)
-                    level = Math.Min(level, Low[i]);
-                if (trailPrice == double.MinValue || level > trailPrice)
-                {{
-                    trailPrice = level;
-                    SetStopLoss("", CalculationMode.Price, trailPrice, false);
-                }}
+                atrWilder = trueRange;
+                hasAtr = true;
+                return;
             }}
-            else
+            atrWilder = ((AtrPeriod - 1.0) * atrWilder + trueRange) / AtrPeriod;
+        }}
+
+        private static int LatticeTicks(double exactTicks)
+        {{
+            return Math.Max(1, (int)Math.Ceiling(exactTicks - LatticeTolerance));
+        }}
+
+        // Bars carry close stamps: the 1-minute bar stamped 16:01 covers 16:00
+        // and opens the next session, so the test is on the coverage START.
+        private DateTime SessionDateOf(DateTime closeStamp)
+        {{
+            DateTime coverageStart = closeStamp.AddMinutes(-1);
+            int startMinute = coverageStart.Hour * 60 + coverageStart.Minute;
+            return startMinute >= SessionOpenHour * 60 + SessionOpenMinute
+                ? coverageStart.Date.AddDays(1)
+                : coverageStart.Date;
+        }}
+
+        // The overnight window is two clock pieces either side of midnight.
+        private bool IsOvernightStamp(int minuteOfDay)
+        {{
+            return minuteOfDay > SessionOpenHour * 60 + SessionOpenMinute
+                || minuteOfDay <= RthOpenHour * 60 + RthOpenMinute;
+        }}
+
+        // Minutes elapsed since the session open, wrapping midnight.
+        private int MinutesSinceSessionOpen(int minuteOfDay)
+        {{
+            int delta = minuteOfDay - (SessionOpenHour * 60 + SessionOpenMinute);
+            if (delta < 0)
+                delta += 1440;
+            return delta;
+        }}
+
+        private void ResetSession(DateTime session)
+        {{
+            currentSession = session;
+            onHigh = double.MinValue;
+            onLow = double.MaxValue;
+            onBars = 0;
+            rangeLatched = false;
+            onReady = false;
+            firedUp = false;
+            firedDown = false;
+        }}
+
+        private void AuditSignal(DateTime decision, string side, string status,
+            double atrTicks, int stopTicks, int targetTicks)
+        {{
+            Print(string.Format(CultureInfo.InvariantCulture,
+                "OVERNIGHT_FADE_SIGNAL|instrument={{0}}|session={{1:yyyy-MM-dd}}|decision={{2:yyyy-MM-ddTHH:mm}}|side={{3}}|status={{4}}|atr_ticks={{5:R}}|stop_ticks={{6}}|target_ticks={{7}}",
+                Instrument.FullName, currentSession, decision, side, status,
+                atrTicks, stopTicks, targetTicks));
+        }}
+
+        private void ValidateConfiguration()
+        {{
+            if (BarsPeriod.BarsPeriodType != BarsPeriodType.Minute)
+                throw new InvalidOperationException(
+                    "{name} requires a minute-based primary series; the study decides on 2-minute bars.");
+            int sessionOpen = SessionOpenHour * 60 + SessionOpenMinute;
+            int rthOpen = RthOpenHour * 60 + RthOpenMinute;
+            int flatBy = FlatByHour * 60 + FlatByMinute;
+            if (!(rthOpen < flatBy && flatBy < sessionOpen))
+                throw new InvalidOperationException(
+                    "The clock must run RthOpen < FlatBy < SessionOpen.");
+            if (rthOpen + EntryWindowMinutes >= flatBy)
+                throw new InvalidOperationException(
+                    "EntryWindowMinutes must end before FlatBy.");
+            if (MinOvernightBars > 1440 - sessionOpen + rthOpen)
+                throw new InvalidOperationException(
+                    "MinOvernightBars exceeds the overnight window.");
+            if (TrailBars <= 0 && TargetAtrMult <= 0.0)
+                throw new InvalidOperationException(
+                    "A fixed bracket needs a positive TargetAtrMult.");
+            // Every clock parameter above is read in the application time
+            // zone, and session boundaries depend on the trading-hours
+            // template. An empty expectation disables its check.
+            if (!string.IsNullOrWhiteSpace(ExpectedTimeZoneId)
+                && !string.Equals(Core.Globals.GeneralOptions.TimeZoneInfo.Id,
+                    ExpectedTimeZoneId.Trim(), StringComparison.OrdinalIgnoreCase))
             {{
-                double level = High[0];
-                for (int i = 1; i < look; i++)
-                    level = Math.Max(level, High[i]);
-                if (trailPrice == double.MaxValue || level < trailPrice)
-                {{
-                    trailPrice = level;
-                    SetStopLoss("", CalculationMode.Price, trailPrice, false);
-                }}
+                throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture,
+                    "Application time zone mismatch: expected={{0}}, actual={{1}}",
+                    ExpectedTimeZoneId, Core.Globals.GeneralOptions.TimeZoneInfo.Id));
             }}
+            if (!string.IsNullOrWhiteSpace(ExpectedTradingHoursName)
+                && (Bars.TradingHours == null
+                    || !string.Equals(Bars.TradingHours.Name, ExpectedTradingHoursName.Trim(),
+                        StringComparison.OrdinalIgnoreCase)))
+            {{
+                throw new InvalidOperationException(string.Format(CultureInfo.InvariantCulture,
+                    "Trading-hours template mismatch: expected={{0}}, actual={{1}}",
+                    ExpectedTradingHoursName,
+                    Bars.TradingHours == null ? "<null>" : Bars.TradingHours.Name));
+            }}
+            configured = true;
+            Print(string.Format(CultureInfo.InvariantCulture,
+                "OVERNIGHT_FADE_BOUND|instrument={{0}}|primary={{1}}|trading_hours={{2}}|time_zone={{3}}|break_side={{4}}|stop_atr={{5:R}}|target_atr={{6:R}}|trail_bars={{7}}",
+                Instrument.FullName, BarsPeriod,
+                Bars.TradingHours == null ? "<null>" : Bars.TradingHours.Name,
+                Core.Globals.GeneralOptions.TimeZoneInfo.Id,
+                BreakSide, StopAtrMult, TargetAtrMult, TrailBars));
         }}
 
         [NinjaScriptProperty]
@@ -894,7 +1218,7 @@ namespace NinjaTrader.NinjaScript.Strategies
         public int RthOpenMinute {{ get; set; }}
 
         [NinjaScriptProperty]
-        [Range(15, 390)]
+        [Range(1, 390)]
         [Display(Name = "EntryWindowMinutes", GroupName = "Signal", Order = 5)]
         public int EntryWindowMinutes {{ get; set; }}
 
@@ -929,23 +1253,46 @@ namespace NinjaTrader.NinjaScript.Strategies
         public int TrailBars {{ get; set; }}
 
         [NinjaScriptProperty]
-        [Range(0, 900)]
-        [Display(Name = "MinOvernightBars", GroupName = "Signal", Order = 12)]
+        [Range(0.0, 10.0)]
+        [Display(Name = "TrailArmAtrMult", GroupName = "Bracket", Order = 12)]
+        public double TrailArmAtrMult {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(1, 1440)]
+        [Display(Name = "MaxHoldMinutes", GroupName = "Bracket", Order = 13)]
+        public int MaxHoldMinutes {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Range(0, 1440)]
+        [Display(Name = "MinOvernightBars", GroupName = "Signal", Order = 14)]
         public int MinOvernightBars {{ get; set; }}
 
         [NinjaScriptProperty]
         [Range(0, 400)]
-        [Display(Name = "MinRangeTicks", GroupName = "Signal", Order = 13)]
+        [Display(Name = "MinRangeTicks", GroupName = "Signal", Order = 15)]
         public int MinRangeTicks {{ get; set; }}
 
         [NinjaScriptProperty]
-        [Display(Name = "Reverse", GroupName = "Signal", Order = 14)]
+        [Range(0, 2)]
+        [Display(Name = "BreakSide", Description = "0 both, 1 up breaks only, 2 down breaks only", GroupName = "Signal", Order = 16)]
+        public int BreakSide {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "Reverse", GroupName = "Signal", Order = 17)]
         public bool Reverse {{ get; set; }}
 
         [NinjaScriptProperty]
         [Range(1, 10)]
-        [Display(Name = "Contracts", GroupName = "Bracket", Order = 15)]
+        [Display(Name = "Contracts", GroupName = "Bracket", Order = 18)]
         public int Contracts {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "ExpectedTradingHoursName", GroupName = "Runtime", Order = 19)]
+        public string ExpectedTradingHoursName {{ get; set; }}
+
+        [NinjaScriptProperty]
+        [Display(Name = "ExpectedTimeZoneId", GroupName = "Runtime", Order = 20)]
+        public string ExpectedTimeZoneId {{ get; set; }}
     }}
 }}
 """

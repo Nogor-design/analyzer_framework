@@ -171,14 +171,23 @@ def test_overnight_range_fade_renders_strategy_with_study_defaults() -> None:
     assert "EntryWindowMinutes = 60;" in source
     assert "StopAtrMult = 2.0;" in source
     assert "TargetAtrMult = 4.0;" in source
-    # The bracket is sized per trade from the PRIOR bar's ATR, so it must not
-    # be a fixed SetStopLoss in State.Configure.
-    assert "atr[1]" in source
+    # Source population and horizon: 600 one-minute overnight bars, no extra
+    # range-width filter, and the 240-row path truncation.
+    assert "MinOvernightBars = 600;" in source
+    assert "MinRangeTicks = 0;" in source
+    assert "MaxHoldMinutes = 240;" in source
+    # The bracket is sized per trade from the PRIOR bar's source Wilder ATR,
+    # so it must not be a fixed SetStopLoss in State.Configure.
+    assert "double priorAtr = hasAtr ? atrWilder : double.NaN;" in source
     assert "SetStopLoss(\"\", CalculationMode.Ticks, stopTicks, false)" in source
     assert "SetProfitTarget(\"\", CalculationMode.Ticks, targetTicks)" in source
     # Fade: a break of the overnight high is sold.
-    assert "EnterShort(Contracts" in source
-    assert "EnterLong(Contracts" in source
+    assert 'EnterShort(0, Contracts, "OnFadeShort")' in source
+    assert 'EnterLong(0, Contracts, "OnFadeLong")' in source
+    # The research fill model is one-minute resolution, not one tick.
+    assert "OrderFillResolutionType = BarsPeriodType.Minute;" in source
+    assert "BarsPeriodType.Tick" not in source
+    assert "State.Realtime" in source
 
 
 def test_overnight_range_fade_resets_on_session_not_calendar_day() -> None:
@@ -186,7 +195,9 @@ def test_overnight_range_fade_resets_on_session_not_calendar_day() -> None:
 
     A calendar-day reset -- which the ORB family correctly uses for a window
     that sits wholly inside one date -- would split the 16:01-07:30 range in
-    half and latch a range built from six hours instead of fifteen.
+    half and latch a range built from six hours instead of fifteen. Session
+    identity comes from the one-minute clock, not from whichever trading-hours
+    template happens to drive ``Bars.IsFirstBarOfSession``.
     """
     spec = StrategySpec(
         strategy_name="OnFadeUnit", family="overnight_range_fade",
@@ -194,11 +205,88 @@ def test_overnight_range_fade_resets_on_session_not_calendar_day() -> None:
     )
     source = render_source(spec)
 
-    assert "Bars.IsFirstBarOfSession" in source
+    assert "AddDataSeries(BarsPeriodType.Minute, 1);" in source
+    assert "Bars.IsFirstBarOfSession" not in source
     assert "Time[0].Date != currentDay" not in source
+    assert "DateTime coverageStart = closeStamp.AddMinutes(-1);" in source
     # Wrap-safe minute indexing rather than a raw minute-of-day comparison.
     assert "MinutesSinceSessionOpen" in source
     assert "delta += 1440" in source
+
+
+def test_overnight_range_fade_has_no_warmup_return_before_session_reset() -> None:
+    """Audit defect 6: a warm-up return ahead of the reset could skip a session."""
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+    ))
+
+    assert "BarsRequiredToTrade = 0;" in source
+    assert "CurrentBar < BarsRequiredToTrade" not in source
+    minute_bar = source[source.index("private void OnMinuteBar()"):]
+    assert minute_bar.index("ResetSession(session)") < minute_bar.index("return")
+
+
+def test_overnight_range_fade_consumes_first_break_before_position_test() -> None:
+    """Audit defect 2: an occupied first break must be consumed, not re-armed."""
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+    ))
+    body = source[source.index("private void EvaluateBreak("):source.index("// ---- source arithmetic")]
+
+    consumed = body.index("firedUp = true;\n            else\n                firedDown = true;")
+    assert consumed < body.index("MarketPosition.Flat")
+    assert consumed < body.index('"suppressed_occupied"')
+    assert consumed < body.index('"side_filtered"')
+
+
+def test_overnight_range_fade_moves_legs_outward_onto_the_tick_lattice() -> None:
+    """Audit defect 7: Math.Round could place an order tighter than the research."""
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+    ))
+
+    assert "Math.Round" not in source
+    assert "private const double LatticeTolerance = 1e-10;" in source
+    assert "(int)Math.Ceiling(exactTicks - LatticeTolerance)" in source
+
+
+def test_overnight_range_fade_trail_counts_minutes_and_arms_after_trigger() -> None:
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+        parameters={"TrailBars": 10, "TrailArmAtrMult": 2.0},
+    ))
+
+    assert "TrailBars = 10;" in source
+    assert "TrailArmAtrMult = 2.0;" in source
+    assert "bestTicks >= TrailArmAtrMult * tradeAtrTicks" in source
+    assert "Lows[1][i]" in source and "Highs[1][i]" in source
+    # The trail starts from the working stop, so it can never loosen it.
+    assert "trailPrice = fillPrice - tradeDirection * pendingStopTicks * TickSize;" in source
+
+
+@pytest.mark.parametrize(
+    "overrides, fragment",
+    [
+        ({"RthOpenHour": 15}, "RthOpen < FlatBy < SessionOpen"),
+        ({"FlatByHour": 17}, "RthOpen < FlatBy < SessionOpen"),
+        ({"EntryWindowMinutes": 500}, "EntryWindowMinutes"),
+        ({"EntryWindowMinutes": 0}, "EntryWindowMinutes"),
+        ({"MinOvernightBars": 1000}, "MinOvernightBars"),
+        ({"TrailBars": 0, "TargetAtrMult": 0.0}, "TargetAtrMult"),
+        ({"StopAtrMult": 0.0}, "StopAtrMult"),
+        ({"MaxHoldMinutes": 0}, "MaxHoldMinutes"),
+        ({"BreakSide": 3}, "BreakSide"),
+        ({"SessionOpenMinute": 75}, "not a minute"),
+        ({"ExpectedTradingHoursName": 'CME "ETH"'}, "ExpectedTradingHoursName"),
+    ],
+)
+def test_overnight_range_fade_rejects_inconsistent_specs(overrides, fragment) -> None:
+    spec = StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade",
+        intent="unit test", parameters=overrides,
+    )
+    with pytest.raises(AuthoringError, match=fragment):
+        render_source(spec)
 
 
 def test_overnight_range_fade_parameters_are_extractable_for_seed_template() -> None:
