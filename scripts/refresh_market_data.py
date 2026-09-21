@@ -26,6 +26,17 @@ automated run; ``gather_market_data`` recognises that specific refusal and
 re-dispatches with backoff, so an unattended refresh survives a freshly started
 NinjaTrader without anyone clicking RUN BATCH BACKTEST.
 
+The feed, however, is non-negotiable. The Analyzer cannot backtest without a
+market-data connection, and a down feed produces the *same* "Run command was
+not executable" refusal that cold-Analyzer backoff was written for -- except
+it never clears. Established 2026-09-20 (see
+``D:\\trading-capability-hub\\docs\\audits\\NT_ANALYZER_RUN_REFUSAL_ROOT_CAUSE_2026-09-20.md``).
+Dispatch therefore hard-fails with exit 4 when NinjaTrader's own log says the
+feed is down. Override with ``--skip-feed-check`` at your own cost.
+
+Exit codes: 0 ok | 1 bad folder | 2 NT bridge busy | 3 one or more gathers
+failed | 4 market-data feed down (nothing dispatched).
+
 Examples
 --------
     # Preview only -- show what is stale/missing and what windows would pull.
@@ -54,6 +65,7 @@ from ta_foundation.web.market_data_export import (
     MarketDataExportError,
     gather_market_data,
 )
+from ta_foundation.web.nt_connection import FeedDownError, require_feed_connected
 from ta_foundation.web.optimizer_runner import BridgeBusyError
 
 # ``<INST> <CONTRACT>[ Tick].<Last|Full|Export>.txt`` -- the three suffixes the
@@ -311,6 +323,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--to-date", default=None, help="Override window end (YYYY-MM-DD; default today)")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Per-contract gather timeout (seconds)")
     p.add_argument("--dry-run", action="store_true", help="Show the plan; do not dispatch anything")
+    p.add_argument(
+        "--skip-feed-check",
+        action="store_true",
+        help="Dispatch even if NinjaTrader's log says the market-data feed is down "
+             "(escape hatch for a stale/misleading log; the run will almost certainly be refused)",
+    )
     args = p.parse_args(argv)
 
     folder = Path(args.folder)
@@ -367,6 +385,17 @@ def main(argv: list[str] | None = None) -> int:
          + (" -- DRY RUN, dispatching nothing." if args.dry_run else f" (ticks={'yes' if args.ticks else 'no'})."))
     if args.dry_run:
         return 0
+
+    # Hard fail on a down market-data feed. The Strategy Analyzer cannot run a
+    # backtest without one, so dispatching would burn four minutes of backoff
+    # to reach a foregone refusal. Deliberately AFTER the dry-run return: the
+    # scan is read-only and must keep working with NinjaTrader shut down.
+    if not args.skip_feed_check:
+        try:
+            _log(f"feed check: {require_feed_connected()}")
+        except FeedDownError as exc:
+            _log(f"ABORT: {exc}")
+            return 4
 
     failures = 0
     for c, plan in planned:
