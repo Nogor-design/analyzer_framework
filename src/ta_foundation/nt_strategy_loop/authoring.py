@@ -624,6 +624,7 @@ _OVERNIGHT_RANGE_FADE_DEFAULTS: dict[str, Any] = {
     "TargetAtrMult": 4.0,
     "TrailBars": 0,
     "TrailArmAtrMult": 2.0,
+    "LockAtrMult": 0.0,
     "MaxHoldMinutes": 240,
     "MinOvernightBars": 600,
     "MinRangeTicks": 0,
@@ -690,6 +691,18 @@ def _validate_overnight_range_fade(p: dict[str, Any]) -> None:
         problems.append("a fixed bracket needs a positive TargetAtrMult")
     if p["TrailArmAtrMult"] < 0:
         problems.append("TrailArmAtrMult cannot be negative")
+    if p["LockAtrMult"] < 0:
+        problems.append("LockAtrMult cannot be negative")
+    if p["LockAtrMult"] > 0:
+        # lca.exits "lock": stop S, moved to +lock once +trigger is reached.
+        # The trigger is TrailArmAtrMult, shared with the structure trail; the
+        # two are different policies and cannot both be on.
+        if p["TrailBars"] > 0:
+            problems.append("LockAtrMult and TrailBars are different exit policies; set one of them")
+        if p["TrailArmAtrMult"] <= 0:
+            problems.append("a lock needs a positive TrailArmAtrMult to arm it")
+        elif p["LockAtrMult"] >= p["TrailArmAtrMult"]:
+            problems.append("LockAtrMult must be below TrailArmAtrMult, or the locked stop sits beyond the excursion that armed it")
     if p["MaxHoldMinutes"] < 1:
         problems.append("MaxHoldMinutes must be at least 1")
     if p["MinRangeTicks"] < 0:
@@ -737,6 +750,11 @@ def _overnight_range_fade_renderer(spec: StrategySpec) -> str:
     * The structure trail counts one-minute bars and arms only after
       ``TrailArmAtrMult`` ATR of favourable excursion, never loosening the
       initial stop.
+    * ``LockAtrMult`` > 0 is lca.exits "lock": once the trade has been
+      ``TrailArmAtrMult`` ATR ahead the stop moves, once, to ``LockAtrMult``
+      ATR of profit (rounded down to the tick lattice, never tighter than
+      the research) and the target stays. It is the Odysseus mandate of
+      the Large Candle roster and is exclusive with ``TrailBars``.
     """
     name = spec.strategy_name
     params = _overnight_range_fade_params(spec.parameters)
@@ -831,6 +849,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 TargetAtrMult = {params["TargetAtrMult"]};
                 TrailBars = {params["TrailBars"]};
                 TrailArmAtrMult = {params["TrailArmAtrMult"]};
+                LockAtrMult = {params["LockAtrMult"]};
                 MaxHoldMinutes = {params["MaxHoldMinutes"]};
                 MinOvernightBars = {params["MinOvernightBars"]};
                 MinRangeTicks = {params["MinRangeTicks"]};
@@ -947,6 +966,8 @@ namespace NinjaTrader.NinjaScript.Strategies
 
             if (TrailBars > 0)
                 AdvanceStructureTrail(rowsHeld);
+            else if (LockAtrMult > 0.0)
+                AdvanceLock();
         }}
 
         // Ratchet the stop to the extreme of the last TrailBars 1-minute bars
@@ -986,6 +1007,36 @@ namespace NinjaTrader.NinjaScript.Strategies
                     trailPrice = level;
                     SetStopLoss("", CalculationMode.Price, trailPrice, false);
                 }}
+            }}
+        }}
+
+        // lca.exits "lock": once the trade has been TrailArmAtrMult ATR ahead,
+        // move the stop to LockAtrMult ATR of PROFIT, once, and leave the
+        // target where it is. The level is rounded DOWN to the tick lattice so
+        // the NinjaTrader stop is never tighter than the research stop; the
+        // bar's own stop/target test ran first in the fill engine, as in
+        // AdvanceStructureTrail.
+        private void AdvanceLock()
+        {{
+            double favourable = tradeDirection > 0
+                ? (Highs[1][0] - fillPrice) / TickSize
+                : (fillPrice - Lows[1][0]) / TickSize;
+            bestTicks = Math.Max(bestTicks, favourable);
+            if (!trailArmed && bestTicks >= TrailArmAtrMult * tradeAtrTicks)
+                trailArmed = true;
+            if (!trailArmed)
+                return;
+
+            int lockTicks = (int)Math.Floor(LockAtrMult * tradeAtrTicks + LatticeTolerance);
+            double lockPrice = fillPrice + tradeDirection * lockTicks * TickSize;
+            bool tighter = tradeDirection > 0 ? lockPrice > trailPrice : lockPrice < trailPrice;
+            if (tighter)
+            {{
+                trailPrice = lockPrice;
+                SetStopLoss("", CalculationMode.Price, trailPrice, false);
+                Print(string.Format(CultureInfo.InvariantCulture,
+                    "OVERNIGHT_FADE_LOCK|time={{0:yyyy-MM-dd HH:mm}}|direction={{1}}|fill={{2}}|lock_price={{3}}|lock_ticks={{4}}|best_ticks={{5:R}}",
+                    Times[1][0], tradeDirection, fillPrice, lockPrice, lockTicks, bestTicks));
             }}
         }}
 
@@ -1167,6 +1218,12 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (TrailBars <= 0 && TargetAtrMult <= 0.0)
                 throw new InvalidOperationException(
                     "A fixed bracket needs a positive TargetAtrMult.");
+            if (LockAtrMult > 0.0 && TrailBars > 0)
+                throw new InvalidOperationException(
+                    "LockAtrMult and TrailBars are different exit policies; set one of them.");
+            if (LockAtrMult > 0.0 && (TrailArmAtrMult <= 0.0 || LockAtrMult >= TrailArmAtrMult))
+                throw new InvalidOperationException(
+                    "LockAtrMult must be positive and below TrailArmAtrMult, which arms it.");
             // Every clock parameter above is read in the application time
             // zone, and session boundaries depend on the trading-hours
             // template. An empty expectation disables its check.
@@ -1190,11 +1247,11 @@ namespace NinjaTrader.NinjaScript.Strategies
             }}
             configured = true;
             Print(string.Format(CultureInfo.InvariantCulture,
-                "OVERNIGHT_FADE_BOUND|instrument={{0}}|primary={{1}}|trading_hours={{2}}|time_zone={{3}}|break_side={{4}}|stop_atr={{5:R}}|target_atr={{6:R}}|trail_bars={{7}}",
+                "OVERNIGHT_FADE_BOUND|instrument={{0}}|primary={{1}}|trading_hours={{2}}|time_zone={{3}}|break_side={{4}}|stop_atr={{5:R}}|target_atr={{6:R}}|trail_bars={{7}}|trail_arm_atr={{8:R}}|lock_atr={{9:R}}",
                 Instrument.FullName, BarsPeriod,
                 Bars.TradingHours == null ? "<null>" : Bars.TradingHours.Name,
                 Core.Globals.GeneralOptions.TimeZoneInfo.Id,
-                BreakSide, StopAtrMult, TargetAtrMult, TrailBars));
+                BreakSide, StopAtrMult, TargetAtrMult, TrailBars, TrailArmAtrMult, LockAtrMult));
         }}
 
         [NinjaScriptProperty]
@@ -1258,8 +1315,13 @@ namespace NinjaTrader.NinjaScript.Strategies
         public double TrailArmAtrMult {{ get; set; }}
 
         [NinjaScriptProperty]
+        [Range(0.0, 10.0)]
+        [Display(Name = "LockAtrMult", GroupName = "Bracket", Order = 13)]
+        public double LockAtrMult {{ get; set; }}
+
+        [NinjaScriptProperty]
         [Range(1, 1440)]
-        [Display(Name = "MaxHoldMinutes", GroupName = "Bracket", Order = 13)]
+        [Display(Name = "MaxHoldMinutes", GroupName = "Bracket", Order = 14)]
         public int MaxHoldMinutes {{ get; set; }}
 
         [NinjaScriptProperty]
