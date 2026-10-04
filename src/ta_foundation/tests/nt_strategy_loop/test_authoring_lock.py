@@ -33,3 +33,24 @@ def test_overnight_range_fade_lock_exit_renders_and_is_validated() -> None:
         with pytest.raises(AuthoringError, match=reason):
             render_source(StrategySpec(strategy_name="OnFadeUnit", family="overnight_range_fade",
                                        intent="unit test", parameters=bad))
+
+
+def test_overnight_fade_orders_route_to_the_one_minute_series_under_standard_fills():
+    """NinjaTrader allows High fill resolution only for single-series strategies.
+
+    The strategy adds a one-minute series, so the one-minute fill model is
+    realized by submitting every order on BarsInProgress 1 under Standard
+    resolution (observed refusal 2026-10-04: "'High' Order Fill Resolution is
+    only available for single-series strategies").
+    """
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+        parameters={"StopAtrMult": 2.0, "TargetAtrMult": 4.0, "TrailBars": 0,
+                    "TrailArmAtrMult": 2.0, "LockAtrMult": 1.0}))
+    assert "OrderFillResolution = OrderFillResolution.Standard;" in source
+    assert "OrderFillResolution.High" not in source
+    assert "OrderFillResolutionType" not in source and "OrderFillResolutionValue" not in source
+    assert 'EnterShort(1, Contracts, "OnFadeShort")' in source
+    assert 'EnterLong(1, Contracts, "OnFadeLong")' in source
+    assert "ExitLong(1, " in source and "ExitShort(1, " in source
+    assert "AddDataSeries(BarsPeriodType.Minute, 1);" in source

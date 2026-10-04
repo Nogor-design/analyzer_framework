@@ -123,6 +123,18 @@ python -m ta_foundation.nt_strategy_loop.cli ensure-nt-ready --username eirwin -
 ```
 
 - NEVER mix managed (`SetStopLoss`/`SetProfitTarget`) and explicit `Exit*StopMarket` orders on the same signal — see `CLAUDE.md` and the NT doc mirror in `D:\ninjatrader-strategy-factory`.
+- **Strategy Analyzer templates: a run with nothing to sweep must be a Backtest template, never a pinned Optimize template.** `nt_strategy_loop.seed_template.render_seed_template` (and `generate_seed_template_from_source`) emit NinjaTrader's *Optimize* form — `<Category>Optimize</Category>` plus an `<OptimizationParameters>` block — and `seed_template._bounded_sweep` pins every parameter to Min = Max by design. NinjaTrader refuses that shape with **"The strategy must have at least one parameter to optimize"** (the batch AddOn then shows `Detected: <Strategy> (Backtest)` and `Waiting for run: results=0` until the per-template timeout; `BatchRunSummary.csv` still says finished while the chunk row reads `TimedOut`). It is the single most common reason an NT dispatch produces nothing. The fix is one call, not a sweep range:
+
+```python
+from ta_foundation.optimization.grid_workflow import generate_fixed_backtest_template
+
+# seed_xml came from render_seed_template(...); values are the pinned parameters.
+generate_fixed_backtest_template(seed_xml_path, out_path, values,
+                                 from_date="2026-08-31", to_date="2026-10-02",
+                                 strict_params=True)   # refuses a name the strategy lacks
+```
+
+  This strips the optimizer sections, stamps `<Category>Backtest</Category>` and pins each value in the strategy element; `web/market_data_export.py` and `D:\strategy-analysis\weekly-coverage\scripts\build_large_candle_templates.py` are the reference callers. Emit an Optimize template only when at least one parameter really has Min < Max (`optimizer_bridge` / `run_recipe_optimizer_full_loop.py`), and guard the output: assert `<Category>Backtest</Category>` for single-cell templates and `<OptimizationParameters>` for sweeps before handing anything to the AddOn. Both refusals leave the single-writer bridge occupied for the whole timeout, so a wrong-form template costs the next job its slot.
 
 Testing and debugging tips
 - Run a single test file (example):

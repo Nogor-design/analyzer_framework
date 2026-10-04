@@ -182,10 +182,13 @@ def test_overnight_range_fade_renders_strategy_with_study_defaults() -> None:
     assert "SetStopLoss(\"\", CalculationMode.Ticks, stopTicks, false)" in source
     assert "SetProfitTarget(\"\", CalculationMode.Ticks, targetTicks)" in source
     # Fade: a break of the overnight high is sold.
-    assert 'EnterShort(0, Contracts, "OnFadeShort")' in source
-    assert 'EnterLong(0, Contracts, "OnFadeLong")' in source
-    # The research fill model is one-minute resolution, not one tick.
-    assert "OrderFillResolutionType = BarsPeriodType.Minute;" in source
+    # Orders go to the one-minute series: NinjaTrader allows High fill
+    # resolution only on single-series strategies, so the one-minute fill
+    # model is realized by submitting on BarsInProgress 1 under Standard.
+    assert 'EnterShort(1, Contracts, "OnFadeShort")' in source
+    assert 'EnterLong(1, Contracts, "OnFadeLong")' in source
+    assert "OrderFillResolution = OrderFillResolution.Standard;" in source
+    assert "OrderFillResolutionType" not in source
     assert "BarsPeriodType.Tick" not in source
     assert "State.Realtime" in source
 

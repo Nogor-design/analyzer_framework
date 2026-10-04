@@ -823,11 +823,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Calculate = Calculate.OnBarClose;
                 // The source resolves every bracket on one-minute bars and
                 // reaches for ticks only where one minute touched both legs.
-                // One-minute fill resolution is that model; one-tick High
-                // resolution is not, and changes more than the tied bars.
-                OrderFillResolution = OrderFillResolution.High;
-                OrderFillResolutionType = BarsPeriodType.Minute;
-                OrderFillResolutionValue = 1;
+                // NinjaTrader allows High fill resolution only for a
+                // single-series strategy, and this one adds a one-minute
+                // series; its prescription for multi-series is to submit the
+                // orders on the finer series. So: Standard resolution, and
+                // every order (entries below, exits in ManagePosition) goes
+                // to BarsInProgress 1, where fills simulate on one-minute bars.
+                OrderFillResolution = OrderFillResolution.Standard;
                 EntriesPerDirection = 1;
                 EntryHandling = EntryHandling.AllEntries;
                 IsExitOnSessionCloseStrategy = true;
@@ -1113,10 +1115,14 @@ namespace NinjaTrader.NinjaScript.Strategies
             // Fade: a break of the overnight high is sold. Reverse trades the
             // continuation instead, which is the control arm of the study.
             bool goShort = upFresh ? !Reverse : Reverse;
+            // Submitted on the one-minute series (index 1): the fill is the
+            // next one-minute open, which is also the next two-minute open,
+            // and the managed stop and target attached to it are then
+            // simulated against one-minute bars rather than the primary.
             if (goShort)
-                EnterShort(0, Contracts, "OnFadeShort");
+                EnterShort(1, Contracts, "OnFadeShort");
             else
-                EnterLong(0, Contracts, "OnFadeLong");
+                EnterLong(1, Contracts, "OnFadeLong");
             signalsSubmitted++;
             AuditSignal(decision, side, "submitted", atrTicks, stopTicks, targetTicks);
         }}
