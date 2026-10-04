@@ -1305,8 +1305,11 @@ namespace NinjaTrader.NinjaScript.Strategies
         [Display(Name = "StopAtrMult", GroupName = "Bracket", Order = 9)]
         public double StopAtrMult {{ get; set; }}
 
+        // 0 is legal when TrailBars > 0 (the trail replaces the target); the
+        // renderer and ValidateConfiguration refuse 0 with no trail. NinjaTrader
+        // checks [Range] when a template loads, so the attribute must admit it.
         [NinjaScriptProperty]
-        [Range(0.5, 8.0)]
+        [Range(0.0, 8.0)]
         [Display(Name = "TargetAtrMult", GroupName = "Bracket", Order = 10)]
         public double TargetAtrMult {{ get; set; }}
 

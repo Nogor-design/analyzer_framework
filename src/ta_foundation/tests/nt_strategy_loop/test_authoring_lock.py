@@ -54,3 +54,12 @@ def test_overnight_fade_orders_route_to_the_one_minute_series_under_standard_fil
     assert 'EnterLong(1, Contracts, "OnFadeLong")' in source
     assert "ExitLong(1, " in source and "ExitShort(1, " in source
     assert "AddDataSeries(BarsPeriodType.Minute, 1);" in source
+
+
+def test_overnight_fade_target_range_admits_zero_for_the_trail():
+    """A structure-trail template pins TargetAtrMult = 0; NinjaTrader refused [Range(0.5, 8)] at load (2026-10-04)."""
+    source = render_source(StrategySpec(
+        strategy_name="OnFadeUnit", family="overnight_range_fade", intent="unit test",
+        parameters={"StopAtrMult": 2.0, "TargetAtrMult": 0.0, "TrailBars": 10, "TrailArmAtrMult": 2.0}))
+    assert '[Range(0.0, 8.0)]\n        [Display(Name = "TargetAtrMult"' in source
+    assert "TrailBars <= 0 && TargetAtrMult <= 0.0" in source  # the runtime guard still refuses 0 with no trail
