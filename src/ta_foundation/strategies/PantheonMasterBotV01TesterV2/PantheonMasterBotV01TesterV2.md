@@ -1,3 +1,8 @@
+> **Superseded 2026-10-06.** This is a verbatim copy of the March 2026 PDF and has known errors
+> (sections 8 Case A and 14 are wrong; the trend-rejection flatten, the 23:00 window clamp, the
+> session-close exit and the live-only kill switch are missing). The verified, source-cited
+> description is `D:/strategy-analysis/weekly-coverage/docs/PANTHEON_V01_BEHAVIOR.md`.
+
 PantheonMasterBotV01TesterV2
 User Behavior Document
 1) Strategy overview
